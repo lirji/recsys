@@ -1,0 +1,9 @@
+# Track D · LightGBM → ONNX 训练依赖(CPU,无需 GPU)
+lightgbm>=4.0
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+onnx>=1.15
+onnxmltools>=1.12
+skl2onnx>=1.16
+onnxruntime>=1.17
