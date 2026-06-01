@@ -31,6 +31,11 @@ public class VectorRecaller implements ChannelRecaller {
     }
 
     @Override
+    public RecallChannel channel() {
+        return RecallChannel.VECTOR;
+    }
+
+    @Override
     public List<RecallItem> recall(RecallContext ctx) {
         float[] userVec = loadUserVector(ctx.userId());
         if (userVec == null) {

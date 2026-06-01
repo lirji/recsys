@@ -29,6 +29,11 @@ public class TagRecaller implements ChannelRecaller {
     }
 
     @Override
+    public RecallChannel channel() {
+        return RecallChannel.TAG;
+    }
+
+    @Override
     public List<RecallItem> recall(RecallContext ctx) {
         List<String> categories = preferredCategories(ctx.userId());
         if (categories.isEmpty()) {

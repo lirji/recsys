@@ -35,4 +35,14 @@ public final class RedisKeys {
     public static String embCache(String textHash) {
         return "emb:cache:" + textHash;
     }
+
+    /** UserCF 个性化召回列表 ZSet(离线物化,score=相似用户加权分):u2u:{userId} */
+    public static String u2u(long userId) {
+        return "u2u:" + userId;
+    }
+
+    /** Swing 相似物品 ZSet(score=Swing 相似度):swing:{itemId} */
+    public static String swing(long itemId) {
+        return "swing:" + itemId;
+    }
 }

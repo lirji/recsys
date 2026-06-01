@@ -1,5 +1,6 @@
 package com.recsys.recall.channel;
 
+import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 
@@ -11,4 +12,7 @@ import java.util.List;
 public interface ChannelRecaller {
 
     List<RecallItem> recall(RecallContext ctx);
+
+    /** 本召回器所属的召回路,供合并层按 {@link RecallContext#enabledChannels()} 过滤。 */
+    RecallChannel channel();
 }

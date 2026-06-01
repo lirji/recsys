@@ -19,19 +19,21 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * i2i 召回(ItemCF):取用户近期行为物品作种子,读 Redis i2i:{itemId} 取相似物品。
- * i2i 倒排由离线 ItemCF 作业(Track E)生成;倒排为空时该路返回空。
+ * Swing i2i 召回:与 {@link I2iRecaller} 同构,但读 Redis {@code swing:{itemId}} 倒排。
+ *
+ * <p>Swing 相似度对"被很多重叠用户共同点击"的物品对加更强惩罚,比 ItemCF 更抗热门污染,
+ * 召回更聚焦小众强相关。倒排由离线 {@code swing} 作业生成,为空时该路返回空。
  */
 @Component
-public class I2iRecaller implements ChannelRecaller {
+public class SwingRecaller implements ChannelRecaller {
 
-    private static final Logger log = LoggerFactory.getLogger(I2iRecaller.class);
+    private static final Logger log = LoggerFactory.getLogger(SwingRecaller.class);
 
     private final JdbcTemplate jdbc;
     private final StringRedisTemplate redis;
     private final RecallProperties props;
 
-    public I2iRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props) {
+    public SwingRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props) {
         this.jdbc = jdbc;
         this.redis = redis;
         this.props = props;
@@ -39,7 +41,7 @@ public class I2iRecaller implements ChannelRecaller {
 
     @Override
     public RecallChannel channel() {
-        return RecallChannel.I2I;
+        return RecallChannel.SWING;
     }
 
     @Override
@@ -48,12 +50,11 @@ public class I2iRecaller implements ChannelRecaller {
         if (seeds.isEmpty()) {
             return List.of();
         }
-        int perSeed = Math.max(5, props.getQuota().getI2i() / seeds.size());
-        // 同一相似物品可能被多个种子命中,取最高分
+        int perSeed = Math.max(5, props.getQuota().getSwing() / seeds.size());
         Map<Long, Double> best = new LinkedHashMap<>();
         for (long seed : seeds) {
             Set<ZSetOperations.TypedTuple<String>> sims =
-                    redis.opsForZSet().reverseRangeWithScores(RedisKeys.i2i(seed), 0, perSeed - 1);
+                    redis.opsForZSet().reverseRangeWithScores(RedisKeys.swing(seed), 0, perSeed - 1);
             if (sims == null) {
                 continue;
             }
@@ -68,7 +69,7 @@ public class I2iRecaller implements ChannelRecaller {
         }
         List<RecallItem> out = new ArrayList<>(best.size());
         for (var e : best.entrySet()) {
-            out.add(new RecallItem(e.getKey(), e.getValue(), RecallChannel.I2I));
+            out.add(new RecallItem(e.getKey(), e.getValue(), RecallChannel.SWING));
         }
         return out;
     }

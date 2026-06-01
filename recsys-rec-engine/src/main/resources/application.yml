@@ -22,6 +22,11 @@ recsys:
       i2i: 100
       hot: 50
       tag: 50
+      u2u: 100
+      swing: 100
+      semantic: 100
+      cold: 100
+      cold-per-category: 5
   rank:
     # v1=规则打分, onnx=模型打分
     strategy: ${RANK_STRATEGY:v1}
@@ -32,6 +37,49 @@ recsys:
     rec-ttl-seconds: 300
   embedding:
     dimension: 768
+  cold-start:
+    # 行为数 < 阈值且无用户向量 → 冷启动(走类目探索 + 强多样性重排)
+    min-behaviors: 5
+    rerank-max-same-category: 1
+  # 分层 A/B:recall/rank/rerank 各自独立分桶,可正交组合。enabled=false 时每层取第一个 variant(基线)
+  experiment:
+    enabled: ${EXPERIMENT_ENABLED:true}
+    layers:
+      recall:
+        salt: recall-2026a
+        variants:
+          - name: base
+            weight: 50
+            params:
+              channels: "VECTOR,I2I,HOT,TAG"
+          - name: plus
+            weight: 50
+            params:
+              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC"
+      rank:
+        salt: rank-2026a
+        variants:
+          - name: v1
+            weight: 50
+            params:
+              strategy: v1
+          - name: onnx
+            weight: 50
+            params:
+              strategy: onnx
+      rerank:
+        salt: rerank-2026a
+        variants:
+          - name: diversity
+            weight: 50
+            params:
+              strategy: diversity
+              maxSameCategory: "3"
+          - name: mmr
+            weight: 50
+            params:
+              strategy: mmr
+              lambda: "0.7"
 
 management:
   endpoints:

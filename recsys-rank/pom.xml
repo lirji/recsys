@@ -23,6 +23,11 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-feature</artifactId>
         </dependency>
+        <!-- ONNX 排序的交叉特征需物品主类目 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>

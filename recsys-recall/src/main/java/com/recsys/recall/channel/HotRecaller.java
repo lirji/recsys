@@ -36,6 +36,11 @@ public class HotRecaller implements ChannelRecaller {
     }
 
     @Override
+    public RecallChannel channel() {
+        return RecallChannel.HOT;
+    }
+
+    @Override
     public List<RecallItem> recall(RecallContext ctx) {
         int limit = props.getQuota().getHot();
         List<RecallItem> fromRedis = fromRedis(limit);

@@ -11,6 +11,7 @@ public class RecEngineProperties {
     private final Rerank rerank = new Rerank();
     private final Cache cache = new Cache();
     private final Fusion fusion = new Fusion();
+    private final ColdStart coldStart = new ColdStart();
 
     public Rerank getRerank() {
         return rerank;
@@ -22,6 +23,34 @@ public class RecEngineProperties {
 
     public Fusion getFusion() {
         return fusion;
+    }
+
+    public ColdStart getColdStart() {
+        return coldStart;
+    }
+
+    /** 冷启动判定与探索参数(对应 recsys.cold-start.*)。 */
+    public static class ColdStart {
+        /** 行为数 < 该阈值且无用户向量,判为冷启动用户。 */
+        private int minBehaviors = 5;
+        /** 冷启动时重排允许的同类目上限(更小=更强探索)。 */
+        private int rerankMaxSameCategory = 1;
+
+        public int getMinBehaviors() {
+            return minBehaviors;
+        }
+
+        public void setMinBehaviors(int minBehaviors) {
+            this.minBehaviors = minBehaviors;
+        }
+
+        public int getRerankMaxSameCategory() {
+            return rerankMaxSameCategory;
+        }
+
+        public void setRerankMaxSameCategory(int rerankMaxSameCategory) {
+            this.rerankMaxSameCategory = rerankMaxSameCategory;
+        }
     }
 
     public static class Rerank {

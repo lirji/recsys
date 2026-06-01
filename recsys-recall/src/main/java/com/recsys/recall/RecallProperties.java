@@ -19,8 +19,14 @@ public class RecallProperties {
         private int i2i = 100;
         private int hot = 50;
         private int tag = 50;
-        /** i2i:取用户最近多少个行为物品做种子。 */
+        private int u2u = 100;
+        private int swing = 100;
+        private int semantic = 100;
+        private int cold = 100;
+        /** i2i/swing:取用户最近多少个行为物品做种子。 */
         private int i2iSeed = 20;
+        /** cold:每个类目取多少热门做探索。 */
+        private int coldPerCategory = 5;
 
         public int getVector() {
             return vector;
@@ -54,12 +60,52 @@ public class RecallProperties {
             this.tag = tag;
         }
 
+        public int getU2u() {
+            return u2u;
+        }
+
+        public void setU2u(int u2u) {
+            this.u2u = u2u;
+        }
+
+        public int getSwing() {
+            return swing;
+        }
+
+        public void setSwing(int swing) {
+            this.swing = swing;
+        }
+
+        public int getSemantic() {
+            return semantic;
+        }
+
+        public void setSemantic(int semantic) {
+            this.semantic = semantic;
+        }
+
+        public int getCold() {
+            return cold;
+        }
+
+        public void setCold(int cold) {
+            this.cold = cold;
+        }
+
         public int getI2iSeed() {
             return i2iSeed;
         }
 
         public void setI2iSeed(int i2iSeed) {
             this.i2iSeed = i2iSeed;
+        }
+
+        public int getColdPerCategory() {
+            return coldPerCategory;
+        }
+
+        public void setColdPerCategory(int coldPerCategory) {
+            this.coldPerCategory = coldPerCategory;
         }
     }
 }

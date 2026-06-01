@@ -27,6 +27,16 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-content</artifactId>
         </dependency>
+        <!-- gen-samples 复用在线特征装配器(FeatureAssembler),保证训练/在线特征一致 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-rank</artifactId>
+        </dependency>
+        <!-- build-features 复用 RedisFeatureService 写 feat:*,key/字段与在线读取一致 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-feature</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>

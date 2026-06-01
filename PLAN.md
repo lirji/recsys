@@ -60,24 +60,28 @@
 负责模块:`recsys-rank`、`recsys-feature`
 - [x] C1 `RedisFeatureService`:特征读写 Redis(`feat:user:*`/`feat:item:*`)+ 离线写入方法。
 - [x] C2 排序 v1 `RuleRankService`:加权规则打分,特征快照随结果返回。
-- [ ] C3 排序 v3:ONNX Runtime 加载 `model.onnx`(`strategy=onnx` 入口已留,实现待 Track D 出模型,M2)。
-- [ ] C4 特征装配:交叉特征组装,在线/离线一致(待 Track E 离线特征 + D 训练对齐)。
-- **验收**:✅ 给定候选返回有序结果;v1 无模型即可跑。
+- [x] C3 排序 v3:`OnnxRankService`(onnxruntime 加载 `model.onnx`,共享 FeatureAssembler 装配→批量打分,加载失败回退规则);`RankRouter` @Primary 按 `recsys.rank.strategy` 路由。实测 `RANK_STRATEGY=onnx` 模型加载成功、全程打分无回退。
+- [x] C4 特征装配:抽出共享 `FeatureAssembler`(固定 FEATURE_ORDER,纯函数),在线 OnnxRankService/RuleRankService 与离线 gen-samples 共用,杜绝特征穿越;离线 `build-features` 物化 feat:* 为同源。
+- **验收**:✅ 给定候选返回有序结果;v1/onnx 均可跑,模型缺失自动回退规则。
 
-### Track D · 离线训练(Python)⬜ 未开始 〔依赖:0.3, 运行期依赖 E 的行为数据〕
+### Track D · 离线训练(Python)✅ 已完成(2026-06-01)〔依赖:0.3, 运行期依赖 E 的行为数据〕
 负责目录:`recsys-offline/train/`
-- [ ] D1 样本构造:`user_behavior` → `(label, features)`,负样本=曝光未点击,按时间切分。
-- [ ] D2 LightGBM 训练(CPU),输出 AUC/LogLoss。
-- [ ] D3 导出 ONNX,产出 `model.onnx` + 特征顺序说明(给 Track C 对齐)。
-- **验收**:AUC 报告 + 可被 Java ONNX Runtime 加载的模型。
+- [x] D1 样本构造:Java 作业 `gen-samples`,正样本=RATING≥4,负样本=按热度采样的未评分物品(MovieLens 无曝光日志,采样近似曝光未点击),按 ts 时间切分 train/valid,经共享 FeatureAssembler 装配 → `train/samples.csv`(实测 14.5 万行)。
+- [x] D2 LightGBM 训练(CPU,`train/train_lgbm.py`),**AUC=0.6300 / LogLoss=0.6336**。
+- [x] D3 导出 ONNX(onnxmltools, zipmap=False 出概率张量)→ `recsys-rank/src/main/resources/model/model.onnx` + `feature_order.json`,onnxruntime 回读校验通过。
+- **验收**:✅ AUC 报告 + Java onnxruntime 成功加载并打分(高/低匹配样本 CTR 可区分)。
+- 前置 Java 作业:`build-features`(物化 feat:* 到 Redis)→ `gen-samples`(造样本);训练详见 `train/README.md`。
+- 已知简化:负样本为采样近似;特征用全量历史含轻度数据穿越(离线 AUC 偏乐观),生产应按事件时间 as-of 取特征。
 
-### Track E · 行为采集与离线作业 ⬜ 未开始 〔依赖:0.3, 0.4〕
+### Track E · 行为采集与离线作业 ✅ 已完成(2026-06-01)〔依赖:0.3, 0.4〕
 负责模块:`recsys-behavior`、`recsys-offline`(CF 批算 / 热度 / 用户向量)
-- [ ] E1 `recsys-behavior`:`POST /api/behavior` → Kafka 或入库(前端已按契约调用,待服务实现)。
-- [ ] E2 ItemCF/Swing 批算 → Redis `i2i:{itemId}`(纯 Java)。**做完 B 的 i2i 召回才有数据**。
-- [ ] E3 热度计算 → `recall:hot`(目前 HotRecaller 走查库降级,E3 后走 Redis)。
-- [ ] E4 `user_embedding` 生成:聚合用户正反馈物品向量。**做完 B 的向量召回对真实用户才生效**(当前靠手造测试向量验证)。
-- **验收**:行为可上报;Redis 有 i2i 倒排、热门、用户向量。
+- [x] E1 `recsys-behavior`:`POST /api/behavior`(+ `/batch`)→ `BehaviorService` 落库 `user_behavior`(`use-kafka=true` 时投 Kafka,不可用自动降级入库)。action 一律大写入库,对齐 I2iRecaller 查询口径。
+- [x] **bootstrap** `import-behavior` 作业:ratings.csv(10 万条)→ `user_behavior`(action=RATING, value=评分, scene=ml-import, 幂等)。冷启动喂数,线上真实上报后续进同表。
+- [x] E2 `item-cf` 作业:`ItemCfJob` 经典 ItemCF + IUF 活跃用户惩罚 + 热门物品惩罚,每物品 TopK 写 Redis `i2i:{itemId}`(管道批量)。实测 5959 物品出倒排,Toy Story→Toy Story 2/狮子王/阿拉丁,质量正确。
+- [x] E3 `hot` 作业:`HotJob` 从 `user_behavior` SQL 加权聚合(CLICK1/LIKE2/PLAY1/RATING=value)→ `recall:hot` ZSet(原子替换)。实测写 1000 条,HotRecaller 走 Redis。
+- [x] E4 `user-embedding` 作业:`UserEmbeddingJob` 聚合用户正反馈物品向量(评分加权)→ L2 归一化 → `user_embedding`(默认整表重建)。实测覆盖 598 用户。
+- **验收**:✅ 行为可上报落库(单条+批量实测);Redis 有 i2i 倒排(5959)、热门(1000)、用户向量(598);真实用户 `GET /api/recommend?userId=1` 由 **VECTOR+I2I 真实召回**驱动(2571=黑客帝国来自 ItemCF),不再靠手造向量/热门兜底。
+- **已知限制**:item_embedding 仅 1000 条(Gemini 配额),user_embedding 只覆盖正反馈落在这 1000 物品内的用户;灌满向量后重跑 user-embedding 即扩大覆盖。
 
 ### Track F · 编排 / 网关 / 前端 ✅ 已完成(网关待补)〔依赖:0.4;集成期依赖 B/C〕
 负责模块:`recsys-rec-engine`、`recsys-gateway`、`recsys-web`

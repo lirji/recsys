@@ -1,0 +1,7 @@
+[
+  "item_pop_norm",
+  "item_avg_rating",
+  "user_act_norm",
+  "user_avg_rating",
+  "user_cat_affinity"
+]

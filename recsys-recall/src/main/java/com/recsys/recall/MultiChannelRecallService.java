@@ -40,6 +40,10 @@ public class MultiChannelRecallService implements RecallService {
         // itemId -> 合并后的条目(记录来源与最大召回分)
         Map<Long, Merged> merged = new LinkedHashMap<>();
         for (ChannelRecaller recaller : recallers) {
+            // 分层 A/B / 冷启动可只启用部分召回路;enabledChannels 为空表示全开
+            if (!ctx.isEnabled(recaller.channel())) {
+                continue;
+            }
             List<RecallItem> items;
             try {
                 items = recaller.recall(ctx);
@@ -67,11 +71,29 @@ public class MultiChannelRecallService implements RecallService {
         List<RecallItem> out = new ArrayList<>(merged.size());
         for (var e : merged.entrySet()) {
             Merged m = e.getValue();
-            // channel 字段放首要来源(列表第一个);完整来源可由上层用 channels 重建
-            out.add(new RecallItem(e.getKey(), m.score, m.channels.get(0)));
+            // 主召回路按信息量优先级选取(而非命中顺序):个性化路 > 偏好/探索 > 热门兜底,
+            // 让推荐理由更贴切(如一个热门片同时被 I2I 命中,应标 I2I 而非 HOT)
+            RecallChannel primary = m.channels.stream()
+                    .min(java.util.Comparator.comparingInt(MultiChannelRecallService::priority))
+                    .orElse(m.channels.get(0));
+            out.add(new RecallItem(e.getKey(), m.score, primary));
         }
         log.debug("用户 {} 多路召回合并后候选 {} 个", ctx.userId(), out.size());
         return out;
+    }
+
+    /** 主召回路优先级(数字越小越优先);兜底性越强越靠后。 */
+    private static int priority(RecallChannel c) {
+        return switch (c) {
+            case I2I -> 0;
+            case SWING -> 1;
+            case U2U -> 2;
+            case VECTOR -> 3;
+            case SEMANTIC -> 4;
+            case TAG -> 5;
+            case COLD -> 6;
+            case HOT -> 7;
+        };
     }
 
     /** 合并去重后,同一物品的来源集合 + 最大召回分。 */
