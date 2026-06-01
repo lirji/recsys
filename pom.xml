@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.recsys</groupId>
+    <artifactId>recsys</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>recsys</name>
+    <description>Recommendation system (production-oriented scaffold)</description>
+
+    <!-- 父 POM:统一管理版本与依赖。各子模块只声明需要的依赖,版本由这里集中控制。 -->
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <spring-boot.version>3.2.5</spring-boot.version>
+        <spring-cloud.version>2023.0.1</spring-cloud.version>
+
+        <pgvector.version>0.1.6</pgvector.version>
+        <onnxruntime.version>1.17.1</onnxruntime.version>
+        <lombok.version>1.18.30</lombok.version>
+        <postgresql.version>42.7.3</postgresql.version>
+    </properties>
+
+    <modules>
+        <module>recsys-common</module>
+        <module>recsys-gateway</module>
+        <module>recsys-rec-engine</module>
+        <module>recsys-recall</module>
+        <module>recsys-rank</module>
+        <module>recsys-feature</module>
+        <module>recsys-embedding</module>
+        <module>recsys-content</module>
+        <module>recsys-user</module>
+        <module>recsys-behavior</module>
+        <module>recsys-offline</module>
+        <module>recsys-web</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot BOM -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud BOM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- 注:引入 Nacos 时在此加 spring-cloud-alibaba-dependencies BOM
+                 (需选用与 Spring Cloud 2023.0.x 匹配且中央仓库存在的版本) -->
+
+            <!-- 内部模块统一版本管理(子模块引用时无需写 version) -->
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-recall</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-rank</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-feature</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-embedding</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-content</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-user</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- pgvector JDBC 支持 -->
+            <dependency>
+                <groupId>com.pgvector</groupId>
+                <artifactId>pgvector</artifactId>
+                <version>${pgvector.version}</version>
+            </dependency>
+            <!-- ONNX Runtime:在线加载离线训练的排序模型 -->
+            <dependency>
+                <groupId>com.microsoft.onnxruntime</groupId>
+                <artifactId>onnxruntime</artifactId>
+                <version>${onnxruntime.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- 全局通用:Lombok(编译期)、测试 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

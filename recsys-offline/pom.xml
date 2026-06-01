@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-offline</artifactId>
+    <name>recsys-offline</name>
+    <description>离线作业:数据导入、灌向量、ItemCF批算、热度、用户向量、样本生成。Track A/E。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
+        <!-- 灌向量需要 embedding 客户端;导入需要 content -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-embedding</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.pgvector</groupId>
+            <artifactId>pgvector</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,63 @@
+# 本地依赖中间件。一键启动:docker compose up -d
+# 核心(v1 必需):postgres、redis
+# 可选(进阶):kafka、nacos —— 用 profile 控制,默认不启动
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: recsys-postgres
+    environment:
+      POSTGRES_DB: recsys
+      POSTGRES_USER: recsys
+      POSTGRES_PASSWORD: recsys
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次启动自动建表(schema + 索引)
+      - ./recsys-offline/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recsys -d recsys"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: recsys-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- 可选组件:docker compose --profile full up -d 才启动 ----
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: recsys-kafka
+    profiles: ["full"]
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: recsys-nacos
+    profiles: ["full"]
+    environment:
+      MODE: standalone
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+
+volumes:
+  pgdata:

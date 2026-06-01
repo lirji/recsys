@@ -1,0 +1,23 @@
+# 密钥与本地环境
+.env
+
+# Maven
+target/
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# 数据集与模型产物
+data/
+*.onnx
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# 日志
+*.log
+logs/

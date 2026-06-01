@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: recsys-gateway
+  cloud:
+    gateway:
+      routes:
+        # 推荐主入口 → rec-engine
+        - id: rec-engine
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/recommend/**
+        # 行为上报 → behavior
+        - id: behavior
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/behavior/**
+        # 演示前端 → web
+        - id: web
+          uri: http://localhost:8090
+          predicates:
+            - Path=/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

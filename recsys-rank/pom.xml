@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-rank</artifactId>
+    <name>recsys-rank</name>
+    <description>排序服务(库):特征装配 + 规则/ONNX 模型打分。Track C。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
+        <!-- 复用特征服务做特征装配 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-feature</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <!-- 在线加载离线训练的 ONNX 排序模型 -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

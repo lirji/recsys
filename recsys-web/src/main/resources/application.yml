@@ -1,0 +1,14 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: recsys-web
+  thymeleaf:
+    cache: false
+
+recsys:
+  web:
+    # 推荐服务地址(经网关或直连 rec-engine)
+    rec-engine-url: ${REC_ENGINE_URL:http://localhost:8081}
+    behavior-url: ${BEHAVIOR_URL:http://localhost:8082}

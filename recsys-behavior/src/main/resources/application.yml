@@ -1,0 +1,28 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: recsys-behavior
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+recsys:
+  behavior:
+    # true=写 Kafka, false=直接入库(v1 可先 false,不依赖 Kafka)
+    use-kafka: ${BEHAVIOR_USE_KAFKA:false}
+    topic: behavior-events
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

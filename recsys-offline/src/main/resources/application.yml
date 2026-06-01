@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: recsys-offline
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+recsys:
+  offline:
+    movielens-path: ${MOVIELENS_PATH:./data/ml-latest-small}
+  embedding:
+    dimension: 768
+    provider: ${EMBEDDING_PROVIDER:gemini}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      model: gemini-embedding-001
+      # gemini-embedding-001 默认 3072 维;指定 768 输出后需客户端 L2 归一化再算余弦
+      output-dimensionality: 768

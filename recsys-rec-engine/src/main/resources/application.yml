@@ -1,0 +1,40 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: recsys-rec-engine
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+# 推荐链路可调参数(生产可迁移到 Nacos 配置中心热更)
+recsys:
+  recall:
+    quota:
+      vector: 200
+      i2i: 100
+      hot: 50
+      tag: 50
+  rank:
+    # v1=规则打分, onnx=模型打分
+    strategy: ${RANK_STRATEGY:v1}
+    onnx-model-path: classpath:model/model.onnx
+  rerank:
+    max-same-category: 3
+  cache:
+    rec-ttl-seconds: 300
+  embedding:
+    dimension: 768
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-rec-engine</artifactId>
+    <name>recsys-rec-engine</name>
+    <description>推荐编排服务(对外主入口):召回→排序→重排。单体起步时聚合各计算库。Track F。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- 单体起步:直接聚合各计算/领域库;拆微服务时改为远程调用 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-recall</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-rank</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-feature</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-embedding</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-user</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
