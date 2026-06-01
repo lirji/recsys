@@ -105,6 +105,24 @@
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_cpu_usage{application=\"recsys-rec-engine\"}", "legendFormat": "rec-engine" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_cpu_usage{application=\"recsys-behavior\"}", "legendFormat": "behavior" }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "排序模型回退率 (按 requested) = 回退规则/请求该模型",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 29 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_rank_total{requested=~\"onnx|deepfm\", served=\"rule\"}[5m])) by (requested) / clamp_min(sum(rate(recsys_rank_total{requested=~\"onnx|deepfm\"}[5m])) by (requested), 0.001)", "legendFormat": "{{requested}} fallback" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "排序策略命中分布 (按 served, 每秒)",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 29 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_rank_total[5m])) by (served, reason)", "legendFormat": "{{served}} ({{reason}})" }
+      ]
     }
   ]
 }

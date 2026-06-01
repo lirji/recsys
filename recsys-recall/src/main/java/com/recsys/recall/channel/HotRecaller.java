@@ -17,8 +17,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 热门召回:读 Redis recall:hot ZSet 取 topN。这是兜底/冷启动路,必须始终可用。
- * 若 Redis 热门为空(离线作业未跑),降级直接查 item 表 popularity Top-N,保证永不空手。
+ * 热门召回:这是兜底/冷启动路,必须始终可用。三级取数,逐级降级:
+ * <ol>
+ *   <li>实时热门 {@code recall:rt_hot}(Flink 流作业近实时更新,反映"此刻在热什么");</li>
+ *   <li>离线热门 {@code recall:hot}(HotJob T+1 物化);</li>
+ *   <li>直接查 item 表 popularity Top-N(永不空手)。</li>
+ * </ol>
+ * 实时优先体现"实时特征生效";流作业没跑时自动回落离线,零依赖。
  */
 @Component
 public class HotRecaller implements ChannelRecaller {
@@ -43,18 +48,24 @@ public class HotRecaller implements ChannelRecaller {
     @Override
     public List<RecallItem> recall(RecallContext ctx) {
         int limit = props.getQuota().getHot();
-        List<RecallItem> fromRedis = fromRedis(limit);
-        if (!fromRedis.isEmpty()) {
-            return fromRedis;
+        // 1. 实时热门优先(Flink 流作业近实时维护)
+        List<RecallItem> rt = fromRedis(RedisKeys.RT_HOT_RECALL, limit);
+        if (!rt.isEmpty()) {
+            return rt;
         }
-        // 降级:直接查库 popularity(保证热门兜底永远有结果)
+        // 2. 离线热门
+        List<RecallItem> offline = fromRedis(RedisKeys.HOT_RECALL, limit);
+        if (!offline.isEmpty()) {
+            return offline;
+        }
+        // 3. 降级:直接查库 popularity(保证热门兜底永远有结果)
         return fromDb(limit);
     }
 
-    private List<RecallItem> fromRedis(int limit) {
+    private List<RecallItem> fromRedis(String key, int limit) {
         try {
             Set<ZSetOperations.TypedTuple<String>> hot =
-                    redis.opsForZSet().reverseRangeWithScores(RedisKeys.HOT_RECALL, 0, limit - 1);
+                    redis.opsForZSet().reverseRangeWithScores(key, 0, limit - 1);
             if (hot == null || hot.isEmpty()) {
                 return List.of();
             }

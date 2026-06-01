@@ -11,5 +11,6 @@ public enum RecallChannel {
     U2U,      // UserCF 协同召回(相似用户的正反馈,离线物化)
     SWING,    // Swing i2i 协同召回(抗热门的物品相似)
     SEMANTIC, // 语义 query 召回(query/伪 query → embedding → 向量检索)
-    COLD      // 冷启动类目探索召回(跨类目铺开,最大化覆盖)
+    COLD,     // 冷启动类目探索召回(跨类目铺开,最大化覆盖)
+    TWO_TOWER // 双塔召回(离线学 item 向量 + 在线 ONNX 算 user 向量 → ANN,学的是"行为相似")
 }

@@ -34,5 +34,15 @@
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
         </dependency>
+        <!-- 双塔召回:在线加载 user 塔 ONNX 算 query 向量 -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+        </dependency>
+        <!-- 读 tower_schema.json(plain starter 不含 jackson-databind) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
     </dependencies>
 </project>

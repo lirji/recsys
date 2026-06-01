@@ -9,9 +9,38 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class RecallProperties {
 
     private final Quota quota = new Quota();
+    private final TwoTower twoTower = new TwoTower();
 
     public Quota getQuota() {
         return quota;
+    }
+
+    public TwoTower getTwoTower() {
+        return twoTower;
+    }
+
+    /** 双塔召回:user 塔 ONNX 模型 + schema(user 桶数)路径。item 向量已离线灌库,在线无需 vocab。 */
+    public static class TwoTower {
+        /** classpath: 或文件路径;user 塔 ONNX(输入 user_bucket[N,1] int64 → user_vec[N,dim])。 */
+        private String modelPath = "classpath:model/user_tower.onnx";
+        /** classpath: 或文件路径;tower_schema.json(user_buckets / dim / 输入输出名)。 */
+        private String schemaPath = "classpath:model/tower_schema.json";
+
+        public String getModelPath() {
+            return modelPath;
+        }
+
+        public void setModelPath(String modelPath) {
+            this.modelPath = modelPath;
+        }
+
+        public String getSchemaPath() {
+            return schemaPath;
+        }
+
+        public void setSchemaPath(String schemaPath) {
+            this.schemaPath = schemaPath;
+        }
     }
 
     public static class Quota {
@@ -23,6 +52,7 @@ public class RecallProperties {
         private int swing = 100;
         private int semantic = 100;
         private int cold = 100;
+        private int twoTower = 200;
         /** i2i/swing:取用户最近多少个行为物品做种子。 */
         private int i2iSeed = 20;
         /** cold:每个类目取多少热门做探索。 */
@@ -90,6 +120,14 @@ public class RecallProperties {
 
         public void setCold(int cold) {
             this.cold = cold;
+        }
+
+        public int getTwoTower() {
+            return twoTower;
+        }
+
+        public void setTwoTower(int twoTower) {
+            this.twoTower = twoTower;
         }
 
         public int getI2iSeed() {

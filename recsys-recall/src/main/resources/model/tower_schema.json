@@ -1,0 +1,6 @@
+{
+  "model": "two_tower",
+  "user_buckets": 5000,
+  "dim": 64,
+  "input_name": "user_bucket"
+}

@@ -76,7 +76,15 @@ public class MultiChannelRecallService implements RecallService {
             RecallChannel primary = m.channels.stream()
                     .min(java.util.Comparator.comparingInt(MultiChannelRecallService::priority))
                     .orElse(m.channels.get(0));
-            out.add(new RecallItem(e.getKey(), m.score, primary));
+            // 主路按优先级排首位,其余按命中顺序跟随,全集透传给下游(理由/调试/未来融合加权)
+            List<RecallChannel> ordered = new ArrayList<>();
+            ordered.add(primary);
+            for (RecallChannel c : m.channels) {
+                if (c != primary) {
+                    ordered.add(c);
+                }
+            }
+            out.add(new RecallItem(e.getKey(), m.score, primary, ordered));
         }
         log.debug("用户 {} 多路召回合并后候选 {} 个", ctx.userId(), out.size());
         return out;
@@ -88,11 +96,12 @@ public class MultiChannelRecallService implements RecallService {
             case I2I -> 0;
             case SWING -> 1;
             case U2U -> 2;
-            case VECTOR -> 3;
-            case SEMANTIC -> 4;
-            case TAG -> 5;
-            case COLD -> 6;
-            case HOT -> 7;
+            case TWO_TOWER -> 3;   // 学行为的个性化向量召回,信息量高,优先于内容向量
+            case VECTOR -> 4;
+            case SEMANTIC -> 5;
+            case TAG -> 6;
+            case COLD -> 7;
+            case HOT -> 8;
         };
     }
 

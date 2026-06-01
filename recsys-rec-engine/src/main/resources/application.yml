@@ -26,14 +26,32 @@ recsys:
       swing: 100
       semantic: 100
       cold: 100
+      two-tower: 200
       cold-per-category: 5
+    # 双塔召回:user 塔 ONNX(item 向量已离线灌 item_tower_embedding);缺模型则该路返回空、其他路兜底
+    two-tower:
+      model-path: classpath:model/user_tower.onnx
+      schema-path: classpath:model/tower_schema.json
   rank:
-    # v1=规则打分, onnx=LightGBM 模型, deepfm=DeepFM 深度模型(失败均回退规则)
+    # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列建模(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
     onnx-model-path: classpath:model/model.onnx
     deepfm-model-path: classpath:model/model_deepfm.onnx
     rank-schema-path: classpath:model/rank_schema.json
     category-vocab-path: classpath:model/category_vocab.json
+    # MMoE 多目标(train_mmoe.py 产出)
+    mmoe-model-path: classpath:model/model_mmoe.onnx
+    mmoe-schema-path: classpath:model/mmoe_schema.json
+    mmoe-category-vocab-path: classpath:model/mmoe_category_vocab.json
+    # DIN 序列建模(train_din.py 产出)
+    din-model-path: classpath:model/model_din.onnx
+    din-schema-path: classpath:model/din_schema.json
+    din-category-vocab-path: classpath:model/din_category_vocab.json
+    # 多目标融合(mmoe/din 共用):finalScore = pCTR·(cvrBias + cvrWeight·pCVR)
+    # cvrBias=0、cvrWeight=1 → 退化为 ESMM 的 pCTCVR=pCTR·pCVR
+    multi-task:
+      cvr-bias: 0.1
+      cvr-weight: 1.0
   rerank:
     max-same-category: 3
   filter:
@@ -61,7 +79,7 @@ recsys:
           - name: plus
             weight: 50
             params:
-              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC"
+              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC,TWO_TOWER"
       rank:
         salt: rank-2026a
         variants:

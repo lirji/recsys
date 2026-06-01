@@ -131,13 +131,13 @@ public class RecommendOrchestrator {
                     ? seenItemsFilter.seenItems(req.userId()) : Set.of();
 
             Map<Long, Double> recallScore = new HashMap<>();
-            Map<Long, String> recallChannel = new LinkedHashMap<>();
+            Map<Long, List<String>> recallChannel = new LinkedHashMap<>();
             for (RecallItem r : recalled) {
                 if (seen.contains(r.itemId())) {
                     continue;
                 }
                 recallScore.merge(r.itemId(), r.recallScore(), Math::max);
-                recallChannel.putIfAbsent(r.itemId(), r.channel().name());
+                mergeChannels(recallChannel, r);
             }
             // 极端情况:用户几乎看遍召回池,过滤后空了 —— 放弃过滤回落原始召回,
             // 宁可推少量重复也不返回空(已看过滤是质量优化,不该把可用结果清零)。
@@ -147,7 +147,7 @@ public class RecommendOrchestrator {
                         req.userId(), recalled.size(), seen.size());
                 for (RecallItem r : recalled) {
                     recallScore.merge(r.itemId(), r.recallScore(), Math::max);
-                    recallChannel.putIfAbsent(r.itemId(), r.channel().name());
+                    mergeChannels(recallChannel, r);
                 }
             }
             List<Long> candidateIds = new ArrayList<>(recallScore.keySet());
@@ -206,6 +206,20 @@ public class RecommendOrchestrator {
                     .tag("outcome", outcome)
                     .publishPercentileHistogram()
                     .register(meterRegistry));
+        }
+    }
+
+    /**
+     * 合并一条召回结果的来源到 itemId -> 召回路名列表(主路在首位,去重)。
+     * 多路命中同一物品时,各路的 channels 全集都并入,recallFrom 因此能反映"几路同时命中"。
+     */
+    private static void mergeChannels(Map<Long, List<String>> recallChannel, RecallItem r) {
+        List<String> names = recallChannel.computeIfAbsent(r.itemId(), k -> new ArrayList<>());
+        for (RecallChannel ch : r.channels()) {
+            String name = ch.name();
+            if (!names.contains(name)) {
+                names.add(name);
+            }
         }
     }
 }

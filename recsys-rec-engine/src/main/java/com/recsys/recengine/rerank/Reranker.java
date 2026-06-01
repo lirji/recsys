@@ -22,6 +22,7 @@ public interface Reranker {
     default String buildReason(Item item, String channel) {
         return switch (channel) {
             case "VECTOR" -> "与你的兴趣语义相近";
+            case "TWO_TOWER" -> "依你的口味为你匹配";
             case "SEMANTIC" -> "贴合你近期的兴趣";
             case "I2I" -> "看过相似内容的人也喜欢";
             case "SWING" -> "和你看过的强相关";
@@ -33,11 +34,12 @@ public interface Reranker {
         };
     }
 
-    /** 组装一条结果。 */
+    /** 组装一条结果。recallFrom 透传全部命中召回路(主路在首位),理由取主路。 */
     default RecommendItem build(RerankCandidate c, RerankInput in) {
         Item item = in.itemMap().get(c.itemId());
-        String channel = in.recallChannel().getOrDefault(c.itemId(), "unknown");
-        return new RecommendItem(c.itemId(), round(c.score()), List.of(channel), buildReason(item, channel));
+        List<String> channels = in.recallChannel().getOrDefault(c.itemId(), List.of("unknown"));
+        String primary = channels.isEmpty() ? "unknown" : channels.get(0);
+        return new RecommendItem(c.itemId(), round(c.score()), channels, buildReason(item, primary));
     }
 
     default double round(double v) {

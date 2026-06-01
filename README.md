@@ -27,9 +27,10 @@ recsys/
 ├── recsys-content     # 物品元数据                              [lib] Track A
 ├── recsys-user        # 用户画像                                [lib]
 ├── recsys-behavior    # 行为采集(:8082)                       [app] Track E
-├── recsys-offline     # 离线作业(导入/灌向量/CF/样本)         [app] Track A/E
+├── recsys-offline     # 离线作业(导入/灌向量/CF/样本/双塔)     [app] Track A/E
 │   └── sql/           # 数据库 schema(容器首启自动执行)
-└── recsys-web         # 演示前端(:8090)                       [app] Track F
+├── recsys-web         # 演示前端(:8090)                       [app] Track F
+└── recsys-streaming   # 实时特征 Flink 作业(本地 MiniCluster)  [app]
 ```
 
 > `[lib]` 为被依赖的计算/领域库(不打可执行 jar);`[app]` 为可执行服务。
@@ -91,8 +92,27 @@ open http://localhost:3001     # admin/admin,数据源+看板已预置
 | `recsys_recommend_empty_total` / `recsys_recommend_seen_cleared_total` | 空召回 / 已看过滤把召回池清空的异常计数 |
 | `recsys_exposure_total{recall,rank,rerank,cold}` | 分桶曝光物品数(CTR 分母) |
 | `recsys_click_total{recall,rank,rerank,...}` | 分桶点击数(CTR 分子) |
+| `recsys_rank_total{requested,served,reason}` | 排序策略命中/回退;**模型回退率** = `served=rule` 占 `requested=onnx\|deepfm` 的比例,`reason` 区分 `not_ready`(模型没加载)/`empty`(返回空) |
 
 **在线分桶 CTR** = `recsys_click_total / recsys_exposure_total`(按 `rank`/`recall` 聚合),与离线 `ab-report` 作业互补——一个实时、一个 T+1 精算。点击的分桶归因:曝光时编排层把 `expo:{user}:{item}=bucket` 写入 Redis(短 TTL),行为服务收到点击时回查回填,因此**客户端不传 bucket 也能正确归因**(服务端为准)。
+
+## 实时特征(Flink,本地 MiniCluster)
+
+`recsys-streaming` 消费 Kafka `behavior-events` 行为流,近实时算两类特征写 Redis,与离线 T+1 作业互补:
+实时热度 ZSet `recall:rt_hot`(在线 `HotRecaller` 优先读它,缺失回落离线 `recall:hot`)、用户实时类目偏好 `rt:user:{id}`。
+
+```bash
+# 1. 起 Kafka(profile=full)。注:用官方 apache/kafka 镜像(Bitnami 旧 tag 已下架)
+docker compose --profile full up -d kafka
+# 2. behavior 以 Kafka 模式起(投递行为到 behavior-events,不可用时自动降级入库)
+BEHAVIOR_USE_KAFKA=true mvn -pl recsys-behavior spring-boot:run
+# 3. 跑 Flink 实时作业(脚本含 Java 21 所需 --add-opens;首次自动打 fat jar)
+bash recsys-streaming/run-streaming.sh --window-min 10 --slide-sec 20
+# 4. 打点行为 → 观察实时热度
+curl -XPOST localhost:8082/api/behavior -H 'Content-Type: application/json' \
+  -d '{"userId":1,"itemId":2959,"action":"CLICK","scene":"feed"}'
+docker exec recsys-redis redis-cli zrevrange recall:rt_hot 0 -1 withscores
+```
 
 ## 并行开发
 

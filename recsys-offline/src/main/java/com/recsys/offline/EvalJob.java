@@ -29,6 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * 作业 eval:推荐质量离线评估闭环。
@@ -55,7 +58,7 @@ import java.util.Set;
  * <p>参数:--k(默认 "10",可多档如 "10,20,50")、--valid-frac(默认 0.2)、
  * --max-users(默认 0=全部,&gt;0 抽样提速)、--recall-size(召回候选规模,默认 300)、
  * --rank-strategy(v1/onnx,默认走全局 recsys.rank.strategy)、--recall-only(逐路召回评估)、
- * --seed(默认 42)。
+ * --seed(默认 42)、--threads(并行评估线程数,默认 CPU 核数)。
  */
 @Component
 public class EvalJob implements OfflineJob {
@@ -94,6 +97,7 @@ public class EvalJob implements OfflineJob {
         String rankStrategy = stringArg(args, "rank-strategy", null);
         boolean recallOnly = args.containsOption("recall-only");
         long seed = (long) doubleArg(args, "seed", 42);
+        int threads = intArg(args, "threads", Runtime.getRuntime().availableProcessors());
 
         // 1. 读 RATING,拆历史/测试正例(全局时间分位点切分)
         Split split = buildSplit(validFrac);
@@ -101,8 +105,8 @@ public class EvalJob implements OfflineJob {
             log.warn("无测试正例;先跑 import-behavior(需有 ts>splitTs 的 RATING≥4)");
             return;
         }
-        log.info("评估用户 {} 个(有测试正例),时间切分点 ts={},valid-frac={}",
-                split.testUsers.size(), split.splitTs, validFrac);
+        log.info("评估用户 {} 个(有测试正例),时间切分点 ts={},valid-frac={},并行线程={}",
+                split.testUsers.size(), split.splitTs, validFrac, threads);
 
         // 2. 物品全集大小(coverage)+ 热度(novelty)+ 类目缓存(diversity)
         Catalog catalog = loadCatalog();
@@ -127,14 +131,14 @@ public class EvalJob implements OfflineJob {
             if (recallOnly) {
                 for (RecallChannel ch : RecallChannel.values()) {
                     Map<Integer, Acc> accs = evaluate(users, split, catalog, ks, maxK,
-                            recallSize, rankStrategy, ch);
+                            recallSize, rankStrategy, ch, threads);
                     report(w, "recall:" + ch, ks, accs, catalog.size);
                 }
             } else {
                 String variant = "pipeline:rank=" +
                         (rankStrategy == null ? "default" : rankStrategy);
                 Map<Integer, Acc> accs = evaluate(users, split, catalog, ks, maxK,
-                        recallSize, rankStrategy, null);
+                        recallSize, rankStrategy, null, threads);
                 report(w, variant, ks, accs, catalog.size);
             }
         }
@@ -143,33 +147,62 @@ public class EvalJob implements OfflineJob {
 
     /**
      * 评估一种 variant。channel==null → 整链路(recall+rank);否则 → 单路召回(按 recallScore 排序)。
+     *
+     * <p>性能:重活(逐用户跑 recall→rank 全链路,~秒级/人)用线程池<strong>并行</strong>计算各用户的 topK,
+     * 再单线程把结果 reduce 进指标累加器。并行只影响速度、不影响指标(顺序无关的累加 + 单线程 reduce)。
+     * 链路本身无共享可变状态(JdbcTemplate 连接池、ONNX session 线程安全)。
      */
     private Map<Integer, Acc> evaluate(List<Long> users, Split split, Catalog catalog,
                                        int[] ks, int maxK, int recallSize,
-                                       String rankStrategy, RecallChannel channel) {
+                                       String rankStrategy, RecallChannel channel, int threads) {
         Map<Integer, Acc> accs = new LinkedHashMap<>();
         for (int k : ks) {
             accs.put(k, new Acc());
         }
-        int evaluated = 0;
-        for (long userId : users) {
-            Set<Long> history = split.history.getOrDefault(userId, Set.of());
-            Set<Long> testPos = split.test.get(userId);
-            if (testPos == null || testPos.isEmpty()) {
-                continue;
+
+        // 1. 并行算每个用户的 topK 推荐(无状态、可并行)
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, threads));
+        List<UserRecs> results = new ArrayList<>();
+        try {
+            List<Future<UserRecs>> futures = new ArrayList<>(users.size());
+            for (long userId : users) {
+                Set<Long> testPos = split.test.get(userId);
+                if (testPos == null || testPos.isEmpty()) {
+                    continue;
+                }
+                Set<Long> history = split.history.getOrDefault(userId, Set.of());
+                futures.add(pool.submit(() -> {
+                    List<Long> recs = recommend(userId, recallSize, maxK, rankStrategy, channel, history);
+                    return recs.isEmpty() ? null : new UserRecs(recs, testPos);
+                }));
             }
-            List<Long> recs = recommend(userId, recallSize, maxK, rankStrategy, channel, history);
-            if (recs.isEmpty()) {
-                continue;
+            for (Future<UserRecs> f : futures) {
+                try {
+                    UserRecs ur = f.get();
+                    if (ur != null) {
+                        results.add(ur);
+                    }
+                } catch (Exception e) {
+                    log.debug("评估用户失败(忽略): {}", e.getMessage());
+                }
             }
-            evaluated++;
+        } finally {
+            pool.shutdown();
+        }
+
+        // 2. 单线程 reduce 进指标累加器(顺序无关)
+        for (UserRecs ur : results) {
             for (int k : ks) {
-                accs.get(k).add(recs, testPos, k, catalog);
+                accs.get(k).add(ur.recs, ur.testPos, k, catalog);
             }
         }
         log.info("variant {} 实评用户 {}",
-                channel == null ? "pipeline" : "recall:" + channel, evaluated);
+                channel == null ? "pipeline" : "recall:" + channel, results.size());
         return accs;
+    }
+
+    /** 一个用户的 topK 推荐 + 其测试正例(并行计算产物,供单线程 reduce)。 */
+    private record UserRecs(List<Long> recs, Set<Long> testPos) {
     }
 
     /** 生成一个用户的 topK 推荐(已过滤历史已知物品)。 */

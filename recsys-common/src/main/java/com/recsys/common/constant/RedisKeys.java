@@ -18,8 +18,23 @@ public final class RedisKeys {
         return "feat:item:" + itemId;
     }
 
-    /** 全局热门 ZSet(score=热度):recall:hot */
+    /** 全局热门 ZSet(score=热度):recall:hot(离线 HotJob 物化,T+1) */
     public static final String HOT_RECALL = "recall:hot";
+
+    /**
+     * 实时热门 ZSet(score=滑动窗口内正反馈加权热度):recall:rt_hot。
+     * 由 Flink 流作业 {@code RealtimeFeatureJob} 近实时更新(带 TTL),HotRecaller 优先读它、
+     * 缺失则回落离线 {@link #HOT_RECALL}。实时与离线互补:实时反映"此刻在热什么"。
+     */
+    public static final String RT_HOT_RECALL = "recall:rt_hot";
+
+    /**
+     * 用户实时类目偏好 Hash(field=category,value=滑动窗口内正反馈计数):rt:user:{userId}(带 TTL)。
+     * 由 Flink 流作业近实时更新,供画像/标签召回叠加"用户近期在看哪类"。
+     */
+    public static String rtUser(long userId) {
+        return "rt:user:" + userId;
+    }
 
     /** i2i 相似物品 ZSet(score=相似度):i2i:{itemId} */
     public static String i2i(long itemId) {

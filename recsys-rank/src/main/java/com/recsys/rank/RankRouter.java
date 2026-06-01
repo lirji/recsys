@@ -36,17 +36,23 @@ public class RankRouter implements RankService {
     private final RuleRankService rule;
     private final ObjectProvider<OnnxRankService> onnxProvider;
     private final ObjectProvider<DeepFmRankService> deepfmProvider;
+    private final ObjectProvider<MmoeRankService> mmoeProvider;
+    private final ObjectProvider<DinRankService> dinProvider;
     private final ObjectProvider<MeterRegistry> meterRegistryProvider;
     private final RankProperties props;
 
     public RankRouter(RuleRankService rule,
                       ObjectProvider<OnnxRankService> onnxProvider,
                       ObjectProvider<DeepFmRankService> deepfmProvider,
+                      ObjectProvider<MmoeRankService> mmoeProvider,
+                      ObjectProvider<DinRankService> dinProvider,
                       ObjectProvider<MeterRegistry> meterRegistryProvider,
                       RankProperties props) {
         this.rule = rule;
         this.onnxProvider = onnxProvider;
         this.deepfmProvider = deepfmProvider;
+        this.mmoeProvider = mmoeProvider;
+        this.dinProvider = dinProvider;
         this.meterRegistryProvider = meterRegistryProvider;
         this.props = props;
     }
@@ -87,6 +93,28 @@ public class RankRouter implements RankService {
                 return served(r, requested, "deepfm", "ok");
             }
             log.debug("DeepFM 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("mmoe".equals(requested)) {
+            MmoeRankService mmoe = mmoeProvider.getIfAvailable();
+            if (mmoe == null || !mmoe.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = mmoe.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "mmoe", "ok");
+            }
+            log.debug("MMoE 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("din".equals(requested)) {
+            DinRankService din = dinProvider.getIfAvailable();
+            if (din == null || !din.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = din.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "din", "ok");
+            }
+            log.debug("DIN 返回空,回退规则排序 user={}", userId);
             return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
         }
         // 请求即规则排序(v1 / 未知策略):served=rule 但不是回退,reason=ok

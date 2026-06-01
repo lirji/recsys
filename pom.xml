@@ -25,6 +25,10 @@
         <onnxruntime.version>1.17.1</onnxruntime.version>
         <lombok.version>1.18.30</lombok.version>
         <postgresql.version>42.7.3</postgresql.version>
+        <!-- 实时特征流作业(recsys-streaming):Flink 1.20 支持 Java 21 -->
+        <flink.version>1.20.0</flink.version>
+        <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
+        <jedis.version>5.1.5</jedis.version>
     </properties>
 
     <modules>
@@ -40,6 +44,7 @@
         <module>recsys-behavior</module>
         <module>recsys-offline</module>
         <module>recsys-web</module>
+        <module>recsys-streaming</module>
     </modules>
 
     <dependencyManagement>

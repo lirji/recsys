@@ -18,11 +18,14 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="/Users/liruijun/personal/devUtils/apache-maven-3.9.12/bin:$PATH"
 mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=import-behavior   # 若未导
 
-# 1) 物化离线特征到 Redis feat:*(在线/离线特征同源)
+# 1) 物化离线特征到 Redis feat:*(在线/离线特征同源;仅 gen-samples --leaky 与在线排序需要)
 mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=build-features
 
 # 2) 构造训练样本 → recsys-offline/train/samples.csv
+#    默认 as-of(point-in-time)特征,无数据穿越,不依赖 Redis feat:*
 mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=gen-samples
+#    对照:--leaky 用全量 feat:*(有穿越),供对比"修穿越前后"的离线 AUC
+#    mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments="--job=gen-samples --leaky"
 
 # 3) 训练 + 导出 ONNX → recsys-rank/src/main/resources/model/model.onnx
 cd recsys-offline/train
@@ -52,6 +55,25 @@ DeepFM = 一阶线性 + FM 二阶交叉(稀疏 embedding)+ DNN。稀疏字段 us
 - **单文件导出**:torch 新导出器默认外置权重(`.onnx.data`),但 Java 从 classpath 以 byte[] 加载无法解析外置文件,故脚本强制合并为单一自包含 `.onnx`。
 - 重训后必须 `mvn -pl recsys-rank clean install` 重新打包模型进 jar。
 
+## 双塔召回(Two-Tower / DSSM,学"行为相似")
+
+```bash
+cd recsys-offline/train
+/opt/homebrew/bin/python3.11 -m venv .venv && .venv/bin/pip install -r requirements-twotower.txt
+.venv/bin/python train_two_tower.py            # 产出 item_tower.csv + user_tower.onnx(到 recsys-recall 资源目录)
+cd ../.. && mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=import-tower  # 灌 item 向量
+mvn -pl recsys-recall clean install            # ⚠️ clean:把 user_tower.onnx 打进 recall jar(不是 rank!)
+mvn -pl recsys-rec-engine spring-boot:run      # plus 桶的 recall 变体已含 TWO_TOWER
+```
+
+纯 ID 两塔检索:user 塔(userId 桶 embedding)、item 塔(itemId + category embedding),in-batch sampled-softmax 对比学习。
+
+- **离线 item 向量 + 在线 user 塔**:item 塔向量全量烘焙进 `item_tower_embedding`(`import-tower` 灌);user 塔导出 ONNX,在线 `TwoTowerRecaller` 实时把 userId 算成 query 向量再做 pgvector ANN。
+- **一致性契约**:`user_bucket = floorMod(userId, user_buckets)`,与训练取模逐位一致;`user_buckets` 由 `tower_schema.json` 提供。item 向量已入库,故在线**不需要** item/category vocab。
+- 只用 `samples.csv` 的 label/user_id/item_id/category 四列,**不吃稠密特征**,故 as-of / leaky 样本都能训。
+- ONNX 导出同 DeepFM 两坑:IR9 + 单文件自包含。重训后必须 `mvn -pl recsys-recall clean install`。
+- **质量**:`eval --recall-only` 里 TWO_TOWER 单路在 Prec/NDCG/HitRate/Coverage 全面领先 VECTOR/I2I/SWING(⚠️ 同 CF/向量路,item 向量用全量含测试期数据训,绝对值偏乐观)。
+
 ## 特征(`FeatureAssembler.FEATURE_ORDER`)
 
 | 顺序 | 名称 | 含义 |
@@ -67,5 +89,5 @@ DeepFM = 一阶线性 + FM 二阶交叉(稀疏 embedding)+ DNN。稀疏字段 us
 ## 已知简化
 
 - **负样本**:MovieLens 无曝光日志,用「按热度采样的未评分物品」近似曝光未点击。
-- **轻度数据穿越**:特征用全量历史(含目标交互本身)计算,离线 AUC 偏乐观;生产应按事件时间 as-of 取特征。
+- **数据穿越**:`gen-samples` 默认 **as-of**(point-in-time)特征,无穿越;`--leaky` 才用全量历史(对照)。详见 `GenSamplesJob` / `AsOfFeatureBuilder`。
 - 模型加载失败时在线自动回退规则排序(`RankRouter`),不影响可用性。
