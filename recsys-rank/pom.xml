@@ -32,10 +32,21 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
+        <!-- DeepFM 读 rank_schema.json / category_vocab.json(plain starter 不含 jackson-databind) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <!-- 在线加载离线训练的 ONNX 排序模型 -->
         <dependency>
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>
+        </dependency>
+        <!-- 模型回退率埋点用 MeterRegistry;在线由 rec-engine 提供注册表,
+             offline 无注册表时经 ObjectProvider 退化为不打点(仅需编译期依赖) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

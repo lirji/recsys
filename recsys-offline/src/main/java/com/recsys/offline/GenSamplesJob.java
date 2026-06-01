@@ -108,8 +108,11 @@ public class GenSamplesJob implements OfflineJob {
         Files.createDirectories(out.getParent());
         long pos = 0, neg = 0;
         try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
-            // 表头:label, <特征顺序>, split
-            w.write("label," + String.join(",", FeatureAssembler.FEATURE_ORDER) + ",split");
+            // 表头:label, 稀疏原始列(供 DeepFM 做 embedding), <稠密特征顺序>, split
+            // user_id/item_id/category 是给深度模型的类别型字段;稠密特征仍由 FeatureAssembler 装配。
+            // LightGBM 训练侧(train_lgbm.py)会把这三列排除在特征之外,故两条训练路共用同一份 CSV。
+            w.write("label,user_id,item_id,category," +
+                    String.join(",", FeatureAssembler.FEATURE_ORDER) + ",split");
             w.newLine();
 
             for (long[] p : positives) {
@@ -150,6 +153,10 @@ public class GenSamplesJob implements OfflineJob {
         double[] f = FeatureAssembler.assemble(uf, itf, cat);
         StringBuilder sb = new StringBuilder();
         sb.append(label);
+        // 稀疏原始列:user_id, item_id, category(深度模型 embedding 输入;类目为空写空串)
+        sb.append(',').append(userId)
+                .append(',').append(itemId)
+                .append(',').append(cat == null ? "" : cat);
         for (double v : f) {
             sb.append(',').append(v);
         }

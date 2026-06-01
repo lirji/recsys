@@ -1,0 +1,110 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Recsys 在线观测",
+  "uid": "recsys-online",
+  "tags": ["recsys"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "推荐延迟 P50/P95/P99 (s)",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.50, sum(rate(recsys_recommend_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum(rate(recsys_recommend_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum(rate(recsys_recommend_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "推荐 QPS (按结果)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_recommend_duration_seconds_count[1m])) by (outcome)", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "结果缓存命中率",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_recommend_cache_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(recsys_recommend_cache_total[5m])), 0.001)", "legendFormat": "hit rate" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "异常率:空召回 / 已看过滤清空 (每秒)",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_recommend_empty_total[5m]))", "legendFormat": "空召回" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_recommend_seen_cleared_total[5m]))", "legendFormat": "已看过滤清空" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "曝光速率 (按 rank 桶, 物品/秒)",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_exposure_total[5m])) by (rank)", "legendFormat": "rank={{rank}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "点击速率 (按 rank 桶, 次/秒)",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "cps" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_click_total[5m])) by (rank)", "legendFormat": "rank={{rank}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "在线 CTR (按 rank 桶) = 点击/曝光",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_click_total[5m])) by (rank) / clamp_min(sum(rate(recsys_exposure_total[5m])) by (rank), 0.001)", "legendFormat": "rank={{rank}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "在线 CTR (按 recall 桶) = 点击/曝光",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(recsys_click_total[5m])) by (recall) / clamp_min(sum(rate(recsys_exposure_total[5m])) by (recall), 0.001)", "legendFormat": "recall={{recall}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM 堆内存 (rec-engine)",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(jvm_memory_used_bytes{application=\"recsys-rec-engine\", area=\"heap\"})", "legendFormat": "used" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(jvm_memory_max_bytes{application=\"recsys-rec-engine\", area=\"heap\"})", "legendFormat": "max" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "进程 CPU 使用率",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_cpu_usage{application=\"recsys-rec-engine\"}", "legendFormat": "rec-engine" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "process_cpu_usage{application=\"recsys-behavior\"}", "legendFormat": "behavior" }
+      ]
+    }
+  ]
+}

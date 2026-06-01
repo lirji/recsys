@@ -15,9 +15,12 @@ import com.recsys.recengine.coldstart.ColdStartDetector;
 import com.recsys.recengine.experiment.ExperimentDecision;
 import com.recsys.recengine.experiment.ExperimentService;
 import com.recsys.recengine.experiment.ExposureLogger;
+import com.recsys.recengine.filter.SeenItemsFilter;
 import com.recsys.recengine.rerank.RerankCandidate;
 import com.recsys.recengine.rerank.RerankInput;
 import com.recsys.recengine.rerank.RerankRouter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -54,6 +58,8 @@ public class RecommendOrchestrator {
     private final RerankRouter rerankRouter;
     private final ExposureLogger exposureLogger;
     private final ColdStartDetector coldStartDetector;
+    private final SeenItemsFilter seenItemsFilter;
+    private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
                                  RankRouter rankRouter,
@@ -63,7 +69,9 @@ public class RecommendOrchestrator {
                                  ExperimentService experimentService,
                                  RerankRouter rerankRouter,
                                  ExposureLogger exposureLogger,
-                                 ColdStartDetector coldStartDetector) {
+                                 ColdStartDetector coldStartDetector,
+                                 SeenItemsFilter seenItemsFilter,
+                                 MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
         this.contentService = contentService;
@@ -73,20 +81,33 @@ public class RecommendOrchestrator {
         this.rerankRouter = rerankRouter;
         this.exposureLogger = exposureLogger;
         this.coldStartDetector = coldStartDetector;
+        this.seenItemsFilter = seenItemsFilter;
+        this.meterRegistry = meterRegistry;
     }
 
     public RecommendResponse recommend(RecommendRequest req) {
         String traceId = UUID.randomUUID().toString().substring(0, 8);
+        // 观测:整条编排耗时(P99 是核心 SLA 指标),tag 区分排序策略/冷启动/结果状态
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String rankTag = "na";
+        boolean coldTag = false;
+        String outcome = "ok";
         try {
             // 1. 结果缓存
             RecommendResponse cached = recCache.get(req.userId(), req.scene());
             if (cached != null) {
+                meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
+                outcome = "cache";
                 return cached;
             }
+            meterRegistry.counter("recsys.recommend.cache", "result", "miss").increment();
 
             // 2. 冷启动判定 + 分层实验分桶
             boolean cold = coldStartDetector.isCold(req.userId());
             ExperimentDecision decision = experimentService.assign(req.userId(), req.scene());
+            coldTag = cold;
+            // 实验未指定排序策略时,编排回落全局配置,这里以 default 标记(实际策略由 RankRouter 决定)
+            rankTag = decision.rankStrategy() != null ? decision.rankStrategy() : "default";
 
             // 冷启动覆盖 recall 层(探索路)与 bucket 标签;否则用实验的 recall 分桶
             List<RecallChannel> channels = cold
@@ -100,14 +121,34 @@ public class RecommendOrchestrator {
             List<RecallItem> recalled = recallService.recall(new RecallContext(
                     req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, Map.of()));
             if (recalled.isEmpty()) {
+                meterRegistry.counter("recsys.recommend.empty", "stage", "recall").increment();
+                outcome = "empty";
                 return new RecommendResponse(req.userId(), req.scene(), List.of(), traceId);
             }
+
+            // 已看过滤:剔除用户已正反馈过的物品。冷启动用户行为本就 < 阈值,过滤是空操作。
+            Set<Long> seen = props.getFilter().isSeenEnabled()
+                    ? seenItemsFilter.seenItems(req.userId()) : Set.of();
 
             Map<Long, Double> recallScore = new HashMap<>();
             Map<Long, String> recallChannel = new LinkedHashMap<>();
             for (RecallItem r : recalled) {
+                if (seen.contains(r.itemId())) {
+                    continue;
+                }
                 recallScore.merge(r.itemId(), r.recallScore(), Math::max);
                 recallChannel.putIfAbsent(r.itemId(), r.channel().name());
+            }
+            // 极端情况:用户几乎看遍召回池,过滤后空了 —— 放弃过滤回落原始召回,
+            // 宁可推少量重复也不返回空(已看过滤是质量优化,不该把可用结果清零)。
+            if (recallScore.isEmpty()) {
+                meterRegistry.counter("recsys.recommend.seen_cleared").increment();
+                log.debug("用户 {} 召回结果被已看过滤清空(recalled={}, seen={}),本次跳过过滤",
+                        req.userId(), recalled.size(), seen.size());
+                for (RecallItem r : recalled) {
+                    recallScore.merge(r.itemId(), r.recallScore(), Math::max);
+                    recallChannel.putIfAbsent(r.itemId(), r.channel().name());
+                }
             }
             List<Long> candidateIds = new ArrayList<>(recallScore.keySet());
 
@@ -153,9 +194,18 @@ public class RecommendOrchestrator {
                     req.userId(), cold, bucketTag, traceId, items.size());
             return resp;
         } catch (Exception e) {
+            outcome = "error";
             log.error("推荐失败 user={} trace={}: {}", req.userId(), traceId, e.getMessage(), e);
             // 兜底:返回空而非 500
             return new RecommendResponse(req.userId(), req.scene(), List.of(), traceId);
+        } finally {
+            sample.stop(Timer.builder("recsys.recommend.duration")
+                    .description("推荐编排端到端耗时")
+                    .tag("rank", rankTag)
+                    .tag("cold", String.valueOf(coldTag))
+                    .tag("outcome", outcome)
+                    .publishPercentileHistogram()
+                    .register(meterRegistry));
         }
     }
 }

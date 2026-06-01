@@ -1,6 +1,9 @@
 # 本地依赖中间件。一键启动:docker compose up -d
 # 核心(v1 必需):postgres、redis
-# 可选(进阶):kafka、nacos —— 用 profile 控制,默认不启动
+# 可选(进阶):kafka、nacos —— profile=full
+# 观测性:prometheus + grafana —— profile=obs(docker compose --profile obs up -d)
+#   Java 服务跑在宿主机,容器内 prometheus 通过 host.docker.internal 抓 /actuator/prometheus
+#   Grafana: http://localhost:3001 (admin/admin),已预置数据源 + 推荐在线看板
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -59,5 +62,37 @@ services:
       - "8848:8848"
       - "9848:9848"
 
+  # ---- 观测性:docker compose --profile obs up -d 才启动 ----
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: recsys-prometheus
+    profiles: ["obs"]
+    extra_hosts:
+      # Linux 上需要;macOS/Windows 的 Docker Desktop 已内置 host.docker.internal
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: recsys-grafana
+    profiles: ["obs"]
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      # 宿主机 3000 常被占(docker-proxy 残留),映射到 3001 规避
+      - "3001:3000"
+
 volumes:
   pgdata:
+  grafana-data:

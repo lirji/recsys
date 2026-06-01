@@ -32,6 +32,11 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-rank</artifactId>
         </dependency>
+        <!-- eval 复用线上召回链路(MultiChannelRecallService + 各路 Recaller)离线评估推荐质量 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-recall</artifactId>
+        </dependency>
         <!-- build-features 复用 RedisFeatureService 写 feat:*,key/字段与在线读取一致 -->
         <dependency>
             <groupId>com.recsys</groupId>

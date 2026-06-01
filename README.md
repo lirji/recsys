@@ -65,6 +65,34 @@ mvn -pl recsys-rec-engine spring-boot:run
 | redis | 6379 |
 | kafka(可选) | 9092 |
 | nacos(可选) | 8848 |
+| prometheus(obs) | 9090 |
+| grafana(obs) | 3001 |
+
+## 在线观测性(Prometheus + Grafana)
+
+推荐链路的在线指标经 Micrometer 暴露在各服务的 `/actuator/prometheus`,由 Prometheus 抓取、Grafana 看板呈现。
+
+```bash
+# 1. 起观测栈(默认不启动,profile=obs)。Java 服务跑在宿主机,容器内经 host.docker.internal 抓取
+docker compose --profile obs up -d
+# 2. 正常起 rec-engine(:8081)+ behavior(:8082)
+mvn -pl recsys-rec-engine spring-boot:run     # 另开终端
+mvn -pl recsys-behavior   spring-boot:run
+# 3. 打开 Grafana → 看板 "Recsys 在线观测"
+open http://localhost:3001     # admin/admin,数据源+看板已预置
+```
+
+**核心指标**(`recsys.*`,Prometheus 中下划线命名):
+
+| 指标 | 含义 |
+|---|---|
+| `recsys_recommend_duration_seconds`(Timer,带直方图) | 编排端到端延迟,tag `rank`/`cold`/`outcome`,可算 P50/P95/**P99** |
+| `recsys_recommend_cache_total{result}` | 结果缓存命中/未命中 → 命中率 |
+| `recsys_recommend_empty_total` / `recsys_recommend_seen_cleared_total` | 空召回 / 已看过滤把召回池清空的异常计数 |
+| `recsys_exposure_total{recall,rank,rerank,cold}` | 分桶曝光物品数(CTR 分母) |
+| `recsys_click_total{recall,rank,rerank,...}` | 分桶点击数(CTR 分子) |
+
+**在线分桶 CTR** = `recsys_click_total / recsys_exposure_total`(按 `rank`/`recall` 聚合),与离线 `ab-report` 作业互补——一个实时、一个 T+1 精算。点击的分桶归因:曝光时编排层把 `expo:{user}:{item}=bucket` 写入 Redis(短 TTL),行为服务收到点击时回查回填,因此**客户端不传 bucket 也能正确归因**(服务端为准)。
 
 ## 并行开发
 

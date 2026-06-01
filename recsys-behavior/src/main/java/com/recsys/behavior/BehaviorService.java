@@ -2,16 +2,22 @@ package com.recsys.behavior;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.constant.ActionType;
+import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.dto.BehaviorEvent;
+import com.recsys.common.experiment.BucketTags;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * 行为落库/投递服务(Track E · E1)。
@@ -32,8 +38,14 @@ public class BehaviorService {
 
     private static final Logger log = LoggerFactory.getLogger(BehaviorService.class);
 
+    /** 计入点击侧 CTR 分子的正反馈行为(与曝光 IMPRESSION 相对)。 */
+    private static final Set<ActionType> CLICK_ACTIONS =
+            EnumSet.of(ActionType.CLICK, ActionType.LIKE, ActionType.PLAY);
+
     private final JdbcTemplate jdbc;
     private final ObjectProvider<KafkaTemplate<String, String>> kafkaProvider;
+    private final StringRedisTemplate redis;
+    private final MeterRegistry meterRegistry;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${recsys.behavior.use-kafka:false}")
@@ -43,14 +55,19 @@ public class BehaviorService {
     private String topic;
 
     public BehaviorService(JdbcTemplate jdbc,
-                           ObjectProvider<KafkaTemplate<String, String>> kafkaProvider) {
+                           ObjectProvider<KafkaTemplate<String, String>> kafkaProvider,
+                           StringRedisTemplate redis,
+                           MeterRegistry meterRegistry) {
         this.jdbc = jdbc;
         this.kafkaProvider = kafkaProvider;
+        this.redis = redis;
+        this.meterRegistry = meterRegistry;
     }
 
     /** 接收一条行为事件:服务端补全时间戳后落地。 */
     public void record(BehaviorEvent raw) {
         BehaviorEvent ev = normalize(raw);
+        recordClickMetric(ev);
         if (useKafka) {
             KafkaTemplate<String, String> kafka = kafkaProvider.getIfAvailable();
             if (kafka != null) {
@@ -60,6 +77,33 @@ public class BehaviorService {
             log.warn("use-kafka=true 但 KafkaTemplate 不可用,降级直接入库");
         }
         insert(ev);
+    }
+
+    /**
+     * 在线分桶 CTR 的分子:点击类行为按其曝光分桶打 {@code recsys.click} 计数。
+     * 分桶来源优先用事件自带 bucket(客户端回传),否则回查编排层写的归因键
+     * {@code expo:{user}:{item}}。Grafana 里 {@code recsys.click / recsys.exposure} 即分桶 CTR。
+     *
+     * <p>不阻塞、不抛错:Redis 不可用或无归因记录时,bucket 退化为 na 仍计数,只是归因缺失。
+     */
+    private void recordClickMetric(BehaviorEvent ev) {
+        if (ev.action() == null || !CLICK_ACTIONS.contains(ev.action())) {
+            return;
+        }
+        String bucket = ev.bucket();
+        if (bucket == null || bucket.isBlank()) {
+            try {
+                bucket = redis.opsForValue().get(RedisKeys.exposureBucket(ev.userId(), ev.itemId()));
+            } catch (Exception e) {
+                log.debug("回查曝光归因失败(忽略) user={} item={}: {}", ev.userId(), ev.itemId(), e.getMessage());
+            }
+        }
+        BucketTags tags = BucketTags.parse(bucket);
+        meterRegistry.counter("recsys.click",
+                "action", ev.action().name(),
+                "recall", tags.recall(), "rank", tags.rank(),
+                "rerank", tags.rerank(), "cold", String.valueOf(tags.cold()))
+                .increment();
     }
 
     private BehaviorEvent normalize(BehaviorEvent ev) {

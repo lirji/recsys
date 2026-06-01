@@ -28,11 +28,17 @@ recsys:
       cold: 100
       cold-per-category: 5
   rank:
-    # v1=规则打分, onnx=模型打分
+    # v1=规则打分, onnx=LightGBM 模型, deepfm=DeepFM 深度模型(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
     onnx-model-path: classpath:model/model.onnx
+    deepfm-model-path: classpath:model/model_deepfm.onnx
+    rank-schema-path: classpath:model/rank_schema.json
+    category-vocab-path: classpath:model/category_vocab.json
   rerank:
     max-same-category: 3
+  filter:
+    # 已看过滤:从召回结果剔除用户已正反馈(CLICK/LIKE/PLAY/RATING)过的物品
+    seen-enabled: true
   cache:
     rec-ttl-seconds: 300
   embedding:

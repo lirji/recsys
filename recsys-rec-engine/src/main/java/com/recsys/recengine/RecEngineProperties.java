@@ -12,9 +12,28 @@ public class RecEngineProperties {
     private final Cache cache = new Cache();
     private final Fusion fusion = new Fusion();
     private final ColdStart coldStart = new ColdStart();
+    private final Filter filter = new Filter();
 
     public Rerank getRerank() {
         return rerank;
+    }
+
+    public Filter getFilter() {
+        return filter;
+    }
+
+    /** 召回后过滤(对应 recsys.filter.*)。 */
+    public static class Filter {
+        /** 是否从召回结果中剔除用户已正反馈过的物品(已看过滤)。 */
+        private boolean seenEnabled = true;
+
+        public boolean isSeenEnabled() {
+            return seenEnabled;
+        }
+
+        public void setSeenEnabled(boolean seenEnabled) {
+            this.seenEnabled = seenEnabled;
+        }
     }
 
     public Cache getCache() {

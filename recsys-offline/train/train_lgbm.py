@@ -31,7 +31,10 @@ def main():
         sys.exit(f"找不到 {SAMPLES};请先跑 Java 作业:--job=build-features 再 --job=gen-samples")
 
     df = pd.read_csv(SAMPLES)
-    feature_cols = [c for c in df.columns if c not in ("label", "split")]
+    # 非特征列:label/split + 给深度模型用的稀疏原始列(user_id/item_id/category)。
+    # LightGBM 只吃稠密特征,这三列必须排除(否则会被当数值特征,破坏训练)。
+    non_feature = {"label", "split", "user_id", "item_id", "category"}
+    feature_cols = [c for c in df.columns if c not in non_feature]
     print(f"样本 {len(df)} 行,特征 {len(feature_cols)}: {feature_cols}")
     print(df["label"].value_counts().to_dict(), "| split:", df["split"].value_counts().to_dict())
 

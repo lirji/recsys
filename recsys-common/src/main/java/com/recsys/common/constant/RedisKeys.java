@@ -45,4 +45,12 @@ public final class RedisKeys {
     public static String swing(long itemId) {
         return "swing:" + itemId;
     }
+
+    /**
+     * 曝光分桶归因 String(短 TTL):expo:{userId}:{itemId} = bucketTag。
+     * 由编排层曝光埋点写入,行为服务收到点击时回查,用于在线分桶 CTR 指标。
+     */
+    public static String exposureBucket(long userId, long itemId) {
+        return "expo:" + userId + ":" + itemId;
+    }
 }

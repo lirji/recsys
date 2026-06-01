@@ -30,8 +30,12 @@ public class ColdStartDetector {
 
     public boolean isCold(long userId) {
         try {
+            // 只数"真实互动"(CLICK/LIKE/PLAY/RATING),排除 IMPRESSION——
+            // 曝光是系统每次推荐都会写的,把它计入会让用户请求几次后就"假性脱冷";
+            // 且 i2i/u2u/swing 的种子也只认这些正反馈,口径一致。
             Long behaviorCount = jdbc.queryForObject(
-                    "SELECT count(*) FROM user_behavior WHERE user_id=?", Long.class, userId);
+                    "SELECT count(*) FROM user_behavior WHERE user_id=? " +
+                    "AND action IN ('CLICK','LIKE','PLAY','RATING')", Long.class, userId);
             if (behaviorCount != null && behaviorCount >= props.getColdStart().getMinBehaviors()) {
                 return false;
             }

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A production-oriented recommendation-system scaffold: Java + Spring Boot 3.2, Maven multi-module single repo. It implements the classic funnel **recall → rank → rerank**, with an offline/near-line path (embeddings, collaborative filtering, model training) feeding online stores. Built to run fully locally via `docker compose`, but structured to split into microservices later.
 
-**Current state: Phase 0 (scaffold).** Only `recsys-common` (the shared contracts) and empty `@SpringBootApplication` stubs exist. The feature modules are awaiting implementation per the Tracks in `PLAN.md`. When implementing, follow the design docs in `docs/` — they are the source of truth.
+**Current state: core funnel implemented & verified locally (M1–M3).** Recall (8 channels: vector/i2i/hot/tag + u2u/swing/semantic/cold), rank (rule + LightGBM→ONNX), pluggable rerank (diversity/mmr/none), layered A/B experiments (recall×rank×rerank, deterministic bucketing, exposure logged to `user_behavior.bucket`), cold-start (detector + interest onboarding) are all in place. Offline jobs feed the online stores. The design docs in `docs/` are the source of truth — keep them in sync when changing behavior.
 
 ## Build & run
 
@@ -26,14 +26,28 @@ docker compose --profile full up -d        # also start kafka + nacos (optional 
 cp .env.example .env                        # then fill GEMINI_API_KEY etc. (.env is gitignored — never commit)
 ```
 
-DB schema lives in `recsys-offline/sql/` and is auto-executed by the postgres container on first boot (mounted to `docker-entrypoint-initdb.d`). To re-run it, drop the `pgdata` volume.
+**Offline jobs** are not separate mains — `recsys-offline` is one Spring Boot app whose `JobRunner` dispatches on a `--job=<name>` arg (each job is an `OfflineJob` bean keyed by its `name()`):
+
+```bash
+mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=import-items
+```
+
+Job names (run roughly in this order to bootstrap the stores): `import-items`, `import-behavior`, `backfill-embedding`, `user-embedding`, `item-cf`, `user-cf`, `swing`, `hot`, `build-features`, `gen-samples`. Running with no `--job` logs the available set and exits. **Evaluation jobs** (run after the stores are built): `eval` (offline recommendation quality — time-split held-out positives → reuses the online recall→rank pipeline → Precision/Recall/NDCG/MAP/MRR/HitRate/Coverage/Diversity/Novelty @K; supports `--k=10,20,50`, `--recall-only` for per-channel recall, `--rank-strategy=v1|onnx|deepfm`, `--max-users`; writes `eval/metrics-<ts>.csv`) and `ab-report` (online per-bucket CTR from the `IMPRESSION`/click exposure logs; writes `eval/ab-report-<ts>.csv`).
+
+**Ranking models (`recsys-offline/train/`)** — two trainers feed the online ONNX path, selected by `recsys.rank.strategy` (`RANK_STRATEGY` env), both falling back to rule scoring if the model is absent/fails:
+- `train_lgbm.py` → `model.onnx` (LightGBM, `strategy=onnx`): single dense input `[N,5]` (the 5 `FeatureAssembler` features).
+- `train_deepfm.py` → `model_deepfm.onnx` + `rank_schema.json` + `category_vocab.json` (PyTorch DeepFM, `strategy=deepfm`): **dual input** `dense[N,5]` float + `sparse[N,3]` int64 (userId/itemId/category embeddings). Online `DeepFmRankService` encodes the sparse ids via `SparseFeatureEncoder` whose bucketing (`floorMod`) + category vocab must match the trainer exactly — that's the online/offline contract for the embeddings, analogous to `FeatureAssembler` for dense. **Both trainers share one `samples.csv`** (gen-samples emits dense + raw `user_id,item_id,category`); `train_lgbm` ignores the raw id columns. DeepFM uses a **random** train/valid split (id-embedding models need every id seen in train), so its AUC is not comparable to LightGBM's time-split AUC — use the `eval` job for an apples-to-apples ranking comparison. DeepFM needs `pip install -r requirements-deepfm.txt` (torch + onnxscript); the exporter is forced to a single self-contained `.onnx` (no external `.data`) because Java loads it from classpath as a byte array. After retraining, **`mvn -pl recsys-rank clean install`** to repack the model into the jar (plain `install` leaves stale resources in `target/classes`).
+
+DB schema lives in `recsys-offline/sql/01_schema.sql` and is auto-executed by the postgres container on first boot (mounted to `docker-entrypoint-initdb.d`). To re-run it, drop the `pgdata` volume.
+
+> Note: there are currently no automated tests in the repo; the `mvn ... test` lines above are the conventions to use when adding them.
 
 ## Architecture
 
 **Module layout** — `[app]` = runnable service (port), `[lib]` = computation/domain library (no executable jar):
 
 - `recsys-common` — shared contracts: interfaces, DTOs (records), constants, Redis keys. **The foundation of parallel development; depended on by everything. Changing it ripples everywhere — broadcast before editing.**
-- `recsys-rec-engine` [app :8081] — orchestration, the main external entry. `GET /api/recommend`.
+- `recsys-rec-engine` [app :8081] — orchestration, the main external entry. `GET /api/recommend`; cold-start interest onboarding via `GET/POST /api/user/{id}/interests`.
 - `recsys-gateway` [app :8080] — Spring Cloud Gateway routing.
 - `recsys-behavior` [app :8082] — behavior ingestion. `POST /api/behavior` → Kafka or DB.
 - `recsys-web` [app :8090] — demo frontend.
@@ -42,7 +56,7 @@ DB schema lives in `recsys-offline/sql/` and is auto-executed by the postgres co
 
 **Monolith-first, microservices-ready.** `RecEngineApplication` uses `@SpringBootApplication(scanBasePackages = "com.recsys")` so the `[lib]` modules' `@Component`/`@RestController` beans are all wired into one process. Module boundaries are already drawn, so splitting into independent services later is cheap. Keep cross-module coupling to the `recsys-common` interfaces.
 
-**Request flow** (`docs/02-架构设计.md` §6): rec-engine checks `cache:rec:{userId}` → 4-way recall (vector / i2i / hot / tag) merged & deduped → rank (assemble features + ONNX or rule scoring) → rerank (category diversity + business rules) → truncate to size, build reasons, cache, return.
+**Request flow** (`docs/02-架构设计.md` §6): rec-engine checks `cache:rec:{userId}` → cold-start detection + layered A/B assignment → multi-channel recall (channels gated by the experiment's recall variant / cold-start override) merged & deduped (primary source chosen by priority) → rank (assemble features + ONNX or rule scoring, strategy per rank variant) → fuse recall+rank scores → rerank (strategy per rerank variant; cold-start forces strong diversity) → truncate, build reasons, log exposure with bucket tag, cache, return.
 
 **Online vs offline split** is the core idea: online path is synchronous and millisecond-latency (only "lookup + light scoring"); the offline/near-line path precomputes the heavy work (embeddings, CF inverted index, trained models) and writes results into the online stores (pgvector, Redis).
 
