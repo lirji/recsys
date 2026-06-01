@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh">
+<head>
+    <meta charset="UTF-8"/>
+    <title>recsys 推荐演示</title>
+    <style>
+        body { font-family: -apple-system, "PingFang SC", sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; color: #222; }
+        h1 { font-size: 22px; }
+        .bar { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+        input, button { font-size: 15px; padding: 8px 12px; }
+        input { width: 120px; border: 1px solid #ccc; border-radius: 6px; }
+        button { background: #2d6cdf; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #2257bd; }
+        .card { border: 1px solid #e5e5e5; border-radius: 10px; padding: 12px 16px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        .meta { font-size: 13px; color: #888; margin-top: 4px; }
+        .ch { display: inline-block; font-size: 12px; background: #eef3ff; color: #2d6cdf; border-radius: 4px; padding: 1px 6px; margin-right: 4px; }
+        .score { font-variant-numeric: tabular-nums; color: #444; }
+        .reason { color: #555; font-size: 14px; }
+        #status { color: #999; font-size: 13px; }
+    </style>
+</head>
+<body>
+<h1>🎬 recsys 推荐演示</h1>
+<div class="bar">
+    <label>userId</label>
+    <input type="number" id="userId" th:value="${userId}"/>
+    <label>条数</label>
+    <input type="number" id="size" value="10"/>
+    <button onclick="loadRec()">获取推荐</button>
+    <span id="status"></span>
+</div>
+<div id="list"></div>
+
+<script th:inline="javascript">
+    const REC_URL = /*[[${recEngineUrl}]]*/ 'http://localhost:8081';
+    const BEH_URL = /*[[${behaviorUrl}]]*/ 'http://localhost:8082';
+
+    async function loadRec() {
+        const userId = document.getElementById('userId').value;
+        const size = document.getElementById('size').value;
+        const status = document.getElementById('status');
+        const list = document.getElementById('list');
+        status.textContent = '加载中...';
+        list.innerHTML = '';
+        try {
+            const resp = await fetch(`${REC_URL}/api/recommend?userId=${userId}&size=${size}`);
+            const data = await resp.json();
+            status.textContent = `trace=${data.traceId} 共 ${data.items.length} 条`;
+            if (!data.items.length) {
+                list.innerHTML = '<p>暂无推荐结果(检查是否已灌数据/向量)。</p>';
+                return;
+            }
+            for (const it of data.items) {
+                const card = document.createElement('div');
+                card.className = 'card';
+                const channels = (it.recallFrom || []).map(c => `<span class="ch">${c}</span>`).join('');
+                card.innerHTML = `
+                    <div>
+                        <div><b>#${it.itemId}</b> ${channels}</div>
+                        <div class="reason">${it.reason || ''}</div>
+                        <div class="meta">score ${it.score}</div>
+                    </div>
+                    <button onclick="report(${userId}, ${it.itemId})">👍 点击</button>`;
+                list.appendChild(card);
+            }
+        } catch (e) {
+            status.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    async function report(userId, itemId) {
+        try {
+            await fetch(`${BEH_URL}/api/behavior`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, itemId, action: 'CLICK', value: 1.0, scene: 'feed', ts: Date.now() })
+            });
+            alert('已上报点击 item ' + itemId);
+        } catch (e) {
+            alert('上报失败(behavior 服务可能未启动): ' + e.message);
+        }
+    }
+
+    window.onload = loadRec;
+</script>
+</body>
+</html>

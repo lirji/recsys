@@ -119,7 +119,8 @@ public class ImportItemsJob implements OfflineJob {
     }
 
     private void downloadAndUnzip(Path targetDir) throws IOException, InterruptedException {
-        Path parent = targetDir.getParent() != null ? targetDir.getParent() : Path.of(".");
+        Path parent = (targetDir.getParent() != null ? targetDir.getParent() : Path.of("."))
+                .toAbsolutePath().normalize();
         Files.createDirectories(parent);
         log.info("下载 {} ...", DOWNLOAD_URL);
         try (InputStream in = URI.create(DOWNLOAD_URL).toURL().openStream();
@@ -127,7 +128,7 @@ public class ImportItemsJob implements OfflineJob {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
                 // zip 内路径形如 ml-latest-small/movies.csv,直接解压到 parent
-                Path out = parent.resolve(entry.getName()).normalize();
+                Path out = parent.resolve(entry.getName()).toAbsolutePath().normalize();
                 if (!out.startsWith(parent)) {
                     throw new IOException("非法 zip 路径: " + entry.getName());
                 }

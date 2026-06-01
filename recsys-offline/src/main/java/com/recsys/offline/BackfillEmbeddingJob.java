@@ -2,6 +2,7 @@ package com.recsys.offline;
 
 import com.pgvector.PGvector;
 import com.recsys.common.embedding.EmbeddingClient;
+import com.recsys.embedding.QuotaExhaustedException;
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
 import org.slf4j.Logger;
@@ -55,6 +56,7 @@ public class BackfillEmbeddingJob implements OfflineJob {
                 ids.size(), skipExisting, sleepMs, embeddingClient.modelName(), embeddingClient.dimension());
 
         int done = 0, skipped = 0, failed = 0;
+        boolean quotaHit = false;
         for (long itemId : ids) {
             try {
                 if (skipExisting && embeddingExists(itemId)) {
@@ -79,14 +81,20 @@ public class BackfillEmbeddingJob implements OfflineJob {
                 if (sleepMs > 0) {
                     Thread.sleep(sleepMs);
                 }
+            } catch (QuotaExhaustedException qe) {
+                // 配额耗尽:优雅停止,不空转。下次用 --skip-existing 续跑即可。
+                quotaHit = true;
+                log.warn("向量化配额耗尽,提前停止。已灌 {};稍后用 --skip-existing 续跑。原因: {}",
+                        done, qe.getMessage());
+                break;
             } catch (Exception e) {
                 failed++;
                 log.warn("物品 {} 灌向量失败: {}", itemId, e.getMessage());
             }
         }
         Long total = jdbc.queryForObject("SELECT count(*) FROM item_embedding", Long.class);
-        log.info("backfill-embedding 完成:成功 {},跳过 {},失败 {};item_embedding 总数 {}",
-                done, skipped, failed, total);
+        log.info("backfill-embedding {}:成功 {},跳过 {},失败 {};item_embedding 总数 {}",
+                quotaHit ? "因配额中断" : "完成", done, skipped, failed, total);
     }
 
     private boolean embeddingExists(long itemId) {

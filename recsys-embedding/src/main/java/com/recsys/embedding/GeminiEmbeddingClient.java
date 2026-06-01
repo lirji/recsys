@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
@@ -103,6 +104,9 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
                     out[i] = values.get(i).floatValue();
                 }
                 return out;
+            } catch (HttpClientErrorException.TooManyRequests e) {
+                // 配额耗尽:重试无意义,直接上抛由批量作业优雅停止
+                throw new QuotaExhaustedException("Gemini 配额耗尽(429): " + e.getMessage());
             } catch (RuntimeException e) {
                 last = e;
                 log.warn("Gemini embedding 调用失败(第 {}/{} 次): {}", attempt, g.getMaxRetries(), e.getMessage());
