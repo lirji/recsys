@@ -1,3 +1,0 @@
-variant,k,users,precision,recall,ndcg,map,mrr,hitrate,coverage,diversity,novelty
-pipeline:rank=onnx,10,117,0.350427,0.089266,0.391707,0.280110,0.625756,0.760684,0.011086,0.768661,9.071169
-pipeline:rank=onnx,20,117,0.233333,0.108290,0.303180,0.181826,0.627695,0.786325,0.021351,0.773414,9.255350

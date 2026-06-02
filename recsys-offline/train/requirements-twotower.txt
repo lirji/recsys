@@ -1,0 +1,6 @@
+# 双塔召回 · Two-Tower / DSSM(PyTorch)→ ONNX 训练依赖(CPU,无需 GPU)
+torch>=2.2
+pandas>=2.0
+numpy>=1.24
+onnx>=1.15
+onnxruntime>=1.17

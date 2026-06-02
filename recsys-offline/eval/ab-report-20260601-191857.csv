@@ -1,8 +1,0 @@
-bucket,impressions,clicks,ctr,users
-recall:base;rank:onnx;rerank:diversity,15,0,0.000000,2
-recall:base;rank:onnx;rerank:mmr,10,0,0.000000,1
-recall:base;rank:v1;rerank:mmr,10,0,0.000000,2
-recall:plus;rank:onnx;rerank:diversity,10,0,0.000000,1
-recall:plus;rank:v1;rerank:mmr,10,0,0.000000,2
-recall:plus;rank:v1;rerank:diversity,10,0,0.000000,1
-recall:plus;rank:onnx;rerank:mmr,5,0,0.000000,1
