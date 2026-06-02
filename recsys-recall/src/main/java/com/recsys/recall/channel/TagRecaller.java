@@ -50,8 +50,8 @@ public class TagRecaller implements ChannelRecaller {
 
     @Override
     public List<RecallItem> recall(RecallContext ctx) {
-        // 类目 → 权重(实时类目 >1,静态画像类目 =1)
-        Map<String, Double> weights = categoryWeights(ctx.userId());
+        // 类目 → 权重(实时类目 >1,静态画像类目 =1,query 意图类目按意图分加权)
+        Map<String, Double> weights = categoryWeights(ctx);
         if (weights.isEmpty()) {
             return List.of();
         }
@@ -80,11 +80,18 @@ public class TagRecaller implements ChannelRecaller {
     }
 
     /**
-     * 合并静态画像类目与实时类目偏好,产出 类目→权重。
-     * 静态画像类目权重 1.0;实时类目权重 1+boost·(count/maxCount)(若同时也在画像里,取较大的实时权重)。
+     * 合并三路类目偏好,产出 类目→权重(同类目命中多路取最大权重):
+     * <ol>
+     *   <li>静态画像类目:基准权重 1.0;</li>
+     *   <li>实时类目(rt:user):权重 1+realtimeBoost·(count/maxCount);</li>
+     *   <li><b>query 意图类目</b>(ctx.params["intentCategories"],Query 理解层产出):
+     *       权重 1+intentBoost·score —— 让搜索意图主导 TAG 召回。</li>
+     * </ol>
      */
-    private Map<String, Double> categoryWeights(long userId) {
+    private Map<String, Double> categoryWeights(RecallContext ctx) {
+        long userId = ctx.userId();
         Map<String, Double> weights = new LinkedHashMap<>();
+        RecallProperties.Tag tagCfg = props.getTag();
         // 1. 静态画像类目(基准权重 1.0)
         for (String c : preferredCategories(userId)) {
             if (c != null && !c.isEmpty()) {
@@ -92,7 +99,6 @@ public class TagRecaller implements ChannelRecaller {
             }
         }
         // 2. 实时类目偏好叠加
-        RecallProperties.Tag tagCfg = props.getTag();
         if (tagCfg.isRealtimeEnabled()) {
             Map<Object, Object> rt = readRealtimeCategories(userId);
             long max = 0;
@@ -110,7 +116,36 @@ public class TagRecaller implements ChannelRecaller {
                 }
             }
         }
+        // 3. query 意图类目叠加(搜索场景)
+        for (var e : parseIntentCategories(ctx.params().get("intentCategories")).entrySet()) {
+            double w = 1.0 + tagCfg.getIntentBoost() * e.getValue();
+            weights.merge(e.getKey(), w, Math::max);
+        }
         return weights;
+    }
+
+    /** 解析编排层传入的 "类目:分,类目:分" 为 类目→意图分;格式异常的项跳过。 */
+    private static Map<String, Double> parseIntentCategories(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (String pair : csv.split(",")) {
+            int i = pair.lastIndexOf(':');
+            if (i <= 0 || i == pair.length() - 1) {
+                continue;
+            }
+            String cat = pair.substring(0, i).trim();
+            if (cat.isEmpty()) {
+                continue;
+            }
+            try {
+                out.put(cat, Double.parseDouble(pair.substring(i + 1).trim()));
+            } catch (NumberFormatException ignore) {
+                // 分数解析失败的项跳过
+            }
+        }
+        return out;
     }
 
     private Map<Object, Object> readRealtimeCategories(long userId) {

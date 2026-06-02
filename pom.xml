@@ -35,6 +35,7 @@
         <module>recsys-common</module>
         <module>recsys-gateway</module>
         <module>recsys-rec-engine</module>
+        <module>recsys-query</module>
         <module>recsys-recall</module>
         <module>recsys-rank</module>
         <module>recsys-feature</module>
@@ -72,6 +73,11 @@
             <dependency>
                 <groupId>com.recsys</groupId>
                 <artifactId>recsys-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-query</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

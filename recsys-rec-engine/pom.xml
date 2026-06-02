@@ -30,6 +30,10 @@
         <!-- 单体起步:直接聚合各计算/领域库;拆微服务时改为远程调用 -->
         <dependency>
             <groupId>com.recsys</groupId>
+            <artifactId>recsys-query</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
             <artifactId>recsys-recall</artifactId>
         </dependency>
         <dependency>

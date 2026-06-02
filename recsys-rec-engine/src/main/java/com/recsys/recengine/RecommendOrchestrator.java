@@ -3,6 +3,8 @@ package com.recsys.recengine;
 import com.recsys.common.dto.RecommendItem;
 import com.recsys.common.dto.RecommendRequest;
 import com.recsys.common.dto.RecommendResponse;
+import com.recsys.common.query.QueryUnderstandingService;
+import com.recsys.common.query.StructuredQuery;
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
@@ -29,10 +31,12 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 推荐编排:召回 → 排序 → 融合 → 重排 → 曝光埋点。对应 docs/02 §6 时序。
@@ -59,6 +63,7 @@ public class RecommendOrchestrator {
     private final ExposureLogger exposureLogger;
     private final ColdStartDetector coldStartDetector;
     private final SeenItemsFilter seenItemsFilter;
+    private final QueryUnderstandingService queryService;
     private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
@@ -71,6 +76,7 @@ public class RecommendOrchestrator {
                                  ExposureLogger exposureLogger,
                                  ColdStartDetector coldStartDetector,
                                  SeenItemsFilter seenItemsFilter,
+                                 QueryUnderstandingService queryService,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -82,6 +88,7 @@ public class RecommendOrchestrator {
         this.exposureLogger = exposureLogger;
         this.coldStartDetector = coldStartDetector;
         this.seenItemsFilter = seenItemsFilter;
+        this.queryService = queryService;
         this.meterRegistry = meterRegistry;
     }
 
@@ -93,14 +100,16 @@ public class RecommendOrchestrator {
         boolean coldTag = false;
         String outcome = "ok";
         try {
-            // 1. 结果缓存
-            RecommendResponse cached = recCache.get(req.userId(), req.scene());
-            if (cached != null) {
-                meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
-                outcome = "cache";
-                return cached;
+            // 1. 结果缓存(搜索请求按 userId+scene 缓存会让不同 query 串味,故 query 驱动时跳过缓存)
+            if (!req.hasQuery()) {
+                RecommendResponse cached = recCache.get(req.userId(), req.scene());
+                if (cached != null) {
+                    meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
+                    outcome = "cache";
+                    return cached;
+                }
+                meterRegistry.counter("recsys.recommend.cache", "result", "miss").increment();
             }
-            meterRegistry.counter("recsys.recommend.cache", "result", "miss").increment();
 
             // 2. 冷启动判定 + 分层实验分桶
             boolean cold = coldStartDetector.isCold(req.userId());
@@ -117,9 +126,20 @@ public class RecommendOrchestrator {
                     ? (decision.bucketTag().isEmpty() ? "cold" : "cold;" + decision.bucketTag())
                     : decision.bucketTag();
 
+            // 2b. Query 理解:有 query 则解析,把归一化串喂 SEMANTIC、意图类目喂 TAG,
+            // 并确保这两路在本次启用(即便实验把召回路限定成了别的子集)。
+            Map<String, String> recallParams = Map.of();
+            if (req.hasQuery()) {
+                StructuredQuery sq = queryService.parse(req.query(), req.userId());
+                recallParams = buildRecallParams(sq);
+                channels = withQueryChannels(channels);
+                log.debug("query 驱动召回 user={} q=[{}] intents={} channels={}",
+                        req.userId(), sq.normalized(), sq.intents(), channels);
+            }
+
             // 3. 召回(按本次启用的路)
             List<RecallItem> recalled = recallService.recall(new RecallContext(
-                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, Map.of()));
+                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, recallParams));
             if (recalled.isEmpty()) {
                 meterRegistry.counter("recsys.recommend.empty", "stage", "recall").increment();
                 outcome = "empty";
@@ -212,6 +232,40 @@ public class RecommendOrchestrator {
                     .publishPercentileHistogram()
                     .register(meterRegistry));
         }
+    }
+
+    /** 召回路里属于 query 驱动的两路:SEMANTIC 用归一化 query,TAG 叠加意图类目。 */
+    private static final List<RecallChannel> QUERY_CHANNELS =
+            List.of(RecallChannel.SEMANTIC, RecallChannel.TAG);
+
+    /**
+     * 把结构化 query 转成召回参数:
+     * {@code query} = 归一化串(SEMANTIC 读),{@code intentCategories} = "类目:分,..."(TAG 读)。
+     */
+    private static Map<String, String> buildRecallParams(StructuredQuery sq) {
+        Map<String, String> params = new HashMap<>();
+        if (sq.normalized() != null && !sq.normalized().isBlank()) {
+            params.put("query", sq.normalized());
+        }
+        if (!sq.intents().isEmpty()) {
+            params.put("intentCategories", sq.intents().stream()
+                    .map(cs -> cs.category() + ":" + cs.score())
+                    .collect(Collectors.joining(",")));
+        }
+        return params;
+    }
+
+    /**
+     * 确保 query 驱动的召回路在本次启用。channels 为空(全开)时无需改动;
+     * 非空(实验限定了子集)时把 SEMANTIC/TAG 并入,使 query 信号不被实验子集挡掉。
+     */
+    private static List<RecallChannel> withQueryChannels(List<RecallChannel> channels) {
+        if (channels.isEmpty()) {
+            return channels; // 全开,SEMANTIC/TAG 本就在内
+        }
+        LinkedHashSet<RecallChannel> set = new LinkedHashSet<>(channels);
+        set.addAll(QUERY_CHANNELS);
+        return new ArrayList<>(set);
     }
 
     /**

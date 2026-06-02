@@ -34,6 +34,8 @@ public class RecallProperties {
         private boolean realtimeEnabled = true;
         /** 实时加权强度:权重 = 1 + boost·(count/maxCount),热度最高的实时类目得 (1+boost) 倍。 */
         private double realtimeBoost = 1.0;
+        /** query 意图类目加权强度:权重 = 1 + intentBoost·score(score 为 Query 理解层归一化意图分)。 */
+        private double intentBoost = 2.0;
 
         public boolean isRealtimeEnabled() {
             return realtimeEnabled;
@@ -49,6 +51,14 @@ public class RecallProperties {
 
         public void setRealtimeBoost(double realtimeBoost) {
             this.realtimeBoost = realtimeBoost;
+        }
+
+        public double getIntentBoost() {
+            return intentBoost;
+        }
+
+        public void setIntentBoost(double intentBoost) {
+            this.intentBoost = intentBoost;
         }
     }
 
