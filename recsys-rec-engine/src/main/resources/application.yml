@@ -32,6 +32,10 @@ recsys:
     two-tower:
       model-path: classpath:model/user_tower.onnx
       schema-path: classpath:model/tower_schema.json
+    # 标签召回:把 Flink 写的实时类目偏好(rt:user:{id})叠加进静态画像类目,实时类目按近期计数加权
+    tag:
+      realtime-enabled: true
+      realtime-boost: 1.0
   rank:
     # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列建模(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
@@ -52,6 +56,14 @@ recsys:
     multi-task:
       cvr-bias: 0.1
       cvr-weight: 1.0
+  # 融合:最终分 = (recall-weight*归一化召回分 + rank-weight*排序分) * channel-boost
+  fusion:
+    recall-weight: 1.0
+    rank-weight: 1.0
+    # 召回路加权(channel 名大写)。TAG 已叠加实时类目偏好(rt:user),抬权让"用户当下/长期兴趣"
+    # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
+    channel-boost:
+      TAG: 1.5
   rerank:
     max-same-category: 3
   filter:

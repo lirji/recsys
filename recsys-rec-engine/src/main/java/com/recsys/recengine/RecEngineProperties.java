@@ -2,6 +2,10 @@ package com.recsys.recengine;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * 编排层配置:重排 + 缓存 + 召回/排序融合权重。
  */
@@ -97,10 +101,17 @@ public class RecEngineProperties {
         }
     }
 
-    /** M1 阶段特征稀疏,最终分 = recallWeight*召回分 + rankWeight*排序分。 */
+    /** M1 阶段特征稀疏,最终分 = (recallWeight*召回分 + rankWeight*排序分) * channelBoost。 */
     public static class Fusion {
         private double recallWeight = 1.0;
         private double rankWeight = 1.0;
+        /**
+         * 召回路融合加权:channel 名(大写,同 RecallChannel.name())→ 乘子,缺省 1.0。
+         * 物品被多路命中时取其各路 boost 的最大值(取最有利信号,不过度叠加)。
+         * 用途:把 TAG(已叠加实时类目偏好 rt:user)这类"用户当下/长期兴趣"信号在最终分上抬升,
+         * 避免被 HOT/CF 的高热度物品在全局归一化中压过;也让冷启动 onboarding 的类目更突出。
+         */
+        private Map<String, Double> channelBoost = new HashMap<>();
 
         public double getRecallWeight() {
             return recallWeight;
@@ -116,6 +127,29 @@ public class RecEngineProperties {
 
         public void setRankWeight(double rankWeight) {
             this.rankWeight = rankWeight;
+        }
+
+        public Map<String, Double> getChannelBoost() {
+            return channelBoost;
+        }
+
+        public void setChannelBoost(Map<String, Double> channelBoost) {
+            this.channelBoost = channelBoost;
+        }
+
+        /** 物品命中多路时,取各路 boost 的最大值(缺省路按 1.0)。空/无命中返回 1.0。 */
+        public double boostFor(List<String> channels) {
+            if (channels == null || channels.isEmpty() || channelBoost.isEmpty()) {
+                return 1.0;
+            }
+            double boost = 1.0;
+            for (String c : channels) {
+                Double b = channelBoost.get(c);
+                if (b != null && b > boost) {
+                    boost = b;
+                }
+            }
+            return boost;
         }
     }
 }

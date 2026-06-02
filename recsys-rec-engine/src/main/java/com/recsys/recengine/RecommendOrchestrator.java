@@ -163,10 +163,15 @@ public class RecommendOrchestrator {
                     ExperimentDecision.LAYER_RANK, "recallWeight", props.getFusion().getRecallWeight());
             double rankWeight = decision.doubleParam(
                     ExperimentDecision.LAYER_RANK, "rankWeight", props.getFusion().getRankWeight());
+            // 召回路融合加权:按物品命中的召回路取最大 boost,乘到融合分上。
+            // 让 TAG(已含实时类目偏好 rt:user)这类兴趣信号不被 HOT/CF 高热度在归一化中压过。
+            RecEngineProperties.Fusion fusion = props.getFusion();
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
-                fused.add(new RerankCandidate(ri.itemId(), recallWeight * rNorm + rankWeight * ri.score()));
+                double base = recallWeight * rNorm + rankWeight * ri.score();
+                double boost = fusion.boostFor(recallChannel.get(ri.itemId()));
+                fused.add(new RerankCandidate(ri.itemId(), base * boost));
             }
             fused.sort((a, b) -> Double.compare(b.score(), a.score()));
 

@@ -10,6 +10,7 @@ public class RecallProperties {
 
     private final Quota quota = new Quota();
     private final TwoTower twoTower = new TwoTower();
+    private final Tag tag = new Tag();
 
     public Quota getQuota() {
         return quota;
@@ -17,6 +18,38 @@ public class RecallProperties {
 
     public TwoTower getTwoTower() {
         return twoTower;
+    }
+
+    public Tag getTag() {
+        return tag;
+    }
+
+    /**
+     * 标签召回:实时类目偏好(Flink 写的 {@code rt:user:{id}})叠加到静态画像类目上。
+     * 实时类目反映"用户此刻在看哪类",按近期计数加权让其物品在 TAG 内排前;
+     * 关闭后退化为只读 app_user.profile 的静态行为。
+     */
+    public static class Tag {
+        /** 是否把实时类目偏好叠加进 TAG 召回。 */
+        private boolean realtimeEnabled = true;
+        /** 实时加权强度:权重 = 1 + boost·(count/maxCount),热度最高的实时类目得 (1+boost) 倍。 */
+        private double realtimeBoost = 1.0;
+
+        public boolean isRealtimeEnabled() {
+            return realtimeEnabled;
+        }
+
+        public void setRealtimeEnabled(boolean realtimeEnabled) {
+            this.realtimeEnabled = realtimeEnabled;
+        }
+
+        public double getRealtimeBoost() {
+            return realtimeBoost;
+        }
+
+        public void setRealtimeBoost(double realtimeBoost) {
+            this.realtimeBoost = realtimeBoost;
+        }
     }
 
     /** 双塔召回:user 塔 ONNX 模型 + schema(user 桶数)路径。item 向量已离线灌库,在线无需 vocab。 */
