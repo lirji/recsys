@@ -95,6 +95,10 @@ def main():
             },
             opset_version=args.opset,
             do_constant_folding=True,
+            # 强制 legacy(TorchScript)导出器:单个自包含 .onnx(无外部 .data),
+            # 因为 Java 侧用 createSession(byte[]) 加载,解析不到外部权重文件。
+            # 也才能正确生成 batch/seq 动态维(dynamo 路径会把它们固化)。
+            dynamo=False,
         )
 
     # vocab.txt(行号即 token id),供 Java BgeTokenizer 读取。
@@ -128,19 +132,20 @@ def _verify(model_name, tok, model, onnx_path, seq_len):
     import numpy as np
     import onnxruntime as ort
 
+    # 逐条(batch=1,与在线 Java 路径一致)对比,避免批内 padding 引入的数值差。
     texts = ["Toy Story (1995) Animation Children Comedy", "The Matrix (1999) Action Sci-Fi"]
-    enc = tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=seq_len)
-    with torch.no_grad():
-        ref = model(**enc).last_hidden_state[:, 0]  # CLS
-    ref = torch.nn.functional.normalize(ref, dim=1).numpy()
-
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    feeds = {k: enc[k].numpy() for k in ("input_ids", "attention_mask", "token_type_ids")}
-    got = sess.run(["last_hidden_state"], feeds)[0][:, 0]
-    got = got / np.linalg.norm(got, axis=1, keepdims=True)
-
-    cos = (ref * got).sum(axis=1)
-    print(f"[verify] torch vs onnx 逐样本余弦 = {cos.round(6).tolist()}(应 ≈ 1.0)")
+    cos = []
+    for t in texts:
+        enc = tok(t, return_tensors="pt", truncation=True, max_length=seq_len)
+        with torch.no_grad():
+            ref = model(**enc).last_hidden_state[:, 0][0].numpy()
+        ref = ref / np.linalg.norm(ref)
+        feeds = {k: enc[k].numpy() for k in ("input_ids", "attention_mask", "token_type_ids")}
+        got = sess.run(["last_hidden_state"], feeds)[0][:, 0][0]
+        got = got / np.linalg.norm(got)
+        cos.append(round(float((ref * got).sum()), 6))
+    print(f"[verify] torch vs onnx 逐条余弦 = {cos}(应 ≈ 1.0)")
 
 
 if __name__ == "__main__":
