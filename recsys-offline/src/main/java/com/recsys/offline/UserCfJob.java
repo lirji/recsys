@@ -60,9 +60,11 @@ public class UserCfJob implements OfflineJob {
         int maxUserItems = intArg(args, "max-user-items", 500);
         int maxItemUsers = intArg(args, "max-item-users", 1000);
 
-        // 1. 正反馈:user -> Set<item>
-        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems);
-        log.info("正反馈用户数 {};min-rating={}, topk={}, sim-users={}", userItems.size(), minRating, topK, simUsers);
+        // 1. 正反馈:user -> Set<item>(--max-ts 时只用切分点前的行为,供严格 eval)
+        Long maxTs = BehaviorQuery.maxTs(args);
+        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems, maxTs);
+        log.info("正反馈用户数 {};min-rating={}, topk={}, sim-users={}, max-ts={}", userItems.size(), minRating,
+                topK, simUsers, maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
             log.warn("无正反馈数据,先跑 --job=import-behavior");
             return;
@@ -163,18 +165,16 @@ public class UserCfJob implements OfflineJob {
         return written[0];
     }
 
-    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems) {
+    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems, Long maxTs) {
         Map<Long, Set<Long>> userItems = new HashMap<>();
         jdbc.query(
-                "SELECT user_id, item_id FROM user_behavior " +
-                "WHERE action IN ('CLICK','LIKE','PLAY') " +
-                "   OR (action='RATING' AND value >= ?)",
+                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);
                     userItems.computeIfAbsent(u, k -> new HashSet<>()).add(it);
                 },
-                minRating);
+                BehaviorQuery.params(minRating, maxTs));
         userItems.replaceAll((u, items) -> {
             if (items.size() <= maxUserItems) {
                 return items;

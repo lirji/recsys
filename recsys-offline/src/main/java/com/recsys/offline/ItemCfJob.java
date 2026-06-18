@@ -54,9 +54,11 @@ public class ItemCfJob implements OfflineJob {
         int topK = intArg(args, "topk", 50);
         int maxUserItems = intArg(args, "max-user-items", 500);
 
-        // 1. 加载正反馈:user -> [items]
-        Map<Long, List<Long>> userItems = loadPositiveFeedback(minRating, maxUserItems);
-        log.info("正反馈用户数 {};min-rating={}, topk={}", userItems.size(), minRating, topK);
+        // 1. 加载正反馈:user -> [items](--max-ts 时只用切分点前的行为,供严格 eval)
+        Long maxTs = BehaviorQuery.maxTs(args);
+        Map<Long, List<Long>> userItems = loadPositiveFeedback(minRating, maxUserItems, maxTs);
+        log.info("正反馈用户数 {};min-rating={}, topk={}, max-ts={}", userItems.size(), minRating, topK,
+                maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
             log.warn("无正反馈数据,先跑 --job=import-behavior");
             return;
@@ -88,18 +90,16 @@ public class ItemCfJob implements OfflineJob {
         log.info("item-cf 完成:写入 {} 个物品的 i2i 倒排到 Redis", written);
     }
 
-    private Map<Long, List<Long>> loadPositiveFeedback(double minRating, int maxUserItems) {
+    private Map<Long, List<Long>> loadPositiveFeedback(double minRating, int maxUserItems, Long maxTs) {
         Map<Long, List<Long>> userItems = new HashMap<>();
         jdbc.query(
-                "SELECT user_id, item_id FROM user_behavior " +
-                "WHERE action IN ('CLICK','LIKE','PLAY') " +
-                "   OR (action='RATING' AND value >= ?)",
+                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);
                     userItems.computeIfAbsent(u, k -> new ArrayList<>()).add(it);
                 },
-                minRating);
+                BehaviorQuery.params(minRating, maxTs));
         // 截断超活跃用户,避免共现规模爆炸(O(|N(u)|^2))
         userItems.replaceAll((u, items) ->
                 items.size() > maxUserItems ? items.subList(0, maxUserItems) : items);

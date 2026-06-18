@@ -101,6 +101,13 @@ public class EvalJob implements OfflineJob {
 
         // 1. 读 RATING,拆历史/测试正例(全局时间分位点切分)
         Split split = buildSplit(validFrac);
+        // 严格 eval 用:只打印切分点 ts(epoch 秒)供 run_strict_eval.sh 作为各召回作业的 --max-ts,然后退出。
+        if (args.containsOption("print-split")) {
+            System.out.println("SPLIT_TS=" + split.splitTs);
+            log.info("print-split:valid-frac={} → splitTs={}(epoch 秒);用作 --max-ts 重建无泄漏存储",
+                    validFrac, split.splitTs);
+            return;
+        }
         if (split.testUsers.isEmpty()) {
             log.warn("无测试正例;先跑 import-behavior(需有 ts>splitTs 的 RATING≥4)");
             return;

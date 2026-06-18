@@ -41,6 +41,7 @@ public class HotJob implements OfflineJob {
     public void run(ApplicationArguments args) throws Exception {
         int recentDays = intArg(args, "recent-days", 0);
         int topN = intArg(args, "topn", 1000);
+        Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只统计切分点前的热度
 
         // 在 SQL 内完成加权聚合,避免把全量行为拉进内存
         StringBuilder sql = new StringBuilder(
@@ -52,8 +53,15 @@ public class HotJob implements OfflineJob {
                 "    WHEN 'RATING' THEN COALESCE(value, 1.0) " +
                 "    ELSE 0.0 END) AS hot " +
                 "FROM user_behavior ");
+        java.util.List<String> conds = new java.util.ArrayList<>();
         if (recentDays > 0) {
-            sql.append("WHERE ts >= now() - INTERVAL '").append(recentDays).append(" days' ");
+            conds.add("ts >= now() - INTERVAL '" + recentDays + " days'");
+        }
+        if (maxTs != null) {
+            conds.add("extract(epoch from ts) <= " + maxTs);   // maxTs 已解析为 long,内联安全
+        }
+        if (!conds.isEmpty()) {
+            sql.append("WHERE ").append(String.join(" AND ", conds)).append(' ');
         }
         sql.append("GROUP BY item_id ORDER BY hot DESC LIMIT ?");
 

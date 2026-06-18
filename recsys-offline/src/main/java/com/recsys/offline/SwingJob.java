@@ -61,8 +61,10 @@ public class SwingJob implements OfflineJob {
         int maxOverlap = intArg(args, "max-overlap", 200);
 
         // 1. 正反馈:user -> Set<item>(用 Set 便于求交集);item -> List<user>(找共现用户对)
-        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems);
-        log.info("正反馈用户数 {};min-rating={}, topk={}, alpha={}", userItems.size(), minRating, topK, alpha);
+        Long maxTs = BehaviorQuery.maxTs(args);
+        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems, maxTs);
+        log.info("正反馈用户数 {};min-rating={}, topk={}, alpha={}, max-ts={}", userItems.size(), minRating,
+                topK, alpha, maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
             log.warn("无正反馈数据,先跑 --job=import-behavior");
             return;
@@ -114,18 +116,16 @@ public class SwingJob implements OfflineJob {
         log.info("swing 完成:写入 {} 个物品的 swing 倒排到 Redis", written);
     }
 
-    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems) {
+    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems, Long maxTs) {
         Map<Long, Set<Long>> userItems = new HashMap<>();
         jdbc.query(
-                "SELECT user_id, item_id FROM user_behavior " +
-                "WHERE action IN ('CLICK','LIKE','PLAY') " +
-                "   OR (action='RATING' AND value >= ?)",
+                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);
                     userItems.computeIfAbsent(u, k -> new HashSet<>()).add(it);
                 },
-                minRating);
+                BehaviorQuery.params(minRating, maxTs));
         // 截断超活跃用户控规模
         userItems.replaceAll((u, items) -> {
             if (items.size() <= maxUserItems) {

@@ -41,6 +41,7 @@ public class UserEmbeddingJob implements OfflineJob {
     public void run(ApplicationArguments args) throws Exception {
         double minRating = doubleArg(args, "min-rating", 4.0);
         boolean rebuild = !args.containsOption("no-rebuild");
+        Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只用切分点前的行为聚合用户向量
 
         // 1. 全量加载物品向量到内存(当前约 1000 条 × 768 维,约 3MB)
         Map<Long, float[]> itemVecs = loadItemVectors();
@@ -57,9 +58,7 @@ public class UserEmbeddingJob implements OfflineJob {
         Map<Long, Double> wsum = new HashMap<>();
         int[] hit = {0};
         jdbc.query(
-                "SELECT user_id, item_id, action, value FROM user_behavior " +
-                "WHERE action IN ('CLICK','LIKE','PLAY') " +
-                "   OR (action='RATING' AND value >= ?)",
+                BehaviorQuery.positiveFeedbackSql("user_id, item_id, action, value", maxTs),
                 rs -> {
                     long u = rs.getLong("user_id");
                     long it = rs.getLong("item_id");
@@ -75,7 +74,7 @@ public class UserEmbeddingJob implements OfflineJob {
                     wsum.merge(u, w, Double::sum);
                     hit[0]++;
                 },
-                minRating);
+                BehaviorQuery.params(minRating, maxTs));
         log.info("命中带向量的正反馈 {} 条,覆盖用户 {} 个", hit[0], acc.size());
         if (acc.isEmpty()) {
             log.warn("无用户产出向量(可能正反馈物品都未灌向量)");
