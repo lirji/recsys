@@ -19,8 +19,10 @@ import java.util.Map;
  * 多路召回合并。并行调用各路 ChannelRecaller,合并去重。
  *
  * 设计要点(docs/03 §1):
- * - 各路 recallScore 量纲不同,合并时**不相加**,只记录来源 channel,排序交给 rank 层。
- * - 同一 itemId 命中多路 → 保留所有来源(channels),recallScore 取该物品在各路中的最大值(仅供调试)。
+ * - 各路 recallScore 量纲不同(SEMANTIC/VECTOR 是余弦∈[0,1],HOT/TAG/COLD 是热度计数),
+ *   合并前**先按每路自身最大值归一化到 [0,1]**,使跨路分数可比 —— 否则下游全局归一化会被
+ *   热度计数(动辄成百上千)主导,把语义/向量路的余弦分压到接近 0,channel-boost 也救不回来。
+ * - 同一 itemId 命中多路 → 保留所有来源(channels),recallScore 取各路归一化分的最大值。
  * - 任一路抛异常被 catch 降级,不影响整体;热门兜底始终生效。
  */
 @Service
@@ -54,12 +56,19 @@ public class MultiChannelRecallService implements RecallService {
             if (items == null) {
                 continue;
             }
+            // 本路自身最大分,用于把该路所有分归一化到 [0,1](跨路可比的前提)。
+            double chMax = 0;
             for (RecallItem it : items) {
+                chMax = Math.max(chMax, it.recallScore());
+            }
+            final double denom = chMax > 0 ? chMax : 1.0;
+            for (RecallItem it : items) {
+                double norm = it.recallScore() / denom;
                 merged.compute(it.itemId(), (id, cur) -> {
                     if (cur == null) {
-                        return new Merged(it.recallScore(), it.channel());
+                        return new Merged(norm, it.channel());
                     }
-                    cur.score = Math.max(cur.score, it.recallScore());
+                    cur.score = Math.max(cur.score, norm);
                     if (!cur.channels.contains(it.channel())) {
                         cur.channels.add(it.channel());
                     }

@@ -64,6 +64,7 @@ public class RecommendOrchestrator {
     private final ColdStartDetector coldStartDetector;
     private final SeenItemsFilter seenItemsFilter;
     private final QueryUnderstandingService queryService;
+    private final PersonalizationScorer personalizationScorer;
     private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
@@ -77,6 +78,7 @@ public class RecommendOrchestrator {
                                  ColdStartDetector coldStartDetector,
                                  SeenItemsFilter seenItemsFilter,
                                  QueryUnderstandingService queryService,
+                                 PersonalizationScorer personalizationScorer,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -89,6 +91,7 @@ public class RecommendOrchestrator {
         this.coldStartDetector = coldStartDetector;
         this.seenItemsFilter = seenItemsFilter;
         this.queryService = queryService;
+        this.personalizationScorer = personalizationScorer;
         this.meterRegistry = meterRegistry;
     }
 
@@ -114,15 +117,18 @@ public class RecommendOrchestrator {
             // 2. 冷启动判定 + 分层实验分桶
             boolean cold = coldStartDetector.isCold(req.userId());
             ExperimentDecision decision = experimentService.assign(req.userId(), req.scene());
-            coldTag = cold;
+            // 搜索(query 驱动)场景:query 即明确意图,冷用户也不该被冷启动覆盖冲淡 —— 走 query 主导链路。
+            boolean queryDriven = req.hasQuery();
+            boolean coldOverride = cold && !(queryDriven && props.getSearch().isBypassColdStart());
+            coldTag = coldOverride;
             // 实验未指定排序策略时,编排回落全局配置,这里以 default 标记(实际策略由 RankRouter 决定)
             rankTag = decision.rankStrategy() != null ? decision.rankStrategy() : "default";
 
             // 冷启动覆盖 recall 层(探索路)与 bucket 标签;否则用实验的 recall 分桶
-            List<RecallChannel> channels = cold
+            List<RecallChannel> channels = coldOverride
                     ? List.of(RecallChannel.COLD, RecallChannel.HOT, RecallChannel.TAG)
                     : decision.recallChannels();
-            String bucketTag = cold
+            String bucketTag = coldOverride
                     ? (decision.bucketTag().isEmpty() ? "cold" : "cold;" + decision.bucketTag())
                     : decision.bucketTag();
 
@@ -176,29 +182,40 @@ public class RecommendOrchestrator {
             List<RankedItem> ranked = rankRouter.rank(
                     req.userId(), candidateIds, req.scene(), decision.rankStrategy());
 
-            // 5. 融合召回分 + 排序分(归一化召回分,权重可由 rank 层实验覆盖)
+            // 5. 融合召回分 + 排序分(归一化召回分,权重可由 rank 层实验覆盖)。
+            // 召回分已在 MultiChannelRecallService 内按路归一化到 [0,1],这里再做一次全局归一化兜底。
             double maxRecall = recallScore.values().stream().mapToDouble(Double::doubleValue).max().orElse(1.0);
             final double maxR = maxRecall <= 0 ? 1.0 : maxRecall;
-            double recallWeight = decision.doubleParam(
-                    ExperimentDecision.LAYER_RANK, "recallWeight", props.getFusion().getRecallWeight());
-            double rankWeight = decision.doubleParam(
-                    ExperimentDecision.LAYER_RANK, "rankWeight", props.getFusion().getRankWeight());
+            // 搜索场景用 search.* 一组权重/boost(query 相关性主导),否则用默认 fusion.*。
+            // 实验参数仍可覆盖权重(doubleParam 的默认值按场景取)。
+            RecEngineProperties.Search search = props.getSearch();
+            double defRecallW = queryDriven ? search.getRecallWeight() : props.getFusion().getRecallWeight();
+            double defRankW = queryDriven ? search.getRankWeight() : props.getFusion().getRankWeight();
+            double recallWeight = decision.doubleParam(ExperimentDecision.LAYER_RANK, "recallWeight", defRecallW);
+            double rankWeight = decision.doubleParam(ExperimentDecision.LAYER_RANK, "rankWeight", defRankW);
+            Map<String, Double> boostMap = queryDriven
+                    ? search.getChannelBoost() : props.getFusion().getChannelBoost();
+            // 搜索温和个性化:用 BGE user_embedding 对候选算余弦亲和度,作乘性加成微调次序
+            // (相关性仍主导;冷用户无向量则空表 = 无个性化)。权重 0 关闭。仅 query 驱动场景生效。
+            double persW = search.getPersonalizationWeight();
+            Map<Long, Double> affinity = (queryDriven && persW > 0)
+                    ? personalizationScorer.affinity(req.userId(), candidateIds) : Map.of();
             // 召回路融合加权:按物品命中的召回路取最大 boost,乘到融合分上。
-            // 让 TAG(已含实时类目偏好 rt:user)这类兴趣信号不被 HOT/CF 高热度在归一化中压过。
-            RecEngineProperties.Fusion fusion = props.getFusion();
+            // 默认让 TAG(含实时类目偏好 rt:user)不被 HOT/CF 热度压过;搜索场景则抬升 SEMANTIC/意图 TAG。
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
                 double base = recallWeight * rNorm + rankWeight * ri.score();
-                double boost = fusion.boostFor(recallChannel.get(ri.itemId()));
-                fused.add(new RerankCandidate(ri.itemId(), base * boost));
+                double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
+                double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
+                fused.add(new RerankCandidate(ri.itemId(), base * boost * persBoost));
             }
             fused.sort((a, b) -> Double.compare(b.score(), a.score()));
 
             // 6. 重排(冷启动强制强多样性;否则按实验选中的策略)
             Map<String, String> rerankParams = new HashMap<>(decision.rerankParams());
             String rerankStrategy;
-            if (cold) {
+            if (coldOverride) {
                 rerankStrategy = "diversity";
                 rerankParams.put("maxSameCategory",
                         String.valueOf(props.getColdStart().getRerankMaxSameCategory()));

@@ -15,11 +15,79 @@ public class RecEngineProperties {
     private final Rerank rerank = new Rerank();
     private final Cache cache = new Cache();
     private final Fusion fusion = new Fusion();
+    private final Search search = new Search();
     private final ColdStart coldStart = new ColdStart();
     private final Filter filter = new Filter();
 
     public Rerank getRerank() {
         return rerank;
+    }
+
+    public Search getSearch() {
+        return search;
+    }
+
+    /**
+     * 搜索场景(query 驱动)专用融合参数,覆盖默认 {@link Fusion} —— 让 query↔item 相关性主导,
+     * 而非个性化热度/CTR。三处差异:
+     * <ul>
+     *   <li>召回分权重抬高、排序分权重压低:搜索以"和 query 多相关"为主,个性化 CTR 退为次序信号;</li>
+     *   <li>{@code channelBoost} 抬升 SEMANTIC / TAG(意图)这两条 query 驱动路;</li>
+     *   <li>{@code bypassColdStart}:冷用户带 query 时不走冷启动覆盖(query 已是明确意图,
+     *       不该被强制类目探索 + 强多样性重排冲淡)。</li>
+     * </ul>
+     * 对应 {@code recsys.search.*}。
+     */
+    public static class Search {
+        private boolean bypassColdStart = true;
+        private double recallWeight = 2.0;
+        private double rankWeight = 0.5;
+        private Map<String, Double> channelBoost = new HashMap<>();
+        /**
+         * 个性化亲和度权重:搜索融合分 ×(1 + 权重·max(0,cos(user_emb,item_emb)))。
+         * 0=关闭(纯相关性);默认 0.5 作温和加成(同等相关下偏向用户口味)。冷用户无向量自动无效。
+         */
+        private double personalizationWeight = 0.5;
+
+        public boolean isBypassColdStart() {
+            return bypassColdStart;
+        }
+
+        public double getPersonalizationWeight() {
+            return personalizationWeight;
+        }
+
+        public void setPersonalizationWeight(double personalizationWeight) {
+            this.personalizationWeight = personalizationWeight;
+        }
+
+        public void setBypassColdStart(boolean bypassColdStart) {
+            this.bypassColdStart = bypassColdStart;
+        }
+
+        public double getRecallWeight() {
+            return recallWeight;
+        }
+
+        public void setRecallWeight(double recallWeight) {
+            this.recallWeight = recallWeight;
+        }
+
+        public double getRankWeight() {
+            return rankWeight;
+        }
+
+        public void setRankWeight(double rankWeight) {
+            this.rankWeight = rankWeight;
+        }
+
+        public Map<String, Double> getChannelBoost() {
+            return channelBoost;
+        }
+
+        public void setChannelBoost(Map<String, Double> channelBoost) {
+            this.channelBoost = channelBoost;
+        }
     }
 
     public Filter getFilter() {
@@ -139,12 +207,17 @@ public class RecEngineProperties {
 
         /** 物品命中多路时,取各路 boost 的最大值(缺省路按 1.0)。空/无命中返回 1.0。 */
         public double boostFor(List<String> channels) {
-            if (channels == null || channels.isEmpty() || channelBoost.isEmpty()) {
+            return boostFor(channels, channelBoost);
+        }
+
+        /** 用给定 boost 表(默认 / 搜索场景各自一份)计算 channel 加成。 */
+        public static double boostFor(List<String> channels, Map<String, Double> boostMap) {
+            if (channels == null || channels.isEmpty() || boostMap == null || boostMap.isEmpty()) {
                 return 1.0;
             }
             double boost = 1.0;
             for (String c : channels) {
-                Double b = channelBoost.get(c);
+                Double b = boostMap.get(c);
                 if (b != null && b > boost) {
                     boost = b;
                 }

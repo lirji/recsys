@@ -64,6 +64,15 @@ recsys:
     # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
     channel-boost:
       TAG: 1.5
+  # 搜索(query 驱动)场景专用融合,覆盖上面的 fusion.*:让 query↔item 相关性主导而非个性化热度。
+  search:
+    bypass-cold-start: true   # 冷用户带 query 时不走冷启动覆盖(query 已是明确意图)
+    recall-weight: 2.0        # 召回分(=query 相关性)主导
+    rank-weight: 0.5          # 个性化/CTR 排序分降权为次序信号
+    channel-boost:            # 抬升 query 驱动的两路:语义 + 意图 TAG
+      SEMANTIC: 2.0
+      TAG: 1.8
+    personalization-weight: 0.5  # 温和个性化:×(1+权重·cos(user_emb,item_emb));0=纯相关性
   rerank:
     max-same-category: 3
   filter:
