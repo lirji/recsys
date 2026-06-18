@@ -1,84 +1,85 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code (claude.ai/code) 在本仓库中处理代码时提供指导。
 
-## What this is
+## 这是什么
 
-A production-oriented recommendation-system scaffold: Java + Spring Boot 3.2, Maven multi-module single repo. It implements the classic funnel **recall → rank → rerank**, with an offline/near-line path (embeddings, collaborative filtering, model training) feeding online stores. Built to run fully locally via `docker compose`, but structured to split into microservices later.
+一个面向生产的推荐系统脚手架：Java + Spring Boot 3.2，Maven 多模块单仓库。它实现了经典的 **召回 → 排序 → 重排** 漏斗，并通过离线/近线链路（embedding、协同过滤、模型训练）向在线存储灌入数据。设计为可通过 `docker compose` 完全本地运行，但其结构便于后续拆分为微服务。
 
-**Current state: core funnel implemented & verified locally (M1–M3).** Recall (9 channels: vector/i2i/hot/tag + u2u/swing/semantic/cold + two_tower — the last a DSSM-style learned recall: item tower baked into pgvector offline, user tower run online via ONNX), rank (rule + LightGBM→ONNX + DeepFM + MMoE multi-task/ESMM + DIN sequence), pluggable rerank (diversity/mmr/none), layered A/B experiments (recall×rank×rerank, deterministic bucketing, exposure logged to `user_behavior.bucket`), cold-start (detector + interest onboarding) are all in place. Offline jobs feed the online stores. The design docs in `docs/` are the source of truth — keep them in sync when changing behavior.
+**当前状态：核心漏斗已实现并在本地验证（M1–M3）。** 召回（9 个通道：vector/i2i/hot/tag + u2u/swing/semantic/cold + two_tower——最后一个是 DSSM 风格的学习型召回：item 塔离线烘焙进 pgvector，user 塔在线通过 ONNX 运行）、排序（rule + LightGBM→ONNX + DeepFM + MMoE 多任务/ESMM + DIN 序列）、可插拔重排（diversity/mmr/none）、分层 A/B 实验（recall×rank×rerank，确定性分桶，曝光记录到 `user_behavior.bucket`）、冷启动（检测器 + 兴趣引导）均已就位。离线任务向在线存储灌入数据。`docs/` 中的设计文档是事实来源——修改行为时务必同步更新。
 
-## Build & run
+## 构建与运行
 
 ```bash
-# JDK 21 (pom sets java.version=21)
+# JDK 21（pom 中设置 java.version=21）
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 
-mvn clean install                          # build all modules
-mvn -pl recsys-common install              # build one module (and its deps with -am)
-mvn -pl recsys-rec-engine spring-boot:run  # run a service ([app] modules only)
-mvn -pl <module> test                      # test one module
-mvn -pl <module> -Dtest=ClassName#method test   # run a single test
+mvn clean install                          # 构建所有模块
+mvn -pl recsys-common install              # 构建单个模块（加 -am 则连同其依赖）
+mvn -pl recsys-rec-engine spring-boot:run  # 运行某个服务（仅限 [app] 模块）
+mvn -pl <module> test                      # 测试单个模块
+mvn -pl <module> -Dtest=ClassName#method test   # 运行单个测试
 
-docker compose up -d                       # postgres(pgvector) + redis; schema auto-applied on first start
-docker compose --profile full up -d        # also start kafka + nacos (optional components)
+docker compose up -d                       # postgres(pgvector) + redis；首次启动时自动应用 schema
+docker compose --profile full up -d        # 同时启动 kafka + nacos（可选组件）
 
-cp .env.example .env                        # then fill GEMINI_API_KEY etc. (.env is gitignored — never commit)
+cp .env.example .env                        # 然后填入 GEMINI_API_KEY 等（.env 已被 gitignore——切勿提交）
 ```
 
-**Offline jobs** are not separate mains — `recsys-offline` is one Spring Boot app whose `JobRunner` dispatches on a `--job=<name>` arg (each job is an `OfflineJob` bean keyed by its `name()`):
+**离线任务** 不是独立的 main——`recsys-offline` 是一个 Spring Boot 应用，其 `JobRunner` 根据 `--job=<name>` 参数进行分发（每个任务是一个以其 `name()` 为键的 `OfflineJob` bean）：
 
 ```bash
 mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=import-items
 ```
 
-Job names (run roughly in this order to bootstrap the stores): `import-items`, `import-behavior`, `backfill-embedding`, `user-embedding`, `item-cf`, `user-cf`, `swing`, `hot`, `build-features`, `gen-samples`, `gen-samples-mt` (multi-task + behavior-sequence samples → `train/samples_mt.csv`, a **separate** file feeding MMoE/DIN; see below), `import-tower` (loads the two-tower item vectors from `train/item_tower.csv` into `item_tower_embedding`; self-creates the table). Running with no `--job` logs the available set and exits. **Evaluation jobs** (run after the stores are built): `eval` (offline recommendation quality — time-split held-out positives → reuses the online recall→rank pipeline → Precision/Recall/NDCG/MAP/MRR/HitRate/Coverage/Diversity/Novelty @K; supports `--k=10,20,50`, `--recall-only` for per-channel recall, `--rank-strategy=v1|onnx|deepfm`, `--max-users`, `--threads` (parallel per-user evaluation, default = CPU cores); writes `eval/metrics-<ts>.csv`) and `ab-report` (online per-bucket CTR from the `IMPRESSION`/click exposure logs; writes `eval/ab-report-<ts>.csv`).
+任务名（大致按此顺序运行以引导初始化各存储）：`import-items`、`import-behavior`、`backfill-embedding`、`user-embedding`、`item-cf`、`user-cf`、`swing`、`hot`、`build-features`、`gen-samples`、`gen-samples-mt`（多任务 + 行为序列样本 → `train/samples_mt.csv`，一个喂给 MMoE/DIN 的**独立**文件；见下文）、`import-tower`（从 `train/item_tower.csv` 加载双塔 item 向量到 `item_tower_embedding`；会自建该表）。不带 `--job` 运行时会打印可用任务集并退出。**评估任务**（在各存储构建完成后运行）：`eval`（离线推荐质量——按时间切分的留出正样本 → 复用在线 recall→rank 流水线 → Precision/Recall/NDCG/MAP/MRR/HitRate/Coverage/Diversity/Novelty @K；支持 `--k=10,20,50`、`--recall-only`（逐通道召回）、`--rank-strategy=v1|onnx|deepfm`、`--max-users`、`--threads`（逐用户并行评估，默认 = CPU 核数）；写出 `eval/metrics-<ts>.csv`）和 `ab-report`（基于 `IMPRESSION`/点击曝光日志的在线逐桶 CTR；写出 `eval/ab-report-<ts>.csv`）。**搜索广告作业**（docs/05，需先建 `02_ad_schema.sql`）：`seed-ads`（造 mock 广告主/广告/竞价词，从现有电影 item 复用创意与 `item_embedding`，并写 Redis 竞价词倒排 `bidword:inv:{keyword}`；`--clear` 重置；`--ads`/`--advertisers`/`--seed`）、`sim-ad-events`（**教学用**广告曝光/点击模拟，刻意制造"pctr 系统性高估"给校准喂数据；非真实流量）、`ad-calibrate`（用 `ad_event` 拟合 pCTR 保序回归 PAVA → Redis `ad:calib:{model}`；`--model`/`--bins`）、`ad-report`（按广告位次聚合曝光/点击/转化/收入/eCPM/CTR/CVR/相关性，写 `eval/ad-report-<ts>.csv`）。
 
-**Ranking models (`recsys-offline/train/`)** — two trainers feed the online ONNX path, selected by `recsys.rank.strategy` (`RANK_STRATEGY` env), both falling back to rule scoring if the model is absent/fails:
-- `train_lgbm.py` → `model.onnx` (LightGBM, `strategy=onnx`): single dense input `[N,5]` (the 5 `FeatureAssembler` features).
-- `train_deepfm.py` → `model_deepfm.onnx` + `rank_schema.json` + `category_vocab.json` (PyTorch DeepFM, `strategy=deepfm`): **dual input** `dense[N,5]` float + `sparse[N,3]` int64 (userId/itemId/category embeddings). Online `DeepFmRankService` encodes the sparse ids via `SparseFeatureEncoder` whose bucketing (`floorMod`) + category vocab must match the trainer exactly — that's the online/offline contract for the embeddings, analogous to `FeatureAssembler` for dense. **Both trainers share one `samples.csv`** (gen-samples emits dense + raw `user_id,item_id,category`); `train_lgbm` ignores the raw id columns. **gen-samples computes features as-of (point-in-time) by default** via `AsOfFeatureBuilder` — it streams ratings in ts order and snapshots each sample's features strictly *before* applying that event, so no future/label info leaks into training (no Redis `feat:*` needed). Pass `--leaky` to instead read the full-history `feat:*` aggregates (the old behavior, retained only for eval A/B comparison of "before/after fixing leakage"; requires `build-features` first). DeepFM uses a **random** train/valid split (id-embedding models need every id seen in train), so its AUC is not comparable to LightGBM's time-split AUC — use the `eval` job for an apples-to-apples ranking comparison. DeepFM needs `pip install -r requirements-deepfm.txt` (torch + onnxscript); the exporter is forced to a single self-contained `.onnx` (no external `.data`) because Java loads it from classpath as a byte array. After retraining, **`mvn -pl recsys-rank clean install`** to repack the model into the jar (plain `install` leaves stale resources in `target/classes`).
-- `train_mmoe.py` → `model_mmoe.onnx` + `mmoe_schema.json` + `mmoe_category_vocab.json` (PyTorch **MMoE multi-task + ESMM**, `strategy=mmoe`): same dual input as DeepFM but **dual output** `ctr[N,1]` + `cvr[N,1]`. Trains on `samples_mt.csv` (not `samples.csv`) which `gen-samples-mt` emits with **two labels** — `label_click` (interacted at all) and `label_like` (rated ≥4); negatives are popularity-sampled non-interactions. ESMM loss = `BCE(pCTR, click) + BCE(pCTR·pCVR, like)` over the whole space (the CVR tower never directly sees "exposed-not-clicked", removing CVR sample-selection bias). Online `MmoeRankService` reads both heads and fuses `score = pCTR·(cvrBias + cvrWeight·pCVR)` (weights in `recsys.rank.multi-task`, tunable without retrain; `cvrBias=0,cvrWeight=1` ⇒ pCTCVR).
-- `train_din.py` → `model_din.onnx` + `din_schema.json` + `din_category_vocab.json` (PyTorch **DIN behavior-sequence + MMoE heads**, `strategy=din`): **four inputs** `dense[N,5]` + `sparse[N,3]` + `seq[N,L]` (item buckets) + `seq_len[N]`, dual output ctr/cvr. The candidate item does target-attention over the user's history (candidate & sequence **share the item embedding table**), pad positions masked via `seq_len` (empty sequence ⇒ pooled vector forced to 0, so cold users don't get garbage). `gen-samples-mt` emits the as-of behavior sequence per sample (recent ≤20 items with rating ≥4, snapshot **before** the current event = point-in-time, no leakage). Online `DinRankService` fetches the user's recent ≤`seqLen` rating-≥4 items **via JdbcTemplate** at request time (queried once per user, broadcast across candidates), encoded by `SequenceEncoder` whose fixed length + right-padding + item bucketing must match `train_din.py` (the online/offline contract for sequences, analogous to `SparseFeatureEncoder`). Both MMoE & DIN: random split, dual-output ONNX, same IR9 / self-contained `.onnx` caveats as DeepFM; both fall back to rule scoring if the model is absent. The `eval` job accepts `--rank-strategy=mmoe|din`. Note the eval ground-truth (rating ≥4 held-out positives) **equals DeepFM's single label**, so DeepFM leads on NDCG/precision while the multi-task models lead on HitRate@20 / coverage / diversity / novelty and on offline AUC — a genuine multi-objective trade-off, not a regression. `run_eval_compare.sh` runs all five strategies on one ground truth.
+**排序模型（`recsys-offline/train/`）**——两个训练器喂给在线 ONNX 链路，由 `recsys.rank.strategy`（`RANK_STRATEGY` 环境变量）选择，二者在模型缺失/失败时均回退到规则打分：
+- `train_lgbm.py` → `model.onnx`（LightGBM，`strategy=onnx`）：单一稠密输入 `[N,5]`（即 5 个 `FeatureAssembler` 特征）。
+- `train_deepfm.py` → `model_deepfm.onnx` + `rank_schema.json` + `category_vocab.json`（PyTorch DeepFM，`strategy=deepfm`）：**双输入** `dense[N,5]` float + `sparse[N,3]` int64（userId/itemId/category embedding）。在线 `DeepFmRankService` 通过 `SparseFeatureEncoder` 编码稀疏 id，其分桶（`floorMod`）+ category 词表必须与训练器完全一致——这是 embedding 的在线/离线契约，类比于稠密特征的 `FeatureAssembler`。**两个训练器共用一个 `samples.csv`**（gen-samples 输出稠密特征 + 原始 `user_id,item_id,category`）；`train_lgbm` 会忽略原始 id 列。**gen-samples 默认按 as-of（时间点）方式计算特征**，通过 `AsOfFeatureBuilder` 实现——它按 ts 顺序流式处理 ratings，并严格在应用该事件**之前**对每个样本的特征做快照，因此不会有未来/标签信息泄漏到训练中（无需 Redis 的 `feat:*`）。传入 `--leaky` 则改为读取全历史 `feat:*` 聚合（旧行为，仅为评估对比“修复泄漏前/后”的 A/B 而保留；需先运行 `build-features`）。DeepFM 使用**随机**训练/验证切分（id-embedding 模型需要训练集见过每个 id），因此其 AUC 不能与 LightGBM 的时间切分 AUC 比较——请用 `eval` 任务做公平的排序对比。DeepFM 需要 `pip install -r requirements-deepfm.txt`（torch + onnxscript）；导出器被强制为单个自包含的 `.onnx`（无外部 `.data`），因为 Java 从 classpath 以字节数组方式加载它。重新训练后，执行 **`mvn -pl recsys-rank clean install`** 以将模型重新打包进 jar（单纯 `install` 会在 `target/classes` 中留下陈旧资源）。
+- `train_mmoe.py` → `model_mmoe.onnx` + `mmoe_schema.json` + `mmoe_category_vocab.json`（PyTorch **MMoE 多任务 + ESMM**，`strategy=mmoe`）：与 DeepFM 相同的双输入，但**双输出** `ctr[N,1]` + `cvr[N,1]`。在 `samples_mt.csv`（不是 `samples.csv`）上训练，该文件由 `gen-samples-mt` 输出，带**两个标签**——`label_click`（是否有过任何交互）和 `label_like`（评分 ≥4）；负样本是按热度采样的未交互项。ESMM 损失 = `BCE(pCTR, click) + BCE(pCTR·pCVR, like)`，在整个空间上计算（CVR 塔从不直接看到“曝光未点击”，从而消除 CVR 的样本选择偏差）。在线 `MmoeRankService` 读取两个 head 并融合为 `score = pCTR·(cvrBias + cvrWeight·pCVR)`（权重在 `recsys.rank.multi-task` 中，无需重训即可调；`cvrBias=0,cvrWeight=1` ⇒ pCTCVR）。
+- `train_din.py` → `model_din.onnx` + `din_schema.json` + `din_category_vocab.json`（PyTorch **DIN 行为序列 + MMoE head**，`strategy=din`）：**四输入** `dense[N,5]` + `sparse[N,3]` + `seq[N,L]`（item 分桶）+ `seq_len[N]`，双输出 ctr/cvr。候选 item 对用户历史做 target-attention（候选与序列**共享 item embedding 表**），padding 位置通过 `seq_len` 掩码（空序列 ⇒ pooled 向量强制为 0，因此冷用户不会得到垃圾值）。`gen-samples-mt` 为每个样本输出 as-of 行为序列（最近 ≤20 个评分 ≥4 的 item，在当前事件**之前**做快照 = 时间点快照，无泄漏）。在线 `DinRankService` 在请求时**通过 JdbcTemplate** 拉取用户最近 ≤`seqLen` 个评分 ≥4 的 item（每个用户查询一次，在候选间广播），由 `SequenceEncoder` 编码，其固定长度 + 右侧 padding + item 分桶必须与 `train_din.py` 一致（序列的在线/离线契约，类比于 `SparseFeatureEncoder`）。MMoE 与 DIN 二者：随机切分、双输出 ONNX、与 DeepFM 相同的 IR9 / 自包含 `.onnx` 注意事项；二者在模型缺失时均回退到规则打分。`eval` 任务接受 `--rank-strategy=mmoe|din`。注意评估的 ground-truth（评分 ≥4 的留出正样本）**等同于 DeepFM 的单一标签**，因此 DeepFM 在 NDCG/precision 上领先，而多任务模型在 HitRate@20 / coverage / diversity / novelty 以及离线 AUC 上领先——这是真正的多目标权衡，而非退化。`run_eval_compare.sh` 在同一 ground truth 上运行全部五种策略。
 
-**Recall model (`train/train_two_tower.py`)** — a pure-ID two-tower / DSSM for *learned* recall (channel `TWO_TOWER`), complementing the content-based `VECTOR` channel. Trains on the positive `(user_id, item_id)` pairs in `samples.csv` (only label/id/category columns, so as-of vs leaky doesn't matter) with in-batch sampled-softmax. Outputs: (1) `item_tower.csv` — every item's 64-d vector (item tower = itemId+category embeddings), loaded into `item_tower_embedding` by the `import-tower` job; (2) `user_tower.onnx` + `tower_schema.json` into **`recsys-recall`'s** resources (not rank's) — the user tower (userId-bucket embedding). Online `TwoTowerRecaller` loads `user_tower.onnx`, computes the query vector for `user_bucket = floorMod(userId, user_buckets)` (same modulo as training; `user_buckets` from the schema), then does pgvector cosine ANN over `item_tower_embedding`. Item vectors are baked in offline, so online needs no item/category vocab. Same ONNX export caveats as DeepFM (IR9, single self-contained file). After retraining, **`mvn -pl recsys-recall clean install`** to repack `user_tower.onnx`. Degrades gracefully: missing model → channel returns empty, other channels cover. Per-channel `eval --recall-only` shows `TWO_TOWER` topping the learned channels (note: trained on the full period incl. test positives, so absolute numbers are optimistic — same caveat as the CF/vector channels).
+**召回模型（`train/train_two_tower.py`）**——一个纯 ID 的双塔 / DSSM，用于*学习型*召回（通道 `TWO_TOWER`），与基于内容的 `VECTOR` 通道互补。在 `samples.csv` 中的正向 `(user_id, item_id)` 对上训练（仅用 label/id/category 列，因此 as-of 与 leaky 无关），采用批内采样 softmax。输出：(1) `item_tower.csv`——每个 item 的 64 维向量（item 塔 = itemId+category embedding），由 `import-tower` 任务加载到 `item_tower_embedding`；(2) `user_tower.onnx` + `tower_schema.json`，放入 **`recsys-recall`** 的资源（不是 rank 的）——即 user 塔（userId-bucket embedding）。在线 `TwoTowerRecaller` 加载 `user_tower.onnx`，为 `user_bucket = floorMod(userId, user_buckets)` 计算查询向量（与训练相同的取模；`user_buckets` 来自 schema），然后在 `item_tower_embedding` 上做 pgvector 余弦 ANN。item 向量在离线烘焙好，因此在线无需 item/category 词表。与 DeepFM 相同的 ONNX 导出注意事项（IR9，单个自包含文件）。重新训练后，执行 **`mvn -pl recsys-recall clean install`** 以重新打包 `user_tower.onnx`。优雅降级：模型缺失 → 通道返回空，其他通道兜底。逐通道 `eval --recall-only` 显示 `TWO_TOWER` 在学习型通道中居首（注意：在含测试正样本的整个周期上训练，因此绝对数值偏乐观——与 CF/vector 通道相同的注意事项）。
 
-DB schema lives in `recsys-offline/sql/01_schema.sql` and is auto-executed by the postgres container on first boot (mounted to `docker-entrypoint-initdb.d`). To re-run it, drop the `pgdata` volume.
+数据库 schema 位于 `recsys-offline/sql/01_schema.sql`，由 postgres 容器在首次启动时自动执行（挂载到 `docker-entrypoint-initdb.d`）。若要重新执行，删除 `pgdata` 卷。
 
-> Note: there are currently no automated tests in the repo; the `mvn ... test` lines above are the conventions to use when adding them.
+> 注意：仓库当前没有自动化测试；上面的 `mvn ... test` 行是添加测试时应遵循的约定。
 
-## Architecture
+## 架构
 
-**Module layout** — `[app]` = runnable service (port), `[lib]` = computation/domain library (no executable jar):
+**模块布局**——`[app]` = 可运行服务（端口），`[lib]` = 计算/领域库（无可执行 jar）：
 
-- `recsys-common` — shared contracts: interfaces, DTOs (records), constants, Redis keys. **The foundation of parallel development; depended on by everything. Changing it ripples everywhere — broadcast before editing.**
-- `recsys-rec-engine` [app :8081] — orchestration, the main external entry. `GET /api/recommend`; cold-start interest onboarding via `GET/POST /api/user/{id}/interests`.
-- `recsys-gateway` [app :8080] — Spring Cloud Gateway routing.
-- `recsys-behavior` [app :8082] — behavior ingestion. `POST /api/behavior` → Kafka or DB.
-- `recsys-web` [app :8090] — demo frontend.
-- `recsys-offline` [app] — offline jobs: data import, CF batch, embedding backfill, sample generation. `train/` holds Python LightGBM/DeepFM/two-tower → ONNX scripts.
-- `recsys-streaming` [app] — Flink real-time feature job (`RealtimeFeatureJob`), runs on a local embedded MiniCluster (no separate Flink cluster). Consumes Kafka `behavior-events` → realtime hot ZSet `recall:rt_hot` + per-user realtime category prefs `rt:user:{id}` (Hash field=category, value=recent count, TTL'd). `HotRecaller` reads `recall:rt_hot` first, falling back to the offline `recall:hot`. `TagRecaller` blends `rt:user:{id}` into the TAG channel — realtime categories are unioned with the static `app_user.profile` categories and weighted by recent count (`weight = 1 + boost·count/maxCount`), so what the user is engaging with *right now* surfaces in TAG even if their profile doesn't have it yet (toggle `recsys.recall.tag.realtime-enabled`, default on; degrades to static-only if Redis is unavailable). Build a fat jar (`mvn -pl recsys-streaming -am package`) and run via `bash recsys-streaming/run-streaming.sh` (the script adds the Java 21 `--add-opens` flags Flink needs). Requires `docker compose --profile full up -d` (Kafka) and behavior running with `BEHAVIOR_USE_KAFKA=true`.
-- `recsys-recall` / `recsys-rank` / `recsys-feature` / `recsys-embedding` / `recsys-content` / `recsys-user` [lib] — the recall, ranking, feature, embedding, content, and user-profile libraries.
+- `recsys-common` — 共享契约：接口、DTO（record）、常量、Redis key。**并行开发的基础；被一切所依赖。改动它会波及所有地方——编辑前先广播。**
+- `recsys-rec-engine` [app :8081] — 编排，主要的对外入口。`GET /api/recommend`；通过 `GET/POST /api/user/{id}/interests` 进行冷启动兴趣引导；`GET /api/search-ads`（搜索广告：`SearchAdsOrchestrator` 串 query 理解→广告召回→相关性门槛→预算过滤→复用排序模型出 pCTR→校准→eCPM 竞价→GSP 计费→曝光埋点）+ `POST /api/ad/click`（CPC 点击计费）+ `POST /api/ad/conversion`（转化回传）。
+- `recsys-gateway` [app :8080] — Spring Cloud Gateway 路由。
+- `recsys-behavior` [app :8082] — 行为接入。`POST /api/behavior` → Kafka 或 DB。
+- `recsys-web` [app :8090] — 演示前端。
+- `recsys-offline` [app] — 离线任务：数据导入、CF 批处理、embedding 回填、样本生成。`train/` 中放有 Python 的 LightGBM/DeepFM/two-tower → ONNX 脚本。
+- `recsys-streaming` [app] — Flink 实时特征任务（`RealtimeFeatureJob`），运行在本地嵌入式 MiniCluster 上（无需独立的 Flink 集群）。消费 Kafka `behavior-events` → 实时热门 ZSet `recall:rt_hot` + 每用户实时类目偏好 `rt:user:{id}`（Hash，field=category，value=近期计数，带 TTL）。`HotRecaller` 先读 `recall:rt_hot`，回退到离线的 `recall:hot`。`TagRecaller` 把 `rt:user:{id}` 融合进 TAG 通道——实时类目与静态的 `app_user.profile` 类目取并集，并按近期计数加权（`weight = 1 + boost·count/maxCount`），这样用户*当下*正在互动的内容即使其 profile 尚未包含也能在 TAG 中浮现（开关 `recsys.recall.tag.realtime-enabled`，默认开启；Redis 不可用时降级为仅静态）。构建 fat jar（`mvn -pl recsys-streaming -am package`）并通过 `bash recsys-streaming/run-streaming.sh` 运行（该脚本添加了 Flink 所需的 Java 21 `--add-opens` 标志）。需要 `docker compose --profile full up -d`（Kafka）以及以 `BEHAVIOR_USE_KAFKA=true` 运行的 behavior。
+- `recsys-ad` [lib] — 搜索广告库(docs/05,M4–M5):`AdRecallService`(query→ad 关键词倒排/语义/兜底多路召回)、`RelevanceGate`(相关性门槛)、`BiddingService`(eCPM 竞价 + GSP 次价拍卖计费)、`IsotonicCalibrator`(pCTR 保序回归校准,读 Redis `ad:calib:{model}`)、`PacingService`(实时预算熔断 + pacing 平滑)、`AdEventLogger`(`ad_event` 曝光/点击/转化日志)。pCTR **复用** `recsys-rank` 的排序模型(经 rec-engine 编排注入),广告只补"query / 钱 / 校准 / 拍卖"四块净增量。每层优雅降级(关键词路兜底、SEMANTIC_AD 无向量则空、校准缺失退 identity、Redis 挂则不限预算)。
+- `recsys-recall` / `recsys-rank` / `recsys-feature` / `recsys-embedding` / `recsys-content` / `recsys-user` [lib] — 召回、排序、特征、embedding、内容、用户画像库。`recsys-embedding` 有两套 `EmbeddingClient`：`GeminiEmbeddingClient`(默认,联网 REST)与 `LocalBgeEmbeddingClient`(`EMBEDDING_PROVIDER=local`,离线 ONNX——纯 Java `BgeTokenizer`(BERT WordPiece,读 vocab.txt,在线/离线契约同 `SparseFeatureEncoder`)+ onnxruntime 跑 bge-base-en-v1.5(768 维)+ CLS 池化 + L2)。模型由 `recsys-embedding/train/export_bge_onnx.py` 离线导出到文件系统(默认 `~/.recsys/models/...`,体积大不入 git,`BGE_MODEL_PATH`/`BGE_VOCAB_PATH` 可覆盖);缺文件则 `isReady()=false`、抛异常(query 理解 catch 后降级 null)。换 provider = 换向量空间,需全量重灌。
 
-**Monolith-first, microservices-ready.** `RecEngineApplication` uses `@SpringBootApplication(scanBasePackages = "com.recsys")` so the `[lib]` modules' `@Component`/`@RestController` beans are all wired into one process. Module boundaries are already drawn, so splitting into independent services later is cheap. Keep cross-module coupling to the `recsys-common` interfaces.
+**单体优先，微服务就绪。** `RecEngineApplication` 使用 `@SpringBootApplication(scanBasePackages = "com.recsys")`，因此 `[lib]` 模块的 `@Component`/`@RestController` bean 全部被装配进一个进程。模块边界已经划好，后续拆分为独立服务的成本很低。跨模块耦合应限制在 `recsys-common` 接口上。
 
-**Request flow** (`docs/02-架构设计.md` §6): rec-engine checks `cache:rec:{userId}` → cold-start detection + layered A/B assignment → multi-channel recall (channels gated by the experiment's recall variant / cold-start override) merged & deduped (primary source chosen by priority) → rank (assemble features + ONNX or rule scoring, strategy per rank variant) → fuse recall+rank scores, then multiply by a per-channel boost (`recsys.fusion.channel-boost`, default `TAG: 1.5`, multi-hit takes the max) so interest signals like TAG — which carries the realtime `rt:user` category prefs — aren't drowned by HOT/CF popularity in the global normalization → rerank (strategy per rerank variant; cold-start forces strong diversity) → truncate, build reasons, log exposure with bucket tag, cache, return.
+**请求流程**（`docs/02-架构设计.md` §6）：rec-engine 检查 `cache:rec:{userId}` → 冷启动检测 + 分层 A/B 分配 → 多通道召回（通道由实验的 recall 变体 / 冷启动覆盖控制）合并去重（主来源按优先级选取）→ 排序（组装特征 + ONNX 或规则打分，策略按 rank 变体决定）→ 融合 recall+rank 分数，然后乘以逐通道加成（`recsys.fusion.channel-boost`，默认 `TAG: 1.5`，多命中取最大）以使诸如 TAG 这类兴趣信号——它携带实时 `rt:user` 类目偏好——不被 HOT/CF 热度在全局归一化中淹没 → 重排（策略按 rerank 变体决定；冷启动强制强多样性）→ 截断、构建推荐理由、带桶标签记录曝光、缓存、返回。
 
-**Online vs offline split** is the core idea: online path is synchronous and millisecond-latency (only "lookup + light scoring"); the offline/near-line path precomputes the heavy work (embeddings, CF inverted index, trained models) and writes results into the online stores (pgvector, Redis).
+**在线与离线的拆分**是核心思想：在线链路是同步、毫秒级延迟的（只做“查表 + 轻量打分”）；离线/近线链路预计算繁重的工作（embedding、CF 倒排索引、训练好的模型）并将结果写入在线存储（pgvector、Redis）。
 
-## Conventions & contracts (`recsys-common`)
+## 约定与契约（`recsys-common`）
 
-- Core interfaces: `RecallService`, `RankService`, `FeatureService`, `EmbeddingClient`. Implementations live in their respective `[lib]` modules.
-- DTOs and channel/action types are Java `record`s / enums in `dto/`, `recall/`, `rank/`, `constant/`.
-- **All Redis keys go through `RedisKeys`** — no hardcoded key strings scattered across modules.
-- **Embedding dimension is fixed at 768** (`recsys.embedding.dimension`, matching `item_embedding vector(768)`). Different models have different dimensions; mixing them corrupts retrieval. Changing the model means a full re-embedding of the whole corpus; track origin via the `model` column.
-- Tunable params (recall quotas, rank strategy, rerank limits, cache TTL) live in each `[app]`'s `application.yml` under the `recsys.*` tree, env-var overridable (e.g. `RANK_STRATEGY`, `EMBEDDING_PROVIDER`); designed to migrate to Nacos for hot reload.
+- 核心接口：`RecallService`、`RankService`、`FeatureService`、`EmbeddingClient`。实现位于各自的 `[lib]` 模块中。
+- DTO 与 channel/action 类型是 `dto/`、`recall/`、`rank/`、`constant/` 中的 Java `record` / 枚举。
+- **所有 Redis key 都通过 `RedisKeys`**——不要把硬编码的 key 字符串散落在各模块中。
+- **Embedding 维度固定为 768**（`recsys.embedding.dimension`，与 `item_embedding vector(768)` 匹配）。不同模型维度不同；混用会破坏检索。更换模型意味着对整个语料库重新做 embedding；通过 `model` 列追踪来源。
+- 可调参数（召回配额、排序策略、重排上限、缓存 TTL）位于每个 `[app]` 的 `application.yml` 的 `recsys.*` 树下，可通过环境变量覆盖（如 `RANK_STRATEGY`、`EMBEDDING_PROVIDER`）；设计为可迁移到 Nacos 实现热更新。
 
-## Parallel development model
+## 并行开发模型
 
-`PLAN.md` splits Phase 1 into independent Tracks (A: data/embedding, B: recall, C: rank/feature, D: Python training, E: behavior/offline, F: orchestration/gateway/web), each a separate task. The rules:
+`PLAN.md` 将第一阶段拆分为相互独立的 Track（A：数据/embedding，B：召回，C：排序/特征，D：Python 训练，E：行为/离线，F：编排/网关/web），每个为一项独立任务。规则：
 
-1. Touch only the modules your Track owns.
-2. Depend on the `recsys-common` contracts; do not change them unilaterally (broadcast first).
-3. Mock cross-Track downstream dependencies, mark `// TODO` with the real source, and swap in real implementations during Phase 2 integration.
+1. 只改动你所属 Track 拥有的模块。
+2. 依赖 `recsys-common` 契约；不要单方面更改它们（先广播）。
+3. 对跨 Track 的下游依赖打桩（mock），用 `// TODO` 标注真实来源，并在第二阶段集成时换入真实实现。
 
-Design intent that won't be obvious from code: **online and offline feature computation must stay identical** (same feature names, same logic). Feature inconsistency / data leakage is the #1 way recommendation quality collapses after deployment. Every layer is designed to degrade gracefully — hot-recall is the always-on fallback, embedding falls back to local BGE/ONNX, and rank falls back to rule scoring if the ONNX model fails to load.
+代码中不易看出的设计意图：**在线与离线的特征计算必须保持一致**（相同的特征名、相同的逻辑）。特征不一致 / 数据泄漏是部署后推荐质量崩溃的首要原因。每一层都设计为可优雅降级——hot 召回是始终在线的兜底，embedding 回退到本地 BGE/ONNX，排序在 ONNX 模型加载失败时回退到规则打分。

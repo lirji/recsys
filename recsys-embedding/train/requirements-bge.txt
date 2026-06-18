@@ -1,0 +1,6 @@
+# 本地 BGE → ONNX 导出依赖(CPU 即可)。见 export_bge_onnx.py。
+torch>=2.2
+transformers>=4.40
+# 仅 --verify 时需要:
+onnxruntime>=1.17
+numpy>=1.24

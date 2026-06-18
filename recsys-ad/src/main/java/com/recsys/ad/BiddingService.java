@@ -1,0 +1,102 @@
+package com.recsys.ad;
+
+import com.recsys.common.ad.AdCandidate;
+import com.recsys.common.ad.Calibrator;
+import com.recsys.common.ad.SponsoredAd;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 竞价排序(eCPM)+ 拍卖计费(GSP),docs/05 §4.5/§4.6。
+ *
+ * <p><b>排序与计费分离</b>(变现正确性的核心)。排序分(Ad Rank)对齐业界 Quality Score 思路——
+ * 把 query↔ad 相关性纳入排序,避免高出价但不相关的兜底广告盖过相关广告:
+ * <ul>
+ *   <li>有效质量 {@code effQuality = pCTR_calib × quality × relevance};</li>
+ *   <li>排序:{@code eCPM(AdRank) = pacedBid × effQuality},降序,过滤 {@code eCPM < reserve};</li>
+ *   <li>计费:GSP 次价——位置 i 扣费 = 让它保住该位所需的最小出价
+ *       {@code price_i = eCPM_{i+1} / effQuality_i + ε},下限 reserve,上限自身出价。</li>
+ * </ul>
+ *
+ * <p>红线:进 eCPM/计费的是 <b>校准后</b> pCTR(经 {@link Calibrator});pacing 折扣在出价上施加。
+ * 本类无副作用(不扣预算、不写日志)——计费扣减与 ad_event 落库由编排层在拿到结果后执行,便于测试。
+ */
+@Service
+public class BiddingService {
+
+    private final Calibrator calibrator;
+    private final PacingService pacing;
+    private final RelevanceGate gate;
+    private final AdProperties props;
+
+    public BiddingService(Calibrator calibrator, PacingService pacing,
+                          RelevanceGate gate, AdProperties props) {
+        this.calibrator = calibrator;
+        this.pacing = pacing;
+        this.gate = gate;
+        this.props = props;
+    }
+
+    /**
+     * @param candidates    过了相关性门槛 + 预算过滤的候选
+     * @param pctrRawByItem  itemId → 排序模型原始 pCTR(编排层用 RankRouter 算好传入)
+     * @param titleByAd      adId → 创意标题(编排层批量加载)
+     * @param calibModel     校准表标识
+     * @param slots          广告位数
+     * @return 竞得展示的广告,按位次升序;空表示无广告达到 reserve
+     */
+    public List<SponsoredAd> auction(List<AdCandidate> candidates,
+                                     Map<Long, Double> pctrRawByItem,
+                                     Map<Long, String> titleByAd,
+                                     String calibModel,
+                                     int slots) {
+        AdProperties.Auction cfg = props.getAuction();
+        double reserve = cfg.getReservePrice();
+
+        // 1. 算 eCPM(AdRank = pacedBid × pCTR_calib × quality × relevance),过滤低于 reserve
+        List<Scored> scored = new ArrayList<>(candidates.size());
+        for (AdCandidate c : candidates) {
+            double pctrRaw = pctrRawByItem.getOrDefault(c.itemId(), 0.0);
+            double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
+            double pacedBid = c.bid() * pacing.pacingFactor(c.advertiserId());
+            double relevance = gate.relevance(c);
+            double effQuality = pctrCalib * c.quality() * relevance; // 有效质量(含相关性)
+            double ecpm = pacedBid * effQuality;
+            if (ecpm < reserve) {
+                continue;
+            }
+            scored.add(new Scored(c, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, relevance));
+        }
+        // 2. eCPM 降序
+        scored.sort((a, b) -> Double.compare(b.ecpm, a.ecpm));
+
+        // 3. 取 top slots,GSP 次价计费
+        int n = Math.min(slots, scored.size());
+        List<SponsoredAd> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            Scored s = scored.get(i);
+            // 次位 eCPM:末位用 reserve 兜底
+            double nextEcpm = (i + 1 < scored.size()) ? scored.get(i + 1).ecpm : reserve;
+            double charged = s.effQuality <= 0 ? reserve : nextEcpm / s.effQuality + cfg.getPriceIncrement();
+            charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
+            AdCandidate c = s.candidate;
+            out.add(new SponsoredAd(
+                    c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
+                    titleByAd.getOrDefault(c.adId(), ""),
+                    c.channel(), c.bid(), c.quality(), s.relevance,
+                    s.pctrRaw, s.pctrCalib, s.ecpm, charged, i + 1));
+        }
+        return out;
+    }
+
+    private static double clampProb(double p) {
+        return Math.max(0.0, Math.min(1.0, p));
+    }
+
+    private record Scored(AdCandidate candidate, double pacedBid, double pctrRaw,
+                          double pctrCalib, double effQuality, double ecpm, double relevance) {
+    }
+}

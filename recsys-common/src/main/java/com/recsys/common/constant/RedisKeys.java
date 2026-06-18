@@ -68,4 +68,34 @@ public final class RedisKeys {
     public static String exposureBucket(long userId, long itemId) {
         return "expo:" + userId + ":" + itemId;
     }
+
+    // ---------- 搜索广告(docs/05 §3) ----------
+
+    /** 竞价词倒排 ZSet(score=出价):bidword:inv:{keyword}(SeedAdsJob 物化,KW 召回读)。 */
+    public static String bidwordInv(String keyword) {
+        return "bidword:inv:" + keyword;
+    }
+
+    /** 广告主当日已消耗预算 String(计数,元):ad:budget:{advertiserId}:{yyyymmdd}。pacing 实时扣减/熔断。 */
+    public static String adBudget(long advertiserId, String yyyymmdd) {
+        return "ad:budget:" + advertiserId + ":" + yyyymmdd;
+    }
+
+    /** 广告主 pacing 平滑系数 String(PID 输出,出价折扣 (0,1]):ad:pacing:{advertiserId}。 */
+    public static String adPacing(long advertiserId) {
+        return "ad:pacing:" + advertiserId;
+    }
+
+    /**
+     * pCTR 校准表(保序回归分段点 JSON):ad:calib:{model}。
+     * 离线 AdCalibrateJob 拟合写入,在线 Calibrator 查表线性插值;缺失则退化 identity。
+     */
+    public static String adCalib(String model) {
+        return "ad:calib:" + model;
+    }
+
+    /** 广告归因 String(短 TTL):ad:expo:{requestId}:{adId} = "bidwordId;pctrCalib;ecpm;charged;position"。 */
+    public static String adExposure(String requestId, long adId) {
+        return "ad:expo:" + requestId + ":" + adId;
+    }
 }

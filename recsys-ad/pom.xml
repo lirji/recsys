@@ -9,9 +9,9 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>recsys-embedding</artifactId>
-    <name>recsys-embedding</name>
-    <description>向量化服务(库):封装 Gemini Embedding,可降级本地 BGE。Track A。</description>
+    <artifactId>recsys-ad</artifactId>
+    <name>recsys-ad</name>
+    <description>搜索广告(库):广告召回 + 相关性门槛 + eCPM 竞价 + GSP 拍卖计费 + pCTR 校准 + 预算 pacing。M4–M5(docs/05)。</description>
 
     <dependencies>
         <dependency>
@@ -20,26 +20,24 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-json</artifactId>
-        </dependency>
-        <!-- RestClient 调 Gemini REST API -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-web</artifactId>
-        </dependency>
-        <!-- 向量缓存,省 API 额度 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
-        <!-- 本地 BGE 向量化:onnxruntime CPU 推理(provider=local 时启用) -->
         <dependency>
-            <groupId>com.microsoft.onnxruntime</groupId>
-            <artifactId>onnxruntime</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.pgvector</groupId>
+            <artifactId>pgvector</artifactId>
+        </dependency>
+        <!-- 读 ad:calib 校准表 JSON(plain starter 不含 jackson-databind) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
     </dependencies>
 </project>

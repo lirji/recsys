@@ -73,6 +73,31 @@ recsys:
     rec-ttl-seconds: 300
   embedding:
     dimension: 768
+    provider: ${EMBEDDING_PROVIDER:gemini}     # gemini(默认)/ local(本地 BGE ONNX)
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+    # 本地 BGE 兜底(provider=local):模型由 recsys-embedding/train/export_bge_onnx.py 导出
+    local:
+      model-path: ${BGE_MODEL_PATH:${user.home}/.recsys/models/bge-base-en-v1.5/model.onnx}
+      vocab-path: ${BGE_VOCAB_PATH:${user.home}/.recsys/models/bge-base-en-v1.5/vocab.txt}
+      max-seq-len: 256
+      pooling: cls
+  # 搜索广告(docs/05):query→ad 召回 + relevance-gate + eCPM 竞价 + GSP 计费 + 预算 pacing + pCTR 校准
+  ad:
+    slots: 3                       # 广告位数
+    calib-model: ${AD_CALIB_MODEL:deepfm}   # pCTR 校准表标识(对应 ad-calibrate 作业 ad:calib:{model})
+    recall:
+      kw: 200
+      semantic: 100
+      hot: 50
+      relevance-threshold: 0.05    # 相关性门槛,低于则丢弃(广告独有硬过滤)
+      kw-weight: 0.6               # 相关性 = kw-weight·关键词匹配 + sem-weight·query↔ad 余弦
+      sem-weight: 0.4
+    auction:
+      reserve-price: 0.1           # 保留价(元):eCPM 低于此值不展示;GSP 扣费下限
+      price-increment: 0.01        # GSP 次价加价(元)
+    pacing:
+      enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
   cold-start:
     # 行为数 < 阈值且无用户向量 → 冷启动(走类目探索 + 强多样性重排)
     min-behaviors: 5

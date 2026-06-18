@@ -38,6 +38,7 @@
         <module>recsys-query</module>
         <module>recsys-recall</module>
         <module>recsys-rank</module>
+        <module>recsys-ad</module>
         <module>recsys-feature</module>
         <module>recsys-embedding</module>
         <module>recsys-content</module>
@@ -88,6 +89,11 @@
             <dependency>
                 <groupId>com.recsys</groupId>
                 <artifactId>recsys-rank</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-ad</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

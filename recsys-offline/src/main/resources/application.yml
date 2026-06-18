@@ -24,3 +24,9 @@ recsys:
       model: gemini-embedding-001
       # gemini-embedding-001 默认 3072 维;指定 768 输出后需客户端 L2 归一化再算余弦
       output-dimensionality: 768
+    # 本地 BGE 兜底(provider=local):模型由 recsys-embedding/train/export_bge_onnx.py 导出
+    local:
+      model-path: ${BGE_MODEL_PATH:${user.home}/.recsys/models/bge-base-en-v1.5/model.onnx}
+      vocab-path: ${BGE_VOCAB_PATH:${user.home}/.recsys/models/bge-base-en-v1.5/vocab.txt}
+      max-seq-len: 256
+      pooling: cls

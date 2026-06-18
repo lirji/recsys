@@ -42,6 +42,10 @@
         </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
             <artifactId>recsys-feature</artifactId>
         </dependency>
         <dependency>

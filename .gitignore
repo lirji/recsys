@@ -30,3 +30,7 @@ __pycache__/
 # 训练数据与离线产物（由离线作业 / 训练脚本生成，可复现）
 recsys-offline/train/*.csv
 recsys-offline/eval/*.csv
+# 本地 BGE 导出产物（体积大，可由 export_bge_onnx.py 复现；默认导到 ~/.recsys）
+recsys-embedding/train/vocab.txt
+recsys-embedding/train/*.json
+recsys-embedding/train/tokenizer*
