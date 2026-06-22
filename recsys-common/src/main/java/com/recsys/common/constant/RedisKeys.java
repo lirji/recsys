@@ -140,4 +140,15 @@ public final class RedisKeys {
     public static String adOcpc(long advertiserId) {
         return "ad:ocpc:" + advertiserId;
     }
+
+    /**
+     * 延迟转化模型——指数延迟分布的速率 λ(单位 1/天)String:ad:delay:lambda。
+     * 离线 DelayModelJob 从已观测的 (转化时刻 − 点击时刻) 拟合;转化完成曲线 c(e)=1−e^(−λ·e)。
+     * 下游 ad-ocpc 用它做 Horvitz–Thompson 纠偏(每个已观测转化按 1/c(elapsed) 加权,补回尚未到达的转化)。
+     * 缺失则退化为不纠偏(原始转化计数)。
+     */
+    public static final String AD_DELAY_LAMBDA = "ad:delay:lambda";
+
+    /** 延迟转化模型——平均转化延迟(天)String:ad:delay:mean-days(= 1/λ,报表/可读性)。 */
+    public static final String AD_DELAY_MEAN_DAYS = "ad:delay:mean-days";
 }
