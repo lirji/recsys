@@ -64,7 +64,8 @@ public class BiddingService {
                                      Map<Long, String> titleByAd,
                                      String calibModel,
                                      int slots,
-                                     double reserve) {
+                                     double reserve,
+                                     ListwiseExternality.Sim sim) {
         AdProperties.Auction cfg = props.getAuction();
 
         // 1. 算 eCPM(AdRank = pacedBid × pCTR_calib × quality × relevance),过滤低于 reserve
@@ -88,7 +89,14 @@ public class BiddingService {
             }
             scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, rankEcpm, relevance));
         }
-        // 2. 按 Ad Rank(含探索加成)降序
+
+        // 2a. List-wise 外部性(docs/05 §7 M7):整页贪心选择 + 外部性折扣后的 GSP。委托纯函数 ListwiseExternality。
+        AdProperties.Listwise lw = cfg.getListwise();
+        if (lw.isEnabled() && sim != null) {
+            return listwiseAuction(scored, sim, lw, titleByAd, slots, reserve, cfg.getPriceIncrement());
+        }
+
+        // 2b. 逐条 eCPM 降序(默认路径)
         scored.sort((a, b) -> Double.compare(b.rankEcpm, a.rankEcpm));
 
         // 3. 取 top slots,GSP 次价计费(阈值用次位 Ad Rank,除以自身未加成 effQuality → 探索不抬高自身价)
@@ -100,14 +108,38 @@ public class BiddingService {
             double nextRank = (i + 1 < scored.size()) ? scored.get(i + 1).rankEcpm : reserve;
             double charged = s.effQuality <= 0 ? reserve : nextRank / s.effQuality + cfg.getPriceIncrement();
             charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
-            AdCandidate c = s.candidate;
-            out.add(new SponsoredAd(
-                    c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
-                    titleByAd.getOrDefault(c.adId(), ""),
-                    c.channel(), s.effBid, c.quality(), s.relevance,
-                    s.pctrRaw, s.pctrCalib, s.ecpm, charged, i + 1));
+            out.add(toAd(s, titleByAd, charged, i + 1));
         }
         return out;
+    }
+
+    /** List-wise 外部性路径:scored → ListwiseExternality 贪心排版 + 外部性 GSP 定价 → SponsoredAd。 */
+    private List<SponsoredAd> listwiseAuction(List<Scored> scored, ListwiseExternality.Sim sim,
+                                              AdProperties.Listwise lw, Map<Long, String> titleByAd,
+                                              int slots, double reserve, double priceIncrement) {
+        List<ListwiseExternality.Entry> entries = new ArrayList<>(scored.size());
+        for (int i = 0; i < scored.size(); i++) {
+            Scored s = scored.get(i);
+            entries.add(new ListwiseExternality.Entry(
+                    i, s.candidate.itemId(), s.pacedBid, s.effQuality, s.rankEcpm));
+        }
+        List<ListwiseExternality.Placed> placed = ListwiseExternality.select(
+                entries, sim, lw.getExternalityWeight(), lw.getMinRetention(),
+                slots, reserve, priceIncrement);
+        List<SponsoredAd> out = new ArrayList<>(placed.size());
+        for (ListwiseExternality.Placed p : placed) {
+            out.add(toAd(scored.get(p.idx()), titleByAd, p.charged(), p.position()));
+        }
+        return out;
+    }
+
+    private static SponsoredAd toAd(Scored s, Map<Long, String> titleByAd, double charged, int position) {
+        AdCandidate c = s.candidate;
+        return new SponsoredAd(
+                c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
+                titleByAd.getOrDefault(c.adId(), ""),
+                c.channel(), s.effBid, c.quality(), s.relevance,
+                s.pctrRaw, s.pctrCalib, s.ecpm, charged, position);
     }
 
     private static double clampProb(double p) {

@@ -273,6 +273,8 @@ public class AdProperties {
         private double reservePrice = 0.1;
         /** GSP 次高价加价(元),避免与次位完全相等。 */
         private double priceIncrement = 0.01;
+        /** List-wise 外部性(docs/05 §7 M7):整页选择考虑广告间 CTR 蚕食。 */
+        private Listwise listwise = new Listwise();
 
         public double getReservePrice() {
             return reservePrice;
@@ -288,6 +290,53 @@ public class AdProperties {
 
         public void setPriceIncrement(double priceIncrement) {
             this.priceIncrement = priceIncrement;
+        }
+
+        public Listwise getListwise() {
+            return listwise;
+        }
+
+        public void setListwise(Listwise listwise) {
+            this.listwise = listwise;
+        }
+    }
+
+    /**
+     * List-wise 外部性拍卖(docs/05 §7 M7):逐条 eCPM 降序忽略广告间相互影响——相邻同类广告蚕食彼此
+     * CTR。开启后改用贪心整页选择:候选的有效质量按"与已选广告的最大相似度"做衰减(MMR 思路,复用
+     * item_embedding 余弦),再选下一位;GSP 计费在外部性折扣后的分上进行(可审计的 GSP-with-externality
+     * 近似,非完整 VCG)。关闭(默认)则退回逐条 eCPM + GSP,行为完全不变。
+     */
+    public static class Listwise {
+        /** 总开关(默认关:开启会改变竞得集合与计费,需显式启用)。 */
+        private boolean enabled = false;
+        /** 外部性强度 λ∈[0,1]:衰减 = 1 − λ·maxSim。越大越惩罚冗余、越偏多样。 */
+        private double externalityWeight = 0.5;
+        /** 衰减下限:再冗余的广告也至少保留这一比例的有效质量,防完全清零(权重上限 1/此值)。 */
+        private double minRetention = 0.3;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getExternalityWeight() {
+            return externalityWeight;
+        }
+
+        public void setExternalityWeight(double externalityWeight) {
+            this.externalityWeight = externalityWeight;
+        }
+
+        public double getMinRetention() {
+            return minRetention;
+        }
+
+        public void setMinRetention(double minRetention) {
+            this.minRetention = minRetention;
         }
     }
 

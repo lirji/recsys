@@ -130,6 +130,11 @@ recsys:
     auction:
       reserve-price: 0.1           # 保留价(元):eCPM 低于此值不展示;GSP 扣费下限
       price-increment: 0.01        # GSP 次价加价(元)
+      # List-wise 外部性(M7):整页贪心选择,按与已选广告相似度衰减有效质量,治相邻同类广告 CTR 蚕食
+      listwise:
+        enabled: ${AD_LISTWISE_ENABLED:false}   # 默认关(改变竞得集合+计费,需显式启用)
+        externality-weight: 0.5    # λ∈[0,1]:衰减=1−λ·maxSim,越大越惩罚冗余/越偏多样
+        min-retention: 0.3         # 衰减下限:再冗余也保留这一比例有效质量(权重上限 1/此值)
     # oCPC 智能出价(M6):广告主只给 target_cpa,平台 bid=targetCpa·pCVR·k 自动出价(k 由 ad-ocpc 离线拟合)
     ocpc:
       enabled: ${AD_OCPC_ENABLED:true}

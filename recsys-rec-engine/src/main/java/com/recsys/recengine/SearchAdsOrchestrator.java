@@ -1,10 +1,12 @@
 package com.recsys.recengine;
 
+import com.recsys.ad.AdEmbeddingSimilarity;
 import com.recsys.ad.AdEventLogger;
 import com.recsys.ad.AntiFraudService;
 import com.recsys.ad.AdProperties;
 import com.recsys.ad.AdRepository;
 import com.recsys.ad.BiddingService;
+import com.recsys.ad.ListwiseExternality;
 import com.recsys.ad.PacingService;
 import com.recsys.ad.RelevanceGate;
 import com.recsys.common.ad.AdCandidate;
@@ -58,6 +60,7 @@ public class SearchAdsOrchestrator {
     private final MeterRegistry meterRegistry;
     private final com.recsys.recengine.experiment.ExperimentService experimentService;
     private final com.recsys.ad.AntiFraudService antiFraudService;
+    private final AdEmbeddingSimilarity adEmbeddingSimilarity;
 
     public SearchAdsOrchestrator(QueryUnderstandingService queryService,
                                  AdRecallService adRecallService,
@@ -70,7 +73,8 @@ public class SearchAdsOrchestrator {
                                  AdProperties props,
                                  MeterRegistry meterRegistry,
                                  com.recsys.recengine.experiment.ExperimentService experimentService,
-                                 com.recsys.ad.AntiFraudService antiFraudService) {
+                                 com.recsys.ad.AntiFraudService antiFraudService,
+                                 AdEmbeddingSimilarity adEmbeddingSimilarity) {
         this.queryService = queryService;
         this.adRecallService = adRecallService;
         this.relevanceGate = relevanceGate;
@@ -83,6 +87,7 @@ public class SearchAdsOrchestrator {
         this.meterRegistry = meterRegistry;
         this.experimentService = experimentService;
         this.antiFraudService = antiFraudService;
+        this.adEmbeddingSimilarity = adEmbeddingSimilarity;
     }
 
     public SearchAdsResponse searchAds(long userId, String query, int slots, String scene) {
@@ -131,10 +136,16 @@ public class SearchAdsOrchestrator {
                     ? parseDouble(adVariant.getParams().get("reserve-price"), props.getAuction().getReservePrice())
                     : props.getAuction().getReservePrice();
 
-            // 6-8. 校准 → oCPC 自动出价 → eCPM 竞价(含 EE 探索)→ GSP 拍卖计费(reserve 受实验覆盖)
+            // List-wise 外部性(docs/05 §7 M7):开启则按候选 item 预载向量供整页贪心去重蚕食;关闭→null→走逐条 eCPM
+            ListwiseExternality.Sim sim = props.getAuction().getListwise().isEnabled()
+                    ? adEmbeddingSimilarity.forItems(
+                            candidates.stream().map(AdCandidate::itemId).collect(java.util.stream.Collectors.toSet()))
+                    : null;
+
+            // 6-8. 校准 → oCPC 自动出价 → eCPM 竞价(含 EE 探索 + 可选 List-wise 外部性)→ GSP 拍卖计费(reserve 受实验覆盖)
             List<SponsoredAd> ads = biddingService.auction(
                     candidates, rankScores.pctr(), rankScores.pcvr(), ocpcByAd,
-                    titleByAd, props.getCalibModel(), wantSlots, reserve);
+                    titleByAd, props.getCalibModel(), wantSlots, reserve, sim);
 
             // 9. 曝光埋点(异步,带 ad_bucket)。CPC 在点击时扣预算,故此处不扣。
             adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads, adBucket);
