@@ -55,6 +55,7 @@ public class SearchAdsOrchestrator {
     private final RankRouter rankRouter;
     private final AdProperties props;
     private final MeterRegistry meterRegistry;
+    private final com.recsys.recengine.experiment.ExperimentService experimentService;
 
     public SearchAdsOrchestrator(QueryUnderstandingService queryService,
                                  AdRecallService adRecallService,
@@ -65,7 +66,8 @@ public class SearchAdsOrchestrator {
                                  AdRepository adRepository,
                                  RankRouter rankRouter,
                                  AdProperties props,
-                                 MeterRegistry meterRegistry) {
+                                 MeterRegistry meterRegistry,
+                                 com.recsys.recengine.experiment.ExperimentService experimentService) {
         this.queryService = queryService;
         this.adRecallService = adRecallService;
         this.relevanceGate = relevanceGate;
@@ -76,6 +78,7 @@ public class SearchAdsOrchestrator {
         this.rankRouter = rankRouter;
         this.props = props;
         this.meterRegistry = meterRegistry;
+        this.experimentService = experimentService;
     }
 
     public SearchAdsResponse searchAds(long userId, String query, int slots, String scene) {
@@ -117,13 +120,20 @@ public class SearchAdsOrchestrator {
             Map<Long, String> titleByAd = adRepository.titles(adIds);
             Map<Long, AdRepository.OcpcParams> ocpcByAd = adRepository.ocpcParams(adIds);
 
-            // 6-8. 校准 → oCPC 自动出价 → eCPM 竞价 → GSP 拍卖计费
+            // 广告分层 A/B(docs/05):按用户在 ad 层分桶,变体可覆盖 reserve-price 等;ad_bucket 落库供分桶报表
+            var adVariant = experimentService.adVariant(userId);
+            String adBucket = adVariant != null ? adVariant.getName() : "default";
+            double reserve = adVariant != null && adVariant.getParams().containsKey("reserve-price")
+                    ? parseDouble(adVariant.getParams().get("reserve-price"), props.getAuction().getReservePrice())
+                    : props.getAuction().getReservePrice();
+
+            // 6-8. 校准 → oCPC 自动出价 → eCPM 竞价(含 EE 探索)→ GSP 拍卖计费(reserve 受实验覆盖)
             List<SponsoredAd> ads = biddingService.auction(
                     candidates, rankScores.pctr(), rankScores.pcvr(), ocpcByAd,
-                    titleByAd, props.getCalibModel(), wantSlots);
+                    titleByAd, props.getCalibModel(), wantSlots, reserve);
 
-            // 9. 曝光埋点(异步)。CPC 在点击时扣预算,故此处不扣。
-            adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads);
+            // 9. 曝光埋点(异步,带 ad_bucket)。CPC 在点击时扣预算,故此处不扣。
+            adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads, adBucket);
 
             // 观测:填充数 + 潜在营收(eCPM/千次)
             meterRegistry.counter("recsys.ad.fill").increment(ads.size());
@@ -189,5 +199,16 @@ public class SearchAdsOrchestrator {
 
     /** 排序模型产出的 pCTR / pCVR 两张表(pCVR 可能为空)。 */
     private record RankScores(Map<Long, Double> pctr, Map<Long, Double> pcvr) {
+    }
+
+    private static double parseDouble(String s, double def) {
+        if (s == null) {
+            return def;
+        }
+        try {
+            return Double.parseDouble(s.trim());
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 }

@@ -67,8 +67,11 @@ CREATE TABLE IF NOT EXISTS ad_event (
     ecpm          DOUBLE PRECISION,
     charged_price DOUBLE PRECISION,               -- GSP 实际扣费(次高价)
     relevance     DOUBLE PRECISION,               -- query↔ad 相关性(报表/门槛用)
+    ad_bucket     TEXT,                           -- 广告分层 A/B 分桶(变体名,如 base / high-reserve)
     ts            TIMESTAMP DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ad_event_req ON ad_event (request_id);
 CREATE INDEX IF NOT EXISTS idx_ad_event_type_ts ON ad_event (event_type, ts);
+-- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
+ALTER TABLE ad_event ADD COLUMN IF NOT EXISTS ad_bucket TEXT;
 CREATE INDEX IF NOT EXISTS idx_ad_event_ad ON ad_event (ad_id, event_type);

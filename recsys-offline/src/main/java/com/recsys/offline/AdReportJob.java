@@ -118,8 +118,50 @@ public class AdReportJob implements OfflineJob {
                     total.impressions, total.clicks, total.conversions, total.revenue,
                     ctr(total), cvr(total), ecpm(total)));
             w.newLine();
+
+            // 广告分层 A/B:按 ad_bucket 聚合(对比各变体的 CTR/收入/eCPM)
+            reportByBucket(timeFilter, params, w);
         }
         log.info("ad-report 完成,报表已写入 {}", outFile.toAbsolutePath());
+    }
+
+    /** 按 ad_bucket(广告分层 A/B 变体)聚合,日志打印 + 追加到 CSV(position 列写 bucket:&lt;name&gt;)。 */
+    private void reportByBucket(String timeFilter, Object[] params, BufferedWriter w) throws java.io.IOException {
+        String sql =
+                "SELECT COALESCE(i.ad_bucket,'(none)') AS bucket, " +
+                "  COUNT(*) AS impressions, COUNT(clk.ad_id) AS clicks, COUNT(cvt.ad_id) AS conversions, " +
+                "  SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END) AS revenue " +
+                "FROM ad_event i " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CLICK') clk " +
+                "  ON clk.request_id = i.request_id AND clk.ad_id = i.ad_id " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CONVERSION') cvt " +
+                "  ON cvt.request_id = i.request_id AND cvt.ad_id = i.ad_id " +
+                "WHERE i.event_type = 'IMPRESSION'" + timeFilter +
+                " GROUP BY COALESCE(i.ad_bucket,'(none)') ORDER BY bucket";
+        List<String[]> buckets = new ArrayList<>();
+        jdbc.query(sql, params, rs -> {
+            Row r = new Row();
+            r.impressions = rs.getLong("impressions");
+            r.clicks = rs.getLong("clicks");
+            r.conversions = rs.getLong("conversions");
+            r.revenue = rs.getDouble("revenue");
+            buckets.add(new String[]{rs.getString("bucket"),
+                    String.format("%d,%d,%d,%.4f,%.6f,%.6f,%.4f",
+                            r.impressions, r.clicks, r.conversions, r.revenue, ctr(r), cvr(r), ecpm(r))});
+        });
+        if (buckets.size() <= 1) {
+            return;   // 未开广告分层 A/B(只有一个桶/none),不输出分桶段
+        }
+        log.info("---- 广告分层 A/B(按 ad_bucket)----");
+        log.info(String.format("%-16s %12s %8s %8s %10s %8s %8s %10s",
+                "bucket", "impressions", "clicks", "convs", "revenue", "ctr", "cvr", "ecpm"));
+        for (String[] b : buckets) {
+            String[] f = b[1].split(",");
+            log.info(String.format("%-16s %12s %8s %8s %10s %8s %8s %10s",
+                    b[0], f[0], f[1], f[2], f[3], f[4], f[5], f[6]));
+            w.write("bucket:" + b[0] + "," + b[1] + ",");
+            w.newLine();
+        }
     }
 
     private static void logRow(Row r) {

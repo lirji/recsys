@@ -63,9 +63,9 @@ public class BiddingService {
                                      Map<Long, AdRepository.OcpcParams> ocpcByAd,
                                      Map<Long, String> titleByAd,
                                      String calibModel,
-                                     int slots) {
+                                     int slots,
+                                     double reserve) {
         AdProperties.Auction cfg = props.getAuction();
-        double reserve = cfg.getReservePrice();
 
         // 1. 算 eCPM(AdRank = pacedBid × pCTR_calib × quality × relevance),过滤低于 reserve
         List<Scored> scored = new ArrayList<>(candidates.size());

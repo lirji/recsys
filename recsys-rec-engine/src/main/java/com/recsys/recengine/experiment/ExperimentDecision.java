@@ -16,6 +16,8 @@ public final class ExperimentDecision {
     public static final String LAYER_RECALL = "recall";
     public static final String LAYER_RANK = "rank";
     public static final String LAYER_RERANK = "rerank";
+    /** 广告分层 A/B 层名(由广告链路单独消费,不进推荐 bucketTag,见 ExperimentService.adVariant)。 */
+    public static final String LAYER_AD = "ad";
 
     /** layer -> 命中的 variant。 */
     private final Map<String, Chosen> byLayer = new LinkedHashMap<>();

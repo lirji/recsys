@@ -47,22 +47,23 @@ public class AdEventLogger {
     }
 
     /** 异步记录一次搜索的全部广告曝光。 */
-    public void logImpressions(String requestId, String query, long userId, List<SponsoredAd> ads) {
+    public void logImpressions(String requestId, String query, long userId, List<SponsoredAd> ads, String adBucket) {
         if (ads == null || ads.isEmpty()) {
             return;
         }
         executor.submit(() -> {
-            insertImpressions(requestId, query, userId, ads);
+            insertImpressions(requestId, query, userId, ads, adBucket);
             attribute(requestId, ads);
         });
     }
 
-    private void insertImpressions(String requestId, String query, long userId, List<SponsoredAd> ads) {
+    private void insertImpressions(String requestId, String query, long userId,
+                                   List<SponsoredAd> ads, String adBucket) {
         try {
             jdbc.batchUpdate(
                     "INSERT INTO ad_event(request_id,query,user_id,ad_id,bidword_id,position,event_type," +
-                    "pctr,pctr_calib,ecpm,charged_price,relevance) " +
-                    "VALUES(?,?,?,?,?,?, 'IMPRESSION', ?,?,?,?,?)",
+                    "pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket) " +
+                    "VALUES(?,?,?,?,?,?, 'IMPRESSION', ?,?,?,?,?,?)",
                     new BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -78,6 +79,7 @@ public class AdEventLogger {
                             ps.setDouble(9, a.ecpm());
                             ps.setDouble(10, a.chargedPrice());
                             ps.setDouble(11, a.relevance());
+                            ps.setString(12, adBucket);
                         }
 
                         @Override

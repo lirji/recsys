@@ -195,6 +195,19 @@ recsys:
             params:
               strategy: mmr
               lambda: "0.7"
+      # 广告分层 A/B(docs/05):由广告链路单独消费(不进推荐 bucketTag);变体覆盖 reserve-price 等,
+      # ad_event.ad_bucket 落库,ad-report 按桶对比 CTR/收入/eCPM。
+      ad:
+        salt: ad-2026a
+        variants:
+          - name: base
+            weight: 50
+            params:
+              reserve-price: "0.05"
+          - name: high-reserve
+            weight: 50
+            params:
+              reserve-price: "0.15"
 
 management:
   endpoints:

@@ -29,6 +29,9 @@ public class ExperimentService {
         ExperimentDecision decision = new ExperimentDecision();
         for (var entry : props.getLayers().entrySet()) {
             String layer = entry.getKey();
+            if (ExperimentDecision.LAYER_AD.equals(layer)) {
+                continue;   // 广告层由广告链路单独分桶(见 adVariant),不混入推荐 bucketTag
+            }
             ExperimentProperties.Layer cfg = entry.getValue();
             List<ExperimentProperties.Variant> variants = cfg.getVariants();
             if (variants == null || variants.isEmpty()) {
@@ -38,6 +41,18 @@ public class ExperimentService {
             decision.put(layer, chosen.getName(), chosen.getParams());
         }
         return decision;
+    }
+
+    /**
+     * 广告分层 A/B(docs/05):为用户在 {@code ad} 层确定性分桶,返回命中变体(name + params,
+     * 如 {@code reserve-price})。未配置 {@code ad} 层或无变体 → 返回 null(广告链路用全局默认)。
+     */
+    public ExperimentProperties.Variant adVariant(long userId) {
+        ExperimentProperties.Layer cfg = props.getLayers().get(ExperimentDecision.LAYER_AD);
+        if (cfg == null || cfg.getVariants() == null || cfg.getVariants().isEmpty()) {
+            return null;
+        }
+        return pick(userId, cfg, cfg.getVariants());
     }
 
     private ExperimentProperties.Variant pick(long userId,
