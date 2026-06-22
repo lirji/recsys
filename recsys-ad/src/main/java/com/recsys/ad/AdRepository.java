@@ -147,6 +147,76 @@ public class AdRepository {
     }
 
     /**
+     * U2A 定向召回(docs/05 §4.2):用户长期兴趣向量 {@code user_embedding} → {@code ad_embedding} 余弦 ANN。
+     * query 无关的个性化补充——即使无 query / query 向量缺失,也能按用户画像定向出广告。
+     * recallScore=余弦相似度,bid 取该广告竞价词最高出价(无则 0)。用户无向量(新用户)→ 返回空,交由其他路兜底。
+     */
+    public List<AdCandidate> u2a(long userId, int limit) {
+        float[] userVec = loadUserVector(userId);
+        if (userVec == null) {
+            return List.of();
+        }
+        try {
+            PGvector pv = new PGvector(userVec);
+            return jdbc.query(
+                    "SELECT a.ad_id, a.item_id, a.advertiser_id, a.quality_score, " +
+                    "       1 - (e.embedding <=> ?) AS sim, " +
+                    "       COALESCE((SELECT MAX(b.bid) FROM bidword b WHERE b.ad_id = a.ad_id), 0) AS bid " +
+                    "FROM ad_embedding e " +
+                    "JOIN ad a ON a.ad_id = e.ad_id AND a.status = 'active' " +
+                    "JOIN advertiser adv ON adv.advertiser_id = a.advertiser_id AND adv.status <> 'paused' " +
+                    "ORDER BY e.embedding <=> ? LIMIT ?",
+                    ps -> {
+                        ps.setObject(1, pv);
+                        ps.setObject(2, pv);
+                        ps.setInt(3, limit);
+                    },
+                    (rs, n) -> new AdCandidate(
+                            rs.getLong("ad_id"), rs.getLong("item_id"), rs.getLong("advertiser_id"), 0L,
+                            rs.getDouble("sim"), AdChannel.U2A,
+                            rs.getDouble("bid"), rs.getDouble("quality_score")));
+        } catch (Exception e) {
+            log.warn("U2A 广告召回失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 读用户长期兴趣向量(口径同推荐 VECTOR 通道)。PGvector 类型未注册时降级文本解析;
+     * 新用户/无向量返回 null。
+     */
+    private float[] loadUserVector(long userId) {
+        try {
+            List<PGvector> rows = jdbc.query(
+                    "SELECT embedding FROM user_embedding WHERE user_id=?",
+                    (rs, n) -> (PGvector) rs.getObject("embedding"), userId);
+            if (rows.isEmpty() || rows.get(0) == null) {
+                return null;
+            }
+            return rows.get(0).toArray();
+        } catch (Exception e) {
+            log.debug("读取 user_embedding 失败,尝试文本解析: {}", e.getMessage());
+            try {
+                List<String> rows = jdbc.query(
+                        "SELECT embedding::text FROM user_embedding WHERE user_id=?",
+                        (rs, n) -> rs.getString(1), userId);
+                if (rows.isEmpty() || rows.get(0) == null) {
+                    return null;
+                }
+                String[] parts = rows.get(0).replace("[", "").replace("]", "").split(",");
+                float[] v = new float[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    v[i] = Float.parseFloat(parts[i].trim());
+                }
+                return v;
+            } catch (Exception ex) {
+                log.debug("文本解析 user_embedding 也失败: {}", ex.getMessage());
+                return null;
+            }
+        }
+    }
+
+    /**
      * 兜底召回:按 quality × 最高出价(eCPM 上界近似)取头部活跃广告,保填充率。
      */
     public List<AdCandidate> hot(int limit) {

@@ -16,6 +16,7 @@ import java.util.List;
  *   <li>KW_EXACT:词项精确命中竞价词 = 强相关(kwMatch=1.0);</li>
  *   <li>KW_BROAD:改写/同义命中 = 次强(kwMatch=0.7);</li>
  *   <li>SEMANTIC_AD:query↔ad 余弦(召回分本身)= 语义相关;</li>
+ *   <li>U2A:用户长期向量↔ad 余弦(召回分本身)= 个性化定向相关(query 无关,以用户兴趣为相关性依据);</li>
  *   <li>HOT_AD:兜底填充路,豁免门槛(给相关性下限,保填充率)。</li>
  * </ul>
  * relevance = kwWeight·kwMatch + semWeight·cosine,低于阈值丢弃。
@@ -40,7 +41,7 @@ public class RelevanceGate {
             case KW_BROAD -> 0.7;
             default -> 0.0;
         };
-        double cosine = c.channel() == AdChannel.SEMANTIC_AD
+        double cosine = (c.channel() == AdChannel.SEMANTIC_AD || c.channel() == AdChannel.U2A)
                 ? Math.max(0.0, Math.min(1.0, c.recallScore())) : 0.0;
         double rel = r.getKwWeight() * kwMatch + r.getSemWeight() * cosine;
         return Math.max(0.0, Math.min(1.0, rel));

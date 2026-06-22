@@ -29,6 +29,8 @@ import java.util.Set;
  *       (自包含 member,见 {@link BidwordInvCodec}),Redis 整体不可用/空 → 回退 {@link AdRepository#kwByDb}。</li>
  *   <li><b>SEMANTIC_AD</b>:query 向量 → ad_embedding ANN。{@code query.embedding} 为 null(当前 Gemini 403)
  *       时直接跳过,不报错。</li>
+ *   <li><b>U2A</b>:用户长期兴趣向量({@code user_embedding})→ ad_embedding ANN,query 无关的个性化定向补充。
+ *       新用户/无向量时跳过。</li>
  *   <li><b>HOT_AD</b>:高 quality×bid 兜底,保填充率。</li>
  * </ul>
  *
@@ -75,7 +77,14 @@ public class JdbcAdRecallService implements AdRecallService {
             }
         }
 
-        // 3. 兜底路
+        // 3. U2A 定向路(用户长期向量 → ad_embedding,query 无关的个性化补充)
+        if (ctx.userId() > 0 && ctx.isEnabled(AdChannel.U2A)) {
+            for (AdCandidate c : repo.u2a(ctx.userId(), props.getRecall().getU2a())) {
+                mergeKeep(merged, c);
+            }
+        }
+
+        // 4. 兜底路
         if (ctx.isEnabled(AdChannel.HOT_AD)) {
             for (AdCandidate c : repo.hot(props.getRecall().getHot())) {
                 mergeKeep(merged, c);

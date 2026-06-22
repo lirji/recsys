@@ -211,6 +211,8 @@ public class AdProperties {
     public static class Recall {
         private int kw = 200;
         private int semantic = 100;
+        /** U2A 定向召回配额(用户长期向量 → ad_embedding ANN)。 */
+        private int u2a = 80;
         private int hot = 50;
         /** 相关性门槛:低于此值的广告直接丢弃(广告独有硬过滤,空位也比不相关强)。 */
         private double relevanceThreshold = 0.05;
@@ -232,6 +234,14 @@ public class AdProperties {
 
         public void setSemantic(int semantic) {
             this.semantic = semantic;
+        }
+
+        public int getU2a() {
+            return u2a;
+        }
+
+        public void setU2a(int u2a) {
+            this.u2a = u2a;
         }
 
         public int getHot() {

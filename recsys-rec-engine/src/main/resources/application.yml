@@ -123,6 +123,7 @@ recsys:
     recall:
       kw: 200
       semantic: 100
+      u2a: 80                      # U2A 定向配额:用户长期向量 → ad_embedding ANN(query 无关的个性化补充)
       hot: 50
       relevance-threshold: 0.05    # 相关性门槛,低于则丢弃(广告独有硬过滤)
       kw-weight: 0.6               # 相关性 = kw-weight·关键词匹配 + sem-weight·query↔ad 余弦

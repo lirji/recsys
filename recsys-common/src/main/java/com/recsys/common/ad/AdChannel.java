@@ -12,8 +12,10 @@ public enum AdChannel {
     KW_BROAD(1),
     /** query 向量 → ad_embedding 余弦 ANN(embedding 不可用时降级空)。 */
     SEMANTIC_AD(2),
+    /** 用户长期向量(user_embedding)→ ad_embedding 余弦 ANN,query 无关的个性化定向补充(无用户向量时降级空)。 */
+    U2A(3),
     /** 高质量/高出价广告兜底(永远在线,保填充率)。 */
-    HOT_AD(3);
+    HOT_AD(4);
 
     private final int priority;
 
