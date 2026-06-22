@@ -32,16 +32,19 @@ public class BiddingService {
     private final RelevanceGate gate;
     private final OcpcBidder ocpcBidder;
     private final ExplorationService explorer;
+    private final QualityScoreService qualityScore;
     private final AdProperties props;
 
     public BiddingService(Calibrator calibrator, PacingService pacing,
                           RelevanceGate gate, OcpcBidder ocpcBidder,
-                          ExplorationService explorer, AdProperties props) {
+                          ExplorationService explorer, QualityScoreService qualityScore,
+                          AdProperties props) {
         this.calibrator = calibrator;
         this.pacing = pacing;
         this.gate = gate;
         this.ocpcBidder = ocpcBidder;
         this.explorer = explorer;
+        this.qualityScore = qualityScore;
         this.props = props;
     }
 
@@ -80,14 +83,16 @@ public class BiddingService {
                     ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), c.advertiserId(), pcvr);
             double pacedBid = effBid * pacing.pacingFactor(c.advertiserId());
             double relevance = gate.relevance(c);
-            double effQuality = pctrCalib * c.quality() * relevance; // 有效质量(含相关性)
+            // 精细化质量度(M7):有数据的广告用 ad-quality 算好的数据驱动分,缺失退广告自带 quality_score
+            double quality = qualityScore.refined(c.adId(), c.quality());
+            double effQuality = pctrCalib * quality * relevance; // 有效质量(含相关性)
             double ecpm = pacedBid * effQuality;
             // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 effQuality(守红线)
             double rankEcpm = ecpm * explorer.boost(c.adId());
             if (rankEcpm < reserve) {
                 continue;
             }
-            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, rankEcpm, relevance));
+            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, quality, effQuality, ecpm, rankEcpm, relevance));
         }
 
         // 2a. List-wise 外部性(docs/05 §7 M7):整页贪心选择 + 外部性折扣后的 GSP。委托纯函数 ListwiseExternality。
@@ -138,7 +143,7 @@ public class BiddingService {
         return new SponsoredAd(
                 c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
                 titleByAd.getOrDefault(c.adId(), ""),
-                c.channel(), s.effBid, c.quality(), s.relevance,
+                c.channel(), s.effBid, s.quality, s.relevance,   // quality = 进 eCPM 的精细化质量度(审计一致)
                 s.pctrRaw, s.pctrCalib, s.ecpm, charged, position);
     }
 
@@ -147,6 +152,7 @@ public class BiddingService {
     }
 
     private record Scored(AdCandidate candidate, double effBid, double pacedBid, double pctrRaw,
-                          double pctrCalib, double effQuality, double ecpm, double rankEcpm, double relevance) {
+                          double pctrCalib, double quality, double effQuality, double ecpm,
+                          double rankEcpm, double relevance) {
     }
 }

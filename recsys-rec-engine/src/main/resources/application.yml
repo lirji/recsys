@@ -162,6 +162,9 @@ recsys:
       max-clicks-per-minute: 20    # 同用户每分钟有效点击上限,超出判机器流量
     pacing:
       enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
+    # 精细化质量度(M7):用离线 ad-quality 算的数据驱动质量度(ad:quality:{adId})替换随机基线;缺失退基线
+    quality:
+      enabled: ${AD_QUALITY_ENABLED:true}
   cold-start:
     # 行为数 < 阈值且无用户向量 → 冷启动(走类目探索 + 强多样性重排)
     min-behaviors: 5

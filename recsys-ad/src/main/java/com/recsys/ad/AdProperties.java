@@ -16,6 +16,7 @@ public class AdProperties {
     private final Freq freq = new Freq();
     private final Exploration exploration = new Exploration();
     private final AntiFraud antiFraud = new AntiFraud();
+    private final Quality quality = new Quality();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -51,6 +52,27 @@ public class AdProperties {
 
     public AntiFraud getAntiFraud() {
         return antiFraud;
+    }
+
+    public Quality getQuality() {
+        return quality;
+    }
+
+    /**
+     * 精细化质量度(docs/05 §7 M7)。在线 {@link QualityScoreService} 用离线 {@code ad-quality} 作业算好的
+     * 数据驱动质量度(Redis {@code ad:quality:{adId}})替换随机基线 {@code ad.quality_score};缺失退基线。
+     */
+    public static class Quality {
+        /** 总开关。关闭 → 一律用广告自带 quality_score(等同 M7 之前)。 */
+        private boolean enabled = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     /**

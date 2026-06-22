@@ -151,4 +151,13 @@ public final class RedisKeys {
 
     /** 延迟转化模型——平均转化延迟(天)String:ad:delay:mean-days(= 1/λ,报表/可读性)。 */
     public static final String AD_DELAY_MEAN_DAYS = "ad:delay:mean-days";
+
+    /**
+     * 精细化质量度 String(eCPM 乘子,围绕 1.0):ad:quality:{adId}(docs/05 §7 M7)。
+     * 离线 QualityScoreJob 从 {@code ad_event} 聚合相关性/经验 CTR/CVR 三因子融合写入(替代随机基线 quality_score),
+     * 在线 {@code QualityScoreService} 查表;缺失则退广告自带 {@code ad.quality_score}(不引入噪声)。
+     */
+    public static String adQuality(long adId) {
+        return "ad:quality:" + adId;
+    }
 }
