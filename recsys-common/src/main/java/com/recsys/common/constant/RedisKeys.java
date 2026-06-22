@@ -104,6 +104,16 @@ public final class RedisKeys {
         return "ad:expo:" + requestId + ":" + adId;
     }
 
+    /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
+    public static String adFreq(long userId, long adId, String yyyymmdd) {
+        return "ad:freq:" + userId + ":" + adId + ":" + yyyymmdd;
+    }
+
+    /** 频控:用户当日某广告主曝光次数 String(带 TTL):ad:freq:adv:{userId}:{advertiserId}:{yyyymmdd}。 */
+    public static String adFreqAdvertiser(long userId, long advertiserId, String yyyymmdd) {
+        return "ad:freq:adv:" + userId + ":" + advertiserId + ":" + yyyymmdd;
+    }
+
     /**
      * oCPC 出价调节系数 String(>0,默认 1.0):ad:ocpc:{advertiserId}。
      * 离线 OcpcCalibrateJob 按"实际 CPA vs 目标 CPA"反馈控制拟合写入,在线 OcpcBidder 查表;

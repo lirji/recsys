@@ -135,6 +135,16 @@ recsys:
       enabled: ${AD_OCPC_ENABLED:true}
       default-pcvr: 0.1            # 排序模型(mmoe/din)未给 pCVR 时的兜底先验转化率
       max-bid: 0.0                 # 自动出价上限(元);<=0 不封顶
+    # 混排 Ad Load(docs/05 §4.8):/api/feed 把广告按位次/密度混入自然结果
+    ad-load:
+      enabled: ${AD_LOAD_ENABLED:true}
+      slots: [2, 6, 10]            # 广告插入的信息流位次(1 基)
+      max-ads: 3                   # 单次信息流最多广告数
+    # 频控:同用户当日同广告/同广告主曝光上限(防骚扰;Redis 不可用则不限频)
+    freq:
+      enabled: ${AD_FREQ_ENABLED:true}
+      per-ad: 3
+      per-advertiser: 8
     pacing:
       enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
   cold-start:

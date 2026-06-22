@@ -12,6 +12,8 @@ public class AdProperties {
     private final Auction auction = new Auction();
     private final Pacing pacing = new Pacing();
     private final Ocpc ocpc = new Ocpc();
+    private final AdLoad adLoad = new AdLoad();
+    private final Freq freq = new Freq();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -31,6 +33,86 @@ public class AdProperties {
 
     public Ocpc getOcpc() {
         return ocpc;
+    }
+
+    public AdLoad getAdLoad() {
+        return adLoad;
+    }
+
+    public Freq getFreq() {
+        return freq;
+    }
+
+    /**
+     * 混排 Ad Load(docs/05 §4.8):广告以何位置/密度插入自然推荐结果。
+     */
+    public static class AdLoad {
+        /** 总开关。关闭则 /api/feed 只出自然结果。 */
+        private boolean enabled = true;
+        /** 广告插入的位次(1 基,信息流位置);如 [2,6,10] 表示第 2/6/10 位放广告。 */
+        private java.util.List<Integer> slots = java.util.List.of(2, 6, 10);
+        /** 单次信息流最多插入广告数(Ad Load 上限)。 */
+        private int maxAds = 3;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public java.util.List<Integer> getSlots() {
+            return slots;
+        }
+
+        public void setSlots(java.util.List<Integer> slots) {
+            this.slots = slots;
+        }
+
+        public int getMaxAds() {
+            return maxAds;
+        }
+
+        public void setMaxAds(int maxAds) {
+            this.maxAds = maxAds;
+        }
+    }
+
+    /**
+     * 频控(docs/05 §4.8):同一用户当日对同广告 / 同广告主的曝光上限,防骚扰。
+     */
+    public static class Freq {
+        /** 总开关。关闭(或 Redis 不可用)则不限频。 */
+        private boolean enabled = true;
+        /** 同用户当日同一广告最多曝光次数。 */
+        private int perAd = 3;
+        /** 同用户当日同一广告主最多曝光次数。 */
+        private int perAdvertiser = 8;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getPerAd() {
+            return perAd;
+        }
+
+        public void setPerAd(int perAd) {
+            this.perAd = perAd;
+        }
+
+        public int getPerAdvertiser() {
+            return perAdvertiser;
+        }
+
+        public void setPerAdvertiser(int perAdvertiser) {
+            this.perAdvertiser = perAdvertiser;
+        }
     }
 
     public String getCalibModel() {

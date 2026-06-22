@@ -1,5 +1,6 @@
 package com.recsys.recengine;
 
+import com.recsys.common.ad.BlendedFeedResponse;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.dto.RecommendRequest;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,16 +15,20 @@ import org.springframework.web.bind.annotation.RestController;
  *       GSP 计费后的赞助广告;与自然推荐 {@code /api/recommend} 并存。</li>
  *   <li>{@code POST /api/ad/click} —— 点击回传,CPC 扣预算 + 落 CLICK。</li>
  *   <li>{@code POST /api/ad/conversion} —— 转化回传(advertiser),落 CONVERSION。</li>
+ *   <li>{@code GET /api/feed?q=&userId=&size=&scene=} —— <b>混排信息流</b>:自然推荐 + 赞助广告
+ *       按 Ad Load 规则(位次/密度 + 频控)混排(docs/05 §4.8)。</li>
  * </ul>
- * 点击/转化都需带搜索响应里的 {@code requestId} 做计费归因。
+ * 点击/转化都需带搜索/信息流响应里的 {@code requestId} 做计费归因。
  */
 @RestController
 public class SearchAdsController {
 
     private final SearchAdsOrchestrator orchestrator;
+    private final FeedOrchestrator feedOrchestrator;
 
-    public SearchAdsController(SearchAdsOrchestrator orchestrator) {
+    public SearchAdsController(SearchAdsOrchestrator orchestrator, FeedOrchestrator feedOrchestrator) {
         this.orchestrator = orchestrator;
+        this.feedOrchestrator = feedOrchestrator;
     }
 
     @GetMapping("/api/search-ads")
@@ -33,6 +38,16 @@ public class SearchAdsController {
             @RequestParam(required = false, defaultValue = "0") int slots,
             @RequestParam(required = false, defaultValue = RecommendRequest.DEFAULT_SCENE) String scene) {
         return orchestrator.searchAds(userId, q, slots, scene);
+    }
+
+    /** 混排信息流:自然结果 + 广告按 Ad Load 混排(广告带"赞助"标记)。 */
+    @GetMapping("/api/feed")
+    public BlendedFeedResponse feed(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "0") long userId,
+            @RequestParam(required = false, defaultValue = "0") int size,
+            @RequestParam(required = false) String scene) {
+        return feedOrchestrator.feed(userId, q, size, scene);
     }
 
     @PostMapping("/api/ad/click")
