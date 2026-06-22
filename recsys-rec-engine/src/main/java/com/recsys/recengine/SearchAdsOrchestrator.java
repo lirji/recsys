@@ -1,6 +1,7 @@
 package com.recsys.recengine;
 
 import com.recsys.ad.AdEventLogger;
+import com.recsys.ad.AntiFraudService;
 import com.recsys.ad.AdProperties;
 import com.recsys.ad.AdRepository;
 import com.recsys.ad.BiddingService;
@@ -56,6 +57,7 @@ public class SearchAdsOrchestrator {
     private final AdProperties props;
     private final MeterRegistry meterRegistry;
     private final com.recsys.recengine.experiment.ExperimentService experimentService;
+    private final com.recsys.ad.AntiFraudService antiFraudService;
 
     public SearchAdsOrchestrator(QueryUnderstandingService queryService,
                                  AdRecallService adRecallService,
@@ -67,7 +69,8 @@ public class SearchAdsOrchestrator {
                                  RankRouter rankRouter,
                                  AdProperties props,
                                  MeterRegistry meterRegistry,
-                                 com.recsys.recengine.experiment.ExperimentService experimentService) {
+                                 com.recsys.recengine.experiment.ExperimentService experimentService,
+                                 com.recsys.ad.AntiFraudService antiFraudService) {
         this.queryService = queryService;
         this.adRecallService = adRecallService;
         this.relevanceGate = relevanceGate;
@@ -79,6 +82,7 @@ public class SearchAdsOrchestrator {
         this.props = props;
         this.meterRegistry = meterRegistry;
         this.experimentService = experimentService;
+        this.antiFraudService = antiFraudService;
     }
 
     public SearchAdsResponse searchAds(long userId, String query, int slots, String scene) {
@@ -154,17 +158,28 @@ public class SearchAdsOrchestrator {
     }
 
     /**
-     * 记录点击 + CPC 计费:落 CLICK 行,按该次曝光算好的 GSP 价扣广告主预算。
-     * 找不到归因(过期等)则只落点击不扣费(宁可少扣不乱扣)。
+     * 记录点击 + CPC 计费,带<b>反作弊</b>(docs/05 §6):
+     * <ol>
+     *   <li>{@link AntiFraudService} 判去重/频次;</li>
+     *   <li>点击须能归因到真实曝光({@link AdEventLogger#readAttribution} 非空)。</li>
+     * </ol>
+     * 任一不过 → 落 {@code INVALID_CLICK}(不进 CTR/计费)+ 打点;有效 → 落 {@code CLICK} 并按 GSP 价扣预算。
      */
     public void recordClick(String requestId, long adId, long userId) {
-        adEventLogger.logFeedback(requestId, adId, userId, "CLICK");
+        AntiFraudService.Verdict verdict = antiFraudService.check(requestId, adId, userId);
         AdEventLogger.ClickAttribution attr = adEventLogger.readAttribution(requestId, adId);
-        if (attr != null) {
+        String reason = !verdict.valid() ? verdict.reason() : (attr == null ? "no_impression" : "");
+        boolean valid = reason.isEmpty();
+
+        adEventLogger.logFeedback(requestId, adId, userId, valid ? "CLICK" : "INVALID_CLICK");
+        if (valid) {
             pacingService.charge(attr.advertiserId(), attr.chargedPrice());
             meterRegistry.counter("recsys.ad.click").increment();
             meterRegistry.counter("recsys.ad.revenue.cents")
                     .increment(Math.round(attr.chargedPrice() * 100));
+        } else {
+            meterRegistry.counter("recsys.ad.invalid_click", "reason", reason).increment();
+            log.debug("无效点击拦截 req={} ad={} user={} reason={}", requestId, adId, userId, reason);
         }
     }
 

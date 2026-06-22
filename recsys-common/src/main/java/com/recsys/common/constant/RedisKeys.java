@@ -104,6 +104,16 @@ public final class RedisKeys {
         return "ad:expo:" + requestId + ":" + adId;
     }
 
+    /** 反作弊去重:某次曝光的点击是否已计费 String(带 TTL,setIfAbsent):ad:clicked:{requestId}:{adId}。 */
+    public static String adClicked(String requestId, long adId) {
+        return "ad:clicked:" + requestId + ":" + adId;
+    }
+
+    /** 反作弊频次:用户每分钟点击数 String(带 TTL):ad:clk:rate:{userId}:{yyyyMMddHHmm}。 */
+    public static String adClickRate(long userId, String yyyyMMddHHmm) {
+        return "ad:clk:rate:" + userId + ":" + yyyyMMddHHmm;
+    }
+
     /** 广告累计统计 String("imp,clk"):ad:stats:{adId}(离线 AdExploreStatsJob 物化,EE 探索读)。 */
     public static String adStats(long adId) {
         return "ad:stats:" + adId;

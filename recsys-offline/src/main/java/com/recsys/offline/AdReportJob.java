@@ -98,9 +98,11 @@ public class AdReportJob implements OfflineJob {
         Path outFile = Path.of(OUT_DIR, "ad-report-" + ts + ".csv");
         Files.createDirectories(outFile.getParent());
 
-        log.info(String.format("---- 广告变现报表(曝光 %d,点击 %d,转化 %d,收入 %.2f 元,eCPM %.2f,CTR %.4f)----",
+        long invalidClicks = countInvalidClicks(timeFilter, params);
+        log.info(String.format("---- 广告变现报表(曝光 %d,点击 %d,转化 %d,收入 %.2f 元,eCPM %.2f,CTR %.4f;"
+                        + "反作弊拦截无效点击 %d)----",
                 total.impressions, total.clicks, total.conversions, total.revenue,
-                ecpm(total), ctr(total)));
+                ecpm(total), ctr(total), invalidClicks));
         log.info(String.format("%-8s %12s %8s %8s %10s %8s %8s %10s",
                 "position", "impressions", "clicks", "convs", "revenue", "ctr", "cvr", "ecpm"));
         try (BufferedWriter w = Files.newBufferedWriter(outFile, StandardCharsets.UTF_8)) {
@@ -168,6 +170,18 @@ public class AdReportJob implements OfflineJob {
         log.info(String.format("%-8d %12d %8d %8d %10.2f %8.4f %8.4f %10.2f",
                 r.position, r.impressions, r.clicks, r.conversions, r.revenue,
                 ctr(r), cvr(r), ecpm(r)));
+    }
+
+    /** 反作弊拦截的无效点击数(event_type=INVALID_CLICK),供报表展示风控效果。 */
+    private long countInvalidClicks(String timeFilter, Object[] params) {
+        try {
+            Long n = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM ad_event i WHERE i.event_type='INVALID_CLICK'" + timeFilter,
+                    Long.class, params);
+            return n == null ? 0 : n;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private static double ctr(Row r) {

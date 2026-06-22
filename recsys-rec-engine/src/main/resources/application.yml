@@ -150,6 +150,10 @@ recsys:
       enabled: ${AD_EXPLORE_ENABLED:true}
       coef: 0.5                    # UCB 系数,越大探索越激进
       max-boost: 3.0               # 探索加成上限
+    # 反作弊:无效点击过滤(去重 + 频次),守计费公平;无效点击落 INVALID_CLICK 不计费
+    anti-fraud:
+      enabled: ${AD_ANTIFRAUD_ENABLED:true}
+      max-clicks-per-minute: 20    # 同用户每分钟有效点击上限,超出判机器流量
     pacing:
       enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
   cold-start:

@@ -15,6 +15,7 @@ public class AdProperties {
     private final AdLoad adLoad = new AdLoad();
     private final Freq freq = new Freq();
     private final Exploration exploration = new Exploration();
+    private final AntiFraud antiFraud = new AntiFraud();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -46,6 +47,38 @@ public class AdProperties {
 
     public Exploration getExploration() {
         return exploration;
+    }
+
+    public AntiFraud getAntiFraud() {
+        return antiFraud;
+    }
+
+    /**
+     * 反作弊(docs/05 §6):无效点击过滤,守计费公平。判定后:有效点击落 CLICK 并扣费,
+     * 无效点击落 INVALID_CLICK(不进 CTR/计费)。两道在线规则:**去重**(同一曝光的点击只计一次,
+     * 防重复提交/双击)+ **频次**(同用户每分钟点击数超阈值判机器流量)。
+     */
+    public static class AntiFraud {
+        /** 总开关。关闭(或 Redis 不可用)→ 一律放行(fail-open,不误伤正常点击)。 */
+        private boolean enabled = true;
+        /** 同用户每分钟最多有效点击数,超出判无效。 */
+        private int maxClicksPerMinute = 20;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxClicksPerMinute() {
+            return maxClicksPerMinute;
+        }
+
+        public void setMaxClicksPerMinute(int maxClicksPerMinute) {
+            this.maxClicksPerMinute = maxClicksPerMinute;
+        }
     }
 
     /**
