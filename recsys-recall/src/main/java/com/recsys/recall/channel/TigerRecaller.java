@@ -153,16 +153,13 @@ public class TigerRecaller implements ChannelRecaller {
                 }
             }
             int limit = props.getQuota().getTiger();
-            log.info("TIGER diag user={} hist={} prefixLen={} beams={} genItems={} sample={}",
-                    ctx.userId(), hist.size(), prefix.size(), beams.size(), best.size(),
-                    best.keySet().stream().limit(5).toList());
             return best.entrySet().stream()
                     .sorted((a, c) -> Double.compare(c.getValue(), a.getValue()))
                     .limit(limit)
                     .map(e -> new RecallItem(e.getKey(), e.getValue(), RecallChannel.TIGER))
                     .toList();
         } catch (Exception e) {
-            log.warn("TIGER 召回失败 user={}: {}", ctx.userId(), e.toString(), e);
+            log.debug("TIGER 召回失败 user={}: {}", ctx.userId(), e.getMessage());
             return List.of();
         }
     }

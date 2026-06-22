@@ -99,13 +99,43 @@ def build_dataset(semid, k):
             np.array(bos_idx, dtype="int64"), max_len)
 
 
+class Block(nn.Module):
+    """单层 pre-LN Transformer。手写多头自注意力(reshape 用动态 shape,避免 nn.MultiheadAttention
+    导出 ONNX 时烘焙固定 batch/seq —— 这是 TIGER 在线变长 beam 解码能跑通的关键)。"""
+
+    def __init__(self):
+        super().__init__()
+        self.h = NHEAD
+        self.dh = D_MODEL // NHEAD
+        self.ln1 = nn.LayerNorm(D_MODEL)
+        self.ln2 = nn.LayerNorm(D_MODEL)
+        self.qkv = nn.Linear(D_MODEL, 3 * D_MODEL)
+        self.proj = nn.Linear(D_MODEL, D_MODEL)
+        self.ff = nn.Sequential(nn.Linear(D_MODEL, FF), nn.GELU(), nn.Linear(FF, D_MODEL))
+
+    def forward(self, x, attn_bias):
+        b = x.size(0)
+        t = x.size(1)
+        y = self.ln1(x)
+        qkv = self.qkv(y).reshape(b, t, 3, self.h, self.dh).permute(2, 0, 3, 1, 4)  # [3,b,h,t,dh]
+        q, k, v = qkv[0], qkv[1], qkv[2]                                            # [b,h,t,dh]
+        scores = (q @ k.transpose(-2, -1)) / (self.dh ** 0.5)                       # [b,h,t,t]
+        if attn_bias is not None:
+            scores = scores + attn_bias                                             # [b,1,t,t] 或 [1,1,t,t]
+        att = torch.softmax(scores, dim=-1)
+        o = (att @ v).permute(0, 2, 1, 3).reshape(b, t, D_MODEL)                     # [b,t,d]
+        x = x + self.proj(o)
+        x = x + self.ff(self.ln2(x))
+        return x
+
+
 class Tiger(nn.Module):
     def __init__(self, vocab, max_len):
         super().__init__()
         self.tok = nn.Embedding(vocab, D_MODEL, padding_idx=PAD)
         self.pos = nn.Embedding(max_len, D_MODEL)
-        layer = nn.TransformerEncoderLayer(D_MODEL, NHEAD, FF, batch_first=True, activation="gelu")
-        self.enc = nn.TransformerEncoder(layer, NLAYERS)
+        self.blocks = nn.ModuleList([Block() for _ in range(NLAYERS)])
+        self.lnf = nn.LayerNorm(D_MODEL)
         self.head = nn.Linear(D_MODEL, vocab)
         self.max_len = max_len
 
@@ -113,12 +143,15 @@ class Tiger(nn.Module):
         t = tokens.size(1)
         pos_ids = torch.arange(t, device=tokens.device).unsqueeze(0)
         x = self.tok(tokens) + self.pos(pos_ids)
-        mask = None
-        if causal:  # 训练用 causal;导出(默认 False)不入图,推理只喂前缀末位等价 causal 末位
-            mask = torch.triu(torch.full((t, t), float("-inf"), device=tokens.device), diagonal=1)
-        pad_mask = tokens == PAD
-        h = self.enc(x, mask=mask, src_key_padding_mask=pad_mask)
-        return self.head(h)
+        # padding 偏置:padded key 置 -inf(训练时序列右 pad;推理只喂前缀无 pad,等价无偏置)
+        bias = torch.zeros(tokens.size(0), 1, 1, t, device=tokens.device)
+        bias = bias.masked_fill((tokens == PAD).unsqueeze(1).unsqueeze(2), float("-inf"))
+        if causal:  # 训练加 causal;导出 causal=False 不入图(推理只喂前缀,末位 attend 全前缀=等价 causal 末位)
+            cm = torch.triu(torch.full((t, t), float("-inf"), device=tokens.device), diagonal=1)
+            bias = bias + cm.unsqueeze(0).unsqueeze(0)
+        for blk in self.blocks:
+            x = blk(x, bias)
+        return self.head(self.lnf(x))
 
 
 def main():
