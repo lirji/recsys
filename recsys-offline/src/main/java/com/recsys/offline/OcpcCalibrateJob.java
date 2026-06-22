@@ -94,26 +94,26 @@ public class OcpcCalibrateJob implements OfflineJob {
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         spend.put(rs.getLong("advertiser_id"), rs.getDouble("s")));
 
-        // 3. 窗口内每个广告主的转化数。口径与花费同为"点击落在窗口内"(clk.ts >= since)。
-        //    correcting=true 时按完成曲线对每个已到达转化加权 1/c(elapsed) → 终值转化数(无偏);
-        //    否则原始计数。raw 始终统计,供日志对比纠偏幅度。
+        // 3. 窗口内每个广告主的转化。口径与花费同为"点击落在窗口内"(clk.ts >= since)、且转化已到达
+        //    (cvt.ts <= now)。逐条取出 (广告主, 该点击的 elapsed 天数),在 Java 按 DelayModel.htWeight
+        //    累加——纠偏权重公式收敛在 DelayModel(唯一真相、可单测),不在 SQL 里复制一份避免漂移。
+        //    correcting=false 时每条权重恒为 1(= 原始计数)。raw 始终统计,供日志对比纠偏幅度。
         Map<Long, Double> conversions = new HashMap<>();   // 终值(可能为小数)
         Map<Long, Long> rawConv = new HashMap<>();         // 已观测原始计数
-        String weightExpr = correcting
-                ? "SUM(1.0 / GREATEST(1 - exp(-" + lambda
-                        + " * EXTRACT(EPOCH FROM (now() - clk.ts)) / 86400.0), " + minCompletion + "))"
-                : "COUNT(*)";
         jdbc.query(
-                "SELECT a.advertiser_id, " + weightExpr + " AS eventual, COUNT(*) AS raw " +
+                "SELECT a.advertiser_id AS adv, " +
+                "       EXTRACT(EPOCH FROM (now() - clk.ts)) / 86400.0 AS elapsed_days " +
                 "FROM ad_event cvt " +
                 "JOIN ad a ON a.ad_id = cvt.ad_id AND a.optimization_type='OCPC' " +
                 "JOIN ad_event clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
                 "  AND clk.event_type='CLICK' " +
-                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since + " " +
-                "GROUP BY a.advertiser_id",
+                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since,
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    conversions.put(rs.getLong("advertiser_id"), rs.getDouble("eventual"));
-                    rawConv.put(rs.getLong("advertiser_id"), rs.getLong("raw"));
+                    long adv = rs.getLong("adv");
+                    double elapsed = rs.getDouble("elapsed_days");
+                    double w = correcting ? DelayModel.htWeight(lambda, elapsed, minCompletion) : 1.0;
+                    conversions.merge(adv, w, Double::sum);
+                    rawConv.merge(adv, 1L, Long::sum);
                 });
 
         int updated = 0, held = 0;

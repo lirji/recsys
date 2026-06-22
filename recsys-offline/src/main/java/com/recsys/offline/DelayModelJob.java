@@ -83,7 +83,7 @@ public class DelayModelJob implements OfflineJob {
             log.warn("ad-delay:平均延迟 {} 非正,跳过", meanDays);
             return;
         }
-        double lambda = 1.0 / meanDays;
+        double lambda = DelayModel.lambdaFromMeanDays(meanDays);
 
         redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA, String.valueOf(round6(lambda)));
         redis.opsForValue().set(RedisKeys.AD_DELAY_MEAN_DAYS, String.valueOf(round4(meanDays)));
@@ -91,12 +91,8 @@ public class DelayModelJob implements OfflineJob {
         log.info("ad-delay 完成:样本 {},平均转化延迟 {} 天,λ={} (1/天)。完成曲线 c(e)=1−e^(−λe):"
                         + "c(1d)={} c(3d)={} c(7d)={} c(14d)={}。在线/离线 ad-ocpc 据此做 Horvitz–Thompson 纠偏",
                 n, round4(meanDays), round6(lambda),
-                round4(completion(lambda, 1)), round4(completion(lambda, 3)),
-                round4(completion(lambda, 7)), round4(completion(lambda, 14)));
-    }
-
-    private static double completion(double lambda, double elapsedDays) {
-        return 1.0 - Math.exp(-lambda * elapsedDays);
+                round4(DelayModel.completion(lambda, 1)), round4(DelayModel.completion(lambda, 3)),
+                round4(DelayModel.completion(lambda, 7)), round4(DelayModel.completion(lambda, 14)));
     }
 
     private static double round4(double v) {
