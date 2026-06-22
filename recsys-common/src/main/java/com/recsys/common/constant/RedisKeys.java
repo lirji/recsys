@@ -104,6 +104,14 @@ public final class RedisKeys {
         return "ad:expo:" + requestId + ":" + adId;
     }
 
+    /** 广告累计统计 String("imp,clk"):ad:stats:{adId}(离线 AdExploreStatsJob 物化,EE 探索读)。 */
+    public static String adStats(long adId) {
+        return "ad:stats:" + adId;
+    }
+
+    /** 全局广告总曝光数 String:ad:stats:total(UCB 探索的总试验次数)。 */
+    public static final String AD_STATS_TOTAL = "ad:stats:total";
+
     /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
     public static String adFreq(long userId, long adId, String yyyymmdd) {
         return "ad:freq:" + userId + ":" + adId + ":" + yyyymmdd;

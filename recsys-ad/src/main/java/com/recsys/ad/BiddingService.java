@@ -31,14 +31,17 @@ public class BiddingService {
     private final PacingService pacing;
     private final RelevanceGate gate;
     private final OcpcBidder ocpcBidder;
+    private final ExplorationService explorer;
     private final AdProperties props;
 
     public BiddingService(Calibrator calibrator, PacingService pacing,
-                          RelevanceGate gate, OcpcBidder ocpcBidder, AdProperties props) {
+                          RelevanceGate gate, OcpcBidder ocpcBidder,
+                          ExplorationService explorer, AdProperties props) {
         this.calibrator = calibrator;
         this.pacing = pacing;
         this.gate = gate;
         this.ocpcBidder = ocpcBidder;
+        this.explorer = explorer;
         this.props = props;
     }
 
@@ -78,22 +81,24 @@ public class BiddingService {
             double relevance = gate.relevance(c);
             double effQuality = pctrCalib * c.quality() * relevance; // 有效质量(含相关性)
             double ecpm = pacedBid * effQuality;
-            if (ecpm < reserve) {
+            // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 effQuality(守红线)
+            double rankEcpm = ecpm * explorer.boost(c.adId());
+            if (rankEcpm < reserve) {
                 continue;
             }
-            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, relevance));
+            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, rankEcpm, relevance));
         }
-        // 2. eCPM 降序
-        scored.sort((a, b) -> Double.compare(b.ecpm, a.ecpm));
+        // 2. 按 Ad Rank(含探索加成)降序
+        scored.sort((a, b) -> Double.compare(b.rankEcpm, a.rankEcpm));
 
-        // 3. 取 top slots,GSP 次价计费
+        // 3. 取 top slots,GSP 次价计费(阈值用次位 Ad Rank,除以自身未加成 effQuality → 探索不抬高自身价)
         int n = Math.min(slots, scored.size());
         List<SponsoredAd> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             Scored s = scored.get(i);
-            // 次位 eCPM:末位用 reserve 兜底
-            double nextEcpm = (i + 1 < scored.size()) ? scored.get(i + 1).ecpm : reserve;
-            double charged = s.effQuality <= 0 ? reserve : nextEcpm / s.effQuality + cfg.getPriceIncrement();
+            // 次位 Ad Rank:末位用 reserve 兜底
+            double nextRank = (i + 1 < scored.size()) ? scored.get(i + 1).rankEcpm : reserve;
+            double charged = s.effQuality <= 0 ? reserve : nextRank / s.effQuality + cfg.getPriceIncrement();
             charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
             AdCandidate c = s.candidate;
             out.add(new SponsoredAd(
@@ -110,6 +115,6 @@ public class BiddingService {
     }
 
     private record Scored(AdCandidate candidate, double effBid, double pacedBid, double pctrRaw,
-                          double pctrCalib, double effQuality, double ecpm, double relevance) {
+                          double pctrCalib, double effQuality, double ecpm, double rankEcpm, double relevance) {
     }
 }

@@ -14,6 +14,7 @@ public class AdProperties {
     private final Ocpc ocpc = new Ocpc();
     private final AdLoad adLoad = new AdLoad();
     private final Freq freq = new Freq();
+    private final Exploration exploration = new Exploration();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -41,6 +42,48 @@ public class AdProperties {
 
     public Freq getFreq() {
         return freq;
+    }
+
+    public Exploration getExploration() {
+        return exploration;
+    }
+
+    /**
+     * 新广告 EE 探索(docs/05 §6):新广告无 CTR 历史,纯 eCPM 排序永远赢不了 → 给曝光不足的广告
+     * 一个 UCB 探索加成抬升<b>排序</b> eCPM;计费仍按校准 pCTR(boost 只进排序阈值,不进自身计费,守红线)。
+     * boost = 1 + coef·sqrt(ln(total+e)/(adImp+1)),封顶 maxBoost。曝光越少加成越大,随曝光衰减。
+     */
+    public static class Exploration {
+        /** 总开关。关闭(或 Redis/统计缺失)→ boost 恒 1.0(无探索)。 */
+        private boolean enabled = true;
+        /** UCB 系数:越大探索越激进。 */
+        private double coef = 0.5;
+        /** 探索加成上限(防新广告把相关广告全挤掉)。 */
+        private double maxBoost = 3.0;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getCoef() {
+            return coef;
+        }
+
+        public void setCoef(double coef) {
+            this.coef = coef;
+        }
+
+        public double getMaxBoost() {
+            return maxBoost;
+        }
+
+        public void setMaxBoost(double maxBoost) {
+            this.maxBoost = maxBoost;
+        }
     }
 
     /**

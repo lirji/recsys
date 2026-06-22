@@ -145,6 +145,11 @@ recsys:
       enabled: ${AD_FREQ_ENABLED:true}
       per-ad: 3
       per-advertiser: 8
+    # 新广告 EE 探索:UCB 加成抬升曝光不足广告的排序 eCPM(只进排序、不进计费);统计由 ad-explore-stats 物化
+    exploration:
+      enabled: ${AD_EXPLORE_ENABLED:true}
+      coef: 0.5                    # UCB 系数,越大探索越激进
+      max-boost: 3.0               # 探索加成上限
     pacing:
       enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
   cold-start:
