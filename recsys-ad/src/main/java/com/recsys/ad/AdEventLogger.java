@@ -62,8 +62,8 @@ public class AdEventLogger {
         try {
             jdbc.batchUpdate(
                     "INSERT INTO ad_event(request_id,query,user_id,ad_id,bidword_id,position,event_type," +
-                    "pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket) " +
-                    "VALUES(?,?,?,?,?,?, 'IMPRESSION', ?,?,?,?,?,?)",
+                    "pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,creative_id) " +
+                    "VALUES(?,?,?,?,?,?, 'IMPRESSION', ?,?,?,?,?,?,?)",
                     new BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -80,6 +80,12 @@ public class AdEventLogger {
                             ps.setDouble(10, a.chargedPrice());
                             ps.setDouble(11, a.relevance());
                             ps.setString(12, adBucket);
+                            // DCO:展示创意归因(0/默认创意 → NULL,便于按真实创意聚合 CTR)
+                            if (a.creativeId() > 0) {
+                                ps.setLong(13, a.creativeId());
+                            } else {
+                                ps.setNull(13, java.sql.Types.BIGINT);
+                            }
                         }
 
                         @Override

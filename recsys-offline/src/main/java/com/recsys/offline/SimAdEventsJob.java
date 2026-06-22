@@ -11,7 +11,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -65,6 +67,9 @@ public class SimAdEventsJob implements OfflineJob {
         }
         Random rnd = new Random(seed);
 
+        // DCO:每广告的创意 id 列表(供按创意归因曝光,让创意级 CTR 可学)
+        Map<Long, long[]> creativesByAd = loadCreatives();
+
         long now = System.currentTimeMillis();
         long windowMs = (long) days * 86_400_000L;
         double meanDelayMs = meanDelayDays * 86_400_000L;
@@ -82,8 +87,12 @@ public class SimAdEventsJob implements OfflineJob {
             double pctr = Math.pow(trueCtr, 0.7);                 // 系统性高估
             double charged = round4(0.1 + rnd.nextDouble());      // 模拟 GSP 价(元)
             long eventTs = now - (long) (rnd.nextDouble() * windowMs);  // 曝光/点击时刻铺在窗口内
-            impressions.add(new Object[]{reqId, userId, adId, position, pctr, charged, new Timestamp(eventTs)});
-            if (rnd.nextDouble() < trueCtr) {
+            // DCO:本次曝光随机摊到该广告的一套创意,创意自带 CTR 因子(有的创意系统性更好,让 UCB 可学)
+            long creativeId = pickCreative(creativesByAd.get(adId), rnd);
+            double creativeFactor = creativeCtrFactor(creativeId);
+            double effCtr = Math.min(0.95, trueCtr * creativeFactor);
+            impressions.add(new Object[]{reqId, userId, adId, position, pctr, charged, new Timestamp(eventTs), creativeId});
+            if (rnd.nextDouble() < effCtr) {
                 clicks.add(new Object[]{reqId, userId, adId, new Timestamp(eventTs)});
                 // 点击后按真实 CVR 转化(教学用,给 oCPC 反馈控制 ad-ocpc 喂数据)
                 double trueCvr = 0.08 + 0.22 * rnd.nextDouble();
@@ -101,7 +110,7 @@ public class SimAdEventsJob implements OfflineJob {
 
         jdbc.batchUpdate(
                 "INSERT INTO ad_event(request_id,query,user_id,ad_id,position,event_type," +
-                "pctr,pctr_calib,charged_price,ts) VALUES(?, 'sim', ?,?,?, 'IMPRESSION', ?,?,?,?)",
+                "pctr,pctr_calib,charged_price,ts,creative_id) VALUES(?, 'sim', ?,?,?, 'IMPRESSION', ?,?,?,?,?)",
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -114,6 +123,12 @@ public class SimAdEventsJob implements OfflineJob {
                         ps.setDouble(6, (Double) r[4]);  // pctr_calib(模拟时=原始,未校准)
                         ps.setDouble(7, (Double) r[5]);  // charged_price
                         ps.setTimestamp(8, (Timestamp) r[6]);
+                        long cid = (Long) r[7];
+                        if (cid > 0) {
+                            ps.setLong(9, cid);
+                        } else {
+                            ps.setNull(9, java.sql.Types.BIGINT);
+                        }
                     }
 
                     @Override
@@ -164,6 +179,45 @@ public class SimAdEventsJob implements OfflineJob {
                 impressions.size(), clicks.size(), conversions.size(),
                 observedConv, conversions.size() - observedConv,
                 round4((double) clicks.size() / impressions.size()), days, meanDelayDays);
+    }
+
+    /** 载入每广告的创意 id 列表(DCO 归因用);无 ad_creative 表/数据 → 空 map,creative_id 落 NULL。 */
+    private Map<Long, long[]> loadCreatives() {
+        Map<Long, List<Long>> tmp = new HashMap<>();
+        try {
+            jdbc.query("SELECT ad_id, creative_id FROM ad_creative WHERE status='active' ORDER BY ad_id, creative_id",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                            tmp.computeIfAbsent(rs.getLong("ad_id"), k -> new ArrayList<>()).add(rs.getLong("creative_id")));
+        } catch (Exception e) {
+            log.warn("无 ad_creative(先跑 --job=seed-ads 造创意),曝光不归因创意: {}", e.getMessage());
+            return Map.of();
+        }
+        Map<Long, long[]> out = new HashMap<>(tmp.size());
+        tmp.forEach((ad, list) -> {
+            long[] arr = new long[list.size()];
+            for (int i = 0; i < arr.length; i++) {
+                arr[i] = list.get(i);
+            }
+            out.put(ad, arr);
+        });
+        return out;
+    }
+
+    /** 随机摊到该广告的一套创意;无创意 → 0(落 NULL)。 */
+    private static long pickCreative(long[] creatives, Random rnd) {
+        if (creatives == null || creatives.length == 0) {
+            return 0;
+        }
+        return creatives[rnd.nextInt(creatives.length)];
+    }
+
+    /** 创意 CTR 因子 ∈[0.6,1.4](由 creativeId 确定性散列,让有的创意系统性更好,DCO 才有得学)。 */
+    private static double creativeCtrFactor(long creativeId) {
+        if (creativeId <= 0) {
+            return 1.0;
+        }
+        double frac = ((creativeId * 2654435761L) >>> 11) % 1000 / 1000.0;  // 确定性 [0,1)
+        return 0.6 + 0.8 * frac;
     }
 
     private static double round4(double v) {

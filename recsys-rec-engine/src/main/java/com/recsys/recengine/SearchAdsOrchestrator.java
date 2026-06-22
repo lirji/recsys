@@ -6,6 +6,7 @@ import com.recsys.ad.AntiFraudService;
 import com.recsys.ad.AdProperties;
 import com.recsys.ad.AdRepository;
 import com.recsys.ad.BiddingService;
+import com.recsys.ad.CreativeSelector;
 import com.recsys.ad.ListwiseExternality;
 import com.recsys.ad.PacingService;
 import com.recsys.ad.RelevanceGate;
@@ -61,6 +62,7 @@ public class SearchAdsOrchestrator {
     private final com.recsys.recengine.experiment.ExperimentService experimentService;
     private final com.recsys.ad.AntiFraudService antiFraudService;
     private final AdEmbeddingSimilarity adEmbeddingSimilarity;
+    private final CreativeSelector creativeSelector;
 
     public SearchAdsOrchestrator(QueryUnderstandingService queryService,
                                  AdRecallService adRecallService,
@@ -74,7 +76,8 @@ public class SearchAdsOrchestrator {
                                  MeterRegistry meterRegistry,
                                  com.recsys.recengine.experiment.ExperimentService experimentService,
                                  com.recsys.ad.AntiFraudService antiFraudService,
-                                 AdEmbeddingSimilarity adEmbeddingSimilarity) {
+                                 AdEmbeddingSimilarity adEmbeddingSimilarity,
+                                 CreativeSelector creativeSelector) {
         this.queryService = queryService;
         this.adRecallService = adRecallService;
         this.relevanceGate = relevanceGate;
@@ -88,6 +91,34 @@ public class SearchAdsOrchestrator {
         this.experimentService = experimentService;
         this.antiFraudService = antiFraudService;
         this.adEmbeddingSimilarity = adEmbeddingSimilarity;
+        this.creativeSelector = creativeSelector;
+    }
+
+    /**
+     * DCO:为竞得广告选展示创意(多臂老虎机)。开关关/无创意的广告原样返回(默认创意)。
+     * 只换标题 + 记 creativeId(供曝光归因闭环),不动排序/计费。
+     */
+    private List<SponsoredAd> applyDco(List<SponsoredAd> ads) {
+        if (ads.isEmpty()) {
+            return ads;
+        }
+        Set<Long> adIds = new LinkedHashSet<>();
+        for (SponsoredAd a : ads) {
+            adIds.add(a.adId());
+        }
+        Map<Long, CreativeSelector.Choice> chosen = creativeSelector.selectFor(adIds);
+        if (chosen.isEmpty()) {
+            return ads;
+        }
+        List<SponsoredAd> out = new ArrayList<>(ads.size());
+        for (SponsoredAd a : ads) {
+            CreativeSelector.Choice c = chosen.get(a.adId());
+            out.add(c == null ? a : new SponsoredAd(
+                    a.adId(), a.itemId(), a.advertiserId(), a.bidwordId(),
+                    c.title(), a.channel(), a.bid(), a.quality(), a.relevance(),
+                    a.pctr(), a.pctrCalibrated(), a.ecpm(), a.chargedPrice(), a.position(), c.creativeId()));
+        }
+        return out;
     }
 
     public SearchAdsResponse searchAds(long userId, String query, int slots, String scene) {
@@ -147,7 +178,10 @@ public class SearchAdsOrchestrator {
                     candidates, rankScores.pctr(), rankScores.pcvr(), ocpcByAd,
                     titleByAd, props.getCalibModel(), wantSlots, reserve, sim);
 
-            // 9. 曝光埋点(异步,带 ad_bucket)。CPC 在点击时扣预算,故此处不扣。
+            // 8.5 DCO 动态创意优化(docs/05 §7 M7):竞价之后,为每条竞得广告用多臂老虎机选展示创意(不影响排序/计费)
+            ads = applyDco(ads);
+
+            // 9. 曝光埋点(异步,带 ad_bucket + creative_id 归因)。CPC 在点击时扣预算,故此处不扣。
             adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads, adBucket);
 
             // 观测:填充数 + 潜在营收(eCPM/千次)

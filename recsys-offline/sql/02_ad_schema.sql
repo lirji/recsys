@@ -32,6 +32,17 @@ CREATE INDEX IF NOT EXISTS idx_ad_item ON ad (item_id);
 ALTER TABLE ad ADD COLUMN IF NOT EXISTS optimization_type TEXT DEFAULT 'CPC';
 ALTER TABLE ad ADD COLUMN IF NOT EXISTS target_cpa DOUBLE PRECISION;
 
+-- ---------- 广告创意(DCO 动态创意优化,docs/05 §7 M7:一个广告多套创意,多臂老虎机择优) ----------
+CREATE TABLE IF NOT EXISTS ad_creative (
+    creative_id BIGSERIAL PRIMARY KEY,
+    ad_id       BIGINT REFERENCES ad(ad_id),
+    title       TEXT,                              -- 创意标题(教学场景用电影标题的变体)
+    landing_url TEXT,
+    status      TEXT DEFAULT 'active',             -- active / paused
+    created_at  TIMESTAMP DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_creative_ad ON ad_creative (ad_id);
+
 -- ---------- 竞价词(广告主买的关键词 + 匹配类型 + 出价) ----------
 CREATE TABLE IF NOT EXISTS bidword (
     id         BIGSERIAL PRIMARY KEY,
@@ -75,3 +86,5 @@ CREATE INDEX IF NOT EXISTS idx_ad_event_type_ts ON ad_event (event_type, ts);
 -- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
 ALTER TABLE ad_event ADD COLUMN IF NOT EXISTS ad_bucket TEXT;
 CREATE INDEX IF NOT EXISTS idx_ad_event_ad ON ad_event (ad_id, event_type);
+-- DCO:曝光归因到具体创意(供 ad-explore-stats 按创意聚合 CTR 喂多臂老虎机)
+ALTER TABLE ad_event ADD COLUMN IF NOT EXISTS creative_id BIGINT;

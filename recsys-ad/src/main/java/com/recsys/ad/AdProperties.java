@@ -17,6 +17,7 @@ public class AdProperties {
     private final Exploration exploration = new Exploration();
     private final AntiFraud antiFraud = new AntiFraud();
     private final Quality quality = new Quality();
+    private final Dco dco = new Dco();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -56,6 +57,37 @@ public class AdProperties {
 
     public Quality getQuality() {
         return quality;
+    }
+
+    public Dco getDco() {
+        return dco;
+    }
+
+    /**
+     * 动态创意优化(DCO,docs/05 §7 M7)。一个广告多套创意,在线 {@link CreativeSelector} 用多臂老虎机
+     * (UCB)按创意级 CTR 历史({@code ad:cstats})择优展示;新创意得探索曝光。关闭 → 一律广告默认创意。
+     */
+    public static class Dco {
+        /** 总开关(默认关:开启会改变展示创意,且需先 seed-ads 造创意 + ad-explore-stats 物化统计)。 */
+        private boolean enabled = false;
+        /** UCB 探索系数(越大越激进探索新/低曝创意)。 */
+        private double ucbCoef = 0.5;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getUcbCoef() {
+            return ucbCoef;
+        }
+
+        public void setUcbCoef(double ucbCoef) {
+            this.ucbCoef = ucbCoef;
+        }
     }
 
     /**

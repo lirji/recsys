@@ -8,6 +8,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -53,8 +55,33 @@ public class AdExploreStatsJob implements OfflineJob {
                     ads[0]++;
                 });
         redis.opsForValue().set(RedisKeys.AD_STATS_TOTAL, String.valueOf(totalImp.get()));
-        log.info("ad-explore-stats 完成:写入 {} 个广告统计,全局总曝光 {} → {}",
-                ads[0], totalImp.get(), RedisKeys.AD_STATS_TOTAL);
+
+        // DCO 创意级统计(docs/05 §7 M7):按 (广告, 创意) 聚合曝光/点击 → ad:cstats:{adId}:{creativeId}。
+        // 曝光取 IMPRESSION 上的 creative_id;点击按 (request_id, ad_id) 关联回其曝光行取 creative_id。
+        Map<String, long[]> cstats = new HashMap<>();   // "adId:creativeId" → [imp, clk]
+        jdbc.query(
+                "SELECT ad_id, creative_id, COUNT(*) AS imp FROM ad_event " +
+                "WHERE event_type='IMPRESSION' AND creative_id IS NOT NULL GROUP BY ad_id, creative_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                        cstats.computeIfAbsent(rs.getLong("ad_id") + ":" + rs.getLong("creative_id"),
+                                k -> new long[2])[0] = rs.getLong("imp"));
+        jdbc.query(
+                "SELECT i.ad_id, i.creative_id, COUNT(*) AS clk FROM ad_event c " +
+                "JOIN ad_event i ON i.request_id = c.request_id AND i.ad_id = c.ad_id " +
+                "  AND i.event_type='IMPRESSION' AND i.creative_id IS NOT NULL " +
+                "WHERE c.event_type='CLICK' GROUP BY i.ad_id, i.creative_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                        cstats.computeIfAbsent(rs.getLong("ad_id") + ":" + rs.getLong("creative_id"),
+                                k -> new long[2])[1] = rs.getLong("clk"));
+        for (Map.Entry<String, long[]> e : cstats.entrySet()) {
+            String[] p = e.getKey().split(":");
+            redis.opsForValue().set(
+                    RedisKeys.adCreativeStats(Long.parseLong(p[0]), Long.parseLong(p[1])),
+                    e.getValue()[0] + "," + e.getValue()[1]);
+        }
+
+        log.info("ad-explore-stats 完成:写入 {} 个广告统计 + {} 个创意级统计(DCO),全局总曝光 {} → {}",
+                ads[0], cstats.size(), totalImp.get(), RedisKeys.AD_STATS_TOTAL);
         if (ads[0] == 0) {
             log.warn("无 ad_event;先跑 --job=sim-ad-events 或积累真实曝光。新广告将全部得最大探索加成。");
         }

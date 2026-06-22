@@ -165,6 +165,10 @@ recsys:
     # 精细化质量度(M7):用离线 ad-quality 算的数据驱动质量度(ad:quality:{adId})替换随机基线;缺失退基线
     quality:
       enabled: ${AD_QUALITY_ENABLED:true}
+    # 动态创意优化 DCO(M7):一个广告多套创意,多臂老虎机(UCB)按创意级 CTR 择优展示;关闭=默认创意
+    dco:
+      enabled: ${AD_DCO_ENABLED:false}
+      ucb-coef: 0.5                # UCB 探索系数,越大越激进探索新/低曝创意
   cold-start:
     # 行为数 < 阈值且无用户向量 → 冷启动(走类目探索 + 强多样性重排)
     min-behaviors: 5

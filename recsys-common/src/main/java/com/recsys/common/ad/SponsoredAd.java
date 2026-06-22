@@ -21,6 +21,7 @@ package com.recsys.common.ad;
  * @param ecpm           eCPM = bid × pctrCalibrated × quality
  * @param chargedPrice   GSP 实际扣费(次高价;< reserve 时为 reserve)
  * @param position       广告位次(1 基)
+ * @param creativeId     展示的创意 ID(DCO 多臂老虎机选出,docs/05 §7 M7);0 = 广告默认创意(DCO 关闭/无创意)
  */
 public record SponsoredAd(long adId,
                           long itemId,
@@ -35,5 +36,6 @@ public record SponsoredAd(long adId,
                           double pctrCalibrated,
                           double ecpm,
                           double chargedPrice,
-                          int position) {
+                          int position,
+                          long creativeId) {
 }

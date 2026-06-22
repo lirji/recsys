@@ -160,4 +160,12 @@ public final class RedisKeys {
     public static String adQuality(long adId) {
         return "ad:quality:" + adId;
     }
+
+    /**
+     * DCO 创意级累计统计 String("imp,clk"):ad:cstats:{adId}:{creativeId}(docs/05 §7 M7)。
+     * 离线 ad-explore-stats 按创意聚合物化,在线 {@code CreativeSelector} 读它跑多臂老虎机(UCB)选创意。
+     */
+    public static String adCreativeStats(long adId, long creativeId) {
+        return "ad:cstats:" + adId + ":" + creativeId;
+    }
 }

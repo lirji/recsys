@@ -144,7 +144,7 @@ public class BiddingService {
                 c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
                 titleByAd.getOrDefault(c.adId(), ""),
                 c.channel(), s.effBid, s.quality, s.relevance,   // quality = 进 eCPM 的精细化质量度(审计一致)
-                s.pctrRaw, s.pctrCalib, s.ecpm, charged, position);
+                s.pctrRaw, s.pctrCalib, s.ecpm, charged, position, 0L);  // creativeId=0:默认创意,DCO 开启时编排层覆盖
     }
 
     private static double clampProb(double p) {

@@ -52,6 +52,7 @@ public class SeedAdsJob implements OfflineJob {
     public void run(ApplicationArguments args) {
         int numAds = intArg(args, "ads", 800);
         int numAdvertisers = intArg(args, "advertisers", 30);
+        int creativesPerAd = intArg(args, "creatives-per-ad", 3);
         long seed = intArg(args, "seed", 42);
         if (args.containsOption("clear")) {
             clear();
@@ -103,6 +104,13 @@ public class SeedAdsJob implements OfflineJob {
                     adId, advertiserId, itemId, title, "https://example.com/ad/" + adId, quality,
                     optType, targetCpa);
 
+            // DCO 创意(docs/05 §7 M7):每个广告 N 套创意(标题变体),多臂老虎机在线择优展示
+            String[] variants = creativeTitles(title, creativesPerAd);
+            for (int v = 0; v < variants.length; v++) {
+                jdbc.update("INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(?,?,?, 'active')",
+                        adId, variants[v], "https://example.com/ad/" + adId + "?c=" + v);
+            }
+
             Set<String> keywords = keywords(title, categories.get(i));
             for (String kw : keywords) {
                 double bid = round2(clamp(Math.exp(rnd.nextGaussian() * 0.5), 0.2, 10.0)); // 对数正态≈1元
@@ -125,8 +133,20 @@ public class SeedAdsJob implements OfflineJob {
                 "JOIN item_embedding e ON e.item_id = a.item_id " +
                 "ON CONFLICT (ad_id) DO NOTHING");
 
-        log.info("seed-ads 完成:广告主 {} / 广告 {} / 竞价词 {} / ad_embedding {} 条;Redis 倒排已写。",
-                numAdvertisers, m, bidwordCount, embRows);
+        log.info("seed-ads 完成:广告主 {} / 广告 {} / 创意 {}(每广告 {} 套,DCO 用)/ 竞价词 {} / ad_embedding {} 条;Redis 倒排已写。",
+                numAdvertisers, m, (long) m * creativesPerAd, creativesPerAd, bidwordCount, embRows);
+    }
+
+    /** 生成 k 套创意标题变体(教学:同一电影标题加不同营销前缀)。第 0 套为原标题(默认创意)。 */
+    private static String[] creativeTitles(String title, int k) {
+        String base = title == null ? "" : title;
+        String[] prefixes = {"", "🔥 ", "限时特惠 · ", "精选推荐 · ", "全新上线 · "};
+        int n = Math.max(1, k);
+        String[] out = new String[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = prefixes[i % prefixes.length] + base;
+        }
+        return out;
     }
 
     /** 从标题分词 + 类目 genre 名生成竞价词(去停用词/短词,去重,限量)。 */
@@ -152,7 +172,7 @@ public class SeedAdsJob implements OfflineJob {
     }
 
     private void clear() {
-        jdbc.execute("TRUNCATE ad_event, ad_embedding, bidword, ad, advertiser RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE ad_event, ad_embedding, ad_creative, bidword, ad, advertiser RESTART IDENTITY CASCADE");
         try {
             Set<String> keys = redis.keys("bidword:inv:*");
             if (keys != null && !keys.isEmpty()) {
