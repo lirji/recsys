@@ -45,10 +45,17 @@ import java.util.StringJoiner;
  *
  * <p>稠密特征仍走共享 {@link FeatureAssembler} + as-of {@link AsOfFeatureBuilder},与在线一致。
  *
- * <p>表头:{@code label_click,label_like,user_id,item_id,category,<5 稠密>,seq_items,seq_cats,seq_len,split}。
+ * <p>表头:{@code label_click,label_like,user_id,item_id,category,<5 稠密>,seq_items,seq_cats,seq_len,position,split}。
  * {@code seq_items}/{@code seq_cats} 用 {@code |} 拼接(类目为单值,无管道符,已核对)。
  *
- * <p>参数:--neg-ratio(默认 2)、--valid-frac(默认 0.2)、--seed(默认 42)、--seq-len(默认 20)。
+ * <p><b>位置偏差去偏(PAL,docs/04 §13)</b>:多出一列 {@code position}(展示位次),供 train_mmoe/train_din
+ * 的 position-bias 塔在训练时"解释掉"位置效应、导出时丢弃(线上推理契约不变)。本仓的历史样本由评分
+ * 派生、<b>无真实曝光位次</b>,故 {@code position} 默认恒 0(=未知,PAL 塔对其不施偏置 → 休眠不影响精度);
+ * 真实系统应从曝光日志取位次。{@code --position-proxy} 打开后用<b>热度名次</b>作教学代理(热门≈靠前),
+ * 让 PAL 机制可被观察(代理与热度特征有相关,仅教学用)。
+ *
+ * <p>参数:--neg-ratio(默认 2)、--valid-frac(默认 0.2)、--seed(默认 42)、--seq-len(默认 20)、
+ * --position-proxy(默认 false)、--max-position(默认 10)。
  */
 @Component
 public class GenSamplesMtJob implements OfflineJob {
@@ -75,6 +82,8 @@ public class GenSamplesMtJob implements OfflineJob {
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         long seed = (long) doubleArg(args, "seed", 42);
         int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
+        boolean positionProxy = args.containsOption("position-proxy");
+        int maxPosition = intArg(args, "max-position", 10);
         Random rnd = new Random(seed);
 
         List<Event> events = loadEvents();
@@ -107,6 +116,12 @@ public class GenSamplesMtJob implements OfflineJob {
         AsOfFeatureBuilder asOf = new AsOfFeatureBuilder(Math.log1p(maxUserCnt), Math.log1p(maxItemCnt));
         Map<Long, String> catMap = loadCategoryMap();
 
+        // 位置代理(可选):按热度名次给展示位次(热门≈位次靠前);默认关闭 → position 恒 0(未知)
+        Map<Long, Integer> posBucket = positionProxy
+                ? buildPositionProxy(catMap.keySet(), itemCnt, maxPosition) : Map.of();
+        log.info("位置去偏:position-proxy={}(关=position 恒 0,PAL 塔休眠不影响精度),max-position={}",
+                positionProxy, maxPosition);
+
         // 每用户近 seqLen 个 ≥4 物品(point-in-time);最旧在队首、最近在队尾
         Map<Long, Deque<Long>> seqByUser = new HashMap<>();
 
@@ -116,7 +131,7 @@ public class GenSamplesMtJob implements OfflineJob {
         try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
             w.write("label_click,label_like,user_id,item_id,category,"
                     + String.join(",", FeatureAssembler.FEATURE_ORDER)
-                    + ",seq_items,seq_cats,seq_len,split");
+                    + ",seq_items,seq_cats,seq_len,position,split");
             w.newLine();
 
             for (Event e : events) {
@@ -128,7 +143,9 @@ public class GenSamplesMtJob implements OfflineJob {
                 // 正样本:每条评分事件都是 click 正例;like = (value≥4)
                 int like = e.value >= 4.0 ? 1 : 0;
                 String split = e.ts <= splitTs ? "train" : "valid";
-                writeRow(w, 1, like, e.userId, e.itemId, e.category, uf, asOf.snapshotItem(e.itemId), seq, split);
+                int posPosition = posBucket.getOrDefault(e.itemId, 0);
+                writeRow(w, 1, like, e.userId, e.itemId, e.category, uf, asOf.snapshotItem(e.itemId),
+                        seq, posPosition, split);
                 posClick++;
                 if (like == 1) {
                     posLike++;
@@ -145,7 +162,7 @@ public class GenSamplesMtJob implements OfflineJob {
                     }
                     String negSplit = rnd.nextDouble() < validFrac ? "valid" : "train";
                     writeRow(w, 0, 0, e.userId, negItem, catMap.get(negItem),
-                            uf, asOf.snapshotItem(negItem), seq, negSplit);
+                            uf, asOf.snapshotItem(negItem), seq, posBucket.getOrDefault(negItem, 0), negSplit);
                     got++;
                     neg++;
                 }
@@ -182,7 +199,7 @@ public class GenSamplesMtJob implements OfflineJob {
 
     private void writeRow(BufferedWriter w, int click, int like, long userId, long itemId, String category,
                           Map<String, Double> userFeat, Map<String, Double> itemFeat,
-                          String[] seq, String split) throws java.io.IOException {
+                          String[] seq, int position, String split) throws java.io.IOException {
         double[] f = FeatureAssembler.assemble(userFeat, itemFeat, category);
         StringBuilder sb = new StringBuilder();
         sb.append(click).append(',').append(like)
@@ -195,9 +212,26 @@ public class GenSamplesMtJob implements OfflineJob {
         sb.append(',').append(seq[0])   // seq_items
                 .append(',').append(seq[1])   // seq_cats
                 .append(',').append(seq[2])   // seq_len
+                .append(',').append(position) // position(PAL;0=未知)
                 .append(',').append(split);
         w.write(sb.toString());
         w.newLine();
+    }
+
+    /**
+     * 热度名次位置代理:按交互次数降序给每个物品分配展示位次桶 [1, maxPosition](热门→1=最靠前)。
+     * 仅 --position-proxy 时使用,纯教学(代理与热度特征相关);真实系统应改用曝光日志的真实位次。
+     */
+    private Map<Long, Integer> buildPositionProxy(Set<Long> items, Map<Long, Long> itemCnt, int maxPosition) {
+        List<Long> ranked = new ArrayList<>(items);
+        ranked.sort((a, b) -> Long.compare(itemCnt.getOrDefault(b, 0L), itemCnt.getOrDefault(a, 0L)));
+        Map<Long, Integer> bucket = new HashMap<>(ranked.size() * 2);
+        int n = Math.max(1, ranked.size());
+        for (int i = 0; i < ranked.size(); i++) {
+            int p = 1 + (int) ((long) i * maxPosition / n); // [1, maxPosition]
+            bucket.put(ranked.get(i), Math.min(maxPosition, p));
+        }
+        return bucket;
     }
 
     /** 全量评分事件(join 类目),供 as-of 流式聚合、序列构造与时间切分。 */

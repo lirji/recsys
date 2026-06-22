@@ -27,7 +27,17 @@ recsys:
       semantic: 100
       cold: 100
       two-tower: 200
+      generative: 200
+      generative-seed: 20
+      lexical: 200
+      tiger: 200
       cold-per-category: 5
+    rrf-k: 60                     # 混合检索 RRF 平滑常数:贡献=1/(k+rank)(搜索场景多路按名次融合)
+    # 完整 TIGER 生成式召回:decoder-only Transformer 自回归 beam search 生成下一个 item 的语义 ID
+    tiger:
+      model-path: classpath:model/tiger.onnx
+      schema-path: classpath:model/tiger_schema.json
+      beam: 8
     # 双塔召回:user 塔 ONNX(item 向量已离线灌 item_tower_embedding);缺模型则该路返回空、其他路兜底
     two-tower:
       model-path: classpath:model/user_tower.onnx
@@ -36,6 +46,11 @@ recsys:
     tag:
       realtime-enabled: true
       realtime-boost: 1.0
+  # Query 理解(docs/04 §11):归一化/分词/意图/向量化/改写 + 可选 LLM 增强
+  query:
+    llm:
+      enabled: true            # LLM query 理解(拼写纠错/意图/改写);仅在 recsys.llm 就绪时实际生效
+      max-expansions: 3        # LLM 改写扩展并入 rewrites 的上限
   rank:
     # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列建模(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
@@ -69,8 +84,9 @@ recsys:
     bypass-cold-start: true   # 冷用户带 query 时不走冷启动覆盖(query 已是明确意图)
     recall-weight: 2.0        # 召回分(=query 相关性)主导
     rank-weight: 0.5          # 个性化/CTR 排序分降权为次序信号
-    channel-boost:            # 抬升 query 驱动的两路:语义 + 意图 TAG
+    channel-boost:            # 抬升 query 驱动的路:语义 + 词法 + 意图 TAG
       SEMANTIC: 2.0
+      LEXICAL: 2.0
       TAG: 1.8
     personalization-weight: 0.5  # 温和个性化:×(1+权重·cos(user_emb,item_emb));0=纯相关性
   rerank:
@@ -91,6 +107,15 @@ recsys:
       vocab-path: ${BGE_VOCAB_PATH:${user.home}/.recsys/models/bge-base-en-v1.5/vocab.txt}
       max-seq-len: 256
       pooling: cls
+  # 生成式 LLM(docs/04 §11):Gemini generateContent。默认关闭 + 空 key ⇒ 未就绪,query 理解走纯词法兜底
+  llm:
+    enabled: ${LLM_ENABLED:false}
+    provider: gemini
+    api-key: ${GEMINI_API_KEY:}
+    model: ${LLM_MODEL:gemini-2.0-flash}
+    temperature: 0.1
+    max-output-tokens: 512
+    cache-ttl-seconds: 86400
   # 搜索广告(docs/05):query→ad 召回 + relevance-gate + eCPM 竞价 + GSP 计费 + 预算 pacing + pCTR 校准
   ad:
     slots: 3                       # 广告位数
@@ -105,6 +130,11 @@ recsys:
     auction:
       reserve-price: 0.1           # 保留价(元):eCPM 低于此值不展示;GSP 扣费下限
       price-increment: 0.01        # GSP 次价加价(元)
+    # oCPC 智能出价(M6):广告主只给 target_cpa,平台 bid=targetCpa·pCVR·k 自动出价(k 由 ad-ocpc 离线拟合)
+    ocpc:
+      enabled: ${AD_OCPC_ENABLED:true}
+      default-pcvr: 0.1            # 排序模型(mmoe/din)未给 pCVR 时的兜底先验转化率
+      max-bid: 0.0                 # 自动出价上限(元);<=0 不封顶
     pacing:
       enabled: ${AD_PACING_ENABLED:true}   # 实时预算熔断 + 平滑;关闭=不限预算(本地无 Redis 调试)
   cold-start:
@@ -125,7 +155,7 @@ recsys:
           - name: plus
             weight: 50
             params:
-              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC,TWO_TOWER"
+              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC,TWO_TOWER,GENERATIVE,TIGER"
       rank:
         salt: rank-2026a
         variants:

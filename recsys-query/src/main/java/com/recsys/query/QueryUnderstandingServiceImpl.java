@@ -1,6 +1,9 @@
 package com.recsys.query;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.embedding.EmbeddingClient;
+import com.recsys.common.llm.LlmClient;
 import com.recsys.common.query.CategoryScore;
 import com.recsys.common.query.QueryUnderstandingService;
 import com.recsys.common.query.StructuredQuery;
@@ -34,8 +37,15 @@ import java.util.regex.Pattern;
  *   <li><b>改写</b>:归一化串 + 同义词扩展(配置 {@code recsys.query.synonyms});MVP 最小。</li>
  * </ol>
  *
+ * <p><b>LLM 增强(可选,docs/04 §11)</b>:若注入了就绪的 {@link LlmClient}(配置
+ * {@code recsys.llm.enabled=true} + key),在分词前先用 LLM 做一次结构化理解 ——
+ * <b>拼写纠错</b>(corrected 作为有效 query 替换 normalized,改善语义召回)、
+ * <b>意图分类</b>(直接产出受限于 genre 词表的类目,比"标题 ILIKE 投票"更鲁棒)、
+ * <b>改写扩展</b>(并入 rewrites)。LLM 未就绪/失败/返回不可解析 → 整步跳过,
+ * 回落到上述纯词法逻辑,行为与接入前完全一致(每步独立降级的一贯主张)。
+ *
  * 设计承接 docs/05 §4.1:把内容推荐的 userId 驱动扩展出「query 驱动」入口,
- * 复用现有 category 体系与 EmbeddingClient 契约,不新增向量维度/模型。
+ * 复用现有 category 体系、EmbeddingClient 与 LlmClient 契约,不新增向量维度/模型。
  */
 @Service
 @EnableConfigurationProperties(QueryProperties.class)
@@ -48,16 +58,20 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
 
     private final JdbcTemplate jdbc;
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
+    private final ObjectProvider<LlmClient> llmProvider;
     private final QueryProperties props;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     /** genre 小写 → 规范名,懒加载缓存(DB 不可用时为空,直接命中那一路自然失效)。 */
     private volatile Map<String, String> genreLexicon;
 
     public QueryUnderstandingServiceImpl(JdbcTemplate jdbc,
                                          ObjectProvider<EmbeddingClient> embeddingProvider,
+                                         ObjectProvider<LlmClient> llmProvider,
                                          QueryProperties props) {
         this.jdbc = jdbc;
         this.embeddingProvider = embeddingProvider;
+        this.llmProvider = llmProvider;
         this.props = props;
     }
 
@@ -68,11 +82,28 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
         if (normalized.isEmpty()) {
             return new StructuredQuery(raw, normalized, List.of(), List.of(), List.of(), null);
         }
-        List<TermWeight> terms = tokenize(normalized);
-        List<CategoryScore> intents = classifyIntent(terms);
-        float[] embedding = embed(normalized);
-        List<String> rewrites = rewrite(normalized, terms);
-        return new StructuredQuery(raw, normalized, terms, intents, rewrites, embedding);
+        // LLM 增强(可选):拼写纠错 + 意图 + 改写;不可用/失败 → null,后续全走词法兜底
+        LlmEnrichment llm = enrichWithLlm(normalized);
+        String effective = (llm != null && !llm.corrected.isEmpty()) ? normalize(llm.corrected) : normalized;
+
+        List<TermWeight> terms = tokenize(effective);
+        List<CategoryScore> intents = (llm != null && !llm.intents.isEmpty())
+                ? llm.intents                       // LLM 意图优先(已对齐 genre 词表)
+                : classifyIntent(terms);            // 兜底:genre 命中 + 标题投票
+        float[] embedding = embed(effective);
+        List<String> rewrites = rewrite(effective, terms);
+        if (llm != null) {
+            for (String exp : llm.expansions) {
+                if (rewrites.size() >= 1 + props.getLlm().getMaxExpansions() + props.getSynonyms().size()) {
+                    break;
+                }
+                String n = normalize(exp);
+                if (!n.isEmpty() && !rewrites.contains(n)) {
+                    rewrites.add(n);
+                }
+            }
+        }
+        return new StructuredQuery(raw, effective, terms, intents, rewrites, embedding);
     }
 
     // ---- 1. 归一化 ----
@@ -198,5 +229,89 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
             }
         }
         return new ArrayList<>(rewrites);
+    }
+
+    // ---- LLM 增强(可选,优雅降级)----
+
+    /**
+     * 用 LLM 做一次结构化 query 理解。任一环节不可用(关闭 / 未注入 / 未就绪 / 调用失败 /
+     * 解析失败)都返回 null,调用方据此回落纯词法链路。意图被严格对齐到本库 genre 词表
+     * (LLM 自由发挥的类目若不在词表内会被丢弃),保证与下游 TAG 召回的类目体系一致。
+     */
+    private LlmEnrichment enrichWithLlm(String normalized) {
+        if (!props.getLlm().isEnabled()) {
+            return null;
+        }
+        LlmClient client = llmProvider.getIfAvailable();
+        if (client == null || !client.isReady()) {
+            return null;
+        }
+        Map<String, String> lexicon = genreLexicon(); // 小写 → 规范名
+        try {
+            String genreList = String.join(", ", new LinkedHashSet<>(lexicon.values()));
+            String system = "You are a movie search query understanding engine. "
+                    + "Given a user's raw search query, return ONLY a JSON object with keys: "
+                    + "\"corrected\" (string: the query with spelling fixed and normalized, lowercase), "
+                    + "\"intents\" (array of genre strings, most relevant first, chosen ONLY from the allowed genres), "
+                    + "\"expansions\" (array of up to " + props.getLlm().getMaxExpansions()
+                    + " alternative phrasings / synonym expansions of the query). "
+                    + "Allowed genres: [" + genreList + "]. "
+                    + "If a field is unknown, use an empty string or empty array. No prose, JSON only.";
+            String user = "query: " + normalized;
+            String json = client.complete(system, user);
+            return parseEnrichment(json, lexicon);
+        } catch (Exception e) {
+            log.debug("LLM query 理解失败,降级纯词法: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 解析 LLM 的 JSON 输出;意图映射回规范 genre 名并按序赋递减分。解析异常 → null。 */
+    private LlmEnrichment parseEnrichment(String json, Map<String, String> lexicon) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode root = mapper.readTree(json);
+            String corrected = root.path("corrected").asText("").trim();
+
+            List<CategoryScore> intents = new ArrayList<>();
+            JsonNode intentNode = root.path("intents");
+            if (intentNode.isArray()) {
+                LinkedHashSet<String> seen = new LinkedHashSet<>();
+                int n = intentNode.size();
+                for (int i = 0; i < n; i++) {
+                    String g = intentNode.get(i).asText("").trim().toLowerCase(Locale.ROOT);
+                    String canonical = lexicon.get(g);
+                    if (canonical == null || !seen.add(canonical)) {
+                        continue; // 丢弃词表外 / 重复
+                    }
+                    double score = Math.max(0.1, 1.0 - 0.1 * intents.size()); // 1.0, 0.9, ...
+                    intents.add(new CategoryScore(canonical, score));
+                    if (intents.size() >= props.getMaxIntents()) {
+                        break;
+                    }
+                }
+            }
+
+            List<String> expansions = new ArrayList<>();
+            JsonNode expNode = root.path("expansions");
+            if (expNode.isArray()) {
+                for (JsonNode e : expNode) {
+                    String s = e.asText("").trim();
+                    if (!s.isEmpty()) {
+                        expansions.add(s);
+                    }
+                }
+            }
+            return new LlmEnrichment(corrected, intents, expansions);
+        } catch (Exception e) {
+            log.debug("LLM 输出非合法 JSON,降级纯词法: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** LLM 结构化理解结果。 */
+    private record LlmEnrichment(String corrected, List<CategoryScore> intents, List<String> expansions) {
     }
 }

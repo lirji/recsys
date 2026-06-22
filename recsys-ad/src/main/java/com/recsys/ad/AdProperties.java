@@ -11,6 +11,7 @@ public class AdProperties {
     private final Recall recall = new Recall();
     private final Auction auction = new Auction();
     private final Pacing pacing = new Pacing();
+    private final Ocpc ocpc = new Ocpc();
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */
@@ -26,6 +27,10 @@ public class AdProperties {
 
     public Pacing getPacing() {
         return pacing;
+    }
+
+    public Ocpc getOcpc() {
+        return ocpc;
     }
 
     public String getCalibModel() {
@@ -125,6 +130,43 @@ public class AdProperties {
 
         public void setPriceIncrement(double priceIncrement) {
             this.priceIncrement = priceIncrement;
+        }
+    }
+
+    /**
+     * oCPC 智能出价(docs/05 §6,M6)。广告主只设 target_cpa,平台用 pCVR 自动出价:
+     * {@code bid = targetCpa × pCVR × k},k 为离线反馈控制系数(OcpcCalibrateJob 拟合 → ad:ocpc:{adv})。
+     */
+    public static class Ocpc {
+        /** 总开关。关闭则 oCPC 广告也按其 manual bid 竞价(退化为 CPC)。 */
+        private boolean enabled = true;
+        /** 排序模型(mmoe/din)未给出 pCVR 时的兜底先验转化率,保证 oCPC 仍能出价。 */
+        private double defaultPcvr = 0.1;
+        /** 自动出价上限(元,安全护栏;<=0 表示不封顶)。防 pCVR 异常高时出价失控。 */
+        private double maxBid = 0.0;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getDefaultPcvr() {
+            return defaultPcvr;
+        }
+
+        public void setDefaultPcvr(double defaultPcvr) {
+            this.defaultPcvr = defaultPcvr;
+        }
+
+        public double getMaxBid() {
+            return maxBid;
+        }
+
+        public void setMaxBid(double maxBid) {
+            this.maxBid = maxBid;
         }
     }
 

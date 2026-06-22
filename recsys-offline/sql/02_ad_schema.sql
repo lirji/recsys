@@ -22,10 +22,15 @@ CREATE TABLE IF NOT EXISTS ad (
     landing_url   TEXT,
     quality_score DOUBLE PRECISION DEFAULT 1.0,     -- 质量度(相关性/落地页,离线算;M4 先给随机基线)
     status        TEXT DEFAULT 'active',            -- active / paused
+    optimization_type TEXT DEFAULT 'CPC',           -- CPC / OCPC(M6):OCPC 用 target_cpa 自动出价
+    target_cpa    DOUBLE PRECISION,                 -- oCPC 目标转化成本(元/转化);仅 optimization_type=OCPC 生效
     created_at    TIMESTAMP DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ad_advertiser ON ad (advertiser_id);
 CREATE INDEX IF NOT EXISTS idx_ad_item ON ad (item_id);
+-- 已有库平滑升级(IF NOT EXISTS 不改既有列)
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS optimization_type TEXT DEFAULT 'CPC';
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS target_cpa DOUBLE PRECISION;
 
 -- ---------- 竞价词(广告主买的关键词 + 匹配类型 + 出价) ----------
 CREATE TABLE IF NOT EXISTS bidword (

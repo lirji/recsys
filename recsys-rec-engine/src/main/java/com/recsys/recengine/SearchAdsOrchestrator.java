@@ -106,19 +106,21 @@ public class SearchAdsOrchestrator {
                 return new SearchAdsResponse(userId, query, requestId, List.of(), traceId);
             }
 
-            // 5. pCTR:复用排序模型对候选广告关联的 item 打分(同推荐口径)
-            Map<Long, Double> pctrByItem = pctr(userId, candidates, scene);
+            // 5. pCTR/pCVR:复用排序模型对候选广告关联的 item 打分(同推荐口径;pCVR 仅 mmoe/din 给出)
+            RankScores rankScores = score(userId, candidates, scene);
 
-            // 标题:为参与竞价的候选批量取创意标题
+            // 标题 + oCPC 参数:为参与竞价的候选批量加载
             Set<Long> adIds = new LinkedHashSet<>();
             for (AdCandidate c : candidates) {
                 adIds.add(c.adId());
             }
             Map<Long, String> titleByAd = adRepository.titles(adIds);
+            Map<Long, AdRepository.OcpcParams> ocpcByAd = adRepository.ocpcParams(adIds);
 
-            // 6-8. 校准 → eCPM 竞价 → GSP 拍卖计费
+            // 6-8. 校准 → oCPC 自动出价 → eCPM 竞价 → GSP 拍卖计费
             List<SponsoredAd> ads = biddingService.auction(
-                    candidates, pctrByItem, titleByAd, props.getCalibModel(), wantSlots);
+                    candidates, rankScores.pctr(), rankScores.pcvr(), ocpcByAd,
+                    titleByAd, props.getCalibModel(), wantSlots);
 
             // 9. 曝光埋点(异步)。CPC 在点击时扣预算,故此处不扣。
             adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads);
@@ -162,17 +164,30 @@ public class SearchAdsOrchestrator {
         meterRegistry.counter("recsys.ad.conversion").increment();
     }
 
-    /** 复用 RankRouter 给候选广告关联的 item 打分,得 itemId → 原始 pCTR。 */
-    private Map<Long, Double> pctr(long userId, List<AdCandidate> candidates, String scene) {
+    /**
+     * 复用 RankRouter 给候选广告关联的 item 打分,得 itemId → 原始 pCTR + pCVR。
+     * pCTR 取排序分;pCVR 从特征快照的 "pCVR" 读(仅 mmoe/din 多目标模型写入,
+     * 其余策略无 → 留空,oCPC 用先验兜底)。
+     */
+    private RankScores score(long userId, List<AdCandidate> candidates, String scene) {
         Set<Long> itemIds = new LinkedHashSet<>();
         for (AdCandidate c : candidates) {
             itemIds.add(c.itemId());
         }
         List<RankedItem> ranked = rankRouter.rank(userId, new ArrayList<>(itemIds), scene);
-        Map<Long, Double> out = new HashMap<>(ranked.size());
+        Map<Long, Double> pctr = new HashMap<>(ranked.size());
+        Map<Long, Double> pcvr = new HashMap<>();
         for (RankedItem ri : ranked) {
-            out.put(ri.itemId(), ri.score());
+            pctr.put(ri.itemId(), ri.score());
+            Map<String, Double> snap = ri.featureSnapshot();
+            if (snap != null && snap.containsKey("pCVR")) {
+                pcvr.put(ri.itemId(), snap.get("pCVR"));
+            }
         }
-        return out;
+        return new RankScores(pctr, pcvr);
+    }
+
+    /** 排序模型产出的 pCTR / pCVR 两张表(pCVR 可能为空)。 */
+    private record RankScores(Map<Long, Double> pctr, Map<Long, Double> pcvr) {
     }
 }

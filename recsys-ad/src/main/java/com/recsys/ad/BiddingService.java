@@ -30,19 +30,25 @@ public class BiddingService {
     private final Calibrator calibrator;
     private final PacingService pacing;
     private final RelevanceGate gate;
+    private final OcpcBidder ocpcBidder;
     private final AdProperties props;
 
     public BiddingService(Calibrator calibrator, PacingService pacing,
-                          RelevanceGate gate, AdProperties props) {
+                          RelevanceGate gate, OcpcBidder ocpcBidder, AdProperties props) {
         this.calibrator = calibrator;
         this.pacing = pacing;
         this.gate = gate;
+        this.ocpcBidder = ocpcBidder;
         this.props = props;
     }
+
+    private static final AdRepository.OcpcParams DEFAULT_CPC = new AdRepository.OcpcParams("CPC", 0.0);
 
     /**
      * @param candidates    过了相关性门槛 + 预算过滤的候选
      * @param pctrRawByItem  itemId → 排序模型原始 pCTR(编排层用 RankRouter 算好传入)
+     * @param pcvrByItem     itemId → 排序模型 pCVR(mmoe/din 给出,供 oCPC 自动出价;缺则用先验)
+     * @param ocpcByAd       adId → oCPC 参数(优化方式 / 目标 CPA);CPC 广告退手动出价
      * @param titleByAd      adId → 创意标题(编排层批量加载)
      * @param calibModel     校准表标识
      * @param slots          广告位数
@@ -50,6 +56,8 @@ public class BiddingService {
      */
     public List<SponsoredAd> auction(List<AdCandidate> candidates,
                                      Map<Long, Double> pctrRawByItem,
+                                     Map<Long, Double> pcvrByItem,
+                                     Map<Long, AdRepository.OcpcParams> ocpcByAd,
                                      Map<Long, String> titleByAd,
                                      String calibModel,
                                      int slots) {
@@ -61,14 +69,19 @@ public class BiddingService {
         for (AdCandidate c : candidates) {
             double pctrRaw = pctrRawByItem.getOrDefault(c.itemId(), 0.0);
             double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
-            double pacedBid = c.bid() * pacing.pacingFactor(c.advertiserId());
+            // oCPC:把目标 CPA 自动换算成出价(bid = targetCpa × pCVR × k);CPC 广告退手动出价
+            AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
+            double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
+            double effBid = ocpcBidder.effectiveBid(
+                    ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), c.advertiserId(), pcvr);
+            double pacedBid = effBid * pacing.pacingFactor(c.advertiserId());
             double relevance = gate.relevance(c);
             double effQuality = pctrCalib * c.quality() * relevance; // 有效质量(含相关性)
             double ecpm = pacedBid * effQuality;
             if (ecpm < reserve) {
                 continue;
             }
-            scored.add(new Scored(c, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, relevance));
+            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, effQuality, ecpm, relevance));
         }
         // 2. eCPM 降序
         scored.sort((a, b) -> Double.compare(b.ecpm, a.ecpm));
@@ -86,7 +99,7 @@ public class BiddingService {
             out.add(new SponsoredAd(
                     c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
                     titleByAd.getOrDefault(c.adId(), ""),
-                    c.channel(), c.bid(), c.quality(), s.relevance,
+                    c.channel(), s.effBid, c.quality(), s.relevance,
                     s.pctrRaw, s.pctrCalib, s.ecpm, charged, i + 1));
         }
         return out;
@@ -96,7 +109,7 @@ public class BiddingService {
         return Math.max(0.0, Math.min(1.0, p));
     }
 
-    private record Scored(AdCandidate candidate, double pacedBid, double pctrRaw,
+    private record Scored(AdCandidate candidate, double effBid, double pacedBid, double pctrRaw,
                           double pctrCalib, double effQuality, double ecpm, double relevance) {
     }
 }

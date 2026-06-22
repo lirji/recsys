@@ -80,17 +80,18 @@ public class ExposureLogger {
     private void insert(long userId, String scene, String bucket, List<Long> itemIds) {
         try {
             jdbc.batchUpdate(
-                    "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket) " +
-                    "VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position) " +
+                    "VALUES(?,?,?,?,?,?,?)",
                     new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
                             ps.setLong(1, userId);
                             ps.setLong(2, itemIds.get(i));
                             ps.setString(3, ActionType.IMPRESSION.name());
-                            ps.setDouble(4, i + 1); // 展示排名
+                            ps.setDouble(4, i + 1); // 展示排名(沿用 value,向后兼容)
                             ps.setString(5, scene);
                             ps.setString(6, bucket);
+                            ps.setInt(7, i + 1);    // 展示位次(1 基):曝光日志闭环 + PAL 用
                         }
 
                         @Override

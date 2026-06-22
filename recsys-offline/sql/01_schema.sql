@@ -13,8 +13,16 @@ CREATE TABLE IF NOT EXISTS item (
     tags        TEXT[],                     -- 标签
     description TEXT,
     popularity  DOUBLE PRECISION DEFAULT 0, -- 热度(热门召回/冷启动)
-    created_at  TIMESTAMP DEFAULT now()
+    created_at  TIMESTAMP DEFAULT now(),
+    -- 全文检索向量(标题+类目),供 LEXICAL 词法召回(BM25/ts_rank);生成列,随 title/category 自动更新
+    title_tsv   tsvector GENERATED ALWAYS AS
+                (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED
 );
+-- 全文检索 GIN 索引(LEXICAL 召回必需)
+CREATE INDEX IF NOT EXISTS idx_item_title_tsv ON item USING gin (title_tsv);
+-- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
+ALTER TABLE item ADD COLUMN IF NOT EXISTS title_tsv tsvector GENERATED ALWAYS AS
+    (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED;
 
 -- ---------- 物品向量(pgvector) ----------
 -- 维度 768 需与 EmbeddingClient.dimension() 一致;换模型须全量重灌
@@ -49,7 +57,10 @@ CREATE TABLE IF NOT EXISTS user_behavior (
     value   DOUBLE PRECISION,
     scene   TEXT,
     bucket  TEXT,                           -- AB 实验分桶
+    position INT,                           -- IMPRESSION 展示位次(1 基);曝光日志闭环 + PAL 位置去偏
     ts      TIMESTAMP DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_behavior_user ON user_behavior (user_id, ts);
 CREATE INDEX IF NOT EXISTS idx_behavior_item ON user_behavior (item_id, ts);
+-- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
+ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS position INT;

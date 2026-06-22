@@ -19,8 +19,10 @@
   "sparse_cardinalities": [
     5000,
     20000,
-    20
+    19
   ],
+  "max_position": 10,
+  "position_debiased": true,
   "outputs": [
     "ctr",
     "cvr"

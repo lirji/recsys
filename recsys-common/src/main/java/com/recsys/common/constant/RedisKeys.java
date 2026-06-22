@@ -51,6 +51,11 @@ public final class RedisKeys {
         return "emb:cache:" + textHash;
     }
 
+    /** LLM 生成结果缓存 String:llm:cache:{hash}(query 理解的 JSON 输出,省外呼) */
+    public static String llmCache(String textHash) {
+        return "llm:cache:" + textHash;
+    }
+
     /** UserCF 个性化召回列表 ZSet(离线物化,score=相似用户加权分):u2u:{userId} */
     public static String u2u(long userId) {
         return "u2u:" + userId;
@@ -97,5 +102,14 @@ public final class RedisKeys {
     /** 广告归因 String(短 TTL):ad:expo:{requestId}:{adId} = "bidwordId;pctrCalib;ecpm;charged;position"。 */
     public static String adExposure(String requestId, long adId) {
         return "ad:expo:" + requestId + ":" + adId;
+    }
+
+    /**
+     * oCPC 出价调节系数 String(>0,默认 1.0):ad:ocpc:{advertiserId}。
+     * 离线 OcpcCalibrateJob 按"实际 CPA vs 目标 CPA"反馈控制拟合写入,在线 OcpcBidder 查表;
+     * 缺失则退 1.0(等价于 bid = targetCpa × pCVR,不做偏差校正)。
+     */
+    public static String adOcpc(long advertiserId) {
+        return "ad:ocpc:" + advertiserId;
     }
 }

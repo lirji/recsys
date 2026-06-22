@@ -32,14 +32,21 @@ public class MultiChannelRecallService implements RecallService {
     private static final Logger log = LoggerFactory.getLogger(MultiChannelRecallService.class);
 
     private final List<ChannelRecaller> recallers;
+    private final RecallProperties props;
 
-    public MultiChannelRecallService(List<ChannelRecaller> recallers) {
+    public MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props) {
         this.recallers = recallers;
+        this.props = props;
     }
 
     @Override
     public List<RecallItem> recall(RecallContext ctx) {
-        // itemId -> 合并后的条目(记录来源与最大召回分)
+        // 融合模式:默认按路归一化取 max(跨路可比);搜索场景传 recall-fusion=rrf 用 RRF
+        // (Reciprocal Rank Fusion)按各路排名融合 —— 对量纲迥异的检索器(BM25 vs 余弦)更鲁棒。
+        boolean rrf = "rrf".equalsIgnoreCase(ctx.params().get("recall-fusion"));
+        double rrfK = props.getRrfK();
+
+        // itemId -> 合并后的条目(记录来源与召回分)
         Map<Long, Merged> merged = new LinkedHashMap<>();
         for (ChannelRecaller recaller : recallers) {
             // 分层 A/B / 冷启动可只启用部分召回路;enabledChannels 为空表示全开
@@ -56,24 +63,54 @@ public class MultiChannelRecallService implements RecallService {
             if (items == null) {
                 continue;
             }
-            // 本路自身最大分,用于把该路所有分归一化到 [0,1](跨路可比的前提)。
-            double chMax = 0;
-            for (RecallItem it : items) {
-                chMax = Math.max(chMax, it.recallScore());
+            if (rrf) {
+                // RRF:本路按分降序定名次,贡献 1/(k+rank) 累加;名次而非原始分,免归一化、抗量纲
+                List<RecallItem> sorted = new ArrayList<>(items);
+                sorted.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
+                int rank = 0;
+                for (RecallItem it : sorted) {
+                    rank++;
+                    double contrib = 1.0 / (rrfK + rank);
+                    merged.compute(it.itemId(), (id, cur) -> {
+                        if (cur == null) {
+                            return new Merged(contrib, it.channel());
+                        }
+                        cur.score += contrib;
+                        if (!cur.channels.contains(it.channel())) {
+                            cur.channels.add(it.channel());
+                        }
+                        return cur;
+                    });
+                }
+            } else {
+                // 本路自身最大分,用于把该路所有分归一化到 [0,1](跨路可比的前提)。
+                double chMax = 0;
+                for (RecallItem it : items) {
+                    chMax = Math.max(chMax, it.recallScore());
+                }
+                final double denom = chMax > 0 ? chMax : 1.0;
+                for (RecallItem it : items) {
+                    double norm = it.recallScore() / denom;
+                    merged.compute(it.itemId(), (id, cur) -> {
+                        if (cur == null) {
+                            return new Merged(norm, it.channel());
+                        }
+                        cur.score = Math.max(cur.score, norm);
+                        if (!cur.channels.contains(it.channel())) {
+                            cur.channels.add(it.channel());
+                        }
+                        return cur;
+                    });
+                }
             }
-            final double denom = chMax > 0 ? chMax : 1.0;
-            for (RecallItem it : items) {
-                double norm = it.recallScore() / denom;
-                merged.compute(it.itemId(), (id, cur) -> {
-                    if (cur == null) {
-                        return new Merged(norm, it.channel());
-                    }
-                    cur.score = Math.max(cur.score, norm);
-                    if (!cur.channels.contains(it.channel())) {
-                        cur.channels.add(it.channel());
-                    }
-                    return cur;
-                });
+        }
+
+        // RRF 累加分归一化到 [0,1],与默认模式量纲一致(下游全局归一化 + channel-boost 不受影响)
+        if (rrf && !merged.isEmpty()) {
+            double max = merged.values().stream().mapToDouble(m -> m.score).max().orElse(1.0);
+            double d = max > 0 ? max : 1.0;
+            for (Merged m : merged.values()) {
+                m.score /= d;
             }
         }
 
@@ -106,11 +143,14 @@ public class MultiChannelRecallService implements RecallService {
             case SWING -> 1;
             case U2U -> 2;
             case TWO_TOWER -> 3;   // 学行为的个性化向量召回,信息量高,优先于内容向量
-            case VECTOR -> 4;
-            case SEMANTIC -> 5;
-            case TAG -> 6;
-            case COLD -> 7;
-            case HOT -> 8;
+            case TIGER -> 4;       // 完整生成式召回(自回归),学习型语义信号,信息量高
+            case GENERATIVE -> 5;  // 生成式语义 ID 召回(前缀检索版)
+            case VECTOR -> 6;
+            case SEMANTIC -> 7;
+            case LEXICAL -> 8;     // 词法 query 相关性(搜索),与 SEMANTIC 同属 query 内容匹配
+            case TAG -> 9;
+            case COLD -> 10;
+            case HOT -> 11;
         };
     }
 

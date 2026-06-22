@@ -94,9 +94,14 @@ public class SeedAdsJob implements OfflineJob {
             long itemId = items.get(i)[0];
             String title = titles.get(i) == null ? "" : titles.get(i);
             double quality = round2(0.7 + 0.3 * rnd.nextDouble());
-            jdbc.update("INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score,status) " +
-                            "VALUES(?,?,?,?,?,?, 'active')",
-                    adId, advertiserId, itemId, title, "https://example.com/ad/" + adId, quality);
+            // ~30% 广告设为 oCPC:广告主只给目标转化成本 target_cpa∈[5,20]元(余下按 CPC 手动出价)
+            boolean ocpc = (i % 10) < 3;
+            String optType = ocpc ? "OCPC" : "CPC";
+            Double targetCpa = ocpc ? round2(5 + 15 * rnd.nextDouble()) : null;
+            jdbc.update("INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score," +
+                            "status,optimization_type,target_cpa) VALUES(?,?,?,?,?,?, 'active',?,?)",
+                    adId, advertiserId, itemId, title, "https://example.com/ad/" + adId, quality,
+                    optType, targetCpa);
 
             Set<String> keywords = keywords(title, categories.get(i));
             for (String kw : keywords) {

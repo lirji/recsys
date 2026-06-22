@@ -253,7 +253,7 @@ public class RecommendOrchestrator {
 
     /** 召回路里属于 query 驱动的两路:SEMANTIC 用归一化 query,TAG 叠加意图类目。 */
     private static final List<RecallChannel> QUERY_CHANNELS =
-            List.of(RecallChannel.SEMANTIC, RecallChannel.TAG);
+            List.of(RecallChannel.SEMANTIC, RecallChannel.LEXICAL, RecallChannel.TAG);
 
     /**
      * 把结构化 query 转成召回参数:
@@ -261,6 +261,8 @@ public class RecommendOrchestrator {
      */
     private static Map<String, String> buildRecallParams(StructuredQuery sq) {
         Map<String, String> params = new HashMap<>();
+        // 搜索:词法(LEXICAL/BM25)+ 向量(SEMANTIC)等多路按 RRF 融合(混合检索)
+        params.put("recall-fusion", "rrf");
         if (sq.normalized() != null && !sq.normalized().isBlank()) {
             params.put("query", sq.normalized());
         }

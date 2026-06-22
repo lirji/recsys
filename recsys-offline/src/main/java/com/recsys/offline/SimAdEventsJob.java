@@ -57,6 +57,7 @@ public class SimAdEventsJob implements OfflineJob {
 
         List<Object[]> impressions = new ArrayList<>();
         List<Object[]> clicks = new ArrayList<>();
+        List<Object[]> conversions = new ArrayList<>();
         for (int i = 0; i < requests; i++) {
             String reqId = "sim-" + UUID.randomUUID();
             long userId = 1 + rnd.nextInt(600);
@@ -68,6 +69,11 @@ public class SimAdEventsJob implements OfflineJob {
             impressions.add(new Object[]{reqId, userId, adId, position, pctr, charged});
             if (rnd.nextDouble() < trueCtr) {
                 clicks.add(new Object[]{reqId, userId, adId});
+                // 点击后按真实 CVR 转化(教学用,给 oCPC 反馈控制 ad-ocpc 喂数据)
+                double trueCvr = 0.08 + 0.22 * rnd.nextDouble();
+                if (rnd.nextDouble() < trueCvr) {
+                    conversions.add(new Object[]{reqId, userId, adId});
+                }
             }
         }
 
@@ -110,8 +116,27 @@ public class SimAdEventsJob implements OfflineJob {
                     }
                 });
 
-        log.info("sim-ad-events 完成(教学用):曝光 {} / 点击 {}(经验 CTR≈{}),可跑 --job=ad-calibrate",
-                impressions.size(), clicks.size(), round4((double) clicks.size() / impressions.size()));
+        jdbc.batchUpdate(
+                "INSERT INTO ad_event(request_id,user_id,ad_id,event_type) VALUES(?,?,?, 'CONVERSION')",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        Object[] r = conversions.get(i);
+                        ps.setString(1, (String) r[0]);
+                        ps.setLong(2, (Long) r[1]);
+                        ps.setLong(3, (Long) r[2]);
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return conversions.size();
+                    }
+                });
+
+        log.info("sim-ad-events 完成(教学用):曝光 {} / 点击 {} / 转化 {}(经验 CTR≈{}),"
+                        + "可跑 --job=ad-calibrate(校准 pCTR)与 --job=ad-ocpc(oCPC 调价)",
+                impressions.size(), clicks.size(), conversions.size(),
+                round4((double) clicks.size() / impressions.size()));
     }
 
     private static double round4(double v) {

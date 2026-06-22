@@ -11,9 +11,20 @@ public class RecallProperties {
     private final Quota quota = new Quota();
     private final TwoTower twoTower = new TwoTower();
     private final Tag tag = new Tag();
+    private final Tiger tiger = new Tiger();
+    /** RRF(Reciprocal Rank Fusion)平滑常数 k:贡献 = 1/(k+rank)。业界常用 60。 */
+    private int rrfK = 60;
 
     public Quota getQuota() {
         return quota;
+    }
+
+    public int getRrfK() {
+        return rrfK;
+    }
+
+    public void setRrfK(int rrfK) {
+        this.rrfK = rrfK;
     }
 
     public TwoTower getTwoTower() {
@@ -22,6 +33,42 @@ public class RecallProperties {
 
     public Tag getTag() {
         return tag;
+    }
+
+    public Tiger getTiger() {
+        return tiger;
+    }
+
+    /** 完整 TIGER 生成式召回:decoder-only Transformer ONNX + schema(token 契约)+ beam 宽度。 */
+    public static class Tiger {
+        private String modelPath = "classpath:model/tiger.onnx";
+        private String schemaPath = "classpath:model/tiger_schema.json";
+        /** beam search 宽度(每级保留的候选数,也≈最终生成的语义 ID 数)。 */
+        private int beam = 8;
+
+        public String getModelPath() {
+            return modelPath;
+        }
+
+        public void setModelPath(String modelPath) {
+            this.modelPath = modelPath;
+        }
+
+        public String getSchemaPath() {
+            return schemaPath;
+        }
+
+        public void setSchemaPath(String schemaPath) {
+            this.schemaPath = schemaPath;
+        }
+
+        public int getBeam() {
+            return beam;
+        }
+
+        public void setBeam(int beam) {
+            this.beam = beam;
+        }
     }
 
     /**
@@ -96,8 +143,13 @@ public class RecallProperties {
         private int semantic = 100;
         private int cold = 100;
         private int twoTower = 200;
+        private int generative = 200;
+        private int lexical = 200;
+        private int tiger = 200;
         /** i2i/swing:取用户最近多少个行为物品做种子。 */
         private int i2iSeed = 20;
+        /** generative:取用户最近多少个正反馈物品做语义 ID 种子。 */
+        private int generativeSeed = 20;
         /** cold:每个类目取多少热门做探索。 */
         private int coldPerCategory = 5;
 
@@ -173,12 +225,44 @@ public class RecallProperties {
             this.twoTower = twoTower;
         }
 
+        public int getGenerative() {
+            return generative;
+        }
+
+        public void setGenerative(int generative) {
+            this.generative = generative;
+        }
+
+        public int getLexical() {
+            return lexical;
+        }
+
+        public void setLexical(int lexical) {
+            this.lexical = lexical;
+        }
+
+        public int getTiger() {
+            return tiger;
+        }
+
+        public void setTiger(int tiger) {
+            this.tiger = tiger;
+        }
+
         public int getI2iSeed() {
             return i2iSeed;
         }
 
         public void setI2iSeed(int i2iSeed) {
             this.i2iSeed = i2iSeed;
+        }
+
+        public int getGenerativeSeed() {
+            return generativeSeed;
+        }
+
+        public void setGenerativeSeed(int generativeSeed) {
+            this.generativeSeed = generativeSeed;
         }
 
         public int getColdPerCategory() {

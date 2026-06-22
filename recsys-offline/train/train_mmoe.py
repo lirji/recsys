@@ -3,9 +3,15 @@
 
 输入:同目录 samples_mt.csv(由 Java 作业 gen-samples-mt 生成),表头:
       label_click, label_like, user_id, item_id, category, <5 稠密特征>,
-      seq_items, seq_cats, seq_len, split
-  本脚本只用 label_click/label_like + 稠密 + 稀疏(user_id/item_id/category),
+      seq_items, seq_cats, seq_len, position, split
+  本脚本只用 label_click/label_like + 稠密 + 稀疏(user_id/item_id/category) + position,
   序列列留给 DIN(train_din.py),这里忽略。
+
+位置去偏(PAL,Position-aware Learning):训练时 pCTR = sigmoid(相关性 logit + 位置偏置 b(position)),
+  位置偏置塔吃 position、拟合"观测点击"里的位置效应;**导出时 position=None,该塔不入计算图**,
+  ONNX 仍是 dense+sparse 双输入(线上推理契约/编码器一概不变)。position=0 表示位次未知(本仓历史样本
+  无真实曝光位次,默认全 0 → PAL 休眠,精度等同无去偏);用 gen-samples-mt --position-proxy 可注入
+  热度名次代理来观察机制。
 
 模型 = MMoE(多门控混合专家)+ ESMM(整体空间多任务)
   - 输入 = 稀疏 embedding(user/item/category)展平 ⊕ 5 个稠密特征;
@@ -48,6 +54,7 @@ USER_BUCKETS = 5000
 ITEM_BUCKETS = 20000
 EMBED_DIM = 16
 N_EXPERTS = 4
+MAX_POSITION = 10  # 位置去偏(PAL):position ∈ [0, MAX_POSITION],0=未知(不施偏置)
 
 # 稠密特征列顺序(= Java FeatureAssembler.FEATURE_ORDER,逐位对齐)
 DENSE_COLS = [
@@ -92,6 +99,14 @@ def main():
     dense = df[DENSE_COLS].to_numpy().astype("float32")
     click = df["label_click"].to_numpy().astype("float32")
     like = df["label_like"].to_numpy().astype("float32")
+    # 位置去偏(PAL):训练用 position-bias 塔吃 position 解释掉位置效应,导出时丢弃 → 线上推理契约不变
+    if "position" in df.columns:
+        position = df["position"].fillna(0).clip(0, MAX_POSITION).astype("int64").to_numpy()
+    else:
+        position = np.zeros(len(df), dtype="int64")
+    n_pos = int((position > 0).sum())
+    print(f"位置去偏(PAL):有位次样本 {n_pos}/{len(df)}"
+          + ("(全 0 → PAL 塔休眠,等价于无去偏)" if n_pos == 0 else ""))
 
     # id-embedding 模型用随机切分(同 DeepFM:保证每个 id 在 train 见过)
     rng = np.random.default_rng(42)
@@ -104,6 +119,7 @@ def main():
 
     x_d = torch.from_numpy(dense)
     x_s = torch.from_numpy(sparse)
+    x_pos = torch.from_numpy(position)
     y_click = torch.from_numpy(click)
     y_like = torch.from_numpy(like)
     tr = torch.from_numpy(np.where(is_train)[0])
@@ -121,7 +137,8 @@ def main():
         for i in range(0, len(perm), batch):
             idx = perm[i:i + batch]
             opt.zero_grad()
-            pctr, pcvr = model(x_d[idx], x_s[idx])
+            # 训练:带 position → pCTR 含位置偏置(拟合"观测"点击);CVR 不受位置影响
+            pctr, pcvr = model(x_d[idx], x_s[idx], x_pos[idx])
             pctr, pcvr = pctr.squeeze(1), pcvr.squeeze(1)
             pctcvr = pctr * pcvr
             # ESMM:CTR 用 click 标签,CTCVR 用 like 标签(都在全样本上)
@@ -174,10 +191,14 @@ class MMoE(nn.Module):
         # 每任务一个塔
         self.tower_ctr = nn.Sequential(nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
         self.tower_cvr = nn.Sequential(nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
+        # PAL 位置偏置塔:logit 空间加性偏置 b(position),只在训练用、导出丢弃(position=None);
+        # 0 初始化 + 对 position==0(未知)掩码为 0 → 不污染相关性头的服务分。
+        self.pos_bias = nn.Embedding(MAX_POSITION + 1, 1)
+        nn.init.zeros_(self.pos_bias.weight)
         for e in self.emb:
             nn.init.normal_(e.weight, std=0.01)
 
-    def forward(self, dense, sparse):
+    def forward(self, dense, sparse, position=None):
         embeds = [self.emb[j](sparse[:, j]) for j in range(self.n_fields)]
         x = torch.cat(embeds + [dense], dim=1)                       # [N, in_dim]
         expert_out = torch.stack([e(x) for e in self.experts], dim=1)  # [N, E, 32]
@@ -186,7 +207,11 @@ class MMoE(nn.Module):
             w = torch.softmax(gate(x), dim=1).unsqueeze(2)           # [N, E, 1]
             return (w * expert_out).sum(dim=1)                       # [N, 32]
 
-        ctr = torch.sigmoid(self.tower_ctr(mix(self.gate_ctr)))      # [N, 1]
+        ctr_logit = self.tower_ctr(mix(self.gate_ctr))               # [N, 1] 相关性 logit
+        if position is not None:                                     # 训练:加位置偏置(导出时 position=None,此分支不入图)
+            mask = (position > 0).float().unsqueeze(1)               # [N, 1] 未知位次不施偏置
+            ctr_logit = ctr_logit + self.pos_bias(position) * mask
+        ctr = torch.sigmoid(ctr_logit)                               # [N, 1]
         cvr = torch.sigmoid(self.tower_cvr(mix(self.gate_cvr)))      # [N, 1]
         return ctr, cvr
 
@@ -223,6 +248,8 @@ def export_onnx(model, vocab, cardinalities):
             "embed_dim": EMBED_DIM,
             "n_experts": N_EXPERTS,
             "sparse_cardinalities": cardinalities,
+            "max_position": MAX_POSITION,
+            "position_debiased": True,
             "outputs": ["ctr", "cvr"],
         }, f, ensure_ascii=False, indent=2)
     with open(VOCAB_PATH, "w") as f:

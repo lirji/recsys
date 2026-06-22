@@ -94,6 +94,39 @@ public class AdRepository {
         }
     }
 
+    /**
+     * 批量取广告的 oCPC 参数(adId → {优化方式, 目标 CPA})。供竞价层算自动出价。
+     * 缺列/失败返回空 map(上层按 CPN 默认处理),不影响主链路。
+     */
+    public java.util.Map<Long, OcpcParams> ocpcParams(Collection<Long> adIds) {
+        if (adIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        Long[] ids = adIds.toArray(new Long[0]);
+        java.util.Map<Long, OcpcParams> out = new java.util.HashMap<>();
+        try {
+            jdbc.query(
+                    "SELECT ad_id, optimization_type, target_cpa FROM ad WHERE ad_id = ANY(?)",
+                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                        String type = rs.getString("optimization_type");
+                        double cpa = rs.getDouble("target_cpa");
+                        out.put(rs.getLong("ad_id"),
+                                new OcpcParams(type == null ? "CPC" : type, rs.wasNull() ? 0.0 : cpa));
+                    });
+        } catch (Exception e) {
+            log.warn("取广告 oCPC 参数失败,退 CPC: {}", e.getMessage());
+        }
+        return out;
+    }
+
+    /** 广告的出价优化方式与目标转化成本。 */
+    public record OcpcParams(String optimizationType, double targetCpa) {
+        public boolean isOcpc() {
+            return "OCPC".equalsIgnoreCase(optimizationType) && targetCpa > 0;
+        }
+    }
+
     /** 批量取广告创意标题(竞得后给前几条填标题)。 */
     public java.util.Map<Long, String> titles(Collection<Long> adIds) {
         if (adIds.isEmpty()) {

@@ -3,9 +3,12 @@
 
 输入:同目录 samples_mt.csv(由 Java 作业 gen-samples-mt 生成),表头:
       label_click, label_like, user_id, item_id, category, <5 稠密>,
-      seq_items, seq_cats, seq_len, split
+      seq_items, seq_cats, seq_len, position, split
   本脚本在 MMoE 的稠密+稀疏之上,额外吃 seq_items(用户历史 ≥4 物品序列,
   `|` 拼接,oldest→newest),做 DIN target-attention。
+
+位置去偏(PAL):同 train_mmoe.py —— 训练时 pCTR 含位置偏置塔 b(position),导出时 position=None
+  该塔不入计算图(ONNX 仍是 dense/sparse/seq/seq_len 四输入,线上不变)。position=0=未知(默认全 0 休眠)。
 
 模型 = DIN(候选 item 对历史行为做注意力池化)+ MMoE 多目标头(CTR/CVR,ESMM)
   - 候选 item 与序列 item <b>共享同一 item embedding 表</b>(DIN 的前提);
@@ -46,6 +49,7 @@ ITEM_BUCKETS = 20000
 EMBED_DIM = 16
 N_EXPERTS = 4
 SEQ_LEN = 20  # 与 gen-samples-mt 的 seq-len 上限一致
+MAX_POSITION = 10  # 位置去偏(PAL):position ∈ [0, MAX_POSITION],0=未知(不施偏置)
 
 DENSE_COLS = [
     "item_pop_norm", "item_avg_rating", "user_act_norm", "user_avg_rating", "user_cat_affinity",
@@ -97,6 +101,14 @@ def main():
     seq, seq_len = encode_seq(df["seq_items"].tolist())
     click = df["label_click"].to_numpy().astype("float32")
     like = df["label_like"].to_numpy().astype("float32")
+    # 位置去偏(PAL):训练用 position-bias 塔吃 position,导出时丢弃 → 线上推理契约不变(见 train_mmoe.py)
+    if "position" in df.columns:
+        position = df["position"].fillna(0).clip(0, MAX_POSITION).astype("int64").to_numpy()
+    else:
+        position = np.zeros(len(df), dtype="int64")
+    n_pos = int((position > 0).sum())
+    print(f"位置去偏(PAL):有位次样本 {n_pos}/{len(df)}"
+          + ("(全 0 → PAL 塔休眠,等价于无去偏)" if n_pos == 0 else ""))
     nonempty = int((seq_len > 0).sum())
     print(f"非空序列样本 {nonempty}/{len(df)}({100 * nonempty / len(df):.1f}%),平均长度 {seq_len[seq_len > 0].mean():.1f}")
 
@@ -111,6 +123,7 @@ def main():
     x_s = torch.from_numpy(sparse)
     x_seq = torch.from_numpy(seq)
     x_len = torch.from_numpy(seq_len)
+    x_pos = torch.from_numpy(position)
     y_click = torch.from_numpy(click)
     y_like = torch.from_numpy(like)
     tr = torch.from_numpy(np.where(is_train)[0])
@@ -128,7 +141,8 @@ def main():
         for i in range(0, len(perm), batch):
             idx = perm[i:i + batch]
             opt.zero_grad()
-            pctr, pcvr = model(x_d[idx], x_s[idx], x_seq[idx], x_len[idx])
+            # 训练:带 position → pCTR 含位置偏置(拟合"观测"点击)
+            pctr, pcvr = model(x_d[idx], x_s[idx], x_seq[idx], x_len[idx], x_pos[idx])
             pctr, pcvr = pctr.squeeze(1), pcvr.squeeze(1)
             loss = bce(pctr, y_click[idx]) + bce((pctr * pcvr).clamp(1e-6, 1 - 1e-6), y_like[idx])
             loss.backward()
@@ -182,10 +196,13 @@ class DIN(nn.Module):
         self.gate_cvr = nn.Linear(in_dim, n_experts)
         self.tower_ctr = nn.Sequential(nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
         self.tower_cvr = nn.Sequential(nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 1))
+        # PAL 位置偏置塔(训练用、导出丢弃;0 初始化 + 对未知位次掩码,见 train_mmoe.py)
+        self.pos_bias = nn.Embedding(MAX_POSITION + 1, 1)
+        nn.init.zeros_(self.pos_bias.weight)
         for e in self.emb:
             nn.init.normal_(e.weight, std=0.01)
 
-    def forward(self, dense, sparse, seq, seq_len):
+    def forward(self, dense, sparse, seq, seq_len, position=None):
         embeds = [self.emb[j](sparse[:, j]) for j in range(self.n_fields)]
         e_t = embeds[self.item_field]                      # 候选 item embedding [N, d]
         seq_emb = self.emb[self.item_field](seq)           # 序列 item embedding [N, L, d]
@@ -211,7 +228,11 @@ class DIN(nn.Module):
             w = torch.softmax(gate(x), dim=1).unsqueeze(2)
             return (w * expert_out).sum(dim=1)
 
-        ctr = torch.sigmoid(self.tower_ctr(mix(self.gate_ctr)))
+        ctr_logit = self.tower_ctr(mix(self.gate_ctr))               # [N, 1] 相关性 logit
+        if position is not None:                                     # 训练加位置偏置;导出 position=None 不入图
+            mask = (position > 0).float().unsqueeze(1)
+            ctr_logit = ctr_logit + self.pos_bias(position) * mask
+        ctr = torch.sigmoid(ctr_logit)
         cvr = torch.sigmoid(self.tower_cvr(mix(self.gate_cvr)))
         return ctr, cvr
 
@@ -251,6 +272,8 @@ def export_onnx(model, vocab, cardinalities):
             "embed_dim": EMBED_DIM,
             "n_experts": N_EXPERTS,
             "sparse_cardinalities": cardinalities,
+            "max_position": MAX_POSITION,
+            "position_debiased": True,
             "outputs": ["ctr", "cvr"],
         }, f, ensure_ascii=False, indent=2)
     with open(VOCAB_PATH, "w") as f:

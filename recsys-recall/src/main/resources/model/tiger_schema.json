@@ -1,0 +1,11 @@
+{
+  "model": "tiger",
+  "levels": 3,
+  "codes": 255,
+  "vocab": 767,
+  "max_hist": 20,
+  "max_len": 64,
+  "pad": 0,
+  "bos": 1,
+  "code_token_base": 2
+}

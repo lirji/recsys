@@ -35,6 +35,44 @@ public class QueryProperties {
     /** 同义词扩展表:词 → 等价词(用于改写)。如 {@code scary -> horror}。 */
     private Map<String, String> synonyms = Map.of();
 
+    /** LLM query 理解(拼写纠错 / 意图分类 / 改写扩展)子配置。 */
+    private Llm llm = new Llm();
+
+    public Llm getLlm() {
+        return llm;
+    }
+
+    public void setLlm(Llm llm) {
+        this.llm = llm;
+    }
+
+    /**
+     * LLM 增强开关与参数(recsys.query.llm.*)。即便 {@code enabled=true},也仅在
+     * {@code LlmClient.isReady()} 时生效,否则整步跳过走纯词法兜底。
+     */
+    public static class Llm {
+        /** 是否启用 LLM query 理解。 */
+        private boolean enabled = true;
+        /** LLM 返回的改写/扩展查询最多采纳几条(并入 rewrites)。 */
+        private int maxExpansions = 3;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxExpansions() {
+            return maxExpansions;
+        }
+
+        public void setMaxExpansions(int maxExpansions) {
+            this.maxExpansions = maxExpansions;
+        }
+    }
+
     public int getMaxTerms() {
         return maxTerms;
     }
