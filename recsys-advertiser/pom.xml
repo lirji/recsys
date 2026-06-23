@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-advertiser</artifactId>
+    <name>recsys-advertiser</name>
+    <description>广告主侧管理服务:广告主/广告/创意/竞价词的增删改查 + 报表。写库的同时同步在线服务存储
+        (Redis bidword 倒排 + ad_embedding),让新建/改动的广告对在线召回即时生效。docs/05 §2 recsys-advertiser。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- 真源读写:advertiser / ad / ad_creative / bidword / ad_embedding -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <!-- 分库分表:ShardingSphere-JDBC。datasource 走 jdbc:shardingsphere:classpath:sharding.yaml,
+             广告表(advertiser/ad/bidword/ad_creative)按 key 分到 ds_0/ds_1,Snowflake 生成主键。
+             其余表(item/*_embedding/ad_event…)走 !SINGLE 默认到 ds_0(含 pgvector,不进分片解析路径)。-->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc</artifactId>
+            <version>5.5.0</version>
+            <exclusions>
+                <!-- 5.5.0 把测试工具 shardingsphere-test-util 误置为 compile 传递依赖,
+                     但该 artifact 未发布到中央仓 → 运行期不需要,排除之 -->
+                <exclusion>
+                    <groupId>org.apache.shardingsphere</groupId>
+                    <artifactId>shardingsphere-test-util</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 同步竞价词倒排 bidword:inv:{keyword} + 查当日已耗预算 ad:budget:{adv}:{day} -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

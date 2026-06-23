@@ -42,11 +42,17 @@ public class OcpcCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(OcpcCalibrateJob.class);
 
+    /** 主库:ad_event(单表 ds_0)聚合。 */
     private final JdbcTemplate jdbc;
+    /** 分片库:ad(OCPC 广告 → 目标 CPA / 广告主映射)。 */
+    private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
 
-    public OcpcCalibrateJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
+    public OcpcCalibrateJob(JdbcTemplate jdbc,
+                            @org.springframework.beans.factory.annotation.Qualifier("adShardingJdbc")
+                            JdbcTemplate sharded, StringRedisTemplate redis) {
         this.jdbc = jdbc;
+        this.sharded = sharded;
         this.redis = redis;
     }
 
@@ -69,9 +75,12 @@ public class OcpcCalibrateJob implements OfflineJob {
         double lambda = delayCorrect ? readLambda() : 0.0;
         boolean correcting = lambda > 0;
 
-        // 1. 每个广告主的目标 CPA(其 OCPC 广告的均值)
+        // 分库:ad 在分片库、ad_event 在主库,不能跨源 JOIN。先从分片库取 OCPC 广告的 目标CPA / ad→广告主映射,
+        // 再在主库按 ad_id ∈ OCPC广告 聚合 ad_event,最后在 Java 折算到广告主(口径与原 JOIN 版完全一致)。
+
+        // 1. OCPC 广告:每个广告主的目标 CPA(均值)+ ad_id→advertiser_id 映射(分片库)
         Map<Long, Double> targetCpa = new HashMap<>();
-        jdbc.query(
+        sharded.query(
                 "SELECT advertiser_id, AVG(target_cpa) AS t FROM ad " +
                 "WHERE optimization_type='OCPC' AND target_cpa > 0 GROUP BY advertiser_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
@@ -80,36 +89,48 @@ public class OcpcCalibrateJob implements OfflineJob {
             log.warn("无 OCPC 广告(先 --job=seed-ads),跳过");
             return;
         }
+        Map<Long, Long> adToAdv = new HashMap<>();
+        sharded.query(
+                "SELECT ad_id, advertiser_id FROM ad WHERE optimization_type='OCPC' AND target_cpa > 0",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                        adToAdv.put(rs.getLong("ad_id"), rs.getLong("advertiser_id")));
+        Long[] ocpcAdIds = adToAdv.keySet().toArray(new Long[0]);
 
-        // 2. 窗口内每个广告主的花费(点击归因到曝光 GSP 价)
+        // 2. 窗口内花费(主库 ad_event:点击归因到曝光 GSP 价),按 ad_id 聚合 → 折算到广告主
         Map<Long, Double> spend = new HashMap<>();
         jdbc.query(
-                "SELECT a.advertiser_id, SUM(imp.charged_price) AS s " +
+                "SELECT clk.ad_id AS ad_id, SUM(imp.charged_price) AS s " +
                 "FROM ad_event clk " +
-                "JOIN ad a ON a.ad_id = clk.ad_id AND a.optimization_type='OCPC' " +
                 "JOIN ad_event imp ON imp.request_id = clk.request_id AND imp.ad_id = clk.ad_id " +
                 "  AND imp.event_type='IMPRESSION' " +
-                "WHERE clk.event_type='CLICK' AND clk.ts >= " + since + " " +
-                "GROUP BY a.advertiser_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        spend.put(rs.getLong("advertiser_id"), rs.getDouble("s")));
+                "WHERE clk.event_type='CLICK' AND clk.ts >= " + since + " AND clk.ad_id = ANY(?) " +
+                "GROUP BY clk.ad_id",
+                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ocpcAdIds)),
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    Long adv = adToAdv.get(rs.getLong("ad_id"));
+                    if (adv != null) {
+                        spend.merge(adv, rs.getDouble("s"), Double::sum);
+                    }
+                });
 
-        // 3. 窗口内每个广告主的转化。口径与花费同为"点击落在窗口内"(clk.ts >= since)、且转化已到达
-        //    (cvt.ts <= now)。逐条取出 (广告主, 该点击的 elapsed 天数),在 Java 按 DelayModel.htWeight
-        //    累加——纠偏权重公式收敛在 DelayModel(唯一真相、可单测),不在 SQL 里复制一份避免漂移。
-        //    correcting=false 时每条权重恒为 1(= 原始计数)。raw 始终统计,供日志对比纠偏幅度。
+        // 3. 窗口内转化(主库 ad_event)。逐条取 (ad_id, 该点击的 elapsed 天数) → 映射到广告主,按 DelayModel.htWeight
+        //    累加(纠偏公式收敛在 DelayModel,唯一真相)。correcting=false 时权重恒 1(=原始计数)。
         Map<Long, Double> conversions = new HashMap<>();   // 终值(可能为小数)
         Map<Long, Long> rawConv = new HashMap<>();         // 已观测原始计数
         jdbc.query(
-                "SELECT a.advertiser_id AS adv, " +
+                "SELECT cvt.ad_id AS ad_id, " +
                 "       EXTRACT(EPOCH FROM (now() - clk.ts)) / 86400.0 AS elapsed_days " +
                 "FROM ad_event cvt " +
-                "JOIN ad a ON a.ad_id = cvt.ad_id AND a.optimization_type='OCPC' " +
                 "JOIN ad_event clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
                 "  AND clk.event_type='CLICK' " +
-                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since,
+                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since +
+                "  AND cvt.ad_id = ANY(?)",
+                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ocpcAdIds)),
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    long adv = rs.getLong("adv");
+                    Long adv = adToAdv.get(rs.getLong("ad_id"));
+                    if (adv == null) {
+                        return;
+                    }
                     double elapsed = rs.getDouble("elapsed_days");
                     double w = correcting ? DelayModel.htWeight(lambda, elapsed, minCompletion) : 1.0;
                     conversions.merge(adv, w, Double::sum);

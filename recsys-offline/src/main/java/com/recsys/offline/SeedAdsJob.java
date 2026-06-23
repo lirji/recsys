@@ -4,6 +4,7 @@ import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,11 +36,16 @@ public class SeedAdsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SeedAdsJob.class);
 
+    /** 主库:item/item_embedding 读、ad_embedding/ad_event 写(单表 ds_0)。 */
     private final JdbcTemplate jdbc;
+    /** 分片库:advertiser/ad/bidword/ad_creative 写(按分片键落 ds_0/ds_1)。 */
+    private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
 
-    public SeedAdsJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
+    public SeedAdsJob(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+                      StringRedisTemplate redis) {
         this.jdbc = jdbc;
+        this.sharded = sharded;
         this.redis = redis;
     }
 
@@ -80,15 +86,18 @@ public class SeedAdsJob implements OfflineJob {
         }
         int m = items.size();
 
-        // 1. 广告主:日预算对数均匀分布在 [50, 5000] 元
+        // 1. 广告主:日预算对数均匀分布在 [50, 5000] 元(分片库:按 advertiser_id 落 ds_0/ds_1)
         for (int a = 1; a <= numAdvertisers; a++) {
             double budget = Math.round(50 * Math.pow(100, rnd.nextDouble())); // 50..5000
-            jdbc.update("INSERT INTO advertiser(advertiser_id,name,daily_budget,status) " +
+            sharded.update("INSERT INTO advertiser(advertiser_id,name,daily_budget,status) " +
                     "VALUES(?,?,?, 'active')", a, "advertiser-" + a, budget);
         }
 
-        // 2/3. 广告 + 竞价词 + Redis 倒排
+        // 2/3. 广告 + 竞价词 + Redis 倒排。显式 id 经分片键(advertiser_id/ad_id)路由;bidword.id 用自增计数
+        //      (不依赖 RETURNING——ShardingSphere + PG RETURNING 不稳;显式给 id,keygen 不触发)。
         int bidwordCount = 0;
+        long bidwordSeq = 0;
+        List<long[]> adItem = new ArrayList<>(m); // [adId, itemId] 供随后在主库灌 ad_embedding
         for (int i = 0; i < m; i++) {
             long adId = i + 1;
             long advertiserId = (i % numAdvertisers) + 1;
@@ -99,15 +108,17 @@ public class SeedAdsJob implements OfflineJob {
             boolean ocpc = (i % 10) < 3;
             String optType = ocpc ? "OCPC" : "CPC";
             Double targetCpa = ocpc ? round2(5 + 15 * rnd.nextDouble()) : null;
-            jdbc.update("INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score," +
+            sharded.update("INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score," +
                             "status,optimization_type,target_cpa) VALUES(?,?,?,?,?,?, 'active',?,?)",
                     adId, advertiserId, itemId, title, "https://example.com/ad/" + adId, quality,
                     optType, targetCpa);
+            adItem.add(new long[]{adId, itemId});
 
             // DCO 创意(docs/05 §7 M7):每个广告 N 套创意(标题变体),多臂老虎机在线择优展示
             String[] variants = creativeTitles(title, creativesPerAd);
             for (int v = 0; v < variants.length; v++) {
-                jdbc.update("INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(?,?,?, 'active')",
+                // creative_id 不传 → ShardingSphere Snowflake keygen 填充(seed 不需要回读该 id)
+                sharded.update("INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(?,?,?, 'active')",
                         adId, variants[v], "https://example.com/ad/" + adId + "?c=" + v);
             }
 
@@ -115,10 +126,11 @@ public class SeedAdsJob implements OfflineJob {
             for (String kw : keywords) {
                 double bid = round2(clamp(Math.exp(rnd.nextGaussian() * 0.5), 0.2, 10.0)); // 对数正态≈1元
                 String matchType = kw.contains(" ") ? "PHRASE" : "EXACT";
-                Long bidwordId = jdbc.queryForObject(
-                        "INSERT INTO bidword(ad_id,keyword,match_type,bid,bid_mode) " +
-                        "VALUES(?,?,?,?, 'CPC') RETURNING id",
-                        Long.class, adId, kw, matchType, bid);
+                long bidwordId = ++bidwordSeq;
+                sharded.update(
+                        "INSERT INTO bidword(id,ad_id,keyword,match_type,bid,bid_mode) " +
+                        "VALUES(?,?,?,?,?, 'CPC')",
+                        bidwordId, adId, kw, matchType, bid);
                 bidwordCount++;
                 // Redis 倒排:member 自包含,score=bid
                 String member = BidwordInvCodec.encode(adId, bidwordId, itemId, advertiserId, quality);
@@ -126,14 +138,19 @@ public class SeedAdsJob implements OfflineJob {
             }
         }
 
-        // 4. ad_embedding:从 item_embedding 拷贝(仅关联 item 有向量的广告)
-        int embRows = jdbc.update(
-                "INSERT INTO ad_embedding(ad_id, embedding, model) " +
-                "SELECT a.ad_id, e.embedding, e.model FROM ad a " +
-                "JOIN item_embedding e ON e.item_id = a.item_id " +
-                "ON CONFLICT (ad_id) DO NOTHING");
+        // 4. ad_embedding(主库单表 ds_0):按已知 (adId,itemId) 从 item_embedding 拷贝。
+        //    不能再 JOIN 分片的 ad(跨数据源),用逐条 INSERT ... SELECT(ad_embedding 与 item_embedding 同在主库)。
+        int embRows = 0;
+        for (long[] ai : adItem) {
+            embRows += jdbc.update(
+                    "INSERT INTO ad_embedding(ad_id, embedding, model) " +
+                    "SELECT ?, e.embedding, e.model FROM item_embedding e WHERE e.item_id = ? " +
+                    "ON CONFLICT (ad_id) DO NOTHING",
+                    ai[0], ai[1]);
+        }
 
-        log.info("seed-ads 完成:广告主 {} / 广告 {} / 创意 {}(每广告 {} 套,DCO 用)/ 竞价词 {} / ad_embedding {} 条;Redis 倒排已写。",
+        log.info("seed-ads 完成:广告主 {} / 广告 {} / 创意 {}(每广告 {} 套,DCO 用)/ 竞价词 {} / ad_embedding {} 条;"
+                        + "广告表分片落 ds_0/ds_1,Redis 倒排已写。",
                 numAdvertisers, m, (long) m * creativesPerAd, creativesPerAd, bidwordCount, embRows);
     }
 
@@ -172,7 +189,16 @@ public class SeedAdsJob implements OfflineJob {
     }
 
     private void clear() {
-        jdbc.execute("TRUNCATE ad_event, ad_embedding, ad_creative, bidword, ad, advertiser RESTART IDENTITY CASCADE");
+        // 主库单表:ad_event / ad_embedding
+        jdbc.execute("TRUNCATE ad_event, ad_embedding");
+        // 分片库:advertiser/ad/bidword/ad_creative(ShardingSphere 把 TRUNCATE 下发到各分片;逐表避免依赖多表语法)
+        for (String t : new String[]{"bidword", "ad_creative", "ad", "advertiser"}) {
+            try {
+                sharded.execute("TRUNCATE " + t);
+            } catch (Exception e) {
+                log.warn("清空分片表 {} 失败(忽略): {}", t, e.getMessage());
+            }
+        }
         try {
             Set<String> keys = redis.keys("bidword:inv:*");
             if (keys != null && !keys.isEmpty()) {

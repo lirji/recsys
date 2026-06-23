@@ -1,0 +1,21 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: recsys-advertiser
+  datasource:
+    # 分库分表:走 ShardingSphere-JDBC 驱动,真实数据源 / 分片规则在 sharding.yaml
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:sharding.yaml
+  data:
+    # 同步竞价词倒排(bidword:inv:{keyword})+ 报表读当日已耗预算(ad:budget:{adv}:{day})
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

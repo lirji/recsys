@@ -5,6 +5,7 @@ import com.recsys.common.constant.RedisKeys;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,7 +34,10 @@ public class AdEventLogger {
     private static final Logger log = LoggerFactory.getLogger(AdEventLogger.class);
     private static final Duration ATTRIBUTION_TTL = Duration.ofHours(2);
 
+    /** 主库:ad_event(单表 ds_0,不分片)。 */
     private final JdbcTemplate jdbc;
+    /** 分片库:ad 表(查广告主归因用),按 advertiser_id 分布在 ds_0/ds_1。 */
+    private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ad-event-logger");
@@ -41,8 +45,10 @@ public class AdEventLogger {
         return t;
     });
 
-    public AdEventLogger(JdbcTemplate jdbc, StringRedisTemplate redis) {
+    public AdEventLogger(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+                         StringRedisTemplate redis) {
         this.jdbc = jdbc;
+        this.sharded = sharded;
         this.redis = redis;
     }
 
@@ -128,13 +134,21 @@ public class AdEventLogger {
         } catch (Exception e) {
             log.debug("读广告归因键失败,回退 DB req={} ad={}: {}", requestId, adId, e.getMessage());
         }
+        // 分库:ad_event(主库单表)与 ad(分片库)不能跨源 JOIN —— 先主库取计费额,再分片库按 ad_id 取广告主。
         try {
-            return jdbc.queryForObject(
-                    "SELECT adv.advertiser_id, e.charged_price FROM ad_event e " +
-                    "JOIN ad adv ON adv.ad_id = e.ad_id " +
-                    "WHERE e.request_id = ? AND e.ad_id = ? AND e.event_type = 'IMPRESSION' LIMIT 1",
-                    (rs, n) -> new ClickAttribution(rs.getLong("advertiser_id"), rs.getDouble("charged_price")),
-                    requestId, adId);
+            Double charged = jdbc.queryForObject(
+                    "SELECT charged_price FROM ad_event " +
+                    "WHERE request_id = ? AND ad_id = ? AND event_type = 'IMPRESSION' LIMIT 1",
+                    Double.class, requestId, adId);
+            if (charged == null) {
+                return null;
+            }
+            Long advertiserId = sharded.queryForObject(
+                    "SELECT advertiser_id FROM ad WHERE ad_id = ?", Long.class, adId);
+            if (advertiserId == null) {
+                return null;
+            }
+            return new ClickAttribution(advertiserId, charged);
         } catch (Exception e) {
             return null;
         }

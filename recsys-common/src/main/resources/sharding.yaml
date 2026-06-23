@@ -1,0 +1,99 @@
+# ShardingSphere-JDBC 分库配置(共享:recsys-advertiser 写侧当主数据源;rec-engine 读侧当**次**数据源,
+# 仅广告表走它,pgvector/召回等其余 SQL 仍走各自的主 datasource)。放在 recsys-common 资源里单一来源。
+# 通过 jdbc:shardingsphere:classpath:sharding.yaml 加载。
+#
+# 拓扑:同一 recsys-postgres 容器内两个 database —— ds_0=recsys(原库)、ds_1=recsys_ds1(新库)。
+# 分库:advertiser/ad 按 advertiser_id(广告与广告主同库)、bidword/ad_creative 按 ad_id,取模分到 ds_0/ds_1。
+# 单表:其余所有表(item / *_embedding / ad_event …)经 !SINGLE 默认落 ds_0。
+#   ad_embedding 刻意不分片——向量 ANN(hnsw + <=> 余弦)必须看到全量;rec-engine 的 ANN 仍走主 datasource 直查。
+# 主键:Snowflake(64bit、时间有序、去中心化),由 keyGenerator 生成,insert 不带主键列。
+#   worker-id 同机多实例需各异(部署按 Pod 序号 / 配置注入)。
+#
+# 注:本 YAML 由 ShardingSphere 直接解析,不走 Spring ${...} 占位符;需外部化用 $${VAR::default} 语法。
+# 这里按本地 docker 默认硬编码(与 docker-compose 的 recsys/recsys 一致)。
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5432/recsys
+    username: recsys
+    password: recsys
+    maximumPoolSize: 6
+    minimumIdle: 1
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5432/recsys_ds1
+    username: recsys
+    password: recsys
+    maximumPoolSize: 6
+    minimumIdle: 1
+
+rules:
+  - !SHARDING
+    tables:
+      advertiser:
+        actualDataNodes: ds_${0..1}.advertiser
+        databaseStrategy:
+          standard:
+            shardingColumn: advertiser_id
+            shardingAlgorithmName: adv_db_inline
+        keyGenerateStrategy:
+          column: advertiser_id
+          keyGeneratorName: snowflake
+      ad:
+        # 按 advertiser_id 分库:广告与其广告主同库(广告主作用域查询单库命中),分布跟随广告主。
+        # 不按 ad_id:Snowflake 低 12 位是序列号,低 QPS 下恒为 0 → ad_id%2 恒偶 → 全压一库(经典坑)。
+        actualDataNodes: ds_${0..1}.ad
+        databaseStrategy:
+          standard:
+            shardingColumn: advertiser_id
+            shardingAlgorithmName: adv_db_inline
+        keyGenerateStrategy:
+          column: ad_id
+          keyGeneratorName: snowflake
+      bidword:
+        actualDataNodes: ds_${0..1}.bidword
+        databaseStrategy:
+          standard:
+            shardingColumn: ad_id
+            shardingAlgorithmName: ad_db_inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: snowflake
+      ad_creative:
+        actualDataNodes: ds_${0..1}.ad_creative
+        databaseStrategy:
+          standard:
+            shardingColumn: ad_id
+            shardingAlgorithmName: ad_db_inline
+        keyGenerateStrategy:
+          column: creative_id
+          keyGeneratorName: snowflake
+    # advertiser 与 ad 同按 advertiser_id 分库 → 绑定表,JOIN(ad ⋈ advertiser)路由到同库、不产生跨库笛卡尔积。
+    # bidword/ad_creative 按 ad_id,不与上面绑定;代码里对它们只单表查或分开查(不跨分片 JOIN)。
+    bindingTables:
+      - advertiser,ad
+    # 手动 tables 须用 standard 算法(INLINE),MOD/HASH_MOD 只配 autoTables。
+    shardingAlgorithms:
+      adv_db_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${advertiser_id % 2}
+      ad_db_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${ad_id % 2}
+    keyGenerators:
+      snowflake:
+        type: SNOWFLAKE
+        props:
+          worker-id: 1
+
+  - !SINGLE
+    tables:
+      - "*.*.*"          # 其余所有表按单表处理(随首次访问绑定到所在库)
+    defaultDataSource: ds_0   # 新建单表 / 默认路由落 ds_0
+
+props:
+  sql-show: true   # 教学:日志打印改写后的真实 SQL + 路由的库,便于核对分片

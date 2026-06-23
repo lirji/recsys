@@ -43,10 +43,16 @@ public class SimAdEventsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SimAdEventsJob.class);
 
+    /** 主库:ad_event 写(单表 ds_0)。 */
     private final JdbcTemplate jdbc;
+    /** 分片库:ad / ad_creative 读(ds_0/ds_1)。 */
+    private final JdbcTemplate sharded;
 
-    public SimAdEventsJob(JdbcTemplate jdbc) {
+    public SimAdEventsJob(JdbcTemplate jdbc,
+                          @org.springframework.beans.factory.annotation.Qualifier("adShardingJdbc")
+                          JdbcTemplate sharded) {
         this.jdbc = jdbc;
+        this.sharded = sharded;
     }
 
     @Override
@@ -60,7 +66,9 @@ public class SimAdEventsJob implements OfflineJob {
         long seed = intArg(args, "seed", 7);
         int days = intArg(args, "days", 14);
         double meanDelayDays = dblArg(args, "conv-delay-days", 3.0);
-        Long maxAdId = jdbc.queryForObject("SELECT COALESCE(MAX(ad_id),0) FROM ad", Long.class);
+        // 注:用裸 MAX(ad_id)(不裹 COALESCE)——ShardingSphere 的聚合归并能识别裸聚合、跨分片合并成单值;
+        // COALESCE(MAX(...),0) 会被当成普通投影 → 每分片各返一行 → queryForObject 报 "actual 2"。空表则 null。
+        Long maxAdId = sharded.queryForObject("SELECT MAX(ad_id) FROM ad", Long.class);
         if (maxAdId == null || maxAdId == 0) {
             log.warn("无广告,先跑 --job=seed-ads");
             return;
@@ -185,7 +193,7 @@ public class SimAdEventsJob implements OfflineJob {
     private Map<Long, long[]> loadCreatives() {
         Map<Long, List<Long>> tmp = new HashMap<>();
         try {
-            jdbc.query("SELECT ad_id, creative_id FROM ad_creative WHERE status='active' ORDER BY ad_id, creative_id",
+            sharded.query("SELECT ad_id, creative_id FROM ad_creative WHERE status='active' ORDER BY ad_id, creative_id",
                     (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                             tmp.computeIfAbsent(rs.getLong("ad_id"), k -> new ArrayList<>()).add(rs.getLong("creative_id")));
         } catch (Exception e) {

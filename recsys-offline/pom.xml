@@ -58,6 +58,19 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
+        <!-- 分库分表:广告批作业(seed-ads/sim-ad-events/ad-ocpc)读写分片广告表走 ShardingSphere 次数据源;
+             非广告作业(embedding/cf/样本…)与 ad_event 仍走主数据源。详见 OfflineAdShardingConfig。-->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc</artifactId>
+            <version>5.5.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shardingsphere</groupId>
+                    <artifactId>shardingsphere-test-util</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>

@@ -4,6 +4,7 @@ import com.recsys.common.ad.AdCandidate;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -41,11 +42,13 @@ public class PacingService {
     /** 预算计数键 TTL:跨天自然失效(留 2 天冗余便于 T+1 对账)。 */
     private static final Duration BUDGET_TTL = Duration.ofDays(2);
 
+    /** 分片库:advertiser 表(daily_budget)按 advertiser_id 分布在 ds_0/ds_1。 */
     private final JdbcTemplate jdbc;
     private final StringRedisTemplate redis;
     private final AdProperties props;
 
-    public PacingService(JdbcTemplate jdbc, StringRedisTemplate redis, AdProperties props) {
+    public PacingService(@Qualifier("adShardingJdbc") JdbcTemplate jdbc,
+                         StringRedisTemplate redis, AdProperties props) {
         this.jdbc = jdbc;
         this.redis = redis;
         this.props = props;

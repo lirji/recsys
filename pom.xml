@@ -39,6 +39,7 @@
         <module>recsys-recall</module>
         <module>recsys-rank</module>
         <module>recsys-ad</module>
+        <module>recsys-advertiser</module>
         <module>recsys-feature</module>
         <module>recsys-embedding</module>
         <module>recsys-content</module>

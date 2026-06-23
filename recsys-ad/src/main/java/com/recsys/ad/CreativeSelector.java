@@ -3,6 +3,7 @@ package com.recsys.ad;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -30,11 +31,13 @@ public class CreativeSelector {
 
     private static final Logger log = LoggerFactory.getLogger(CreativeSelector.class);
 
+    /** 分片库:ad_creative 按 ad_id 分布在 ds_0/ds_1(ad_id IN 查询路由/广播)。 */
     private final JdbcTemplate jdbc;
     private final StringRedisTemplate redis;
     private final AdProperties props;
 
-    public CreativeSelector(JdbcTemplate jdbc, StringRedisTemplate redis, AdProperties props) {
+    public CreativeSelector(@Qualifier("adShardingJdbc") JdbcTemplate jdbc,
+                            StringRedisTemplate redis, AdProperties props) {
         this.jdbc = jdbc;
         this.redis = redis;
         this.props = props;

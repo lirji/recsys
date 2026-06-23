@@ -34,6 +34,19 @@
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
         </dependency>
+        <!-- 分库分表:读侧(rec-engine)用 ShardingSphere 作**次**数据源读广告表(advertiser/ad/bidword/ad_creative),
+             经 AdShardingConfig 注入 adShardingJdbc;pgvector/ad_event 等仍走主数据源。-->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc</artifactId>
+            <version>5.5.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shardingsphere</groupId>
+                    <artifactId>shardingsphere-test-util</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <!-- 读 ad:calib 校准表 JSON(plain starter 不含 jackson-databind) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
