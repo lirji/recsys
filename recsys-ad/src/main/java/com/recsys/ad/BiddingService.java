@@ -95,13 +95,19 @@ public class BiddingService {
             scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, quality, effQuality, ecpm, rankEcpm, relevance));
         }
 
-        // 2a. List-wise 外部性(docs/05 §7 M7):整页贪心选择 + 外部性折扣后的 GSP。委托纯函数 ListwiseExternality。
+        // 2a. VCG 位置拍卖(docs/05 §4.6/§7 M7):激励相容,付"对其他人的外部性"。委托纯函数 VcgAuction。
+        AdProperties.Vcg vcg = cfg.getVcg();
+        if (vcg.isEnabled()) {
+            return vcgAuction(scored, vcg, titleByAd, slots, reserve, cfg.getPriceIncrement());
+        }
+
+        // 2b. List-wise 外部性(docs/05 §7 M7):整页贪心选择 + 外部性折扣后的 GSP。委托纯函数 ListwiseExternality。
         AdProperties.Listwise lw = cfg.getListwise();
         if (lw.isEnabled() && sim != null) {
             return listwiseAuction(scored, sim, lw, titleByAd, slots, reserve, cfg.getPriceIncrement());
         }
 
-        // 2b. 逐条 eCPM 降序(默认路径)
+        // 2c. 逐条 eCPM 降序(默认路径)
         scored.sort((a, b) -> Double.compare(b.rankEcpm, a.rankEcpm));
 
         // 3. 取 top slots,GSP 次价计费(阈值用次位 Ad Rank,除以自身未加成 effQuality → 探索不抬高自身价)
@@ -114,6 +120,24 @@ public class BiddingService {
             double charged = s.effQuality <= 0 ? reserve : nextRank / s.effQuality + cfg.getPriceIncrement();
             charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
             out.add(toAd(s, titleByAd, charged, i + 1));
+        }
+        return out;
+    }
+
+    /** VCG 路径:scored → VcgAuction 按 rankEcpm 占位 + 外部性定价 → SponsoredAd。 */
+    private List<SponsoredAd> vcgAuction(List<Scored> scored, AdProperties.Vcg cfg,
+                                         Map<Long, String> titleByAd, int slots,
+                                         double reserve, double priceIncrement) {
+        double[] theta = VcgAuction.theta(slots, cfg.getPositionDiscounts(), cfg.getTailDecay());
+        List<VcgAuction.Entry> entries = new ArrayList<>(scored.size());
+        for (int i = 0; i < scored.size(); i++) {
+            Scored s = scored.get(i);
+            entries.add(new VcgAuction.Entry(i, s.pacedBid, s.effQuality, s.rankEcpm, s.ecpm));
+        }
+        List<VcgAuction.Placed> placed = VcgAuction.select(entries, theta, slots, reserve, priceIncrement);
+        List<SponsoredAd> out = new ArrayList<>(placed.size());
+        for (VcgAuction.Placed p : placed) {
+            out.add(toAd(scored.get(p.idx()), titleByAd, p.charged(), p.position()));
         }
         return out;
     }

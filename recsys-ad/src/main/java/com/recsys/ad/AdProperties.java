@@ -339,6 +339,8 @@ public class AdProperties {
         private double priceIncrement = 0.01;
         /** List-wise 外部性(docs/05 §7 M7):整页选择考虑广告间 CTR 蚕食。 */
         private Listwise listwise = new Listwise();
+        /** VCG 位置拍卖(docs/05 §4.6/§7 M7):激励相容,付"对其他人的外部性";开启时优先于 List-wise/GSP。 */
+        private Vcg vcg = new Vcg();
 
         public double getReservePrice() {
             return reservePrice;
@@ -362,6 +364,53 @@ public class AdProperties {
 
         public void setListwise(Listwise listwise) {
             this.listwise = listwise;
+        }
+
+        public Vcg getVcg() {
+            return vcg;
+        }
+
+        public void setVcg(Vcg vcg) {
+            this.vcg = vcg;
+        }
+    }
+
+    /**
+     * VCG 位置拍卖(docs/05 §4.6/§7 M7)。GSP 只让广告付"保位最小出价"、非激励相容;VCG 让广告付它给
+     * 其他人造成的福利损失(externality),从而说真话出价是占优策略。完整 VCG 需<b>位置点击折扣模型</b>
+     * (本类的 {@code positionDiscounts})把不同位次的点击价值显式建模。开启后优先于 List-wise / GSP。
+     * 关闭(默认)行为完全不变。退化:单广告位 ⇒ 与 GSP 单位次等价。详见 {@link VcgAuction}。
+     */
+    public static class Vcg {
+        /** 总开关(默认关:改变计费口径,需显式启用)。 */
+        private boolean enabled = false;
+        /** 位置点击折扣 θ_1,θ_2,…(单调非增,(0,1]):第 j 位的点击率相对基线的折扣。 */
+        private java.util.List<Double> positionDiscounts = java.util.List.of(1.0, 0.7, 0.5);
+        /** 超出 positionDiscounts 的位次按此比例几何衰减(也用于列表不足时外推)。 */
+        private double tailDecay = 0.7;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public java.util.List<Double> getPositionDiscounts() {
+            return positionDiscounts;
+        }
+
+        public void setPositionDiscounts(java.util.List<Double> positionDiscounts) {
+            this.positionDiscounts = positionDiscounts;
+        }
+
+        public double getTailDecay() {
+            return tailDecay;
+        }
+
+        public void setTailDecay(double tailDecay) {
+            this.tailDecay = tailDecay;
         }
     }
 
