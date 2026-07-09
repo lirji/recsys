@@ -56,8 +56,8 @@ public class BuildFeaturesJob implements OfflineJob {
         double lnMax = Math.log1p(maxCntD == null ? 1.0 : maxCntD);
         int[] n = {0};
         jdbc.query(
-                "SELECT item_id, count(*) cnt, avg(value) avg_v FROM user_behavior " +
-                "WHERE action='RATING' GROUP BY item_id",
+                "SELECT item_id, count(*) cnt, avg(value) avg_v, coalesce(stddev_pop(value),0) std_v " +
+                "FROM user_behavior WHERE action='RATING' GROUP BY item_id",
                 rs -> {
                     long itemId = rs.getLong("item_id");
                     long cnt = rs.getLong("cnt");
@@ -67,6 +67,8 @@ public class BuildFeaturesJob implements OfflineJob {
                     f.put("item_pop_norm", round(popNorm));
                     f.put("item_avg_rating", round(avg));
                     f.put("item_rating_cnt", (double) cnt);
+                    // 扩充特征(S2):评分离散度=共识/争议(与 as-of 的 sqrt(sumSq/cnt-mean^2) 同源)
+                    f.put("item_rating_std", round(rs.getDouble("std_v")));
                     featureService.writeItemFeatures(itemId, f);
                     n[0]++;
                 });
@@ -81,6 +83,7 @@ public class BuildFeaturesJob implements OfflineJob {
 
         // 1. 先在内存攒每个用户的特征(基础 + 各类目均分),最后一次性写,减少 Redis 往返
         Map<Long, Map<String, Double>> userFeats = new HashMap<>();
+        Map<Long, Long> userCnt = new HashMap<>();   // 供交叉特征算 catratio(与 as-of 同源)
         jdbc.query(
                 "SELECT user_id, count(*) cnt, avg(value) avg_v FROM user_behavior " +
                 "WHERE action='RATING' GROUP BY user_id",
@@ -89,24 +92,31 @@ public class BuildFeaturesJob implements OfflineJob {
                     long cnt = rs.getLong("cnt");
                     double avg = rs.getDouble("avg_v");
                     double actNorm = lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0;
+                    userCnt.put(userId, cnt);
                     Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
                     f.put("user_act_norm", round(actNorm));
                     f.put("user_avg_rating", round(avg));
                 });
 
-        // 2. 交叉特征:用户 × 物品主类目 的历史平均分
+        // 2. 交叉特征:用户 × 物品主类目 的历史均分 + 参与深度(S2:catcnt_norm/catratio)
         int[] catRows = {0};
         jdbc.query(
-                "SELECT b.user_id, i.category, avg(b.value) avg_v " +
+                "SELECT b.user_id, i.category, count(*) cnt, avg(b.value) avg_v " +
                 "FROM user_behavior b JOIN item i ON b.item_id = i.item_id " +
                 "WHERE b.action='RATING' AND i.category IS NOT NULL " +
                 "GROUP BY b.user_id, i.category",
                 rs -> {
                     long userId = rs.getLong("user_id");
                     String cat = rs.getString("category");
+                    long cnt = rs.getLong("cnt");
                     double avg = rs.getDouble("avg_v");
                     Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
                     f.put("catavg:" + cat, round(avg));
+                    f.put("catcnt_norm:" + cat, round(lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0));
+                    Long uc = userCnt.get(userId);
+                    if (uc != null && uc > 0) {
+                        f.put("catratio:" + cat, round((double) cnt / uc));
+                    }
                     catRows[0]++;
                 });
 

@@ -55,6 +55,9 @@ DENSE_COLS = [
     "item_pop_norm", "item_avg_rating", "user_act_norm", "user_avg_rating", "user_cat_affinity",
 ]
 SPARSE_ORDER = ["user_id", "item_id", "category"]
+# S2 特征扩充:--extended-features 时 dense 用 8 维(需 gen-samples-mt --extended-features 产出对应列)
+EXTENDED_DENSE = ["user_cat_cnt_norm", "user_cat_ratio", "item_rating_std"]
+USE_EXTENDED = "--extended-features" in sys.argv
 
 
 def build_vocab(categories):
@@ -83,6 +86,9 @@ def main():
         sys.exit(f"找不到 {SAMPLES};请先跑 Java 作业:--job=gen-samples-mt")
 
     df = pd.read_csv(SAMPLES)
+    if USE_EXTENDED:
+        DENSE_COLS.extend(EXTENDED_DENSE)
+        print(f"S2 特征扩充:启用,dense_order={DENSE_COLS}")
     need = DENSE_COLS + SPARSE_ORDER + ["label_click", "label_like", "seq_items", "split"]
     missing = [c for c in need if c not in df.columns]
     if missing:

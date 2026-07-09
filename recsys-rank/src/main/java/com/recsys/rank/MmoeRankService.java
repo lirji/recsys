@@ -102,7 +102,8 @@ public class MmoeRankService implements RankService {
             Map<Long, Map<String, Double>> itemFeats = featureService.itemFeatures(candidateItemIds);
 
             int n = candidateItemIds.size();
-            int dim = FeatureAssembler.dim();
+            List<String> denseOrder = encoder.denseOrder();   // 模型训练时的 dense_order(缺省基础 5 维)
+            int dim = denseOrder.size();
             float[][] dense = new float[n][dim];
             long[][] sparse = new long[n][3];
             double[][] raw = new double[n][];
@@ -110,7 +111,7 @@ public class MmoeRankService implements RankService {
                 long itemId = candidateItemIds.get(i);
                 Item it = items.get(itemId);
                 String cat = it == null ? null : it.category();
-                double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat);
+                double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat, denseOrder);
                 raw[i] = f;
                 for (int d = 0; d < dim; d++) {
                     dense[i][d] = (float) f[d];
@@ -126,7 +127,7 @@ public class MmoeRankService implements RankService {
                 double pctr = heads[0][i];
                 double pcvr = heads[1][i];
                 double score = pctr * (cvrBias + cvrWeight * pcvr);
-                Map<String, Double> snap = new LinkedHashMap<>(FeatureAssembler.snapshot(raw[i]));
+                Map<String, Double> snap = new LinkedHashMap<>(FeatureAssembler.snapshot(raw[i], denseOrder));
                 snap.put("pCTR", round(pctr));
                 snap.put("pCVR", round(pcvr));
                 ranked.add(new RankedItem(candidateItemIds.get(i), score, snap));

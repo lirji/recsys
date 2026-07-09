@@ -129,8 +129,11 @@ public class GenSamplesMtJob implements OfflineJob {
         Files.createDirectories(out.getParent());
         long posClick = 0, posLike = 0, neg = 0;
         try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+            // S2 特征扩充:--extended-features 输出 8 维(供重训扩维模型),默认 5 维(向后兼容)
+            List<String> denseOrder = args.containsOption("extended-features")
+                    ? FeatureAssembler.EXTENDED_ORDER : FeatureAssembler.FEATURE_ORDER;
             w.write("label_click,label_like,user_id,item_id,category,"
-                    + String.join(",", FeatureAssembler.FEATURE_ORDER)
+                    + String.join(",", denseOrder)
                     + ",seq_items,seq_cats,seq_len,position,split");
             w.newLine();
 
@@ -145,7 +148,7 @@ public class GenSamplesMtJob implements OfflineJob {
                 String split = e.ts <= splitTs ? "train" : "valid";
                 int posPosition = posBucket.getOrDefault(e.itemId, 0);
                 writeRow(w, 1, like, e.userId, e.itemId, e.category, uf, asOf.snapshotItem(e.itemId),
-                        seq, posPosition, split);
+                        seq, posPosition, split, denseOrder);
                 posClick++;
                 if (like == 1) {
                     posLike++;
@@ -162,7 +165,7 @@ public class GenSamplesMtJob implements OfflineJob {
                     }
                     String negSplit = rnd.nextDouble() < validFrac ? "valid" : "train";
                     writeRow(w, 0, 0, e.userId, negItem, catMap.get(negItem),
-                            uf, asOf.snapshotItem(negItem), seq, posBucket.getOrDefault(negItem, 0), negSplit);
+                            uf, asOf.snapshotItem(negItem), seq, posBucket.getOrDefault(negItem, 0), negSplit, denseOrder);
                     got++;
                     neg++;
                 }
@@ -199,8 +202,9 @@ public class GenSamplesMtJob implements OfflineJob {
 
     private void writeRow(BufferedWriter w, int click, int like, long userId, long itemId, String category,
                           Map<String, Double> userFeat, Map<String, Double> itemFeat,
-                          String[] seq, int position, String split) throws java.io.IOException {
-        double[] f = FeatureAssembler.assemble(userFeat, itemFeat, category);
+                          String[] seq, int position, String split, List<String> denseOrder)
+            throws java.io.IOException {
+        double[] f = FeatureAssembler.assemble(userFeat, itemFeat, category, denseOrder);
         StringBuilder sb = new StringBuilder();
         sb.append(click).append(',').append(like)
                 .append(',').append(userId)

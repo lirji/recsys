@@ -124,8 +124,11 @@ public class GenSamplesJob implements OfflineJob {
             // 表头:label, 稀疏原始列(供 DeepFM 做 embedding), <稠密特征顺序>, split
             // user_id/item_id/category 是给深度模型的类别型字段;稠密特征仍由 FeatureAssembler 装配。
             // LightGBM 训练侧(train_lgbm.py)会把这三列排除在特征之外,故两条训练路共用同一份 CSV。
+            // S2 特征扩充:--extended-features 输出 8 维(供重训扩维模型),默认 5 维(向后兼容)
+            List<String> denseOrder = args.containsOption("extended-features")
+                    ? FeatureAssembler.EXTENDED_ORDER : FeatureAssembler.FEATURE_ORDER;
             w.write("label,user_id,item_id,category," +
-                    String.join(",", FeatureAssembler.FEATURE_ORDER) + ",split");
+                    String.join(",", denseOrder) + ",split");
             w.newLine();
 
             // 按 ts 升序遍历:正样本在「apply 本次事件之前」snapshot,得到无穿越特征
@@ -138,7 +141,7 @@ public class GenSamplesJob implements OfflineJob {
                     Map<String, Double> itf = leaky
                             ? itemFeatCache.computeIfAbsent(e.itemId, featureService::itemFeatures)
                             : asOf.snapshotItem(e.itemId);
-                    writeAssembled(w, 1, e.userId, e.itemId, e.category, uf, itf, split);
+                    writeAssembled(w, 1, e.userId, e.itemId, e.category, uf, itf, split, denseOrder);
                     pos++;
 
                     // 负样本:用「该正样本 ts 时点」的用户快照 + 负物品当下快照(as-of);leaky 则读 Redis
@@ -154,7 +157,7 @@ public class GenSamplesJob implements OfflineJob {
                         Map<String, Double> nItf = leaky
                                 ? itemFeatCache.computeIfAbsent(negItem, featureService::itemFeatures)
                                 : asOf.snapshotItem(negItem);
-                        writeAssembled(w, 0, e.userId, negItem, catMap.get(negItem), uf, nItf, negSplit);
+                        writeAssembled(w, 0, e.userId, negItem, catMap.get(negItem), uf, nItf, negSplit, denseOrder);
                         got++;
                         neg++;
                     }
@@ -170,8 +173,8 @@ public class GenSamplesJob implements OfflineJob {
     /** 用已取好的 user/item 特征装配并写一行(as-of 与 leaky 共用,只是特征来源不同)。 */
     private void writeAssembled(BufferedWriter w, int label, long userId, long itemId, String category,
                                 Map<String, Double> userFeat, Map<String, Double> itemFeat,
-                                String split) throws java.io.IOException {
-        double[] f = FeatureAssembler.assemble(userFeat, itemFeat, category);
+                                String split, List<String> denseOrder) throws java.io.IOException {
+        double[] f = FeatureAssembler.assemble(userFeat, itemFeat, category, denseOrder);
         StringBuilder sb = new StringBuilder();
         sb.append(label);
         // 稀疏原始列:user_id, item_id, category(深度模型 embedding 输入;类目为空写空串)

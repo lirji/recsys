@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,13 +38,16 @@ public final class SparseFeatureEncoder {
     private final Map<String, Integer> categoryVocab;
     /** itemId → [c0,c1,c2];为空表示未启用语义 ID(width=3)。 */
     private final Map<Long, long[]> semanticIdMap;
+    /** 稠密特征顺序(schema.dense_order;缺省 FEATURE_ORDER),供在线按模型训练时的维度装配。 */
+    private final List<String> denseOrder;
 
-    private SparseFeatureEncoder(int userBuckets, int itemBuckets,
-                                Map<String, Integer> categoryVocab, Map<Long, long[]> semanticIdMap) {
+    private SparseFeatureEncoder(int userBuckets, int itemBuckets, Map<String, Integer> categoryVocab,
+                                Map<Long, long[]> semanticIdMap, List<String> denseOrder) {
         this.userBuckets = userBuckets;
         this.itemBuckets = itemBuckets;
         this.categoryVocab = categoryVocab;
         this.semanticIdMap = semanticIdMap;
+        this.denseOrder = denseOrder;
     }
 
     /**
@@ -80,7 +85,23 @@ public final class SparseFeatureEncoder {
                         new long[]{arr.path(0).asLong(), arr.path(1).asLong(), arr.path(2).asLong()});
             }
         }
-        return new SparseFeatureEncoder(userBuckets, itemBuckets, vocab, semanticIdMap);
+        // 稠密特征顺序(S2 特征扩充):schema 声明则用它,缺省回基础 FEATURE_ORDER(旧模型零影响)
+        List<String> denseOrder = new ArrayList<>();
+        JsonNode dord = schema.get("dense_order");
+        if (dord != null && dord.isArray()) {
+            for (JsonNode n : dord) {
+                denseOrder.add(n.asText());
+            }
+        }
+        if (denseOrder.isEmpty()) {
+            denseOrder = FeatureAssembler.FEATURE_ORDER;
+        }
+        return new SparseFeatureEncoder(userBuckets, itemBuckets, vocab, semanticIdMap, denseOrder);
+    }
+
+    /** 稠密特征顺序(= 模型训练时的 dense_order);缺省基础 5 维。深度服务据此装配 dense。 */
+    public List<String> denseOrder() {
+        return denseOrder;
     }
 
     /**

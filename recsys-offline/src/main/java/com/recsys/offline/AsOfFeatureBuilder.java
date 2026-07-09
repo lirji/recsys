@@ -29,10 +29,10 @@ final class AsOfFeatureBuilder {
     private final double lnMaxUser;
     private final double lnMaxItem;
 
-    // [cnt, sum]
+    // [cnt, sum, sumSq](sumSq 供 item 评分离散度 item_rating_std;user/userCat 不用 sumSq)
     private final Map<Long, double[]> userAgg = new HashMap<>();
     private final Map<Long, double[]> itemAgg = new HashMap<>();
-    // user -> (category -> [cnt, sum])
+    // user -> (category -> [cnt, sum, sumSq])
     private final Map<Long, Map<String, double[]>> userCatAgg = new HashMap<>();
 
     AsOfFeatureBuilder(double lnMaxUser, double lnMaxItem) {
@@ -42,11 +42,11 @@ final class AsOfFeatureBuilder {
 
     /** 把一条评分事件并入聚合(调用方应在 snapshot 之后、按 ts 升序 apply)。 */
     void apply(long userId, long itemId, double value, String category) {
-        accumulate(userAgg.computeIfAbsent(userId, k -> new double[2]), value);
-        accumulate(itemAgg.computeIfAbsent(itemId, k -> new double[2]), value);
+        accumulate(userAgg.computeIfAbsent(userId, k -> new double[3]), value);
+        accumulate(itemAgg.computeIfAbsent(itemId, k -> new double[3]), value);
         if (category != null) {
             Map<String, double[]> byCat = userCatAgg.computeIfAbsent(userId, k -> new HashMap<>());
-            accumulate(byCat.computeIfAbsent(category, k -> new double[2]), value);
+            accumulate(byCat.computeIfAbsent(category, k -> new double[3]), value);
         }
     }
 
@@ -57,14 +57,18 @@ final class AsOfFeatureBuilder {
         if (agg == null || agg[0] == 0) {
             return f;
         }
-        f.put("user_act_norm", round(Math.log1p(agg[0]) / lnMaxUser));
-        f.put("user_avg_rating", round(agg[1] / agg[0]));
+        double userCnt = agg[0];
+        f.put("user_act_norm", round(Math.log1p(userCnt) / lnMaxUser));
+        f.put("user_avg_rating", round(agg[1] / userCnt));
         Map<String, double[]> byCat = userCatAgg.get(userId);
         if (byCat != null) {
             for (var e : byCat.entrySet()) {
                 double[] c = e.getValue();
                 if (c[0] > 0) {
                     f.put("catavg:" + e.getKey(), round(c[1] / c[0]));
+                    // 扩充特征(S2):类目参与深度(log 归一)+ 类目占比(与 build-features 同源)
+                    f.put("catcnt_norm:" + e.getKey(), round(Math.log1p(c[0]) / lnMaxUser));
+                    f.put("catratio:" + e.getKey(), round(c[0] / userCnt));
                 }
             }
         }
@@ -78,14 +82,20 @@ final class AsOfFeatureBuilder {
         if (agg == null || agg[0] == 0) {
             return f;
         }
-        f.put("item_pop_norm", round(Math.log1p(agg[0]) / lnMaxItem));
-        f.put("item_avg_rating", round(agg[1] / agg[0]));
+        double cnt = agg[0];
+        double mean = agg[1] / cnt;
+        f.put("item_pop_norm", round(Math.log1p(cnt) / lnMaxItem));
+        f.put("item_avg_rating", round(mean));
+        // 扩充特征(S2):评分离散度(总体标准差),与 build-features 的 stddev_pop 同源
+        double var = agg[2] / cnt - mean * mean;
+        f.put("item_rating_std", round(Math.sqrt(Math.max(0.0, var))));
         return f;
     }
 
     private static void accumulate(double[] agg, double value) {
         agg[0] += 1;
         agg[1] += value;
+        agg[2] += value * value;
     }
 
     private static double round(double v) {

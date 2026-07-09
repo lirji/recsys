@@ -60,6 +60,10 @@ DENSE_COLS = [
     "user_cat_affinity",
 ]
 SPARSE_ORDER = ["user_id", "item_id", "category"]
+# S2 特征扩充:--extended-features 时 dense 用 8 维(需 gen-samples --extended-features 产出对应列);
+# 模型 n_dense 泛化、schema dense_order 随之写 8,在线 FeatureAssembler 按 dense_order 装配,旧模型不受影响。
+EXTENDED_DENSE = ["user_cat_cnt_norm", "user_cat_ratio", "item_rating_std"]
+USE_EXTENDED = "--extended-features" in sys.argv
 
 
 def build_vocab(categories):
@@ -91,6 +95,9 @@ def main():
         sys.exit(f"找不到 {SAMPLES};请先跑 Java 作业:--job=build-features 再 --job=gen-samples")
 
     df = pd.read_csv(SAMPLES)
+    if USE_EXTENDED:
+        DENSE_COLS.extend(EXTENDED_DENSE)
+        print(f"S2 特征扩充:启用,dense_order={DENSE_COLS}")
     missing = [c for c in DENSE_COLS + SPARSE_ORDER + ["label", "split"] if c not in df.columns]
     if missing:
         sys.exit(f"samples.csv 缺列 {missing};请用最新 gen-samples 重新生成(已含 user_id/item_id/category)")

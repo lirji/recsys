@@ -94,7 +94,8 @@ public class DeepFmRankService implements RankService {
             Map<Long, Map<String, Double>> itemFeats = featureService.itemFeatures(candidateItemIds);
 
             int n = candidateItemIds.size();
-            int dim = FeatureAssembler.dim();
+            List<String> denseOrder = encoder.denseOrder();   // 模型训练时的 dense_order(缺省基础 5 维)
+            int dim = denseOrder.size();
             float[][] dense = new float[n][dim];
             long[][] sparse = new long[n][3];
             double[][] raw = new double[n][];
@@ -102,7 +103,7 @@ public class DeepFmRankService implements RankService {
                 long itemId = candidateItemIds.get(i);
                 Item it = items.get(itemId);
                 String cat = it == null ? null : it.category();
-                double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat);
+                double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat, denseOrder);
                 raw[i] = f;
                 for (int d = 0; d < dim; d++) {
                     dense[i][d] = (float) f[d];
@@ -114,7 +115,7 @@ public class DeepFmRankService implements RankService {
             List<RankedItem> ranked = new ArrayList<>(n);
             for (int i = 0; i < n; i++) {
                 ranked.add(new RankedItem(candidateItemIds.get(i), ctr[i],
-                        FeatureAssembler.snapshot(raw[i])));
+                        FeatureAssembler.snapshot(raw[i], denseOrder)));
             }
             ranked.sort(Comparator.comparingDouble(RankedItem::score).reversed());
             return ranked;
