@@ -181,6 +181,9 @@ public class RecEngineProperties {
          */
         private Map<String, Double> channelBoost = new HashMap<>();
 
+        /** 流行度去偏:融合分乘 1/(1+item_pop_norm)^beta,系统性压低高热度、相对抬升长尾/语义。 */
+        private final PopDebias popDebias = new PopDebias();
+
         public double getRecallWeight() {
             return recallWeight;
         }
@@ -203,6 +206,37 @@ public class RecEngineProperties {
 
         public void setChannelBoost(Map<String, Double> channelBoost) {
             this.channelBoost = channelBoost;
+        }
+
+        public PopDebias getPopDebias() {
+            return popDebias;
+        }
+
+        /**
+         * 流行度去偏:对融合分乘惩罚因子 {@code 1/(1+item_pop_norm)^beta},pop_norm∈[0,1](越热越大)。
+         * 系统性压低 HOT/CF 高热度物品、相对抬升语义/长尾召回,替代到处打补丁的 channel-boost。
+         * 因子有界于 [1/2^beta, 1]、平滑、恒正,不会把任何物品清零。beta=0 或 enabled=false 关闭。
+         */
+        public static class PopDebias {
+            private boolean enabled = true;
+            /** 去偏强度:factor = 1/(1+pop_norm)^beta。beta 越大越压热度(0.5~1 常用)。 */
+            private double beta = 0.5;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public double getBeta() {
+                return beta;
+            }
+
+            public void setBeta(double beta) {
+                this.beta = beta;
+            }
         }
 
         /** 物品命中多路时,取各路 boost 的最大值(缺省路按 1.0)。空/无命中返回 1.0。 */

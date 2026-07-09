@@ -213,13 +213,22 @@ public class RecommendOrchestrator {
                     ? personalizationScorer.affinity(req.userId(), candidateIds) : Map.of();
             // 召回路融合加权:按物品命中的召回路取最大 boost,乘到融合分上。
             // 默认让 TAG(含实时类目偏好 rt:user)不被 HOT/CF 热度压过;搜索场景则抬升 SEMANTIC/意图 TAG。
+            // 流行度去偏:再乘 1/(1+item_pop_norm)^beta,系统性压低高热度、相对抬升长尾/语义(替代 channel-boost 打补丁)。
+            RecEngineProperties.Fusion.PopDebias popCfg = props.getFusion().getPopDebias();
+            boolean popDebias = popCfg.isEnabled() && popCfg.getBeta() > 0;
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
                 double base = recallWeight * rNorm + rankWeight * ri.score();
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
-                fused.add(new RerankCandidate(ri.itemId(), base * boost * persBoost));
+                double debias = 1.0;
+                if (popDebias) {
+                    double popNorm = ri.featureSnapshot() == null ? 0.0
+                            : ri.featureSnapshot().getOrDefault("item_pop_norm", 0.0);
+                    debias = 1.0 / Math.pow(1.0 + Math.max(0.0, popNorm), popCfg.getBeta());
+                }
+                fused.add(new RerankCandidate(ri.itemId(), base * boost * persBoost * debias));
             }
             fused.sort((a, b) -> Double.compare(b.score(), a.score()));
 

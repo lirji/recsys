@@ -91,6 +91,11 @@ recsys:
   fusion:
     recall-weight: 1.0
     rank-weight: 1.0
+    # 流行度去偏:融合分乘 1/(1+item_pop_norm)^beta,系统性压低 HOT/CF 高热度、相对抬升语义/长尾,
+    # 从机制上替代 channel-boost 到处打补丁。beta 越大越压热度(0.5~1 常用);enabled=false 或 beta=0 关闭。
+    pop-debias:
+      enabled: true
+      beta: 0.5
     # 召回路加权(channel 名大写)。TAG 已叠加实时类目偏好(rt:user),抬权让"用户当下/长期兴趣"
     # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
     channel-boost:
