@@ -4,6 +4,16 @@ global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
+# 告警规则 + SLO(recsys 在线指标)
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+# 告警路由到 Alertmanager(obs profile 一并起)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: recsys-rec-engine
     metrics_path: /actuator/prometheus

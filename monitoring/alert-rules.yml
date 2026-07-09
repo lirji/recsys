@@ -1,0 +1,97 @@
+# ============================================================
+# Prometheus 告警规则 + SLO(docs/06 第三批·可观测)
+# 基于 recsys 在线指标(recsys_*)定义 SLO 与多窗口 burn-rate 告警,让异常"被叫醒"而非"事后看板"。
+#
+# SLO 定义(rec-engine /api/recommend):
+#   * 可用性 SLO:成功率 ≥ 99.5%(30d)—— 成功 = recommend 未 outcome=error;错误预算 = 0.5%。
+#   * 延迟   SLO:P99 端到端 < 200ms —— 编排"查表 + 轻打分"应在毫秒级。
+# burn-rate 多窗口告警(Google SRE Workbook):快窗(5m/1h)烧得快→page,慢窗(6h)→ticket,
+# 避免单窗口"太灵敏(噪声)/太迟钝(错过)"。
+# ============================================================
+groups:
+  # ---------- 记录规则:物化 SLI,告警与看板复用 ----------
+  - name: recsys-sli
+    interval: 15s
+    rules:
+      # 端到端 P99 延迟(秒)
+      - record: recsys:recommend_latency_p99
+        expr: histogram_quantile(0.99, sum(rate(recsys_recommend_duration_seconds_bucket[5m])) by (le))
+      # 错误率(outcome=error 占全部)
+      - record: recsys:recommend_error_ratio
+        expr: |
+          sum(rate(recsys_recommend_duration_seconds_count{outcome="error"}[5m]))
+          / clamp_min(sum(rate(recsys_recommend_duration_seconds_count[5m])), 0.001)
+      # 结果缓存命中率
+      - record: recsys:cache_hit_ratio
+        expr: |
+          sum(rate(recsys_recommend_cache_total{result="hit"}[5m]))
+          / clamp_min(sum(rate(recsys_recommend_cache_total[5m])), 0.001)
+      # 排序模型回退率(请求 onnx/deepfm/mmoe/din/ple 却 served=rule)
+      - record: recsys:rank_fallback_ratio
+        expr: |
+          sum(rate(recsys_rank_total{served="rule",requested=~"onnx|deepfm|mmoe|din|ple"}[5m]))
+          / clamp_min(sum(rate(recsys_rank_total{requested=~"onnx|deepfm|mmoe|din|ple"}[5m])), 0.001)
+
+  # ---------- 告警:可用性 / 延迟 / 依赖 / 质量 ----------
+  - name: recsys-alerts
+    rules:
+      # 服务下线(抓取失败)
+      - alert: RecEngineDown
+        expr: up{application="recsys-rec-engine"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "rec-engine 抓取不到(可能已宕)"
+          description: "{{ $labels.instance }} 的 /actuator/prometheus 连续 1m 抓取失败。"
+
+      # 可用性 burn-rate(错误预算 0.5%)—— 快窗高倍率烧穿即 page
+      - alert: RecommendErrorBudgetBurnFast
+        expr: recsys:recommend_error_ratio > (14.4 * 0.005)
+        for: 2m
+        labels: {severity: critical, slo: availability}
+        annotations:
+          summary: "推荐错误率快速烧穿预算(>{{ printf \"%.1f\" 7.2 }}%)"
+          description: "5m 错误率 {{ $value | humanizePercentage }},14.4× 预算烧速;错误预算将在数小时内耗尽。"
+      - alert: RecommendErrorBudgetBurnSlow
+        expr: recsys:recommend_error_ratio > (3 * 0.005)
+        for: 15m
+        labels: {severity: warning, slo: availability}
+        annotations:
+          summary: "推荐错误率持续偏高(>1.5%)"
+          description: "错误率 {{ $value | humanizePercentage }} 持续 15m,慢速烧预算,建议排查。"
+
+      # 延迟 SLO:P99 > 200ms
+      - alert: RecommendLatencyP99High
+        expr: recsys:recommend_latency_p99 > 0.2
+        for: 5m
+        labels: {severity: warning, slo: latency}
+        annotations:
+          summary: "推荐 P99 延迟 > 200ms"
+          description: "P99={{ $value }}s 持续 5m;查召回并行/pgvector ef_search/特征批量/连接池。"
+
+      # 排序模型大面积回退(模型加载失败/返回空)
+      - alert: RankModelFallbackHigh
+        expr: recsys:rank_fallback_ratio > 0.5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "排序模型回退率 > 50%"
+          description: "回退率 {{ $value | humanizePercentage }};模型可能未加载/返回空,精排退化为规则打分。"
+
+      # 缓存命中率骤降(可能缓存故障或流量结构变化)
+      - alert: CacheHitRatioLow
+        expr: recsys:cache_hit_ratio < 0.1 and sum(rate(recsys_recommend_cache_total[5m])) > 1
+        for: 10m
+        labels: {severity: info}
+        annotations:
+          summary: "结果缓存命中率 < 10%"
+          description: "命中率 {{ $value | humanizePercentage }};查 Redis 可用性 / TTL / 缓存 key 维度。"
+
+      # 空召回激增(召回池被已看过滤清空 / 存储缺数据)
+      - alert: EmptyRecallSpike
+        expr: sum(rate(recsys_recommend_empty_total[5m])) > 0.5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "空召回率激增"
+          description: "空召回速率 {{ $value }}/s;查 pgvector/CF 存储是否掉数据或 embedding 外呼熔断。"

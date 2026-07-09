@@ -76,8 +76,19 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
     ports:
       - "9090:9090"
+
+  # 告警路由(SLO 告警的通知面);教学默认不外发,UI 在 :9093
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: recsys-alertmanager
+    profiles: ["obs"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
 
   grafana:
     image: grafana/grafana:11.2.0

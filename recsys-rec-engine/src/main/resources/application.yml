@@ -279,3 +279,8 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  # 分布式追踪:采样率(教学全采;生产按 QPS 降到 0.01~0.1)。traceId/spanId 自动进 MDC 与结构化日志关联。
+  # 要导出 span 到后端:加 opentelemetry-exporter-otlp 依赖 + management.otlp.tracing.endpoint 指向 Tempo/Jaeger。
+  tracing:
+    sampling:
+      probability: 1.0

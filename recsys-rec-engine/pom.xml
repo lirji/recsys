@@ -27,6 +27,18 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- 分布式追踪:Micrometer Tracing + OTel 桥,自动把 traceId/spanId 注入 MDC(与结构化日志关联);
+             版本由 spring-boot-dependencies 的 micrometer-tracing BOM 管理。加 OTLP exporter + Tempo/Jaeger 即可导出 span。 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <!-- 结构化日志:logback JSON 编码器(含 MDC:traceId/userId/scene) -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
+        </dependency>
         <!-- 单体起步:直接聚合各计算/领域库;拆微服务时改为远程调用 -->
         <dependency>
             <groupId>com.recsys</groupId>

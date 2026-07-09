@@ -116,6 +116,9 @@ public class RecommendOrchestrator {
         boolean coldTag = false;
         String outcome = "ok";
         try {
+            // 结构化日志:把业务上下文放 MDC(traceId/spanId 由 micrometer-tracing 自动注入);finally 清理
+            org.slf4j.MDC.put("userId", String.valueOf(req.userId()));
+            org.slf4j.MDC.put("scene", req.scene() == null ? "" : req.scene());
             // 1. 结果缓存(搜索请求按 userId+scene 缓存会让不同 query 串味,故 query 驱动时跳过缓存)
             if (!req.hasQuery()) {
                 RecommendResponse cached = recCache.get(req.userId(), req.scene());
@@ -293,6 +296,8 @@ public class RecommendOrchestrator {
                     .tag("outcome", outcome)
                     .publishPercentileHistogram()
                     .register(meterRegistry));
+            org.slf4j.MDC.remove("userId");
+            org.slf4j.MDC.remove("scene");
         }
     }
 
