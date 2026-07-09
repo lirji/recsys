@@ -66,3 +66,4 @@ CREATE TABLE IF NOT EXISTS bidword (
     bid_mode   TEXT DEFAULT 'CPC'
 );
 CREATE INDEX IF NOT EXISTS idx_bidword_keyword ON bidword (keyword);
+CREATE INDEX IF NOT EXISTS idx_bidword_ad ON bidword (ad_id);  -- 与 ds_0 一致:按 ad_id 查/聚合走索引

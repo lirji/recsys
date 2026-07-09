@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS bidword (
     bid_mode   TEXT DEFAULT 'CPC'                 -- CPC / oCPC / oCPM
 );
 CREATE INDEX IF NOT EXISTS idx_bidword_keyword ON bidword (keyword);  -- 倒排:keyword → ads
+-- 按 ad_id 访问的索引:AdvertiserRepository(列/删 WHERE ad_id=?)、AdRepository(WHERE ad_id=ANY(?)、GROUP BY ad_id)
+-- 多处按 ad_id 查/聚合,缺此索引则全表扫描。
+CREATE INDEX IF NOT EXISTS idx_bidword_ad ON bidword (ad_id);
 
 -- ---------- 广告向量(query 语义匹配用;M4 直接从 item_embedding 拷贝) ----------
 CREATE TABLE IF NOT EXISTS ad_embedding (
@@ -65,8 +68,10 @@ CREATE TABLE IF NOT EXISTS ad_embedding (
     embedding vector(768),
     model     TEXT
 );
+-- HNSW 参数同 item_embedding;在线检索须 SET hnsw.ef_search ≥ 最大 LIMIT(见 01_schema.sql 说明)。
 CREATE INDEX IF NOT EXISTS idx_ad_embedding_hnsw
-    ON ad_embedding USING hnsw (embedding vector_cosine_ops);
+    ON ad_embedding USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 200);
 
 -- ---------- 计费 / 曝光日志(广告独有:审计 + 校准 + 结算的源) ----------
 CREATE TABLE IF NOT EXISTS ad_event (

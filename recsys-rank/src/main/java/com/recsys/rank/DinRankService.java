@@ -107,6 +107,8 @@ public class DinRankService implements RankService {
 
             Map<Long, Item> items = contentService.findByIds(candidateItemIds);
             Map<String, Double> userFeat = featureService.userFeatures(userId);
+            // 批量预取候选特征(一次 pipeline),消除候选循环里逐个 HGETALL 的 N+1
+            Map<Long, Map<String, Double>> itemFeats = featureService.itemFeatures(candidateItemIds);
 
             int n = candidateItemIds.size();
             int dim = FeatureAssembler.dim();
@@ -120,7 +122,7 @@ public class DinRankService implements RankService {
                 long itemId = candidateItemIds.get(i);
                 Item it = items.get(itemId);
                 String cat = it == null ? null : it.category();
-                double[] f = FeatureAssembler.assemble(userFeat, featureService.itemFeatures(itemId), cat);
+                double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat);
                 raw[i] = f;
                 for (int d = 0; d < dim; d++) {
                     dense[i][d] = (float) f[d];

@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS item_tower_embedding (
     embedding vector(64)
 );
 
--- HNSW 近似最近邻,余弦距离(双塔召回 ANN 必需)
+-- HNSW 近似最近邻,余弦距离(双塔召回 ANN 必需);参数同 item_embedding。
+-- 在线检索(two-tower 配额 200)须 SET hnsw.ef_search ≥ 200,否则召回被静默腰斩(见 01_schema.sql 说明)。
 CREATE INDEX IF NOT EXISTS idx_item_tower_hnsw
-    ON item_tower_embedding USING hnsw (embedding vector_cosine_ops);
+    ON item_tower_embedding USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 200);

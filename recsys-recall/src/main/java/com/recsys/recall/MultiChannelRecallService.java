@@ -5,6 +5,7 @@ import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.common.recall.RecallService;
 import com.recsys.recall.channel.ChannelRecaller;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -14,6 +15,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 多路召回合并。并行调用各路 ChannelRecaller,合并去重。
@@ -33,10 +39,22 @@ public class MultiChannelRecallService implements RecallService {
 
     private final List<ChannelRecaller> recallers;
     private final RecallProperties props;
+    private final ExecutorService pool;
 
     public MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props) {
         this.recallers = recallers;
         this.props = props;
+        int size = Math.max(1, props.getParallel().getPoolSize());
+        this.pool = Executors.newFixedThreadPool(size, r -> {
+            Thread t = new Thread(r, "recall-worker");
+            t.setDaemon(true);   // 守护线程:不阻止 JVM 退出
+            return t;
+        });
+    }
+
+    @PreDestroy
+    void shutdown() {
+        pool.shutdownNow();
     }
 
     @Override
@@ -44,64 +62,27 @@ public class MultiChannelRecallService implements RecallService {
         // 融合模式:默认按路归一化取 max(跨路可比);搜索场景传 recall-fusion=rrf 用 RRF
         // (Reciprocal Rank Fusion)按各路排名融合 —— 对量纲迥异的检索器(BM25 vs 余弦)更鲁棒。
         boolean rrf = "rrf".equalsIgnoreCase(ctx.params().get("recall-fusion"));
-        double rrfK = props.getRrfK();
 
-        // itemId -> 合并后的条目(记录来源与召回分)
+        // 启用的召回路(分层 A/B / 冷启动可只启用部分;enabledChannels 为空=全开)
+        List<ChannelRecaller> active = new ArrayList<>();
+        for (ChannelRecaller r : recallers) {
+            if (ctx.isEnabled(r.channel())) {
+                active.add(r);
+            }
+        }
+        // 各路并行调用(有界线程池 + 单路超时);任一路超时/异常当空,不阻断其余路与合并。
+        List<List<RecallItem>> perChannel = runRecallers(active, ctx);
+
+        // itemId -> 合并后的条目(记录来源与召回分)。合并逻辑与串/并行无关,顺序与 active 对齐(结果确定)。
         Map<Long, Merged> merged = new LinkedHashMap<>();
-        for (ChannelRecaller recaller : recallers) {
-            // 分层 A/B / 冷启动可只启用部分召回路;enabledChannels 为空表示全开
-            if (!ctx.isEnabled(recaller.channel())) {
-                continue;
-            }
-            List<RecallItem> items;
-            try {
-                items = recaller.recall(ctx);
-            } catch (Exception e) {
-                log.warn("召回路 {} 失败,跳过: {}", recaller.getClass().getSimpleName(), e.getMessage());
-                continue;
-            }
-            if (items == null) {
+        for (List<RecallItem> items : perChannel) {
+            if (items == null || items.isEmpty()) {
                 continue;
             }
             if (rrf) {
-                // RRF:本路按分降序定名次,贡献 1/(k+rank) 累加;名次而非原始分,免归一化、抗量纲
-                List<RecallItem> sorted = new ArrayList<>(items);
-                sorted.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
-                int rank = 0;
-                for (RecallItem it : sorted) {
-                    rank++;
-                    double contrib = 1.0 / (rrfK + rank);
-                    merged.compute(it.itemId(), (id, cur) -> {
-                        if (cur == null) {
-                            return new Merged(contrib, it.channel());
-                        }
-                        cur.score += contrib;
-                        if (!cur.channels.contains(it.channel())) {
-                            cur.channels.add(it.channel());
-                        }
-                        return cur;
-                    });
-                }
+                mergeRrf(merged, items);
             } else {
-                // 本路自身最大分,用于把该路所有分归一化到 [0,1](跨路可比的前提)。
-                double chMax = 0;
-                for (RecallItem it : items) {
-                    chMax = Math.max(chMax, it.recallScore());
-                }
-                final double denom = chMax > 0 ? chMax : 1.0;
-                for (RecallItem it : items) {
-                    double norm = it.recallScore() / denom;
-                    merged.compute(it.itemId(), (id, cur) -> {
-                        if (cur == null) {
-                            return new Merged(norm, it.channel());
-                        }
-                        cur.score = Math.max(cur.score, norm);
-                        if (!cur.channels.contains(it.channel())) {
-                            cur.channels.add(it.channel());
-                        }
-                        return cur;
-                    });
-                }
+                mergeNormalized(merged, items);
             }
         }
 
@@ -134,6 +115,91 @@ public class MultiChannelRecallService implements RecallService {
         }
         log.debug("用户 {} 多路召回合并后候选 {} 个", ctx.userId(), out.size());
         return out;
+    }
+
+    /** 并行(可配)调用各路召回;单路超时/异常/返回 null 一律当空 List,输出顺序与 active 对齐。 */
+    private List<List<RecallItem>> runRecallers(List<ChannelRecaller> active, RecallContext ctx) {
+        RecallProperties.Parallel p = props.getParallel();
+        List<List<RecallItem>> out = new ArrayList<>(active.size());
+        if (!p.isEnabled()) {
+            // 串行兜底(可回退开关)
+            for (ChannelRecaller r : active) {
+                out.add(safeRecall(r, ctx));
+            }
+            return out;
+        }
+        List<CompletableFuture<List<RecallItem>>> futures = new ArrayList<>(active.size());
+        for (ChannelRecaller r : active) {
+            futures.add(CompletableFuture.supplyAsync(() -> safeRecall(r, ctx), pool));
+        }
+        for (int i = 0; i < futures.size(); i++) {
+            try {
+                out.add(futures.get(i).get(p.getTimeoutMs(), TimeUnit.MILLISECONDS));
+            } catch (TimeoutException te) {
+                log.warn("召回路 {} 超时 {}ms,当空处理", active.get(i).channel(), p.getTimeoutMs());
+                futures.get(i).cancel(true);
+                out.add(List.of());
+            } catch (Exception e) {
+                log.warn("召回路 {} 异常,当空: {}", active.get(i).channel(), e.getMessage());
+                out.add(List.of());
+            }
+        }
+        return out;
+    }
+
+    /** 单路召回的异常/空保护:永远返回非 null List(在工作线程内执行,异常不外泄)。 */
+    private List<RecallItem> safeRecall(ChannelRecaller r, RecallContext ctx) {
+        try {
+            List<RecallItem> items = r.recall(ctx);
+            return items == null ? List.of() : items;
+        } catch (Exception e) {
+            log.warn("召回路 {} 失败,跳过: {}", r.getClass().getSimpleName(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** RRF:本路按分降序定名次,贡献 1/(k+rank) 累加;名次而非原始分,免归一化、抗量纲。 */
+    private void mergeRrf(Map<Long, Merged> merged, List<RecallItem> items) {
+        double rrfK = props.getRrfK();
+        List<RecallItem> sorted = new ArrayList<>(items);
+        sorted.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
+        int rank = 0;
+        for (RecallItem it : sorted) {
+            rank++;
+            double contrib = 1.0 / (rrfK + rank);
+            merged.compute(it.itemId(), (id, cur) -> {
+                if (cur == null) {
+                    return new Merged(contrib, it.channel());
+                }
+                cur.score += contrib;
+                if (!cur.channels.contains(it.channel())) {
+                    cur.channels.add(it.channel());
+                }
+                return cur;
+            });
+        }
+    }
+
+    /** 按路归一化:把本路所有分除以本路最大分,归一化到 [0,1](跨路可比的前提),同物品跨路取 max。 */
+    private void mergeNormalized(Map<Long, Merged> merged, List<RecallItem> items) {
+        double chMax = 0;
+        for (RecallItem it : items) {
+            chMax = Math.max(chMax, it.recallScore());
+        }
+        final double denom = chMax > 0 ? chMax : 1.0;
+        for (RecallItem it : items) {
+            double norm = it.recallScore() / denom;
+            merged.compute(it.itemId(), (id, cur) -> {
+                if (cur == null) {
+                    return new Merged(norm, it.channel());
+                }
+                cur.score = Math.max(cur.score, norm);
+                if (!cur.channels.contains(it.channel())) {
+                    cur.channels.add(it.channel());
+                }
+                return cur;
+            });
+        }
     }
 
     /** 主召回路优先级(数字越小越优先);兜底性越强越靠后。 */

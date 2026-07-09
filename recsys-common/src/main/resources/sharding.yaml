@@ -9,23 +9,23 @@
 # 主键:Snowflake(64bit、时间有序、去中心化),由 keyGenerator 生成,insert 不带主键列。
 #   worker-id 同机多实例需各异(部署按 Pod 序号 / 配置注入)。
 #
-# 注:本 YAML 由 ShardingSphere 直接解析,不走 Spring ${...} 占位符;需外部化用 $${VAR::default} 语法。
-# 这里按本地 docker 默认硬编码(与 docker-compose 的 recsys/recsys 一致)。
+# 注:本 YAML 由 ShardingSphere 直接解析,不走 Spring ${...} 占位符;外部化用 $${VAR::default} 语法。
+# 凭据/连接走环境变量(默认值与 docker-compose 的 recsys/recsys 一致),不再明文硬编码密码。
 dataSources:
   ds_0:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: org.postgresql.Driver
-    jdbcUrl: jdbc:postgresql://localhost:5432/recsys
-    username: recsys
-    password: recsys
+    jdbcUrl: jdbc:postgresql://$${PG_HOST::localhost}:$${PG_PORT::5432}/$${PG_DB::recsys}
+    username: $${PG_USER::recsys}
+    password: $${PG_PASSWORD::recsys}
     maximumPoolSize: 6
     minimumIdle: 1
   ds_1:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: org.postgresql.Driver
-    jdbcUrl: jdbc:postgresql://localhost:5432/recsys_ds1
-    username: recsys
-    password: recsys
+    jdbcUrl: jdbc:postgresql://$${PG_HOST::localhost}:$${PG_PORT::5432}/$${PG_DS1_DB::recsys_ds1}
+    username: $${PG_USER::recsys}
+    password: $${PG_PASSWORD::recsys}
     maximumPoolSize: 6
     minimumIdle: 1
 

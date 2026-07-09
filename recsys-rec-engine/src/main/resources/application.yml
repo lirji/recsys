@@ -9,6 +9,14 @@ spring:
     username: ${PG_USER:recsys}
     password: ${PG_PASSWORD:recsys}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 每条物理连接建立后执行一次:把 HNSW 运行期检索宽度设到 ≥ 最大召回 LIMIT(vector/two-tower 均 200)。
+      # 否则默认 ef_search=40,LIMIT 200 的向量召回只保证约 40 个真近邻、其余为低质量填充(召回被静默腰斩)。
+      connection-init-sql: SET hnsw.ef_search = 200
+      # 显式池配置:默认 max=10 在多路召回(单次请求并发多条独立 JDBC + 3~4 次 ANN)下易连接饥饿。
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN:5}
+      connection-timeout: ${DB_POOL_CONN_TIMEOUT_MS:3000}
   data:
     redis:
       host: ${REDIS_HOST:localhost}

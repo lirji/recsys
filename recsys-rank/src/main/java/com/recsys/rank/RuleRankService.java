@@ -46,6 +46,8 @@ public class RuleRankService implements RankService {
         }
         var w = props.getWeights();
         Map<String, Double> userFeat = featureService.userFeatures(userId);
+        // 批量预取候选特征(一次 pipeline),消除候选循环里逐个 HGETALL 的 N+1
+        Map<Long, Map<String, Double>> itemFeats = featureService.itemFeatures(candidateItemIds);
         Map<Long, Item> items = contentService.findByIds(candidateItemIds);
 
         // 特征下标(与 FeatureAssembler.FEATURE_ORDER 对齐)
@@ -56,7 +58,7 @@ public class RuleRankService implements RankService {
         for (long itemId : candidateItemIds) {
             Item it = items.get(itemId);
             String cat = it == null ? null : it.category();
-            double[] f = FeatureAssembler.assemble(userFeat, featureService.itemFeatures(itemId), cat);
+            double[] f = FeatureAssembler.assemble(userFeat, itemFeats.getOrDefault(itemId, Map.of()), cat);
 
             double score = w.getPopularity() * f[idxPop] + w.getProfileMatch() * f[idxAff];
             ranked.add(new RankedItem(itemId, score, FeatureAssembler.snapshot(f)));

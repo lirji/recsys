@@ -12,11 +12,53 @@ public class RecallProperties {
     private final TwoTower twoTower = new TwoTower();
     private final Tag tag = new Tag();
     private final Tiger tiger = new Tiger();
+    private final Parallel parallel = new Parallel();
     /** RRF(Reciprocal Rank Fusion)平滑常数 k:贡献 = 1/(k+rank)。业界常用 60。 */
     private int rrfK = 60;
 
     public Quota getQuota() {
         return quota;
+    }
+
+    public Parallel getParallel() {
+        return parallel;
+    }
+
+    /**
+     * 多路召回并行执行:各路在有界线程池上并发调用,单路超时/异常当空(不阻断其余路与合并)。
+     * 总延迟从 Σ 各路 降到 ≈ 最慢一路,且单路慢查询不再拖垮整请求。
+     */
+    public static class Parallel {
+        /** 是否并行调用各路召回;false=串行(可回退开关)。 */
+        private boolean enabled = true;
+        /** 单路召回超时(毫秒);超时当空,交由其余路/热门兜底。 */
+        private long timeoutMs = 150;
+        /** 召回线程池大小(建议 ≈ 通道数)。 */
+        private int poolSize = 12;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public long getTimeoutMs() {
+            return timeoutMs;
+        }
+
+        public void setTimeoutMs(long timeoutMs) {
+            this.timeoutMs = timeoutMs;
+        }
+
+        public int getPoolSize() {
+            return poolSize;
+        }
+
+        public void setPoolSize(int poolSize) {
+            this.poolSize = poolSize;
+        }
     }
 
     public int getRrfK() {
