@@ -184,6 +184,9 @@ public class RecEngineProperties {
         /** 流行度去偏:融合分乘 1/(1+item_pop_norm)^beta,系统性压低高热度、相对抬升长尾/语义。 */
         private final PopDebias popDebias = new PopDebias();
 
+        /** 精排分数保序回归校准:把 rank 原始分映射成可比概率再进融合。 */
+        private final Calibration calibration = new Calibration();
+
         public double getRecallWeight() {
             return recallWeight;
         }
@@ -210,6 +213,36 @@ public class RecEngineProperties {
 
         public PopDebias getPopDebias() {
             return popDebias;
+        }
+
+        public Calibration getCalibration() {
+            return calibration;
+        }
+
+        /**
+         * 精排分数校准:isotonic 单调变换,不改单策略内排序,但让 rank 分成为可比概率,
+         * 使 recall+rank 融合量纲一致、可解释。model = Redis {@code rec:calib:{model}} 的标识
+         * (离线 RecCalibrateJob 写)。enabled=true 但表缺失时 calibrate() 返回原值,故默认开也不改行为。
+         */
+        public static class Calibration {
+            private boolean enabled = true;
+            private String model = "rec";
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public String getModel() {
+                return model;
+            }
+
+            public void setModel(String model) {
+                this.model = model;
+            }
         }
 
         /**

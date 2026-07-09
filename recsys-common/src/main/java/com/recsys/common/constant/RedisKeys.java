@@ -99,6 +99,15 @@ public final class RedisKeys {
         return "ad:calib:" + model;
     }
 
+    /**
+     * 推荐精排分数校准表(保序回归分段点 JSON):rec:calib:{model}。
+     * 离线 RecCalibrateJob 拟合写入(rankScore→真实正反馈率),在线 RecScoreCalibrator 查表插值;
+     * 缺失则退化 identity。校准让 rank 分成为可比的概率,融合(recall+rank)才有量纲意义。
+     */
+    public static String recCalib(String model) {
+        return "rec:calib:" + model;
+    }
+
     /** 广告归因 String(短 TTL):ad:expo:{requestId}:{adId} = "bidwordId;pctrCalib;ecpm;charged;position"。 */
     public static String adExposure(String requestId, long adId) {
         return "ad:expo:" + requestId + ":" + adId;

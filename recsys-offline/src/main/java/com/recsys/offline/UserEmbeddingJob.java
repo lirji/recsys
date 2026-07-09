@@ -14,12 +14,13 @@ import java.util.Map;
  * 作业 user-embedding:把每个用户正反馈物品的 item_embedding 按评分加权平均,
  * L2 归一化后写入 user_embedding,使 VectorRecaller 对真实用户(而非手造测试向量)生效。
  *
- * <p>user_vec(u) = normalize( Σ_{i∈正反馈} weight(u,i) · item_vec(i) )
- * <br>weight:RATING 用 value,CLICK/LIKE/PLAY 用固定权重。
+ * <p>user_vec(u) = normalize( Σ_{i∈正反馈} weight(u,i)·decay(age_i) · item_vec(i) )
+ * <br>weight:RATING 用 value,CLICK/LIKE/PLAY 用固定权重;decay:半衰期时间衰减
+ * {@code 0.5^(age/halfLife)},让用户向量偏向近期兴趣(修 VECTOR 召回"纯长期、无新鲜度")。
  * 只有已灌 item_embedding 的物品参与(当前 1000 条),覆盖不到向量的用户不产出。
  *
  * <p>user_embedding 完全派生自行为,默认整表重建(--no-rebuild 可改为增量 upsert)。
- * 参数:--min-rating(默认 4.0)。
+ * 参数:--min-rating(默认 4.0)、--half-life-days(默认 180;&lt;=0 关闭时间衰减)。
  */
 @Component
 public class UserEmbeddingJob implements OfflineJob {
@@ -41,7 +42,17 @@ public class UserEmbeddingJob implements OfflineJob {
     public void run(ApplicationArguments args) throws Exception {
         double minRating = doubleArg(args, "min-rating", 4.0);
         boolean rebuild = !args.containsOption("no-rebuild");
+        double halfLifeDays = doubleArg(args, "half-life-days", 180.0);  // 时间衰减半衰期(天);<=0 关闭
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只用切分点前的行为聚合用户向量
+
+        // 时间衰减参考时刻:正反馈集里最近一次行为(严格 eval 下 ≤ maxTs)。相对它算每条行为的"年龄",
+        // 越久远权重越低,让 user_embedding 偏向近期兴趣,修 VECTOR 召回"纯长期、无新鲜度"。
+        Double refEpoch = halfLifeDays > 0
+                ? jdbc.queryForObject(BehaviorQuery.positiveFeedbackSql("max(extract(epoch from ts))", maxTs),
+                        Double.class, BehaviorQuery.params(minRating, maxTs))
+                : null;
+        final boolean decayOn = halfLifeDays > 0 && refEpoch != null;
+        final double refTs = refEpoch != null ? refEpoch : 0.0;
 
         // 1. 全量加载物品向量到内存(当前约 1000 条 × 768 维,约 3MB)
         Map<Long, float[]> itemVecs = loadItemVectors();
@@ -50,15 +61,16 @@ public class UserEmbeddingJob implements OfflineJob {
             return;
         }
         int dim = itemVecs.values().iterator().next().length;
-        log.info("加载物品向量 {} 条(dim={});min-rating={}, rebuild={}",
-                itemVecs.size(), dim, minRating, rebuild);
+        log.info("加载物品向量 {} 条(dim={});min-rating={}, rebuild={}, half-life-days={}({})",
+                itemVecs.size(), dim, minRating, rebuild, halfLifeDays, decayOn ? "开" : "关");
 
         // 2. 流式累加用户正反馈向量
         Map<Long, float[]> acc = new HashMap<>();
         Map<Long, Double> wsum = new HashMap<>();
         int[] hit = {0};
         jdbc.query(
-                BehaviorQuery.positiveFeedbackSql("user_id, item_id, action, value", maxTs),
+                BehaviorQuery.positiveFeedbackSql(
+                        "user_id, item_id, action, value, extract(epoch from ts) AS ts_epoch", maxTs),
                 rs -> {
                     long u = rs.getLong("user_id");
                     long it = rs.getLong("item_id");
@@ -67,6 +79,13 @@ public class UserEmbeddingJob implements OfflineJob {
                         return; // 该物品无向量,跳过
                     }
                     double w = weight(rs.getString("action"), rs.getDouble("value"));
+                    if (decayOn) {
+                        // 半衰期时间衰减:age=halfLife → 权重减半;近期行为权重≈1,久远行为趋 0
+                        double ageDays = (refTs - rs.getDouble("ts_epoch")) / 86400.0;
+                        if (ageDays > 0) {
+                            w *= Math.pow(0.5, ageDays / halfLifeDays);
+                        }
+                    }
                     float[] a = acc.computeIfAbsent(u, k -> new float[dim]);
                     for (int d = 0; d < dim; d++) {
                         a[d] += (float) (w * v[d]);

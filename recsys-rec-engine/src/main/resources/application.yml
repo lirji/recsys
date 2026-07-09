@@ -96,6 +96,11 @@ recsys:
     pop-debias:
       enabled: true
       beta: 0.5
+    # 精排分数校准:rank 原始分经保序回归映射成可比概率再进融合(离线 rec-calibrate 拟合 rec:calib:{model})。
+    # isotonic 单调不改单策略内排序,但让 recall+rank 融合量纲一致、可解释。表缺失则原样返回(默认开也不改行为)。
+    calibration:
+      enabled: true
+      model: rec
     # 召回路加权(channel 名大写)。TAG 已叠加实时类目偏好(rt:user),抬权让"用户当下/长期兴趣"
     # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
     channel-boost:

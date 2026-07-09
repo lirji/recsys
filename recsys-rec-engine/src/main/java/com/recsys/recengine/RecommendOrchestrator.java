@@ -67,6 +67,7 @@ public class RecommendOrchestrator {
     private final SeenItemsFilter seenItemsFilter;
     private final QueryUnderstandingService queryService;
     private final PersonalizationScorer personalizationScorer;
+    private final RecScoreCalibrator recScoreCalibrator;
     private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
@@ -82,6 +83,7 @@ public class RecommendOrchestrator {
                                  SeenItemsFilter seenItemsFilter,
                                  QueryUnderstandingService queryService,
                                  PersonalizationScorer personalizationScorer,
+                                 RecScoreCalibrator recScoreCalibrator,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -96,6 +98,7 @@ public class RecommendOrchestrator {
         this.seenItemsFilter = seenItemsFilter;
         this.queryService = queryService;
         this.personalizationScorer = personalizationScorer;
+        this.recScoreCalibrator = recScoreCalibrator;
         this.meterRegistry = meterRegistry;
     }
 
@@ -216,10 +219,16 @@ public class RecommendOrchestrator {
             // 流行度去偏:再乘 1/(1+item_pop_norm)^beta,系统性压低高热度、相对抬升长尾/语义(替代 channel-boost 打补丁)。
             RecEngineProperties.Fusion.PopDebias popCfg = props.getFusion().getPopDebias();
             boolean popDebias = popCfg.isEnabled() && popCfg.getBeta() > 0;
+            // 精排分数校准:把 rank 原始分映射成可比概率再进融合(isotonic 单调,不改单策略内排序,
+            // 但让 recallWeight·rNorm + rankWeight·score 两项量纲一致;无表则原样返回,安全)。
+            RecEngineProperties.Fusion.Calibration calibCfg = props.getFusion().getCalibration();
+            boolean calibrate = calibCfg.isEnabled();
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
-                double base = recallWeight * rNorm + rankWeight * ri.score();
+                double rankScore = calibrate
+                        ? recScoreCalibrator.calibrate(ri.score(), calibCfg.getModel()) : ri.score();
+                double base = recallWeight * rNorm + rankWeight * rankScore;
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
                 double debias = 1.0;
