@@ -131,6 +131,17 @@ public final class RedisKeys {
     /** 全局广告总曝光数 String:ad:stats:total(UCB 探索的总试验次数)。 */
     public static final String AD_STATS_TOTAL = "ad:stats:total";
 
+    /**
+     * 冷启动类目 bandit 统计 String("impr,pos"):cold:cat:{category}(离线 cold-bandit-stats 物化)。
+     * 在线 ColdStartBandit 算类目 UCB(经验正反馈率 + 欠曝光探索加成)驱动冷启动类目探索。
+     */
+    public static String coldCatStats(String category) {
+        return "cold:cat:" + category;
+    }
+
+    /** 冷启动 bandit 全局总曝光数 String:cold:cat:total(UCB 的总试验次数)。 */
+    public static final String COLD_CAT_TOTAL = "cold:cat:total";
+
     /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
     public static String adFreq(long userId, long adId, String yyyymmdd) {
         return "ad:freq:" + userId + ":" + adId + ":" + yyyymmdd;

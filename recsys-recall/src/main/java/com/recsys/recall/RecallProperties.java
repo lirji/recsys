@@ -13,6 +13,7 @@ public class RecallProperties {
     private final Tag tag = new Tag();
     private final Tiger tiger = new Tiger();
     private final Parallel parallel = new Parallel();
+    private final ColdBandit coldBandit = new ColdBandit();
     /** RRF(Reciprocal Rank Fusion)平滑常数 k:贡献 = 1/(k+rank)。业界常用 60。 */
     private int rrfK = 60;
 
@@ -22,6 +23,37 @@ public class RecallProperties {
 
     public Parallel getParallel() {
         return parallel;
+    }
+
+    public ColdBandit getColdBandit() {
+        return coldBandit;
+    }
+
+    /**
+     * 冷启动类目 bandit(UCB):把 COLD 召回从"跨类目均匀铺开"升级为
+     * "按类目 UCB 分驱动"——经验正反馈率高(exploit)+ 欠曝光(explore)的类目优先。
+     * 关闭 / Redis 无统计 → 退回按热度铺开(旧行为)。
+     */
+    public static class ColdBandit {
+        private boolean enabled = true;
+        /** UCB 探索系数:越大越偏探索欠曝光类目。 */
+        private double coef = 0.5;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getCoef() {
+            return coef;
+        }
+
+        public void setCoef(double coef) {
+            this.coef = coef;
+        }
     }
 
     /**
