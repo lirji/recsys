@@ -37,11 +37,19 @@ MODEL_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "recsys-rank", "src"
 MODEL_PATH = os.path.join(MODEL_DIR, "model_deepfm.onnx")
 SCHEMA_PATH = os.path.join(MODEL_DIR, "rank_schema.json")
 VOCAB_PATH = os.path.join(MODEL_DIR, "category_vocab.json")
+SEMANTIC_ID_CSV = os.path.join(HERE, "item_semantic_id.csv")           # train_rqvae.py 产出
+SEMANTIC_ID_MAP_PATH = os.path.join(MODEL_DIR, "semantic_id_map.json")  # 在线 SparseFeatureEncoder 读
 
 # 稀疏编码契约(改这里必须同步 Java SparseFeatureEncoder)
 USER_BUCKETS = 5000
 ITEM_BUCKETS = 20000
 EMBED_DIM = 16
+# 语义 ID 稀疏特征(可选,--semantic-id 开启):把 RQ-VAE 生成的 (c0,c1,c2) 当稀疏字段进精排,
+# 让精排用上生成式召回的语义信号。每层 codebook 大小 K=256(与 train_rqvae.py 默认一致),共 3 层。
+SEMANTIC_LEVELS = 3
+SEMANTIC_CARD = 256
+USE_SEMANTIC_ID = "--semantic-id" in sys.argv
+ZERO_SID = [0, 0, 0]
 
 # 稠密特征列顺序(= Java FeatureAssembler.FEATURE_ORDER,逐位对齐)
 DENSE_COLS = [
@@ -60,11 +68,22 @@ def build_vocab(categories):
     return {c: i + 1 for i, c in enumerate(cats)}
 
 
-def encode_sparse(df, vocab):
+def load_semantic_map():
+    """读 item_semantic_id.csv(item_id,c0,c1,c2)→ {item_id: [c0,c1,c2]}。"""
+    sdf = pd.read_csv(SEMANTIC_ID_CSV)
+    return {int(r["item_id"]): [int(r["c0"]), int(r["c1"]), int(r["c2"])] for _, r in sdf.iterrows()}
+
+
+def encode_sparse(df, vocab, sid_map=None):
     user = (df["user_id"].astype("int64") % USER_BUCKETS).to_numpy()
     item = (df["item_id"].astype("int64") % ITEM_BUCKETS).to_numpy()
     cat = df["category"].map(lambda c: vocab.get(c, 0) if isinstance(c, str) else 0).to_numpy()
-    return np.stack([user, item, cat], axis=1).astype("int64")
+    cols = [user, item, cat]
+    if sid_map is not None:  # 追加 c0,c1,c2(缺失 item → 0,0,0),顺序与 Java 编码器一致
+        items = df["item_id"].astype("int64").to_numpy()
+        for lvl in range(SEMANTIC_LEVELS):
+            cols.append(np.array([sid_map.get(int(it), ZERO_SID)[lvl] for it in items], dtype="int64"))
+    return np.stack(cols, axis=1).astype("int64")
 
 
 def main():
@@ -78,12 +97,22 @@ def main():
     print(f"样本 {len(df)} 行 | label 分布 {df['label'].value_counts().to_dict()} "
           f"| split {df['split'].value_counts().to_dict()}")
 
+    sid_map = None
+    if USE_SEMANTIC_ID:
+        if not os.path.exists(SEMANTIC_ID_CSV):
+            sys.exit(f"--semantic-id 需要 {SEMANTIC_ID_CSV};先跑 train_rqvae.py 生成语义 ID")
+        sid_map = load_semantic_map()
+        SPARSE_ORDER.extend([f"c{lvl}" for lvl in range(SEMANTIC_LEVELS)])
+        print(f"语义 ID 稀疏特征:启用({len(sid_map)} 个 item);sparse_order={SPARSE_ORDER}")
+
     vocab = build_vocab(df["category"])
     cat_card = len(vocab) + 1  # +1 给 OOV(0)
     cardinalities = [USER_BUCKETS, ITEM_BUCKETS, cat_card]
-    print(f"类目 vocab 大小 {len(vocab)}(+OOV);稀疏基数 user/item/cat = {cardinalities}")
+    if sid_map is not None:
+        cardinalities += [SEMANTIC_CARD] * SEMANTIC_LEVELS
+    print(f"类目 vocab 大小 {len(vocab)}(+OOV);稀疏基数 = {cardinalities}")
 
-    sparse = encode_sparse(df, vocab)
+    sparse = encode_sparse(df, vocab, sid_map)
     dense = df[DENSE_COLS].to_numpy().astype("float32")
     label = df["label"].to_numpy().astype("float32")
 
@@ -153,8 +182,9 @@ def main():
     print(f"\n==== 最优模型 ====\ntrain_auc = {train_auc:.4f}(过拟合自检)"
           f"\nvalid_auc = {auc:.4f}(valid {len(va)} 行)\nLogLoss   = {ll:.4f}")
 
-    export_onnx(model, vocab, cardinalities)
-    print(f"\n✅ 导出完成:\n  {MODEL_PATH}\n  {SCHEMA_PATH}\n  {VOCAB_PATH}")
+    export_onnx(model, vocab, cardinalities, sid_map)
+    print(f"\n✅ 导出完成:\n  {MODEL_PATH}\n  {SCHEMA_PATH}\n  {VOCAB_PATH}"
+          + (f"\n  {SEMANTIC_ID_MAP_PATH}" if sid_map is not None else ""))
 
 
 class DeepFM(nn.Module):
@@ -200,7 +230,7 @@ class DeepFM(nn.Module):
         return torch.sigmoid(lin + fm + dnn)
 
 
-def export_onnx(model, vocab, cardinalities):
+def export_onnx(model, vocab, cardinalities, sid_map=None):
     os.makedirs(MODEL_DIR, exist_ok=True)
     model.eval()
     dummy_dense = torch.zeros(2, len(DENSE_COLS), dtype=torch.float32)
@@ -225,16 +255,23 @@ def export_onnx(model, vocab, cardinalities):
     data_file = MODEL_PATH + ".data"
     if os.path.exists(data_file):
         os.remove(data_file)
+    schema = {
+        "model": "deepfm",
+        "dense_order": DENSE_COLS,
+        "sparse_order": SPARSE_ORDER,
+        "user_buckets": USER_BUCKETS,
+        "item_buckets": ITEM_BUCKETS,
+        "embed_dim": EMBED_DIM,
+        "sparse_cardinalities": cardinalities,
+        "semantic_id": sid_map is not None,
+    }
+    if sid_map is not None:
+        # 在线 SparseFeatureEncoder 据此追加 c0,c1,c2;map 从 classpath 读(itemId→[c0,c1,c2])
+        schema["semantic_id_map"] = "classpath:model/semantic_id_map.json"
+        with open(SEMANTIC_ID_MAP_PATH, "w") as f:
+            json.dump({str(k): v for k, v in sid_map.items()}, f)
     with open(SCHEMA_PATH, "w") as f:
-        json.dump({
-            "model": "deepfm",
-            "dense_order": DENSE_COLS,
-            "sparse_order": SPARSE_ORDER,
-            "user_buckets": USER_BUCKETS,
-            "item_buckets": ITEM_BUCKETS,
-            "embed_dim": EMBED_DIM,
-            "sparse_cardinalities": cardinalities,
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(schema, f, ensure_ascii=False, indent=2)
     with open(VOCAB_PATH, "w") as f:
         json.dump(vocab, f, ensure_ascii=False, indent=2)
     verify()

@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,32 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
         if (cached != null) {
             return cached;
         }
-        float[] vec = callApiWithRetry(text);
+        float[] vec = callApiWithRetry(Map.of("parts", List.of(Map.of("text", text))));
+        float[] normalized = VectorMath.l2Normalize(vec);
+        writeCache(cacheKey, normalized);
+        return normalized;
+    }
+
+    /**
+     * 图片向量化(多模态):把图片以 inlineData(base64)喂 embedContent,同 {@link #dimension()} 维、L2 归一化。
+     * 与文本走同一向量空间即可做「文本+图像」融合(见离线 backfill-multimodal)。缓存键前缀 img: 区分文本。
+     * 注:需模型支持多模态 embedding;{@code gemini-embedding-001} 为纯文本,换多模态模型即生效,否则 API 报错、
+     * 由上层作业优雅跳过(退回纯文本向量)。
+     */
+    @Override
+    public float[] embedImage(byte[] image) {
+        if (image == null || image.length == 0) {
+            return new float[dimension()];
+        }
+        String cacheKey = RedisKeys.embCache("img:" + sha256(image));
+        float[] cached = readCache(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        String b64 = Base64.getEncoder().encodeToString(image);
+        Map<String, Object> content = Map.of("parts", List.of(
+                Map.of("inlineData", Map.of("mimeType", "image/jpeg", "data", b64))));
+        float[] vec = callApiWithRetry(content);
         float[] normalized = VectorMath.l2Normalize(vec);
         writeCache(cacheKey, normalized);
         return normalized;
@@ -76,12 +102,12 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
     // ---- 内部 ----
 
     @SuppressWarnings("unchecked")
-    private float[] callApiWithRetry(String text) {
+    private float[] callApiWithRetry(Map<String, Object> content) {
         var g = props.getGemini();
         String url = g.getBaseUrl() + "/models/" + g.getModel() + ":embedContent?key=" + g.getApiKey();
         Map<String, Object> body = Map.of(
                 "model", "models/" + g.getModel(),
-                "content", Map.of("parts", List.of(Map.of("text", text))),
+                "content", content,
                 "outputDimensionality", g.getOutputDimensionality()
         );
 
@@ -163,10 +189,13 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
     }
 
     private static String sha256(String text) {
+        return sha256(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256(byte[] bytes) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(text.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
+            return HexFormat.of().formatHex(md.digest(bytes));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

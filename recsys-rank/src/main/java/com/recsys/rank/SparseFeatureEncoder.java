@@ -23,17 +23,26 @@ import java.util.Map;
  * 取模分桶天然跨语言一致;桶大小与类目 vocab 由训练侧产出的
  * {@code rank_schema.json} / {@code category_vocab.json} 提供(训练侧是唯一真源),
  * 在线从 classpath 读入,避免两端各写一份漂移。
+ *
+ * <p><b>语义 ID 稀疏特征(可选,schema 驱动、向后兼容)</b>:当 schema 声明 {@code "semantic_id": true}
+ * 且给出 {@code "semantic_id_map"}(itemId → [c0,c1,c2] 的 JSON)时,编码在 (user,item,cat) 后追加
+ * RQ-VAE 语义 ID 三码字(缺失 item → 0,0,0),使精排也用上生成式召回的语义信号。schema 未声明则
+ * width=3、编码不变(旧模型零影响)—— 训练侧 {@code train_deepfm.py} 加 semantic-id 后重训并导出 map 即启用。
  */
 public final class SparseFeatureEncoder {
 
     private final int userBuckets;
     private final int itemBuckets;
     private final Map<String, Integer> categoryVocab;
+    /** itemId → [c0,c1,c2];为空表示未启用语义 ID(width=3)。 */
+    private final Map<Long, long[]> semanticIdMap;
 
-    private SparseFeatureEncoder(int userBuckets, int itemBuckets, Map<String, Integer> categoryVocab) {
+    private SparseFeatureEncoder(int userBuckets, int itemBuckets,
+                                Map<String, Integer> categoryVocab, Map<Long, long[]> semanticIdMap) {
         this.userBuckets = userBuckets;
         this.itemBuckets = itemBuckets;
         this.categoryVocab = categoryVocab;
+        this.semanticIdMap = semanticIdMap;
     }
 
     /**
@@ -55,13 +64,45 @@ public final class SparseFeatureEncoder {
         if (vocab.isEmpty()) {
             throw new IllegalStateException("category_vocab.json 为空: " + vocabPath);
         }
-        return new SparseFeatureEncoder(userBuckets, itemBuckets, vocab);
+
+        // 可选:语义 ID 稀疏特征(schema.semantic_id=true 且给出 semantic_id_map 路径)
+        Map<Long, long[]> semanticIdMap = new HashMap<>();
+        if (schema.path("semantic_id").asBoolean(false)) {
+            JsonNode mapPathNode = schema.get("semantic_id_map");
+            if (mapPathNode == null || mapPathNode.asText().isBlank()) {
+                throw new IllegalStateException("schema 声明 semantic_id=true 但缺 semantic_id_map 路径");
+            }
+            JsonNode mapNode = mapper.readTree(readBytes(mapPathNode.asText()));
+            for (Iterator<Map.Entry<String, JsonNode>> it = mapNode.fields(); it.hasNext(); ) {
+                Map.Entry<String, JsonNode> e = it.next();
+                JsonNode arr = e.getValue();
+                semanticIdMap.put(Long.parseLong(e.getKey()),
+                        new long[]{arr.path(0).asLong(), arr.path(1).asLong(), arr.path(2).asLong()});
+            }
+        }
+        return new SparseFeatureEncoder(userBuckets, itemBuckets, vocab, semanticIdMap);
     }
 
-    /** 编码为 [user_bucket, item_bucket, cat_idx](顺序 = train_deepfm.py 的 sparse_order)。 */
+    /**
+     * 编码为 [user_bucket, item_bucket, cat_idx (, c0, c1, c2)](顺序 = train_deepfm.py 的 sparse_order)。
+     * 启用语义 ID 时 width=6,否则 3。
+     */
     public long[] encode(long userId, long itemId, String category) {
         long catIdx = category == null ? 0 : categoryVocab.getOrDefault(category, 0);
-        return new long[]{Math.floorMod(userId, userBuckets), Math.floorMod(itemId, itemBuckets), catIdx};
+        long u = Math.floorMod(userId, userBuckets);
+        long i = Math.floorMod(itemId, itemBuckets);
+        if (semanticIdMap.isEmpty()) {
+            return new long[]{u, i, catIdx};
+        }
+        long[] sid = semanticIdMap.getOrDefault(itemId, ZERO_SID);   // 缺失 item → 0,0,0
+        return new long[]{u, i, catIdx, sid[0], sid[1], sid[2]};
+    }
+
+    private static final long[] ZERO_SID = {0, 0, 0};
+
+    /** 稀疏特征宽度:3(基础)或 6(启用语义 ID)。 */
+    public int width() {
+        return semanticIdMap.isEmpty() ? 3 : 6;
     }
 
     public int categoryVocabSize() {
