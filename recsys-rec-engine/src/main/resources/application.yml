@@ -105,6 +105,11 @@ recsys:
     calibration:
       enabled: true
       model: rec
+    # 近线增量学习 FTRL-LR 信号:融合分加 weight·pFtrl(user,item)(离线 train-ftrl 近线刷新 ftrl:weights)。
+    # 补 T+1 批模型的时效短板;模型缺失打分为 0(默认开也不改行为)。weight=0 或 enabled=false 关闭。
+    ftrl:
+      enabled: true
+      weight: 0.5
     # 召回路加权(channel 名大写)。TAG 已叠加实时类目偏好(rt:user),抬权让"用户当下/长期兴趣"
     # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
     channel-boost:

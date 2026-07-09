@@ -68,6 +68,7 @@ public class RecommendOrchestrator {
     private final QueryUnderstandingService queryService;
     private final PersonalizationScorer personalizationScorer;
     private final RecScoreCalibrator recScoreCalibrator;
+    private final FtrlScorer ftrlScorer;
     private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
@@ -84,6 +85,7 @@ public class RecommendOrchestrator {
                                  QueryUnderstandingService queryService,
                                  PersonalizationScorer personalizationScorer,
                                  RecScoreCalibrator recScoreCalibrator,
+                                 FtrlScorer ftrlScorer,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -99,6 +101,7 @@ public class RecommendOrchestrator {
         this.queryService = queryService;
         this.personalizationScorer = personalizationScorer;
         this.recScoreCalibrator = recScoreCalibrator;
+        this.ftrlScorer = ftrlScorer;
         this.meterRegistry = meterRegistry;
     }
 
@@ -223,12 +226,18 @@ public class RecommendOrchestrator {
             // 但让 recallWeight·rNorm + rankWeight·score 两项量纲一致;无表则原样返回,安全)。
             RecEngineProperties.Fusion.Calibration calibCfg = props.getFusion().getCalibration();
             boolean calibrate = calibCfg.isEnabled();
+            // 近线增量学习 FTRL 信号:模型就绪时,融合分再加 ftrlWeight·pFtrl(user,item)(协同过滤味的近线学习分)。
+            RecEngineProperties.Fusion.Ftrl ftrlCfg = props.getFusion().getFtrl();
+            boolean useFtrl = ftrlCfg.isEnabled() && ftrlCfg.getWeight() != 0 && ftrlScorer.isReady();
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
                 double rankScore = calibrate
                         ? recScoreCalibrator.calibrate(ri.score(), calibCfg.getModel()) : ri.score();
                 double base = recallWeight * rNorm + rankWeight * rankScore;
+                if (useFtrl) {
+                    base += ftrlCfg.getWeight() * ftrlScorer.score(req.userId(), ri.itemId());
+                }
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
                 double debias = 1.0;

@@ -142,6 +142,12 @@ public final class RedisKeys {
     /** 冷启动 bandit 全局总曝光数 String:cold:cat:total(UCB 的总试验次数)。 */
     public static final String COLD_CAT_TOTAL = "cold:cat:total";
 
+    /** 近线增量学习 FTRL-LR 服务权重 String(JSON {"bias":w,"w":{idx:weight,…}}):ftrl:weights。 */
+    public static final String FTRL_WEIGHTS = "ftrl:weights";
+
+    /** FTRL 训练状态 String(JSON {"bias":[z,n],"c":{idx:[z,n],…}}):ftrl:state(增量续训 warm-start)。 */
+    public static final String FTRL_STATE = "ftrl:state";
+
     /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
     public static String adFreq(long userId, long adId, String yyyymmdd) {
         return "ad:freq:" + userId + ":" + adId + ":" + yyyymmdd;

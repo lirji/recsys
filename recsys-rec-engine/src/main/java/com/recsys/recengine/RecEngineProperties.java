@@ -187,6 +187,9 @@ public class RecEngineProperties {
         /** 精排分数保序回归校准:把 rank 原始分映射成可比概率再进融合。 */
         private final Calibration calibration = new Calibration();
 
+        /** 近线增量学习 FTRL-LR 信号:融合时加 ftrlWeight·pFtrl(user,item)。 */
+        private final Ftrl ftrl = new Ftrl();
+
         public double getRecallWeight() {
             return recallWeight;
         }
@@ -217,6 +220,35 @@ public class RecEngineProperties {
 
         public Calibration getCalibration() {
             return calibration;
+        }
+
+        public Ftrl getFtrl() {
+            return ftrl;
+        }
+
+        /**
+         * 近线增量学习 FTRL-LR 信号:在融合分上加 {@code weight · pFtrl(user,item)}(协同过滤味的近线学习分)。
+         * 模型缺失时打分为 0,故默认开也不改行为(直到跑 train-ftrl)。weight=0 或 enabled=false 关闭。
+         */
+        public static class Ftrl {
+            private boolean enabled = true;
+            private double weight = 0.5;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public double getWeight() {
+                return weight;
+            }
+
+            public void setWeight(double weight) {
+                this.weight = weight;
+            }
         }
 
         /**
