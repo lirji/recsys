@@ -30,6 +30,11 @@ public class RankProperties {
     private String dinSchemaPath = "classpath:model/din_schema.json";
     private String dinCategoryVocabPath = "classpath:model/din_category_vocab.json";
 
+    /** PLE 多目标模型 + 稀疏 schema/vocab(strategy=ple 时用,train_ple.py 产出;与 MMoE 同在线契约)。 */
+    private String pleModelPath = "classpath:model/model_ple.onnx";
+    private String pleSchemaPath = "classpath:model/ple_schema.json";
+    private String pleCategoryVocabPath = "classpath:model/ple_category_vocab.json";
+
     /** 多目标融合:finalScore = pCTR · (cvrBias + cvrWeight · pCVR)。mmoe/din 共用。 */
     private final MultiTask multiTask = new MultiTask();
 
@@ -124,6 +129,30 @@ public class RankProperties {
 
     public void setDinCategoryVocabPath(String dinCategoryVocabPath) {
         this.dinCategoryVocabPath = dinCategoryVocabPath;
+    }
+
+    public String getPleModelPath() {
+        return pleModelPath;
+    }
+
+    public void setPleModelPath(String pleModelPath) {
+        this.pleModelPath = pleModelPath;
+    }
+
+    public String getPleSchemaPath() {
+        return pleSchemaPath;
+    }
+
+    public void setPleSchemaPath(String pleSchemaPath) {
+        this.pleSchemaPath = pleSchemaPath;
+    }
+
+    public String getPleCategoryVocabPath() {
+        return pleCategoryVocabPath;
+    }
+
+    public void setPleCategoryVocabPath(String pleCategoryVocabPath) {
+        this.pleCategoryVocabPath = pleCategoryVocabPath;
     }
 
     public MultiTask getMultiTask() {

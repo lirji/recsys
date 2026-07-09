@@ -38,6 +38,7 @@ public class RankRouter implements RankService {
     private final ObjectProvider<DeepFmRankService> deepfmProvider;
     private final ObjectProvider<MmoeRankService> mmoeProvider;
     private final ObjectProvider<DinRankService> dinProvider;
+    private final ObjectProvider<PleRankService> pleProvider;
     private final ObjectProvider<MeterRegistry> meterRegistryProvider;
     private final RankProperties props;
 
@@ -46,6 +47,7 @@ public class RankRouter implements RankService {
                       ObjectProvider<DeepFmRankService> deepfmProvider,
                       ObjectProvider<MmoeRankService> mmoeProvider,
                       ObjectProvider<DinRankService> dinProvider,
+                      ObjectProvider<PleRankService> pleProvider,
                       ObjectProvider<MeterRegistry> meterRegistryProvider,
                       RankProperties props) {
         this.rule = rule;
@@ -53,6 +55,7 @@ public class RankRouter implements RankService {
         this.deepfmProvider = deepfmProvider;
         this.mmoeProvider = mmoeProvider;
         this.dinProvider = dinProvider;
+        this.pleProvider = pleProvider;
         this.meterRegistryProvider = meterRegistryProvider;
         this.props = props;
     }
@@ -115,6 +118,17 @@ public class RankRouter implements RankService {
                 return served(r, requested, "din", "ok");
             }
             log.debug("DIN 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("ple".equals(requested)) {
+            PleRankService ple = pleProvider.getIfAvailable();
+            if (ple == null || !ple.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = ple.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "ple", "ok");
+            }
+            log.debug("PLE 返回空,回退规则排序 user={}", userId);
             return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
         }
         // 请求即规则排序(v1 / 未知策略):served=rule 但不是回退,reason=ok

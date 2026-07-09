@@ -60,7 +60,7 @@ recsys:
       enabled: true            # LLM query 理解(拼写纠错/意图/改写);仅在 recsys.llm 就绪时实际生效
       max-expansions: 3        # LLM 改写扩展并入 rewrites 的上限
   rank:
-    # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列建模(失败均回退规则)
+    # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列, ple=PLE多目标(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
     onnx-model-path: classpath:model/model.onnx
     deepfm-model-path: classpath:model/model_deepfm.onnx
@@ -74,6 +74,10 @@ recsys:
     din-model-path: classpath:model/model_din.onnx
     din-schema-path: classpath:model/din_schema.json
     din-category-vocab-path: classpath:model/din_category_vocab.json
+    # PLE 多目标(train_ple.py 产出;与 MMoE 同在线契约,共享专家+每任务专属专家治负迁移)
+    ple-model-path: classpath:model/model_ple.onnx
+    ple-schema-path: classpath:model/ple_schema.json
+    ple-category-vocab-path: classpath:model/ple_category_vocab.json
     # 多目标融合(mmoe/din 共用):finalScore = pCTR·(cvrBias + cvrWeight·pCVR)
     # cvrBias=0、cvrWeight=1 → 退化为 ESMM 的 pCTCVR=pCTR·pCVR
     multi-task:
