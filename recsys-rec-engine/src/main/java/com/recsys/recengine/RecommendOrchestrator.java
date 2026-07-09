@@ -12,6 +12,7 @@ import com.recsys.common.recall.RecallItem;
 import com.recsys.common.recall.RecallService;
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
+import com.recsys.rank.PreRankService;
 import com.recsys.rank.RankRouter;
 import com.recsys.recengine.coldstart.ColdStartDetector;
 import com.recsys.recengine.experiment.ExperimentDecision;
@@ -55,6 +56,7 @@ public class RecommendOrchestrator {
 
     private final RecallService recallService;
     private final RankRouter rankRouter;
+    private final PreRankService preRankService;
     private final ContentService contentService;
     private final RecCache recCache;
     private final RecEngineProperties props;
@@ -69,6 +71,7 @@ public class RecommendOrchestrator {
 
     public RecommendOrchestrator(RecallService recallService,
                                  RankRouter rankRouter,
+                                 PreRankService preRankService,
                                  ContentService contentService,
                                  RecCache recCache,
                                  RecEngineProperties props,
@@ -82,6 +85,7 @@ public class RecommendOrchestrator {
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
+        this.preRankService = preRankService;
         this.contentService = contentService;
         this.recCache = recCache;
         this.props = props;
@@ -177,6 +181,13 @@ public class RecommendOrchestrator {
                 }
             }
             List<Long> candidateIds = new ArrayList<>(recallScore.keySet());
+
+            // 3b. 粗排:候选多时用轻量打分砍到 top-K,再进精排(补齐 召回→粗排→精排 漏斗;候选少则原样放行)。
+            int preRankIn = candidateIds.size();
+            candidateIds = preRankService.preRank(req.userId(), candidateIds, recallScore, req.scene());
+            if (candidateIds.size() < preRankIn) {
+                meterRegistry.counter("recsys.prerank", "result", "applied").increment();
+            }
 
             // 4. 排序(按实验选中的策略;null 回落全局配置)
             List<RankedItem> ranked = rankRouter.rank(

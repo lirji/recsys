@@ -35,6 +35,9 @@ public class RankProperties {
 
     private final Weights weights = new Weights();
 
+    /** 粗排:精排前的轻量打分 + 截断(补齐 召回→粗排→精排 漏斗)。 */
+    private final PreRank preRank = new PreRank();
+
     public String getStrategy() {
         return strategy;
     }
@@ -129,6 +132,67 @@ public class RankProperties {
 
     public Weights getWeights() {
         return weights;
+    }
+
+    public PreRank getPreRank() {
+        return preRank;
+    }
+
+    /**
+     * 粗排配置:候选数 > limit 时,用轻量线性打分砍到 top-limit 再进精排;≤ limit 直接放行。
+     * 打分 = recallWeight·归一化召回分 + popWeight·item_pop_norm + affinityWeight·user_cat_affinity。
+     */
+    public static class PreRank {
+        /** 是否启用粗排;false=候选全量进精排(旧行为)。 */
+        private boolean enabled = true;
+        /** 精排前保留的候选上限(粗排截断后的 top-K)。 */
+        private int limit = 50;
+        /** 归一化召回分权重(召回置信度)。 */
+        private double recallWeight = 1.0;
+        /** 物品热度权重。 */
+        private double popWeight = 0.3;
+        /** 用户-类目亲和度权重(交叉特征)。 */
+        private double affinityWeight = 0.5;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getLimit() {
+            return limit;
+        }
+
+        public void setLimit(int limit) {
+            this.limit = limit;
+        }
+
+        public double getRecallWeight() {
+            return recallWeight;
+        }
+
+        public void setRecallWeight(double recallWeight) {
+            this.recallWeight = recallWeight;
+        }
+
+        public double getPopWeight() {
+            return popWeight;
+        }
+
+        public void setPopWeight(double popWeight) {
+            this.popWeight = popWeight;
+        }
+
+        public double getAffinityWeight() {
+            return affinityWeight;
+        }
+
+        public void setAffinityWeight(double affinityWeight) {
+            this.affinityWeight = affinityWeight;
+        }
     }
 
     /** 多目标融合权重:finalScore = pCTR · (cvrBias + cvrWeight · pCVR)。 */

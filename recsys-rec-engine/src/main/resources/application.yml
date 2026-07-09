@@ -79,6 +79,14 @@ recsys:
     multi-task:
       cvr-bias: 0.1
       cvr-weight: 1.0
+    # 粗排(pre-rank):候选 > limit 时用轻量打分(召回分+热度+类目亲和)砍到 top-limit 再进精排,
+    # 补齐 召回→粗排→精排 漏斗;候选 ≤ limit 直接放行。enabled=false 关闭(候选全量进精排=旧行为)。
+    pre-rank:
+      enabled: true
+      limit: 50
+      recall-weight: 1.0
+      pop-weight: 0.3
+      affinity-weight: 0.5
   # 融合:最终分 = (recall-weight*归一化召回分 + rank-weight*排序分) * channel-boost
   fusion:
     recall-weight: 1.0
