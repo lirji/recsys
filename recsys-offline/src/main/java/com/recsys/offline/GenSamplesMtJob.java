@@ -79,6 +79,7 @@ public class GenSamplesMtJob implements OfflineJob {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int negRatio = intArg(args, "neg-ratio", 2);
+        double hardNegRatio = doubleArg(args, "hard-neg-ratio", 0.0);  // S6:同类目 hard negative 占比(0=纯热度随机)
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         long seed = (long) doubleArg(args, "seed", 42);
         int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
@@ -115,6 +116,17 @@ public class GenSamplesMtJob implements OfflineJob {
         long maxItemCnt = itemCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
         AsOfFeatureBuilder asOf = new AsOfFeatureBuilder(Math.log1p(maxUserCnt), Math.log1p(maxItemCnt));
         Map<Long, String> catMap = loadCategoryMap();
+        // S6 hard negative:类目→物品倒排,用于采「同类目、更难区分」的负例(比纯热度随机更有信息量,
+        // 让模型学到细粒度偏好而非只会区分冷热)。仅 hard-neg-ratio>0 时构建。
+        Map<String, List<Long>> itemsByCat = new HashMap<>();
+        if (hardNegRatio > 0) {
+            for (var en : catMap.entrySet()) {
+                if (en.getValue() != null) {
+                    itemsByCat.computeIfAbsent(en.getValue(), k -> new ArrayList<>()).add(en.getKey());
+                }
+            }
+            log.info("hard negative:hard-neg-ratio={},类目倒排 {} 个类目", hardNegRatio, itemsByCat.size());
+        }
 
         // 位置代理(可选):按热度名次给展示位次(热门≈位次靠前);默认关闭 → position 恒 0(未知)
         Map<Long, Integer> posBucket = positionProxy
@@ -156,10 +168,16 @@ public class GenSamplesMtJob implements OfflineJob {
 
                 // 负样本:click=0/like=0,与正样本共享同一用户序列
                 Set<Long> rated = ratedByUser.getOrDefault(e.userId, Set.of());
+                List<Long> catPool = hardNegRatio > 0 && e.category != null ? itemsByCat.get(e.category) : null;
                 int got = 0, tries = 0;
                 while (got < negRatio && tries < negRatio * 20) {
                     tries++;
-                    long negItem = pool.sample(rnd);
+                    long negItem;
+                    if (catPool != null && catPool.size() > 1 && rnd.nextDouble() < hardNegRatio) {
+                        negItem = catPool.get(rnd.nextInt(catPool.size()));  // hard neg:同类目、更难区分
+                    } else {
+                        negItem = pool.sample(rnd);                         // 常规:热度加权随机
+                    }
                     if (rated.contains(negItem)) {
                         continue;
                     }

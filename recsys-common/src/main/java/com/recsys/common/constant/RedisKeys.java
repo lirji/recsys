@@ -148,6 +148,12 @@ public final class RedisKeys {
     /** FTRL 训练状态 String(JSON {"bias":[z,n],"c":{idx:[z,n],…}}):ftrl:state(增量续训 warm-start)。 */
     public static final String FTRL_STATE = "ftrl:state";
 
+    /**
+     * 动态调参 Hash(S5 轻量配置热更新):recsys:tuning,field=配置项(如 fusion.pop-debias.beta)、value=覆盖值。
+     * 在线 DynamicTuningService 周期刷新叠加在静态 yml 上;`redis-cli hset recsys:tuning <field> <v>` 即热更、免重启。
+     */
+    public static final String TUNING = "recsys:tuning";
+
     /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
     public static String adFreq(long userId, long adId, String yyyymmdd) {
         return "ad:freq:" + userId + ":" + adId + ":" + yyyymmdd;

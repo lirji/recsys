@@ -86,6 +86,13 @@ def main():
     item_cat_t = torch.from_numpy(item_cat_idx)         # [n_items] 每物品类目索引
     u_t = torch.from_numpy(pos_user)
     i_t = torch.from_numpy(pos_item)
+    # in-batch sampled-softmax 的 logQ 修正(Google 2019「Sampling-Bias-Corrected」):热门物品在 batch 里
+    # 更常被当负例,不修正会被系统性过度惩罚(假负偏置)。对 logit 减 log P(item),P 用正样本物品频率估。
+    # --no-logq 关闭(回到旧行为,便于对比)。
+    use_logq = "--no-logq" not in sys.argv
+    item_counts = np.bincount(pos_item, minlength=n_items).astype("float64")
+    log_q = torch.from_numpy(np.log(item_counts / max(1.0, item_counts.sum()) + 1e-12)).float()
+    print(f"logQ 修正:{'开' if use_logq else '关'}")
 
     opt = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
     batch = 512
@@ -102,6 +109,8 @@ def main():
             uc = model.user_vec(ub)                      # [B, DIM]
             ic = model.item_vec(it, item_cat_t[it])      # [B, DIM]
             logits = uc @ ic.t() / TEMP                  # [B, B] 对角为正例
+            if use_logq:
+                logits = logits - log_q[it].unsqueeze(0)  # 减 log P(item_j):校正 in-batch 假负偏置
             target = torch.arange(len(idx))
             loss = F.cross_entropy(logits, target)
             opt.zero_grad()

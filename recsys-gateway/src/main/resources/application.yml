@@ -7,11 +7,13 @@ spring:
   cloud:
     gateway:
       routes:
-        # 推荐主入口 → rec-engine
+        # rec-engine 对外全部入口 → 8081(补全:此前只路由了 /api/recommend,其余落到 /**→web 不可达)。
+        # 含:推荐 / 搜索 / 搜索广告 / 混排 feed / query 理解 / 冷启动兴趣 / 广告点击·转化(/api/ad/*)。
+        # 注:/api/ad/** 与 /api/advertiser/**(→8083)不重叠(第二段 ad≠advertiser),互不误路由。
         - id: rec-engine
           uri: http://localhost:8081
           predicates:
-            - Path=/api/recommend/**
+            - Path=/api/recommend/**,/api/search/**,/api/search-ads/**,/api/feed/**,/api/query/**,/api/user/**,/api/ad/**
         # 行为上报 → behavior
         - id: behavior
           uri: http://localhost:8082

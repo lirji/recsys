@@ -69,6 +69,7 @@ public class RecommendOrchestrator {
     private final PersonalizationScorer personalizationScorer;
     private final RecScoreCalibrator recScoreCalibrator;
     private final FtrlScorer ftrlScorer;
+    private final DynamicTuningService tuning;
     private final MeterRegistry meterRegistry;
 
     public RecommendOrchestrator(RecallService recallService,
@@ -86,6 +87,7 @@ public class RecommendOrchestrator {
                                  PersonalizationScorer personalizationScorer,
                                  RecScoreCalibrator recScoreCalibrator,
                                  FtrlScorer ftrlScorer,
+                                 DynamicTuningService tuning,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -102,6 +104,7 @@ public class RecommendOrchestrator {
         this.personalizationScorer = personalizationScorer;
         this.recScoreCalibrator = recScoreCalibrator;
         this.ftrlScorer = ftrlScorer;
+        this.tuning = tuning;
         this.meterRegistry = meterRegistry;
     }
 
@@ -220,15 +223,19 @@ public class RecommendOrchestrator {
             // 召回路融合加权:按物品命中的召回路取最大 boost,乘到融合分上。
             // 默认让 TAG(含实时类目偏好 rt:user)不被 HOT/CF 热度压过;搜索场景则抬升 SEMANTIC/意图 TAG。
             // 流行度去偏:再乘 1/(1+item_pop_norm)^beta,系统性压低高热度、相对抬升长尾/语义(替代 channel-boost 打补丁)。
+            // S5 热更新:融合旋钮读 Redis 覆盖层(recsys:tuning),缺则回退静态 yml —— 改权重免重启。
             RecEngineProperties.Fusion.PopDebias popCfg = props.getFusion().getPopDebias();
-            boolean popDebias = popCfg.isEnabled() && popCfg.getBeta() > 0;
+            double popBeta = tuning.getDouble("fusion.pop-debias.beta", popCfg.getBeta());
+            boolean popDebias = tuning.getBoolean("fusion.pop-debias.enabled", popCfg.isEnabled()) && popBeta > 0;
             // 精排分数校准:把 rank 原始分映射成可比概率再进融合(isotonic 单调,不改单策略内排序,
             // 但让 recallWeight·rNorm + rankWeight·score 两项量纲一致;无表则原样返回,安全)。
             RecEngineProperties.Fusion.Calibration calibCfg = props.getFusion().getCalibration();
-            boolean calibrate = calibCfg.isEnabled();
+            boolean calibrate = tuning.getBoolean("fusion.calibration.enabled", calibCfg.isEnabled());
             // 近线增量学习 FTRL 信号:模型就绪时,融合分再加 ftrlWeight·pFtrl(user,item)(协同过滤味的近线学习分)。
             RecEngineProperties.Fusion.Ftrl ftrlCfg = props.getFusion().getFtrl();
-            boolean useFtrl = ftrlCfg.isEnabled() && ftrlCfg.getWeight() != 0 && ftrlScorer.isReady();
+            double ftrlWeight = tuning.getDouble("fusion.ftrl.weight", ftrlCfg.getWeight());
+            boolean useFtrl = tuning.getBoolean("fusion.ftrl.enabled", ftrlCfg.isEnabled())
+                    && ftrlWeight != 0 && ftrlScorer.isReady();
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
@@ -236,7 +243,7 @@ public class RecommendOrchestrator {
                         ? recScoreCalibrator.calibrate(ri.score(), calibCfg.getModel()) : ri.score();
                 double base = recallWeight * rNorm + rankWeight * rankScore;
                 if (useFtrl) {
-                    base += ftrlCfg.getWeight() * ftrlScorer.score(req.userId(), ri.itemId());
+                    base += ftrlWeight * ftrlScorer.score(req.userId(), ri.itemId());
                 }
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
@@ -244,7 +251,7 @@ public class RecommendOrchestrator {
                 if (popDebias) {
                     double popNorm = ri.featureSnapshot() == null ? 0.0
                             : ri.featureSnapshot().getOrDefault("item_pop_norm", 0.0);
-                    debias = 1.0 / Math.pow(1.0 + Math.max(0.0, popNorm), popCfg.getBeta());
+                    debias = 1.0 / Math.pow(1.0 + Math.max(0.0, popNorm), popBeta);
                 }
                 fused.add(new RerankCandidate(ri.itemId(), base * boost * persBoost * debias));
             }
