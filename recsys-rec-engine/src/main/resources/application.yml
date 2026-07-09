@@ -261,6 +261,19 @@ recsys:
             params:
               reserve-price: "0.15"
 
+# 弹性护栏(S3):Gemini embedding 外呼熔断器。连续失败/超时达阈值即熔断,快速失败到降级(纯词法),
+# 半开态自动探活恢复;RestClient 已有 connect/read 超时(Q4),此处补"重复失败别再苦等"。
+resilience4j:
+  circuitbreaker:
+    instances:
+      gemini-embedding:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10          # 攒够 10 次调用才评估失败率
+        failure-rate-threshold: 60           # 失败率 ≥60% → 熔断
+        wait-duration-in-open-state: 30s     # 熔断后 30s 转半开探活
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
+
 management:
   endpoints:
     web:

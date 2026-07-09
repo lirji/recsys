@@ -2,6 +2,7 @@ package com.recsys.embedding;
 
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.embedding.EmbeddingClient;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -48,7 +49,10 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
         this.redis = redis;
     }
 
+    // 弹性护栏(S3):连续失败/慢调用达阈值即熔断,之后快速失败(抛 CallNotPermittedException)——
+    // 由上层 query 理解 / SemanticRecaller 的 catch 降级为纯词法,不再每次苦等读超时;半开态自动探活恢复。
     @Override
+    @CircuitBreaker(name = "gemini-embedding")
     public float[] embedText(String text) {
         if (text == null || text.isBlank()) {
             return new float[dimension()];
@@ -71,6 +75,7 @@ public class GeminiEmbeddingClient implements EmbeddingClient {
      * 由上层作业优雅跳过(退回纯文本向量)。
      */
     @Override
+    @CircuitBreaker(name = "gemini-embedding")
     public float[] embedImage(byte[] image) {
         if (image == null || image.length == 0) {
             return new float[dimension()];
