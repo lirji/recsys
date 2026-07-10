@@ -21,8 +21,10 @@ spring:
         metadata:
           gRPC_port: ${GRPC_SERVER_PORT:9096}
   # item 表:普通 Postgres 主数据源(非分片)。
+  # #3 content 拆库:CONTENT_PG_DB 未设 → 退回 PG_DB → recsys(默认不变);
+  #   设 CONTENT_PG_DB=recsys_content ⇒ content 服务写自有库(DB-per-service),rec-serving 读本地副本 item_local。
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${CONTENT_PG_DB:${PG_DB:recsys}}
     username: ${PG_USER:recsys}
     password: ${PG_PASSWORD:recsys}
     driver-class-name: org.postgresql.Driver

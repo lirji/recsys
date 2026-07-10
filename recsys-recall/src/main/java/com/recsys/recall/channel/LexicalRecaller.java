@@ -1,14 +1,15 @@
 package com.recsys.recall.channel;
 
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,11 +29,11 @@ public class LexicalRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(LexicalRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final ItemCatalogReader itemCatalog;   // #3:热路径 item 读经此 seam(db 直读 item / replica 读 item_local)
     private final RecallProperties props;
 
-    public LexicalRecaller(JdbcTemplate jdbc, RecallProperties props) {
-        this.jdbc = jdbc;
+    public LexicalRecaller(ItemCatalogReader itemCatalog, RecallProperties props) {
+        this.itemCatalog = itemCatalog;
         this.props = props;
     }
 
@@ -49,18 +50,12 @@ public class LexicalRecaller implements ChannelRecaller {
         }
         try {
             int limit = props.getQuota().getLexical();
-            // OR 语义提高召回:plainto_tsquery 会把词项用 & 连接(太严),改成 | (任一词命中)。
-            // NULLIF 兜底全停用词时空串(to_tsquery('') 会报错 → NULL 则无匹配,优雅退空)。
-            return jdbc.query(
-                    "WITH q AS (SELECT to_tsquery('english', " +
-                    "    NULLIF(replace(plainto_tsquery('english', ?)::text, '&', '|'), '')) AS tsq) " +
-                    "SELECT item_id, ts_rank_cd(title_tsv, q.tsq) AS score " +
-                    "FROM item, q WHERE title_tsv @@ q.tsq ORDER BY score DESC LIMIT ?",
-                    ps -> {
-                        ps.setString(1, query);
-                        ps.setInt(2, limit);
-                    },
-                    (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("score"), RecallChannel.LEXICAL));
+            // 词法/BM25 SQL(OR 语义 + NULLIF 兜底)已下沉到 ItemCatalogReader,item 表名按 seam 切换。
+            List<RecallItem> out = new ArrayList<>();
+            for (ItemCatalogReader.ScoredId s : itemCatalog.lexicalSearch(query, limit)) {
+                out.add(new RecallItem(s.itemId(), s.score(), RecallChannel.LEXICAL));
+            }
+            return out;
         } catch (Exception e) {
             log.debug("词法召回失败 q=[{}](title_tsv 缺失?),返回空: {}", query, e.getMessage());
             return List.of();

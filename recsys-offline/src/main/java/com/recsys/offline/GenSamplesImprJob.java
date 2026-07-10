@@ -61,10 +61,12 @@ public class GenSamplesImprJob implements OfflineJob {
 
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
+    private String it = "item";   // #3:item 读来源表(默认 item)
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
+        it = ItemQuery.table(args);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
         int windowHours = intArg(args, "window-hours", 24);
@@ -195,7 +197,7 @@ public class GenSamplesImprJob implements OfflineJob {
     private List<Event> loadRatings() {
         List<Event> out = new ArrayList<>();
         jdbc.query("SELECT b.user_id, b.item_id, b.value, extract(epoch from b.ts)::bigint AS ts, i.category "
-                        + "FROM " + bt + " b LEFT JOIN item i ON b.item_id = i.item_id "
+                        + "FROM " + bt + " b LEFT JOIN " + it + " i ON b.item_id = i.item_id "
                         + "WHERE b.action='RATING'",
                 rs -> {
                     out.add(new Event(rs.getLong("user_id"), rs.getLong("item_id"),
@@ -222,7 +224,7 @@ public class GenSamplesImprJob implements OfflineJob {
 
     private Map<Long, String> loadCategoryMap() {
         Map<Long, String> map = new HashMap<>();
-        jdbc.query("SELECT item_id, category FROM item",
+        jdbc.query("SELECT item_id, category FROM " + it,
                 rs -> {
                     map.put(rs.getLong("item_id"), rs.getString("category"));
                 });

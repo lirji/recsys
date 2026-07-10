@@ -76,6 +76,10 @@ recsys:
   content:
     serving:
       mode: ${CONTENT_SERVING_MODE:in-process}
+    # #3 content 拆库:逐候选热路径 item 读源(与 serving.mode 正交)。
+    #   db(默认,直读共享 item,回滚落点)| replica(读本地副本 item_local,离线 sync-item-catalog 灌;item 物理拆库后用)。
+    #   同管 ItemCatalogReader(LEXICAL/TAG/冷启动/SIM/query)与 ContentService.findByIds(rank×10/ad CVR)。
+    item-source: ${CONTENT_ITEM_SOURCE:db}
   # P3 用户画像服务网关模式:in-process=进程内直调 UserProfileService(默认=单体回退);grpc=调 recsys-user-service。
   user:
     serving:

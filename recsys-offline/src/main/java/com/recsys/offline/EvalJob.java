@@ -86,10 +86,12 @@ public class EvalJob implements OfflineJob {
 
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
+    private String it = "item";   // #3:item 读来源表(默认 item);contentService.findById 另由 item-source 切换
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
+        it = ItemQuery.table(args);
         int[] ks = intListArg(args, "k", new int[]{10});
         int maxK = 0;
         for (int k : ks) {
@@ -303,7 +305,7 @@ public class EvalJob implements OfflineJob {
 
     private Catalog loadCatalog() {
         Catalog c = new Catalog();
-        jdbc.query("SELECT item_id, GREATEST(popularity, 0) AS pop FROM item", rs -> {
+        jdbc.query("SELECT item_id, GREATEST(popularity, 0) AS pop FROM " + it, rs -> {
             long id = rs.getLong("item_id");
             double pop = rs.getDouble("pop");
             c.popularity.put(id, pop);

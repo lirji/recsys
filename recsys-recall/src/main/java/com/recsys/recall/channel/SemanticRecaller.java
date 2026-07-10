@@ -1,6 +1,7 @@
 package com.recsys.recall.channel;
 
 import com.pgvector.PGvector;
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.embedding.EmbeddingClient;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
@@ -34,14 +35,17 @@ public class SemanticRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(SemanticRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;                 // item_embedding 向量 ANN(派生读模型,非 item 表,不切)
+    private final ItemCatalogReader itemCatalog;     // #3:伪 query 取近期标题的 item 读经此 seam(db|replica)
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
     private final RecallProperties props;
 
     public SemanticRecaller(JdbcTemplate jdbc,
+                            ItemCatalogReader itemCatalog,
                             ObjectProvider<EmbeddingClient> embeddingProvider,
                             RecallProperties props) {
         this.jdbc = jdbc;
+        this.itemCatalog = itemCatalog;
         this.embeddingProvider = embeddingProvider;
         this.props = props;
     }
@@ -90,11 +94,7 @@ public class SemanticRecaller implements ChannelRecaller {
         if (explicit != null && !explicit.isBlank()) {
             return explicit;
         }
-        List<String> titles = jdbc.queryForList(
-                "SELECT i.title FROM user_behavior b JOIN item i ON i.item_id=b.item_id " +
-                "WHERE b.user_id=? AND b.action IN ('CLICK','LIKE','PLAY','RATING') " +
-                "AND i.title IS NOT NULL ORDER BY b.ts DESC LIMIT 10",
-                String.class, ctx.userId());
+        List<String> titles = itemCatalog.recentTitles(ctx.userId(), 10);
         if (titles.isEmpty()) {
             return null;
         }

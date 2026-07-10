@@ -1,6 +1,7 @@
 package com.recsys.recall.channel;
 
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
@@ -9,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -31,12 +31,12 @@ public class HotRecaller implements ChannelRecaller {
     private static final Logger log = LoggerFactory.getLogger(HotRecaller.class);
 
     private final StringRedisTemplate redis;
-    private final JdbcTemplate jdbc;
+    private final ItemCatalogReader itemCatalog;   // #3:热路径 item 读经此 seam(db 直读 item / replica 读 item_local)
     private final RecallProperties props;
 
-    public HotRecaller(StringRedisTemplate redis, JdbcTemplate jdbc, RecallProperties props) {
+    public HotRecaller(StringRedisTemplate redis, ItemCatalogReader itemCatalog, RecallProperties props) {
         this.redis = redis;
-        this.jdbc = jdbc;
+        this.itemCatalog = itemCatalog;
         this.props = props;
     }
 
@@ -85,9 +85,10 @@ public class HotRecaller implements ChannelRecaller {
     }
 
     private List<RecallItem> fromDb(int limit) {
-        return jdbc.query(
-                "SELECT item_id, popularity FROM item ORDER BY popularity DESC LIMIT ?",
-                (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("popularity"), RecallChannel.HOT),
-                limit);
+        List<RecallItem> out = new ArrayList<>();
+        for (ItemCatalogReader.ScoredId s : itemCatalog.hotByPopularity(limit)) {
+            out.add(new RecallItem(s.itemId(), s.score(), RecallChannel.HOT));
+        }
+        return out;
     }
 }

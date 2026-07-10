@@ -63,7 +63,8 @@ public class SimRecEventsJob implements OfflineJob {
             log.info("已清空既有 sim-rec 行 {} 条", del);
         }
 
-        List<Long> items = jdbc.queryForList("SELECT item_id FROM item", Long.class);
+        List<Long> items = jdbc.queryForList(
+                "SELECT item_id FROM " + ItemQuery.table(args), Long.class);   // #3:item 读来源表(默认 item)
         if (items.isEmpty()) {
             log.warn("item 表为空;先跑 --job=import-items");
             return;

@@ -44,10 +44,12 @@ public class BuildFeaturesJob implements OfflineJob {
 
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
+    private String it = "item";   // #3:item 读来源表(默认 item)
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
+        it = ItemQuery.table(args);
         buildItemFeatures();
         buildUserFeatures();
         log.info("build-features 完成");
@@ -106,7 +108,7 @@ public class BuildFeaturesJob implements OfflineJob {
         int[] catRows = {0};
         jdbc.query(
                 "SELECT b.user_id, i.category, count(*) cnt, avg(b.value) avg_v " +
-                "FROM " + bt + " b JOIN item i ON b.item_id = i.item_id " +
+                "FROM " + bt + " b JOIN " + it + " i ON b.item_id = i.item_id " +
                 "WHERE b.action='RATING' AND i.category IS NOT NULL " +
                 "GROUP BY b.user_id, i.category",
                 rs -> {

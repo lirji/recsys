@@ -78,10 +78,12 @@ public class GenSamplesMtJob implements OfflineJob {
 
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
+    private String it = "item";   // #3:item 读来源表(默认 item)
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
+        it = ItemQuery.table(args);
         int negRatio = intArg(args, "neg-ratio", 2);
         double hardNegRatio = doubleArg(args, "hard-neg-ratio", 0.0);  // S6:同类目 hard negative 占比(0=纯热度随机)
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -265,7 +267,7 @@ public class GenSamplesMtJob implements OfflineJob {
         List<Event> events = new ArrayList<>();
         jdbc.query("SELECT b.user_id, b.item_id, b.value, "
                         + "extract(epoch from b.ts)::bigint AS ts, i.category "
-                        + "FROM " + bt + " b LEFT JOIN item i ON b.item_id = i.item_id "
+                        + "FROM " + bt + " b LEFT JOIN " + it + " i ON b.item_id = i.item_id "
                         + "WHERE b.action='RATING'",
                 rs -> {
                     events.add(new Event(
@@ -277,7 +279,7 @@ public class GenSamplesMtJob implements OfflineJob {
 
     private Map<Long, String> loadCategoryMap() {
         Map<Long, String> map = new HashMap<>();
-        jdbc.query("SELECT item_id, category FROM item",
+        jdbc.query("SELECT item_id, category FROM " + it,
                 rs -> {
                     map.put(rs.getLong("item_id"), rs.getString("category"));
                 });
@@ -290,7 +292,7 @@ public class GenSamplesMtJob implements OfflineJob {
     private WeightedPool loadItemPool() {
         List<Long> ids = new ArrayList<>();
         List<Double> w = new ArrayList<>();
-        jdbc.query("SELECT item_id, GREATEST(popularity, 1) AS pop FROM item", rs -> {
+        jdbc.query("SELECT item_id, GREATEST(popularity, 1) AS pop FROM " + it, rs -> {
             ids.add(rs.getLong("item_id"));
             w.add(rs.getDouble("pop"));
         });

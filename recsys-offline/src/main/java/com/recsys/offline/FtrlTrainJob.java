@@ -58,6 +58,7 @@ public class FtrlTrainJob implements OfflineJob {
         double minRating = doubleArg(args, "min-rating", 4.0);
         Long maxTs = BehaviorQuery.maxTs(args);
         String bt = BehaviorQuery.table(args);   // #2
+        String itemTable = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
         long seed = intArg(args, "seed", 42);
         FtrlProximal model = new FtrlProximal(
                 doubleArg(args, "alpha", 0.1), doubleArg(args, "beta", 1.0),
@@ -68,7 +69,7 @@ public class FtrlTrainJob implements OfflineJob {
         }
 
         // 负采样物品池
-        List<Long> items = jdbc.queryForList("SELECT item_id FROM item", Long.class);
+        List<Long> items = jdbc.queryForList("SELECT item_id FROM " + itemTable, Long.class);
         if (items.isEmpty()) {
             log.warn("item 表为空,先跑 import-items");
             return;

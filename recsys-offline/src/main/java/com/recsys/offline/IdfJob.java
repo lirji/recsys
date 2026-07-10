@@ -45,11 +45,12 @@ public class IdfJob implements OfflineJob {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int minDf = intArg(args, "min-df", 1);
+        String it = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
 
         Map<String, Integer> df = new HashMap<>();
         int[] n = {0};
         // 每个 item 的标题+类目视为一篇文档;去重词项后各计一次 df(文档频率而非词频)
-        jdbc.query("SELECT coalesce(title,'') || ' ' || coalesce(category,'') AS text FROM item", rs -> {
+        jdbc.query("SELECT coalesce(title,'') || ' ' || coalesce(category,'') AS text FROM " + it, rs -> {
             n[0]++;
             Set<String> tokens = new HashSet<>(QueryTokens.tokenize(rs.getString("text")));
             for (String t : tokens) {

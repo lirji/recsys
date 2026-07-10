@@ -2,6 +2,7 @@ package com.recsys.query;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.embedding.EmbeddingClient;
 import com.recsys.common.llm.LlmClient;
 import com.recsys.common.query.CategoryScore;
@@ -13,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -53,7 +53,8 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
 
     private static final Logger log = LoggerFactory.getLogger(QueryUnderstandingServiceImpl.class);
 
-    private final JdbcTemplate jdbc;
+    // #3:意图识别/genre 词典的 item 读经此 seam(db 直读 item / replica 读 item_local)
+    private final ItemCatalogReader itemCatalog;
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
     private final ObjectProvider<LlmClient> llmProvider;
     private final IdfWeighter idfWeighter;
@@ -63,12 +64,12 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
     /** genre 小写 → 规范名,懒加载缓存(DB 不可用时为空,直接命中那一路自然失效)。 */
     private volatile Map<String, String> genreLexicon;
 
-    public QueryUnderstandingServiceImpl(JdbcTemplate jdbc,
+    public QueryUnderstandingServiceImpl(ItemCatalogReader itemCatalog,
                                          ObjectProvider<EmbeddingClient> embeddingProvider,
                                          ObjectProvider<LlmClient> llmProvider,
                                          IdfWeighter idfWeighter,
                                          QueryProperties props) {
-        this.jdbc = jdbc;
+        this.itemCatalog = itemCatalog;
         this.embeddingProvider = embeddingProvider;
         this.llmProvider = llmProvider;
         this.idfWeighter = idfWeighter;
@@ -146,16 +147,10 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
                     scores.merge(canonical, 3.0 * tw.weight(), Double::sum);
                 }
             }
-            // ② 标题投票:title 含某词项 → 该物品 category 计一票
-            String[] patterns = terms.stream().map(t -> "%" + t.term() + "%").toArray(String[]::new);
-            List<Map<String, Object>> rows = jdbc.query(
-                    "SELECT category, count(*) AS c FROM item " +
-                    "WHERE title ILIKE ANY (?) AND category IS NOT NULL " +
-                    "GROUP BY category ORDER BY c DESC LIMIT 50",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("text", patterns)),
-                    (rs, n) -> Map.of("category", rs.getString("category"), "c", rs.getLong("c")));
-            for (Map<String, Object> row : rows) {
-                scores.merge((String) row.get("category"), ((Long) row.get("c")).doubleValue(), Double::sum);
+            // ② 标题投票:title 含某词项 → 该物品 category 计一票(SQL 下沉 ItemCatalogReader,item 表名按 seam 切换)
+            List<String> patterns = terms.stream().map(t -> "%" + t.term() + "%").toList();
+            for (ItemCatalogReader.CatCount row : itemCatalog.categoryCountsByTitleLike(patterns, 50)) {
+                scores.merge(row.category(), (double) row.count(), Double::sum);
             }
         } catch (Exception e) {
             log.debug("意图识别失败(DB 不可用?),降级返回已得意图: {}", e.getMessage());
@@ -184,8 +179,7 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
             }
             Map<String, String> built = new LinkedHashMap<>();
             try {
-                for (String cat : jdbc.queryForList(
-                        "SELECT DISTINCT category FROM item WHERE category IS NOT NULL", String.class)) {
+                for (String cat : itemCatalog.distinctCategories()) {
                     built.put(cat.toLowerCase(Locale.ROOT), cat);
                 }
             } catch (Exception e) {

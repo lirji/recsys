@@ -16,6 +16,10 @@ spring:
 recsys:
   offline:
     movielens-path: ${MOVIELENS_PATH:./data/ml-latest-small}
+  # #3 content 拆库:ContentService 路作业(BackfillEmbedding/BanditStats/GenAdCvrSamples)的 item 读源。
+  #   db(默认,读共享 item)| replica(读本地副本 item_local)。直写 SQL 的作业另用 --item-table 切换。
+  content:
+    item-source: ${CONTENT_ITEM_SOURCE:db}
   embedding:
     dimension: 768
     provider: ${EMBEDDING_PROVIDER:gemini}

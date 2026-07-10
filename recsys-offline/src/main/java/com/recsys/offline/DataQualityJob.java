@@ -50,10 +50,12 @@ public class DataQualityJob implements OfflineJob {
 
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
+    private String it = "item";   // #3:item 读来源表(默认 item)
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
+        it = ItemQuery.table(args);
         double minCoverage = doubleArg(args, "min-embedding-coverage", 0.9);
         double maxEce = doubleArg(args, "max-ece", 0.05);
         double maxPsi = doubleArg(args, "max-psi", 0.25);
@@ -64,7 +66,7 @@ public class DataQualityJob implements OfflineJob {
 
         // 1. Embedding 覆盖率
         try {
-            long items = count("SELECT count(*) FROM item");
+            long items = count("SELECT count(*) FROM " + it);
             long itemEmb = count("SELECT count(*) FROM item_embedding");
             long users = count("SELECT count(DISTINCT user_id) FROM " + bt + "");
             long userEmb = count("SELECT count(*) FROM user_embedding");
@@ -166,11 +168,11 @@ public class DataQualityJob implements OfflineJob {
         Map<String, Long> base = new LinkedHashMap<>();
         Map<String, Long> recent = new LinkedHashMap<>();
         jdbc.query(
-                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN item i ON i.item_id=b.item_id " +
+                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN " + it + " i ON i.item_id=b.item_id " +
                 "WHERE b.action IN ('CLICK','LIKE','PLAY','RATING') AND i.category IS NOT NULL GROUP BY i.category",
                 rs -> { base.put(rs.getString("cat"), rs.getLong("c")); });
         jdbc.query(
-                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN item i ON i.item_id=b.item_id " +
+                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN " + it + " i ON i.item_id=b.item_id " +
                 "WHERE b.action IN ('CLICK','LIKE','PLAY','RATING') AND i.category IS NOT NULL " +
                 "  AND b.ts >= now() - (? || ' days')::interval GROUP BY i.category",
                 rs -> { recent.put(rs.getString("cat"), rs.getLong("c")); }, String.valueOf(days));

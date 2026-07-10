@@ -1,6 +1,7 @@
 package com.recsys.recall.channel;
 
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
@@ -9,7 +10,6 @@ import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -34,14 +34,14 @@ public class TagRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(TagRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final ItemCatalogReader itemCatalog;   // #3:热路径 item 读经此 seam(db 直读 item / replica 读 item_local)
     private final StringRedisTemplate redis;
     private final RecallProperties props;
     private final UserProfileReader userProfileReader;   // #3:读 app_user 类目经此 seam(db|grpc)
 
-    public TagRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props,
+    public TagRecaller(ItemCatalogReader itemCatalog, StringRedisTemplate redis, RecallProperties props,
                        UserProfileReader userProfileReader) {
-        this.jdbc = jdbc;
+        this.itemCatalog = itemCatalog;
         this.redis = redis;
         this.props = props;
         this.userProfileReader = userProfileReader;
@@ -61,23 +61,14 @@ public class TagRecaller implements ChannelRecaller {
         }
         int limit = props.getQuota().getTag();
         List<String> categories = new ArrayList<>(weights.keySet());
-        String placeholders = String.join(",", categories.stream().map(c -> "?").toList());
         // 候选池放大(类目可能多、实时加权可能把低热度类目顶上来),拉回内存按加权分截断
         int poolSize = Math.max(limit * 4, limit);
-        Object[] params = new Object[categories.size() + 1];
-        for (int i = 0; i < categories.size(); i++) {
-            params[i] = categories.get(i);
-        }
-        params[categories.size()] = poolSize;
 
-        List<RecallItem> pool = jdbc.query(
-                "SELECT item_id, category, popularity FROM item WHERE category IN (" + placeholders + ") " +
-                "ORDER BY popularity DESC LIMIT ?",
-                (rs, n) -> {
-                    double w = weights.getOrDefault(rs.getString("category"), 1.0);
-                    return new RecallItem(rs.getLong("item_id"), rs.getDouble("popularity") * w, RecallChannel.TAG);
-                },
-                params);
+        List<RecallItem> pool = new ArrayList<>();
+        for (ItemCatalogReader.CatItem ci : itemCatalog.byCategories(categories, poolSize)) {
+            double w = weights.getOrDefault(ci.category(), 1.0);
+            pool.add(new RecallItem(ci.itemId(), ci.popularity() * w, RecallChannel.TAG));
+        }
         // 加权后重排截断(SQL 按原始 popularity 排,加权改变了顺序)
         pool.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
         return pool.size() > limit ? new ArrayList<>(pool.subList(0, limit)) : pool;

@@ -64,6 +64,7 @@ public class SeedAdsJob implements OfflineJob {
             clear();
         }
         Random rnd = new Random(seed);
+        String it = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
 
         // 取一批随机 item 作为广告创意(优先有向量的 item,让 SEMANTIC_AD 可用)
         List<long[]> items = new ArrayList<>(); // [itemId]
@@ -72,7 +73,7 @@ public class SeedAdsJob implements OfflineJob {
         jdbc.query(
                 "SELECT i.item_id, i.title, i.category, " +
                 "       (e.item_id IS NOT NULL) AS has_vec " +
-                "FROM item i LEFT JOIN item_embedding e ON e.item_id = i.item_id " +
+                "FROM " + it + " i LEFT JOIN item_embedding e ON e.item_id = i.item_id " +
                 "ORDER BY has_vec DESC, random() LIMIT ?",
                 rs -> {
                     items.add(new long[]{rs.getLong("item_id")});

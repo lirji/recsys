@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.feature.FeatureService;
 import com.recsys.common.rank.RankService;
 import com.recsys.common.rank.RankedItem;
@@ -15,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -49,15 +49,11 @@ import java.util.Optional;
 public class SimRankService implements RankService {
 
     private static final Logger log = LoggerFactory.getLogger(SimRankService.class);
-    // 长历史:近 longHistory 条正反馈(带类目),供 GSU 类目检索
-    private static final String HIST_SQL =
-            "SELECT b.item_id AS item_id, i.category AS category FROM user_behavior b " +
-            "JOIN item i ON i.item_id = b.item_id " +
-            "WHERE b.user_id=? AND b.action='RATING' AND b.value>=4 ORDER BY b.ts DESC LIMIT ?";
 
     private final FeatureService featureService;
     private final ContentService contentService;
-    private final JdbcTemplate jdbc;
+    // #3:GSU 长历史的 item 类目读经此 seam(db 直读 item / replica 读 item_local);join user_behavior 部分不变
+    private final ItemCatalogReader itemCatalog;
     private final RankProperties props;
 
     private OrtEnvironment env;
@@ -67,10 +63,10 @@ public class SimRankService implements RankService {
     private volatile boolean ready = false;
 
     public SimRankService(FeatureService featureService, ContentService contentService,
-                          JdbcTemplate jdbc, RankProperties props) {
+                          ItemCatalogReader itemCatalog, RankProperties props) {
         this.featureService = featureService;
         this.contentService = contentService;
-        this.jdbc = jdbc;
+        this.itemCatalog = itemCatalog;
         this.props = props;
     }
 
@@ -157,11 +153,13 @@ public class SimRankService implements RankService {
     /** 用户近 limit 条 ≥4 正反馈(带类目),oldest→newest 供 GSU 检索。异常 → 空历史(冷用户不崩)。 */
     private List<SimGsu.Hist> longHistory(long userId, int limit) {
         try {
-            List<SimGsu.Hist> recentFirst = jdbc.query(HIST_SQL,
-                    (rs, n) -> new SimGsu.Hist(rs.getLong("item_id"), rs.getString("category")),
-                    userId, limit);
-            Collections.reverse(recentFirst);   // DESC → oldest→newest
-            return recentFirst;
+            List<ItemCatalogReader.CatId> recentFirst = itemCatalog.recentRatedCategories(userId, limit);
+            List<SimGsu.Hist> hist = new ArrayList<>(recentFirst.size());
+            for (ItemCatalogReader.CatId c : recentFirst) {
+                hist.add(new SimGsu.Hist(c.itemId(), c.category()));
+            }
+            Collections.reverse(hist);   // DESC → oldest→newest
+            return hist;
         } catch (Exception e) {
             log.debug("查询用户长历史失败 user={}, 视作空: {}", userId, e.getMessage());
             return List.of();

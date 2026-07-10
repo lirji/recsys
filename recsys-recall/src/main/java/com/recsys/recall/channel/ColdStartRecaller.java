@@ -1,12 +1,12 @@
 package com.recsys.recall.channel;
 
+import com.recsys.common.content.ItemCatalogReader;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -32,12 +32,12 @@ public class ColdStartRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(ColdStartRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final ItemCatalogReader itemCatalog;   // #3:热路径 item 读经此 seam(db 直读 item / replica 读 item_local)
     private final RecallProperties props;
     private final ColdStartBandit bandit;
 
-    public ColdStartRecaller(JdbcTemplate jdbc, RecallProperties props, ColdStartBandit bandit) {
-        this.jdbc = jdbc;
+    public ColdStartRecaller(ItemCatalogReader itemCatalog, RecallProperties props, ColdStartBandit bandit) {
+        this.itemCatalog = itemCatalog;
         this.props = props;
         this.bandit = bandit;
     }
@@ -53,41 +53,31 @@ public class ColdStartRecaller implements ChannelRecaller {
         int limit = props.getQuota().getCold();
         boolean useBandit = bandit.isEnabled();
         try {
-            // 每个类目内按热度取前 perCat 名(rn),整体按 (rn, 热度) 交错;各行带 category/rn 供 bandit 打分
-            List<Row> rows = jdbc.query(
-                    "SELECT item_id, popularity, category, rn FROM (" +
-                    "  SELECT item_id, popularity, category, " +
-                    "         ROW_NUMBER() OVER (PARTITION BY category ORDER BY popularity DESC) rn " +
-                    "  FROM item WHERE category IS NOT NULL" +
-                    ") t WHERE rn <= ? ORDER BY rn ASC, popularity DESC LIMIT ?",
-                    (rs, n) -> new Row(rs.getLong("item_id"), rs.getDouble("popularity"),
-                            rs.getString("category"), rs.getInt("rn")),
-                    perCat, limit);
+            // 每个类目内按热度取前 perCat 名(rn),整体按 (rn, 热度) 交错;各行带 category/rank 供 bandit 打分。
+            // 窗口函数 SQL 已下沉到 ItemCatalogReader,item 表名按 seam 切换。
+            List<ItemCatalogReader.ColdItem> rows = itemCatalog.coldStartByCategory(perCat, limit);
             if (rows.isEmpty()) {
                 return List.of();
             }
             // 每个「不同类目」只算一次 UCB 分(避免逐行打 Redis)
             Map<String, Double> catUcb = new HashMap<>();
             if (useBandit) {
-                for (Row r : rows) {
-                    catUcb.computeIfAbsent(r.category, bandit::score);
+                for (ItemCatalogReader.ColdItem r : rows) {
+                    catUcb.computeIfAbsent(r.category(), bandit::score);
                 }
             }
             List<RecallItem> out = new ArrayList<>(rows.size());
-            for (Row r : rows) {
-                // bandit:类目 UCB 主导,+0.001/rn 用类目内热度名次细分;关闭则退回按热度打分
+            for (ItemCatalogReader.ColdItem r : rows) {
+                // bandit:类目 UCB 主导,+0.001/rank 用类目内热度名次细分;关闭则退回按热度打分
                 double score = useBandit
-                        ? catUcb.getOrDefault(r.category, 0.0) + 0.001 / r.rn
-                        : r.popularity;
-                out.add(new RecallItem(r.itemId, score, RecallChannel.COLD));
+                        ? catUcb.getOrDefault(r.category(), 0.0) + 0.001 / r.rank()
+                        : r.popularity();
+                out.add(new RecallItem(r.itemId(), score, RecallChannel.COLD));
             }
             return out;
         } catch (Exception e) {
             log.warn("冷启动探索召回失败: {}", e.getMessage());
             return List.of();
         }
-    }
-
-    private record Row(long itemId, double popularity, String category, int rn) {
     }
 }

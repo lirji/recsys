@@ -1,5 +1,6 @@
 package com.recsys.content;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -11,15 +12,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 基于 JdbcTemplate 的物品服务实现。
+ * 基于 JdbcTemplate 的物品服务实现,默认读共享 {@code item} 表。
+ *
+ * <p>#3 content 拆库:{@code findByIds} 是排序逐候选类目特征(rank×10 + ad CVR)的热路径读。item 表名由
+ * {@link #table()} 给,{@code recsys.content.item-source=replica} 时激活的子类 {@link ReplicaJdbcContentService}
+ * 覆盖为读本地副本 {@code item_local}。owner(content-service)不设该开关 → 默认 {@code db} → 读权威 {@code item}。
  */
 @Service
+@ConditionalOnProperty(name = "recsys.content.item-source", havingValue = "db", matchIfMissing = true)
 public class JdbcContentService implements ContentService {
 
     private final JdbcTemplate jdbc;
 
     public JdbcContentService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /** item 目录表名:{@code item}(共享,默认)或子类覆盖为 {@code item_local}(本地副本)。 */
+    protected String table() {
+        return "item";
     }
 
     private static final RowMapper<Item> MAPPER = (rs, n) -> {
@@ -43,7 +54,7 @@ public class JdbcContentService implements ContentService {
     @Override
     public Item findById(long itemId) {
         List<Item> list = jdbc.query(
-                "SELECT item_id,title,category,tags,description,popularity FROM item WHERE item_id=?",
+                "SELECT item_id,title,category,tags,description,popularity FROM " + table() + " WHERE item_id=?",
                 MAPPER, itemId);
         return list.isEmpty() ? null : list.get(0);
     }
@@ -56,7 +67,8 @@ public class JdbcContentService implements ContentService {
         }
         String placeholders = String.join(",", itemIds.stream().map(x -> "?").toList());
         List<Item> items = jdbc.query(
-                "SELECT item_id,title,category,tags,description,popularity FROM item WHERE item_id IN (" + placeholders + ")",
+                "SELECT item_id,title,category,tags,description,popularity FROM " + table()
+                        + " WHERE item_id IN (" + placeholders + ")",
                 MAPPER, itemIds.toArray());
         for (Item it : items) {
             result.put(it.itemId(), it);
@@ -66,7 +78,7 @@ public class JdbcContentService implements ContentService {
 
     @Override
     public List<Long> allItemIds() {
-        return jdbc.queryForList("SELECT item_id FROM item ORDER BY item_id", Long.class);
+        return jdbc.queryForList("SELECT item_id FROM " + table() + " ORDER BY item_id", Long.class);
     }
 
     @Override
@@ -75,7 +87,7 @@ public class JdbcContentService implements ContentService {
         String[] tagsArr = item.tags() == null ? new String[0] : item.tags().toArray(new String[0]);
         jdbc.update(con -> {
             var ps = con.prepareStatement(
-                    "INSERT INTO item(item_id,title,category,tags,description,popularity) " +
+                    "INSERT INTO " + table() + "(item_id,title,category,tags,description,popularity) " +
                     "VALUES(?,?,?,?,?,?) " +
                     "ON CONFLICT(item_id) DO UPDATE SET " +
                     "title=EXCLUDED.title,category=EXCLUDED.category,tags=EXCLUDED.tags," +
@@ -92,7 +104,7 @@ public class JdbcContentService implements ContentService {
 
     @Override
     public long count() {
-        Long c = jdbc.queryForObject("SELECT count(*) FROM item", Long.class);
+        Long c = jdbc.queryForObject("SELECT count(*) FROM " + table(), Long.class);
         return c == null ? 0 : c;
     }
 }
