@@ -44,6 +44,7 @@ public class ColdBanditStatsJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        String bt = BehaviorQuery.table(args);   // #2:行为读来源表(默认 user_behavior)
         double minRating = doubleArg(args, "min-rating", 4.0);
 
         List<String[]> rows = new ArrayList<>();   // [category, impr, pos]
@@ -51,7 +52,7 @@ public class ColdBanditStatsJob implements OfflineJob {
                 "SELECT i.category AS cat, count(*) AS impr, " +
                 "  sum(CASE WHEN b.action IN ('CLICK','LIKE','PLAY') " +
                 "           OR (b.action='RATING' AND b.value >= ?) THEN 1 ELSE 0 END) AS pos " +
-                "FROM user_behavior b JOIN item i ON i.item_id = b.item_id " +
+                "FROM " + bt + " b JOIN item i ON i.item_id = b.item_id " +
                 "WHERE i.category IS NOT NULL " +
                 "GROUP BY i.category",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> rows.add(new String[]{

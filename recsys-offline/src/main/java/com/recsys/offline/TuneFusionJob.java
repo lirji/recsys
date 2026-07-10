@@ -68,8 +68,12 @@ public class TuneFusionJob implements OfflineJob {
         return "tune-fusion";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        bt = BehaviorQuery.table(args);
         String strategy = strArg(args, "strategy", "mmoe");
         int k = intArg(args, "k", 20);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -258,7 +262,7 @@ public class TuneFusionJob implements OfflineJob {
         List<long[]> ratings = new ArrayList<>();
         List<Long> allTs = new ArrayList<>();
         jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM user_behavior WHERE action='RATING'",
+                        "FROM " + bt + " WHERE action='RATING'",
                 rs -> {
                     ratings.add(new long[]{rs.getLong("user_id"), rs.getLong("item_id"),
                             rs.getLong("ts"), Math.round(rs.getDouble("value") * 10)});

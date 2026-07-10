@@ -44,11 +44,12 @@ public class UserEmbeddingJob implements OfflineJob {
         boolean rebuild = !args.containsOption("no-rebuild");
         double halfLifeDays = doubleArg(args, "half-life-days", 180.0);  // 时间衰减半衰期(天);<=0 关闭
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只用切分点前的行为聚合用户向量
+        String bt = BehaviorQuery.table(args);    // #2:行为读来源表(默认 user_behavior)
 
         // 时间衰减参考时刻:正反馈集里最近一次行为(严格 eval 下 ≤ maxTs)。相对它算每条行为的"年龄",
         // 越久远权重越低,让 user_embedding 偏向近期兴趣,修 VECTOR 召回"纯长期、无新鲜度"。
         Double refEpoch = halfLifeDays > 0
-                ? jdbc.queryForObject(BehaviorQuery.positiveFeedbackSql("max(extract(epoch from ts))", maxTs),
+                ? jdbc.queryForObject(BehaviorQuery.positiveFeedbackSql(bt, "max(extract(epoch from ts))", maxTs),
                         Double.class, BehaviorQuery.params(minRating, maxTs))
                 : null;
         final boolean decayOn = halfLifeDays > 0 && refEpoch != null;
@@ -69,7 +70,7 @@ public class UserEmbeddingJob implements OfflineJob {
         Map<Long, Double> wsum = new HashMap<>();
         int[] hit = {0};
         jdbc.query(
-                BehaviorQuery.positiveFeedbackSql(
+                BehaviorQuery.positiveFeedbackSql(bt,
                         "user_id, item_id, action, value, extract(epoch from ts) AS ts_epoch", maxTs),
                 rs -> {
                     long u = rs.getLong("user_id");

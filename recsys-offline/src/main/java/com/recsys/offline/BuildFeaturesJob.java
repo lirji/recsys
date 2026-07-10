@@ -42,8 +42,12 @@ public class BuildFeaturesJob implements OfflineJob {
         return "build-features";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        bt = BehaviorQuery.table(args);
         buildItemFeatures();
         buildUserFeatures();
         log.info("build-features 完成");
@@ -51,13 +55,13 @@ public class BuildFeaturesJob implements OfflineJob {
 
     private void buildItemFeatures() {
         Double maxCntD = jdbc.queryForObject(
-                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM user_behavior " +
+                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM " + bt + " " +
                 "WHERE action='RATING' GROUP BY item_id) t", Double.class);
         double lnMax = Math.log1p(maxCntD == null ? 1.0 : maxCntD);
         int[] n = {0};
         jdbc.query(
                 "SELECT item_id, count(*) cnt, avg(value) avg_v, coalesce(stddev_pop(value),0) std_v " +
-                "FROM user_behavior WHERE action='RATING' GROUP BY item_id",
+                "FROM " + bt + " WHERE action='RATING' GROUP BY item_id",
                 rs -> {
                     long itemId = rs.getLong("item_id");
                     long cnt = rs.getLong("cnt");
@@ -77,7 +81,7 @@ public class BuildFeaturesJob implements OfflineJob {
 
     private void buildUserFeatures() {
         Double maxCntD = jdbc.queryForObject(
-                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM user_behavior " +
+                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM " + bt + " " +
                 "WHERE action='RATING' GROUP BY user_id) t", Double.class);
         double lnMax = Math.log1p(maxCntD == null ? 1.0 : maxCntD);
 
@@ -85,7 +89,7 @@ public class BuildFeaturesJob implements OfflineJob {
         Map<Long, Map<String, Double>> userFeats = new HashMap<>();
         Map<Long, Long> userCnt = new HashMap<>();   // 供交叉特征算 catratio(与 as-of 同源)
         jdbc.query(
-                "SELECT user_id, count(*) cnt, avg(value) avg_v FROM user_behavior " +
+                "SELECT user_id, count(*) cnt, avg(value) avg_v FROM " + bt + " " +
                 "WHERE action='RATING' GROUP BY user_id",
                 rs -> {
                     long userId = rs.getLong("user_id");
@@ -102,7 +106,7 @@ public class BuildFeaturesJob implements OfflineJob {
         int[] catRows = {0};
         jdbc.query(
                 "SELECT b.user_id, i.category, count(*) cnt, avg(b.value) avg_v " +
-                "FROM user_behavior b JOIN item i ON b.item_id = i.item_id " +
+                "FROM " + bt + " b JOIN item i ON b.item_id = i.item_id " +
                 "WHERE b.action='RATING' AND i.category IS NOT NULL " +
                 "GROUP BY b.user_id, i.category",
                 rs -> {

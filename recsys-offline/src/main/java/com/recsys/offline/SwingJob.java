@@ -62,7 +62,8 @@ public class SwingJob implements OfflineJob {
 
         // 1. 正反馈:user -> Set<item>(用 Set 便于求交集);item -> List<user>(找共现用户对)
         Long maxTs = BehaviorQuery.maxTs(args);
-        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems, maxTs);
+        String bt = BehaviorQuery.table(args);   // #2
+        Map<Long, Set<Long>> userItems = loadUserItems(bt, minRating, maxUserItems, maxTs);
         log.info("正反馈用户数 {};min-rating={}, topk={}, alpha={}, max-ts={}", userItems.size(), minRating,
                 topK, alpha, maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
@@ -116,10 +117,10 @@ public class SwingJob implements OfflineJob {
         log.info("swing 完成:写入 {} 个物品的 swing 倒排到 Redis", written);
     }
 
-    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems, Long maxTs) {
+    private Map<Long, Set<Long>> loadUserItems(String table, double minRating, int maxUserItems, Long maxTs) {
         Map<Long, Set<Long>> userItems = new HashMap<>();
         jdbc.query(
-                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
+                BehaviorQuery.positiveFeedbackSql(table, "user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);

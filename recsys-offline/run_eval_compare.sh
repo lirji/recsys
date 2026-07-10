@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 多路排序对比:v1规则 / onnx-LightGBM / deepfm / mmoe多目标(ESMM) / din序列建模,同一 ground truth。
-# 前置:mmoe/din 需先 --job=gen-samples-mt 造样本 → train_mmoe.py / train_din.py
+# 多路排序对比:v1规则 / onnx-LightGBM / deepfm / dcn(v2显式交叉) / mmoe多目标(ESMM) / din序列建模,同一 ground truth。
+# 前置:mmoe/din 需先 --job=gen-samples-mt 造样本 → train_mmoe.py / train_din.py;dcn 用 samples.csv → train_dcn.py
 #       → mvn -pl recsys-rank clean install(把 onnx 打进 jar)。
 set -e
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -18,6 +18,7 @@ run() {
 run "v1-rule"   "--rank-strategy=v1"
 run "onnx-lgbm" "--rank-strategy=onnx --recsys.rank.strategy=onnx"
 run "deepfm"    "--rank-strategy=deepfm --recsys.rank.strategy=deepfm"
+run "dcn"       "--rank-strategy=dcn --recsys.rank.strategy=dcn"
 run "mmoe"      "--rank-strategy=mmoe --recsys.rank.strategy=mmoe"
 run "din"       "--rank-strategy=din --recsys.rank.strategy=din"
 

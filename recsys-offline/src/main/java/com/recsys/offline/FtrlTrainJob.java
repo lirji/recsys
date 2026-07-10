@@ -57,6 +57,7 @@ public class FtrlTrainJob implements OfflineJob {
         int epochs = intArg(args, "epochs", 1);
         double minRating = doubleArg(args, "min-rating", 4.0);
         Long maxTs = BehaviorQuery.maxTs(args);
+        String bt = BehaviorQuery.table(args);   // #2
         long seed = intArg(args, "seed", 42);
         FtrlProximal model = new FtrlProximal(
                 doubleArg(args, "alpha", 0.1), doubleArg(args, "beta", 1.0),
@@ -74,7 +75,7 @@ public class FtrlTrainJob implements OfflineJob {
         }
         // 正样本 (user,item)
         List<long[]> pos = new ArrayList<>();
-        jdbc.query(BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
+        jdbc.query(BehaviorQuery.positiveFeedbackSql(bt, "user_id, item_id", maxTs),
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         pos.add(new long[]{rs.getLong("user_id"), rs.getLong("item_id")}),
                 BehaviorQuery.params(minRating, maxTs));

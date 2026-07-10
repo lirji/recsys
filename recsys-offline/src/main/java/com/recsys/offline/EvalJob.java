@@ -84,8 +84,12 @@ public class EvalJob implements OfflineJob {
         return "eval";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        bt = BehaviorQuery.table(args);
         int[] ks = intListArg(args, "k", new int[]{10});
         int maxK = 0;
         for (int k : ks) {
@@ -255,7 +259,7 @@ public class EvalJob implements OfflineJob {
         List<long[]> ratings = new ArrayList<>();   // [user, item, ts, value*10]
         List<Long> allTs = new ArrayList<>();
         jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM user_behavior WHERE action='RATING'",
+                        "FROM " + bt + " WHERE action='RATING'",
                 rs -> {
                     long u = rs.getLong("user_id");
                     long it = rs.getLong("item_id");

@@ -62,7 +62,8 @@ public class UserCfJob implements OfflineJob {
 
         // 1. 正反馈:user -> Set<item>(--max-ts 时只用切分点前的行为,供严格 eval)
         Long maxTs = BehaviorQuery.maxTs(args);
-        Map<Long, Set<Long>> userItems = loadUserItems(minRating, maxUserItems, maxTs);
+        String bt = BehaviorQuery.table(args);   // #2
+        Map<Long, Set<Long>> userItems = loadUserItems(bt, minRating, maxUserItems, maxTs);
         log.info("正反馈用户数 {};min-rating={}, topk={}, sim-users={}, max-ts={}", userItems.size(), minRating,
                 topK, simUsers, maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
@@ -165,10 +166,10 @@ public class UserCfJob implements OfflineJob {
         return written[0];
     }
 
-    private Map<Long, Set<Long>> loadUserItems(double minRating, int maxUserItems, Long maxTs) {
+    private Map<Long, Set<Long>> loadUserItems(String table, double minRating, int maxUserItems, Long maxTs) {
         Map<Long, Set<Long>> userItems = new HashMap<>();
         jdbc.query(
-                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
+                BehaviorQuery.positiveFeedbackSql(table, "user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);

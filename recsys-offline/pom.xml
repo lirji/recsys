@@ -18,6 +18,10 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad-common</artifactId>
+        </dependency>
         <!-- 灌向量需要 embedding 客户端;导入需要 content -->
         <dependency>
             <groupId>com.recsys</groupId>
@@ -74,6 +78,12 @@
         <dependency>
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
+        </dependency>
+        <!-- publish-reports 作业解析 eval/*.csv(带引号字段)落库 eval_report -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.12.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

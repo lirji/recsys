@@ -61,8 +61,12 @@ public class RecCalibrateJob implements OfflineJob {
         return "rec-calibrate";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) {
+        bt = BehaviorQuery.table(args);
         String model = strArg(args, "model", "rec");
         String rankStrategy = strArg(args, "rank-strategy", null);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -168,7 +172,7 @@ public class RecCalibrateJob implements OfflineJob {
         List<long[]> ratings = new ArrayList<>();   // [user, item, ts, value*10]
         List<Long> allTs = new ArrayList<>();
         jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM user_behavior WHERE action='RATING'",
+                        "FROM " + bt + " WHERE action='RATING'",
                 rs -> {
                     long u = rs.getLong("user_id");
                     long it = rs.getLong("item_id");

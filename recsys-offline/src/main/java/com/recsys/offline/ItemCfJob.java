@@ -56,7 +56,8 @@ public class ItemCfJob implements OfflineJob {
 
         // 1. 加载正反馈:user -> [items](--max-ts 时只用切分点前的行为,供严格 eval)
         Long maxTs = BehaviorQuery.maxTs(args);
-        Map<Long, List<Long>> userItems = loadPositiveFeedback(minRating, maxUserItems, maxTs);
+        String bt = BehaviorQuery.table(args);   // #2:行为读来源表(默认 user_behavior)
+        Map<Long, List<Long>> userItems = loadPositiveFeedback(bt, minRating, maxUserItems, maxTs);
         log.info("正反馈用户数 {};min-rating={}, topk={}, max-ts={}", userItems.size(), minRating, topK,
                 maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
@@ -90,10 +91,10 @@ public class ItemCfJob implements OfflineJob {
         log.info("item-cf 完成:写入 {} 个物品的 i2i 倒排到 Redis", written);
     }
 
-    private Map<Long, List<Long>> loadPositiveFeedback(double minRating, int maxUserItems, Long maxTs) {
+    private Map<Long, List<Long>> loadPositiveFeedback(String table, double minRating, int maxUserItems, Long maxTs) {
         Map<Long, List<Long>> userItems = new HashMap<>();
         jdbc.query(
-                BehaviorQuery.positiveFeedbackSql("user_id, item_id", maxTs),
+                BehaviorQuery.positiveFeedbackSql(table, "user_id, item_id", maxTs),
                 rs -> {
                     long u = rs.getLong(1);
                     long it = rs.getLong(2);

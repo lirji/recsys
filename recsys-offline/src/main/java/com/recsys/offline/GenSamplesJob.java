@@ -64,8 +64,12 @@ public class GenSamplesJob implements OfflineJob {
         return "gen-samples";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        bt = BehaviorQuery.table(args);
         int negRatio = intArg(args, "neg-ratio", 2);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         long seed = (long) doubleArg(args, "seed", 42);
@@ -194,7 +198,7 @@ public class GenSamplesJob implements OfflineJob {
         List<Event> events = new ArrayList<>();
         jdbc.query("SELECT b.user_id, b.item_id, b.value, " +
                         "extract(epoch from b.ts)::bigint AS ts, i.category " +
-                        "FROM user_behavior b LEFT JOIN item i ON b.item_id = i.item_id " +
+                        "FROM " + bt + " b LEFT JOIN item i ON b.item_id = i.item_id " +
                         "WHERE b.action='RATING'",
                 rs -> {
                     events.add(new Event(

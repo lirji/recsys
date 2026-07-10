@@ -42,6 +42,7 @@ public class HotJob implements OfflineJob {
         int recentDays = intArg(args, "recent-days", 0);
         int topN = intArg(args, "topn", 1000);
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只统计切分点前的热度
+        String bt = BehaviorQuery.table(args);    // #2:行为读来源表(默认 user_behavior)
 
         // 在 SQL 内完成加权聚合,避免把全量行为拉进内存
         StringBuilder sql = new StringBuilder(
@@ -52,7 +53,7 @@ public class HotJob implements OfflineJob {
                 "    WHEN 'PLAY'  THEN 1.0 " +
                 "    WHEN 'RATING' THEN COALESCE(value, 1.0) " +
                 "    ELSE 0.0 END) AS hot " +
-                "FROM user_behavior ");
+                "FROM " + bt + " ");
         java.util.List<String> conds = new java.util.ArrayList<>();
         if (recentDays > 0) {
             conds.add("ts >= now() - INTERVAL '" + recentDays + " days'");

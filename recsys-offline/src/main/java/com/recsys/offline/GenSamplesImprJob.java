@@ -59,8 +59,12 @@ public class GenSamplesImprJob implements OfflineJob {
         return "gen-samples-impr";
     }
 
+    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
+    private String bt = "user_behavior";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        bt = BehaviorQuery.table(args);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
         int windowHours = intArg(args, "window-hours", 24);
@@ -180,7 +184,7 @@ public class GenSamplesImprJob implements OfflineJob {
         List<Impr> out = new ArrayList<>();
         jdbc.query("SELECT user_id, item_id, COALESCE(position, value::int, 0) AS position, "
                         + "extract(epoch from ts)::bigint AS ts "
-                        + "FROM user_behavior WHERE action='IMPRESSION'",
+                        + "FROM " + bt + " WHERE action='IMPRESSION'",
                 rs -> {
                     out.add(new Impr(rs.getLong("user_id"), rs.getLong("item_id"),
                             rs.getInt("position"), rs.getLong("ts")));
@@ -191,7 +195,7 @@ public class GenSamplesImprJob implements OfflineJob {
     private List<Event> loadRatings() {
         List<Event> out = new ArrayList<>();
         jdbc.query("SELECT b.user_id, b.item_id, b.value, extract(epoch from b.ts)::bigint AS ts, i.category "
-                        + "FROM user_behavior b LEFT JOIN item i ON b.item_id = i.item_id "
+                        + "FROM " + bt + " b LEFT JOIN item i ON b.item_id = i.item_id "
                         + "WHERE b.action='RATING'",
                 rs -> {
                     out.add(new Event(rs.getLong("user_id"), rs.getLong("item_id"),
@@ -205,7 +209,7 @@ public class GenSamplesImprJob implements OfflineJob {
         Positives p = new Positives();
         jdbc.query("SELECT user_id, item_id, action, COALESCE(value,0) AS value, "
                         + "extract(epoch from ts)::bigint AS ts "
-                        + "FROM user_behavior WHERE action IN ('CLICK','LIKE','PLAY','RATING')",
+                        + "FROM " + bt + " WHERE action IN ('CLICK','LIKE','PLAY','RATING')",
                 rs -> {
                     String action = rs.getString("action");
                     long ts = rs.getLong("ts");
