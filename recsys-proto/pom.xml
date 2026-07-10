@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-proto</artifactId>
+    <name>recsys-proto</name>
+    <description>
+        gRPC / protobuf 契约模块(DDD Published Language)——服务间边界的单一真源。
+        微服务化后,跨进程调用的契约(如 AdServingService)只在这里定义;各服务在边界处用薄 mapper(ACL)
+        做 proto ↔ 领域 record(recsys-common/recsys-ad-common)互转,避免把内部模型泄漏到网络。
+        proto/grpc-java 代码由 protobuf-maven-plugin 在 generate-sources 阶段生成(protoc 按 OS 拉原生二进制)。
+    </description>
+
+    <dependencies>
+        <!-- 领域契约:边界 mapper(AdProtoMapper)在 proto 与 record 间互转,故 proto 模块依赖两个契约库。
+             方向 proto → ad-common → common,无环;仅 rec-engine / ad-serving 依赖 proto,不污染其它模块。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad-common</artifactId>
+        </dependency>
+        <!-- P2:ContentProtoMapper 需 com.recsys.content.Item(content 上下文契约)。proto → content → common,无环。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-protobuf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-stub</artifactId>
+        </dependency>
+        <!-- grpc-java 生成的 stub 引用 @javax.annotation.Generated;JDK 21 已无该类,需显式提供(仅编译期)。 -->
+        <dependency>
+            <groupId>org.apache.tomcat</groupId>
+            <artifactId>annotations-api</artifactId>
+            <version>6.0.53</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- AdProtoMapper 往返契约测试(纯单元,无 Spring/DB)。版本由 spring-boot-dependencies BOM 管理。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <extensions>
+            <!-- 探测 OS/arch → ${os.detected.classifier}(如 osx-aarch_64/linux-x86_64),供 protoc 选原生二进制 -->
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>${os-plugin.version}</version>
+            </extension>
+        </extensions>
+        <plugins>
+            <plugin>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <version>${protobuf-plugin.version}</version>
+                <configuration>
+                    <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                    <pluginId>grpc-java</pluginId>
+                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <!-- compile:生成 message java;compile-custom:生成 gRPC service stub(grpc-java 插件) -->
+                            <goal>compile</goal>
+                            <goal>compile-custom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

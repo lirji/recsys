@@ -46,6 +46,11 @@ public final class RedisKeys {
         return "cache:rec:" + userId;
     }
 
+    /** P4:rec-engine 自有"已正反馈物品"读模型 Set(从 behavior-events 构建,供已看过滤):seen:{userId} */
+    public static String seenItems(long userId) {
+        return "seen:" + userId;
+    }
+
     /** 文本→向量缓存 String:emb:cache:{hash} */
     public static String embCache(String textHash) {
         return "emb:cache:" + textHash;
@@ -149,10 +154,57 @@ public final class RedisKeys {
     public static final String FTRL_STATE = "ftrl:state";
 
     /**
+     * R7 全量 contextual bandit 模型 String(JSON {"order":[...],"lambda":λ,"n":k,"a":[[..]],"b":[..]}):bandit:model。
+     * 离线 {@code bandit-stats} 攒 A/b 充分统计写入(既作在线服务参数、又作增量续训 warm-start);
+     * 在线 {@code BanditScorer} 读并预计算 A⁻¹/θ̂ 出 LinUCB/Thompson 探索加成;缺失/解析失败 → 打分退 0(不影响融合)。
+     */
+    public static final String BANDIT_MODEL = "bandit:model";
+
+    /**
      * 动态调参 Hash(S5 轻量配置热更新):recsys:tuning,field=配置项(如 fusion.pop-debias.beta)、value=覆盖值。
      * 在线 DynamicTuningService 周期刷新叠加在静态 yml 上;`redis-cli hset recsys:tuning <field> <v>` 即热更、免重启。
      */
     public static final String TUNING = "recsys:tuning";
+
+    /**
+     * 实验动态覆盖 Hash(P3 实验平台化):recsys:exp,field/value —— 在静态 yml 之上热更实验,免重启。
+     * field 约定:{@code enabled}=全局开关;{@code <layer>.enabled}=层开关;
+     * {@code <layer>.<variant>.weight}=变体流量权重(放量/停止=调权重/置 0)。在线周期刷新叠加。
+     */
+    public static final String EXP_OVERRIDE = "recsys:exp";
+
+    /**
+     * 词项 IDF Hash:idf:terms,field=归一化词项、value=IDF。
+     * 离线 IdfJob 从 item 标题/类目按<b>与在线 query 理解相同的分词</b>({@code QueryTokens})统计
+     * document frequency,拟合 IDF=ln((N+1)/(df+1))+1(稀有词更高、≥1)。在线 query 理解据此给
+     * {@code TermWeight} 赋权(替代恒 1.0);缺失/OOV 词退中性 1.0(保守,不放大生僻/拼写噪声)。
+     */
+    public static final String IDF_TERMS = "idf:terms";
+
+    /** IDF 语料文档总数 String:idf:doc-count(= 参与统计的 item 数,口径核对用)。 */
+    public static final String IDF_DOC_COUNT = "idf:doc-count";
+
+    /**
+     * Look-alike 人群包 Set(A3):ad:audience:{audienceId},member=扩散后的 user_id。
+     * 离线 lookalike 作业从种子用户的 user_embedding 向量扩散(ANN)物化;在线广告定向按 SISMEMBER 判用户是否在包内。
+     */
+    public static String adAudience(long audienceId) {
+        return "ad:audience:" + audienceId;
+    }
+
+    /** GD 保量已交付曝光计数 String(A4):ad:gd:delivered:{contractId},曝光时 INCR,投放进度分配据此判是否落后。 */
+    public static String adGdDelivered(long contractId) {
+        return "ad:gd:delivered:" + contractId;
+    }
+
+    /**
+     * 用户行为序列 ZSet(R2):rt:user:seq:{userId},member=itemId、score=行为时刻(epoch 秒)。
+     * DIN 在线排序优先读它(取最近 N 个作 target-attention 序列),未命中回退 DB 并 cache-aside 回填;
+     * 与近线/流作业(可选)按 ts 增量 ZADD 兼容。带 TTL,冷用户自然淘汰。
+     */
+    public static String userSeq(long userId) {
+        return "rt:user:seq:" + userId;
+    }
 
     /** 频控:用户当日某广告曝光次数 String(带 TTL):ad:freq:{userId}:{adId}:{yyyymmdd}。 */
     public static String adFreq(long userId, long adId, String yyyymmdd) {

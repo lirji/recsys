@@ -9,17 +9,21 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>recsys-common</artifactId>
-    <name>recsys-common</name>
-    <description>共享契约:接口、DTO、常量。所有模块依赖它,改动需广播。</description>
+    <artifactId>recsys-ad-common</artifactId>
+    <name>recsys-ad-common</name>
+    <description>广告域共享契约:广告 DTO/枚举/接口(com.recsys.common.ad)+ sharding.yaml。从 recsys-common 拆出,
+        让推荐/行为等非广告模块不再因广告 DTO 变更而被动重编。依赖 recsys-common(用其 query.StructuredQuery)。</description>
 
-    <!-- 纯库模块:不打成可执行 jar,不引入 web 依赖,保持轻量 -->
     <dependencies>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
         </dependency>
-        <!-- 契约测试(在线/离线一致性:BidwordInvCodec 等纯函数),仅 test scope,不影响运行时轻量 -->
+        <!-- 广告契约测试(BidwordInvCodec / BidType 纯函数),仅 test scope -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

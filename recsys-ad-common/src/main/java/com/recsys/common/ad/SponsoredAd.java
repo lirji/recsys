@@ -22,6 +22,7 @@ package com.recsys.common.ad;
  * @param chargedPrice   GSP 实际扣费(次高价;< reserve 时为 reserve)
  * @param position       广告位次(1 基)
  * @param creativeId     展示的创意 ID(DCO 多臂老虎机选出,docs/05 §7 M7);0 = 广告默认创意(DCO 关闭/无创意)
+ * @param bidType        计费模式名(A1):CPC/OCPC/CPM/OCPM/CPA。决定 chargedPrice 的计费单位与"哪个事件扣费"
  */
 public record SponsoredAd(long adId,
                           long itemId,
@@ -37,5 +38,6 @@ public record SponsoredAd(long adId,
                           double ecpm,
                           double chargedPrice,
                           int position,
-                          long creativeId) {
+                          long creativeId,
+                          String bidType) {
 }

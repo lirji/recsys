@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package recsys.ad.v1;
+
+// Published Language:广告在线服务(recsys-ad-serving)的 gRPC 契约。
+// rec-engine 作为 Customer 调用;广告管线(召回/相关性/竞价/GSP/DCO/GD/曝光/计费)全在 supplier 侧。
+// 版本化:package .v1;演进只增字段号,破坏性变更升 v2 双跑过渡。
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.ad.v1";
+option java_outer_classname = "AdServingProto";
+
+service AdServingService {
+  // 搜索广告(搜索场景直接用;混排 feed 也复用它,频控+混排暂由 rec-engine 侧完成)。
+  // 入参携带已解析 query(query 理解保持 rec-engine 单一来源)+ 实验分桶/底价。
+  rpc SearchAds (SearchAdsRequest) returns (AdsReply);
+  // CPC/OCPC 点击计费(含反作弊 + 归因校验,supplier 侧执行)。
+  rpc RecordClick (ClickRequest) returns (Ack);
+  // 转化回传(CPA 计费 + 延迟转化建模)。
+  rpc RecordConversion (ConversionRequest) returns (Ack);
+  // 预留(频控所有权迁入 ad-serving 时启用):GetFeedAds(返回已频控过滤)/ RecordShownAds(回记频次)。
+}
+
+message SearchAdsRequest {
+  int64 user_id = 1;
+  StructuredQuery query = 2;     // 已解析;为空时 supplier 用 raw_query 兜底再解析
+  int32 slots = 3;
+  string scene = 4;
+  string ad_bucket = 5;          // 实验分桶名(rec-engine ExperimentService.adVariant)
+  double reserve_price = 6;      // 底价(可被实验变体覆盖)
+  string raw_query = 7;
+}
+
+message AdsReply {
+  int64 user_id = 1;
+  string request_id = 2;
+  repeated SponsoredAd ads = 3;
+  string trace_id = 4;
+}
+
+message ClickRequest {
+  string request_id = 1;
+  int64 ad_id = 2;
+  int64 user_id = 3;
+}
+
+message ConversionRequest {
+  string request_id = 1;
+  int64 ad_id = 2;
+  int64 user_id = 3;
+}
+
+message Ack {
+  bool ok = 1;
+}
+
+// —— 映射 com.recsys.common.ad.SponsoredAd(16 字段一一对应)——
+// channel 用枚举名字符串承载(AdChannel.name()),bid_type 同理(CPC/OCPC/CPM/OCPM/CPA)。
+message SponsoredAd {
+  int64 ad_id = 1;
+  int64 item_id = 2;
+  int64 advertiser_id = 3;
+  int64 bidword_id = 4;
+  string title = 5;
+  string channel = 6;
+  double bid = 7;
+  double quality = 8;
+  double relevance = 9;
+  double pctr = 10;
+  double pctr_calibrated = 11;
+  double ecpm = 12;
+  double charged_price = 13;
+  int32 position = 14;
+  int64 creative_id = 15;
+  string bid_type = 16;
+}
+
+// —— 映射 com.recsys.common.query.StructuredQuery —— //
+message StructuredQuery {
+  string raw = 1;
+  string normalized = 2;
+  repeated TermWeight terms = 3;
+  repeated CategoryScore intents = 4;
+  repeated string rewrites = 5;
+  repeated float embedding = 6;   // 查询向量(768 维);为空表示不可用(等价 null)
+}
+
+message TermWeight {
+  string term = 1;
+  double weight = 2;
+}
+
+message CategoryScore {
+  string category = 1;
+  double score = 2;
+}

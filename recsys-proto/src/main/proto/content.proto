@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package recsys.content.v1;
+
+// Published Language:内容/物料在线服务(recsys-content-service)的 gRPC 契约(P2)。
+// Content 是 item_id 的唯一事实来源;rec-engine 作为 Customer 在展示阶段对 top-N 批量 hydrate(每请求 O(1) 次粗调用)。
+// 排序/召回的逐候选类目读仍走进程内 lib(读本地读模型),绝不走网络热路径。
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.content.v1";
+option java_outer_classname = "ContentProto";
+
+service ContentService {
+  // 批量取物品详情(展示 hydrate)。
+  rpc BatchGetItems (BatchGetItemsRequest) returns (BatchGetItemsReply);
+}
+
+message BatchGetItemsRequest {
+  repeated int64 item_ids = 1;
+}
+
+message BatchGetItemsReply {
+  repeated Item items = 1;
+}
+
+// —— 映射 com.recsys.content.Item —— //
+message Item {
+  int64 item_id = 1;
+  string title = 2;
+  string category = 3;
+  repeated string tags = 4;
+  string description = 5;
+  double popularity = 6;
+}

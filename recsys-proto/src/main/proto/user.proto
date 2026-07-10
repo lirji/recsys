@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package recsys.user.v1;
+
+// Published Language:用户画像在线服务(recsys-user-service)的 gRPC 契约(P3)。
+// User 是 app_user / user_embedding 的事实来源;此处只覆盖冷启动兴趣 onboarding(读/写偏好类目)。
+// 排序/召回的逐候选 user_embedding / TAG 类目读仍走进程内 lib(读本地读模型),不走本服务网络。
+// 边界只有 long + repeated string,无领域 record 跨网,故无需 mapper。
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.user.v1";
+option java_outer_classname = "UserProto";
+
+service UserProfileService {
+  // 读用户偏好类目(冷启动 onboarding)。
+  rpc GetInterests (UserId) returns (Interests);
+  // 设置(覆盖)用户偏好类目。
+  rpc UpdateInterests (UpdateInterestsRequest) returns (Ack);
+}
+
+message UserId {
+  int64 user_id = 1;
+}
+
+message Interests {
+  repeated string categories = 1;
+}
+
+message UpdateInterestsRequest {
+  int64 user_id = 1;
+  repeated string categories = 2;
+}
+
+message Ack {
+  bool ok = 1;
+}
