@@ -5,17 +5,22 @@ import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.recall.RecallProperties;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 向量召回:取 user_embedding 中该用户的向量,在 item_embedding 中找余弦最近邻。
  * 用户无向量(新用户/冷启动)时返回空,交由热门/标签兜底。
+ *
+ * <p><b>熔断(E7)</b>:pgvector ANN 是重外呼,pg 宕机时若每请求都等到召回超时,会拖垮整条链路。
+ * 用 Resilience4j 熔断器 {@code pgvector-recall} 包住 {@link #recall}——连续失败率超阈值即打开,
+ * 后续请求<b>快速失败</b>到 {@link #recallFallback}(返回空,其它召回路兜底),半开后自动探测恢复。
+ * 范式同 embedding 的 {@code GeminiEmbeddingClient};可同法套到 SEMANTIC/TWO_TOWER 等 pgvector 路。
  */
 @Component
 public class VectorRecaller implements ChannelRecaller {
@@ -36,6 +41,7 @@ public class VectorRecaller implements ChannelRecaller {
     }
 
     @Override
+    @CircuitBreaker(name = "pgvector-recall", fallbackMethod = "recallFallback")
     public List<RecallItem> recall(RecallContext ctx) {
         float[] userVec = loadUserVector(ctx.userId());
         if (userVec == null) {
@@ -53,6 +59,13 @@ public class VectorRecaller implements ChannelRecaller {
                     ps.setInt(3, limit);
                 },
                 (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("sim"), RecallChannel.VECTOR));
+    }
+
+    /** 熔断打开 / ANN 异常时的兜底:返回空,交由其它召回路(HOT 等)补齐。 */
+    @SuppressWarnings("unused")
+    private List<RecallItem> recallFallback(RecallContext ctx, Throwable t) {
+        log.warn("VECTOR 召回熔断/失败 user={},本次返回空(其它路兜底): {}", ctx.userId(), t.toString());
+        return List.of();
     }
 
     private float[] loadUserVector(long userId) {

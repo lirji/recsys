@@ -32,6 +32,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
+        <!-- R2:DIN 在线行为序列走 Redis(rt:user:seq),优先读 Redis、未命中回退 DB。直接用 StringRedisTemplate 故显式声明 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
         <!-- DeepFM 读 rank_schema.json / category_vocab.json(plain starter 不含 jackson-databind) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

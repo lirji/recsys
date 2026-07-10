@@ -4,6 +4,7 @@ import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
+import com.recsys.common.user.UserProfileReader;
 import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,11 +37,14 @@ public class TagRecaller implements ChannelRecaller {
     private final JdbcTemplate jdbc;
     private final StringRedisTemplate redis;
     private final RecallProperties props;
+    private final UserProfileReader userProfileReader;   // #3:读 app_user 类目经此 seam(db|grpc)
 
-    public TagRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props) {
+    public TagRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props,
+                       UserProfileReader userProfileReader) {
         this.jdbc = jdbc;
         this.redis = redis;
         this.props = props;
+        this.userProfileReader = userProfileReader;
     }
 
     @Override
@@ -167,11 +171,9 @@ public class TagRecaller implements ChannelRecaller {
     }
 
     private List<String> preferredCategories(long userId) {
+        // #3:经 UserProfileReader 读(默认 db 直读 app_user;grpc 走 user-service),不再本类直读用户库。
         try {
-            // 从 JSONB profile 的 categories 数组取值
-            return jdbc.queryForList(
-                    "SELECT jsonb_array_elements_text(profile->'categories') FROM app_user WHERE user_id=?",
-                    String.class, userId);
+            return userProfileReader.categories(userId);
         } catch (Exception e) {
             log.debug("读取用户偏好类目失败: {}", e.getMessage());
             return List.of();

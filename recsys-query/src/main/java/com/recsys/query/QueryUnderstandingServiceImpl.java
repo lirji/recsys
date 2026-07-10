@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.embedding.EmbeddingClient;
 import com.recsys.common.llm.LlmClient;
 import com.recsys.common.query.CategoryScore;
+import com.recsys.common.query.QueryTokens;
 import com.recsys.common.query.QueryUnderstandingService;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.common.query.TermWeight;
@@ -21,7 +22,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Query 理解层默认实现。把原始查询解析为 {@link StructuredQuery},分五步,**每步独立降级**:
@@ -53,12 +53,10 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
 
     private static final Logger log = LoggerFactory.getLogger(QueryUnderstandingServiceImpl.class);
 
-    /** 非字母数字(含中文)一律视为分隔符。 */
-    private static final Pattern NON_WORD = Pattern.compile("[^\\p{L}\\p{N}]+");
-
     private final JdbcTemplate jdbc;
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
     private final ObjectProvider<LlmClient> llmProvider;
+    private final IdfWeighter idfWeighter;
     private final QueryProperties props;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -68,10 +66,12 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
     public QueryUnderstandingServiceImpl(JdbcTemplate jdbc,
                                          ObjectProvider<EmbeddingClient> embeddingProvider,
                                          ObjectProvider<LlmClient> llmProvider,
+                                         IdfWeighter idfWeighter,
                                          QueryProperties props) {
         this.jdbc = jdbc;
         this.embeddingProvider = embeddingProvider;
         this.llmProvider = llmProvider;
+        this.idfWeighter = idfWeighter;
         this.props = props;
     }
 
@@ -106,18 +106,16 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
         return new StructuredQuery(raw, effective, terms, intents, rewrites, embedding);
     }
 
-    // ---- 1. 归一化 ----
+    // ---- 1. 归一化(与离线 IdfJob 共用 QueryTokens,保证在线/离线分词一致)----
     private String normalize(String raw) {
-        String s = raw.toLowerCase(Locale.ROOT).trim();
-        s = NON_WORD.matcher(s).replaceAll(" ");
-        return s.trim().replaceAll("\\s+", " ");
+        return QueryTokens.normalize(raw);
     }
 
-    // ---- 2. 分词 + 权重 ----
+    // ---- 2. 分词 + IDF 权重(R8)----
     private List<TermWeight> tokenize(String normalized) {
         LinkedHashSet<String> seen = new LinkedHashSet<>();
-        for (String tok : normalized.split(" ")) {
-            if (tok.isEmpty() || props.getStopwords().contains(tok)) {
+        for (String tok : QueryTokens.tokenize(normalized)) {
+            if (props.getStopwords().contains(tok)) {
                 continue;
             }
             seen.add(tok);
@@ -127,7 +125,8 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
         }
         List<TermWeight> terms = new ArrayList<>(seen.size());
         for (String t : seen) {
-            terms.add(new TermWeight(t, 1.0)); // TODO: 接 IDF / term importance
+            // 权重 = IDF(离线物化到 Redis,稀有词更高);未启用/缺失/OOV → 中性 1.0
+            terms.add(new TermWeight(t, idfWeighter.weight(t)));
         }
         return terms;
     }
@@ -139,12 +138,12 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
         }
         Map<String, Double> scores = new LinkedHashMap<>();
         try {
-            // ① 词项直接命中 genre 名 → 强投票
+            // ① 词项直接命中 genre 名 → 强投票,按词项 IDF 加权(稀有/具体的 genre 提及信号更强)
             Map<String, String> lexicon = genreLexicon();
             for (TermWeight tw : terms) {
                 String canonical = lexicon.get(tw.term());
                 if (canonical != null) {
-                    scores.merge(canonical, 3.0, Double::sum);
+                    scores.merge(canonical, 3.0 * tw.weight(), Double::sum);
                 }
             }
             // ② 标题投票:title 含某词项 → 该物品 category 计一票

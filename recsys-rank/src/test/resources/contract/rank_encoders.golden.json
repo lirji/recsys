@@ -1,0 +1,29 @@
+{
+  "_doc": "在线/离线一致性 golden 固件(E1)。Java 侧 RankEncoderContractGoldenTest 与 Python 侧 scripts/verify_contracts.py 读取同一份, 断言逐位一致 —— 这是 SparseFeatureEncoder(train_deepfm/mmoe/din.py) 与 SequenceEncoder(train_din.py encode_seq) 的跨语言契约唯一真源。改任一侧编码逻辑必须同步改此固件, 否则任一侧测试变红。",
+  "_contract": {
+    "bucket": "分桶 = floorMod(id, buckets) = ((id % b) + b) % b, 负数 id 也落非负桶(Java Math.floorMod / Python 的 % 天然如此), 切勿用 Java 原生 % (会得负值)。",
+    "category_oov": "未登录/ null 类目 → 索引 0。",
+    "sequence_padding": "定长 seq_len, 右 padding 补 0; 有效项在前(oldest→newest); 超长只保留最近 seq_len 个; 同时返回有效长度 len。"
+  },
+  "sparse": {
+    "schema": { "user_buckets": 100, "item_buckets": 1000 },
+    "category_vocab": { "Action": 1, "Drama": 2 },
+    "cases": [
+      { "user_id": 123,  "item_id": 4567,  "category": "Action",  "expected": [23, 567, 1] },
+      { "user_id": 5,    "item_id": 5,     "category": "Unknown", "expected": [5, 5, 0] },
+      { "user_id": 5,    "item_id": 5,     "category": null,      "expected": [5, 5, 0] },
+      { "user_id": 305,  "item_id": 12345, "category": "Drama",   "expected": [5, 345, 2] },
+      { "user_id": -7,   "item_id": -3,    "category": null,      "expected": [93, 997, 0] }
+    ]
+  },
+  "sequence": {
+    "schema": { "seq_len": 5, "item_buckets": 1000 },
+    "cases": [
+      { "items_oldest_first": [10, 20, 1030],            "expected_seq": [10, 20, 30, 0, 0], "expected_len": 3 },
+      { "items_oldest_first": [],                        "expected_seq": [0, 0, 0, 0, 0],    "expected_len": 0 },
+      { "items_oldest_first": [1, 2, 3, 4, 5, 6, 7],     "expected_seq": [3, 4, 5, 6, 7],    "expected_len": 5 },
+      { "items_oldest_first": [-1],                      "expected_seq": [999, 0, 0, 0, 0],  "expected_len": 1 },
+      { "items_oldest_first": [1001, 2002, 3003, 4004, 5005], "expected_seq": [1, 2, 3, 4, 5], "expected_len": 5 }
+    ]
+  }
+}

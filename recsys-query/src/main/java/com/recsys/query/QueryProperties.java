@@ -38,12 +38,50 @@ public class QueryProperties {
     /** LLM query 理解(拼写纠错 / 意图分类 / 改写扩展)子配置。 */
     private Llm llm = new Llm();
 
+    /** 词项 IDF 加权子配置(R8)。 */
+    private Idf idf = new Idf();
+
     public Llm getLlm() {
         return llm;
     }
 
     public void setLlm(Llm llm) {
         this.llm = llm;
+    }
+
+    public Idf getIdf() {
+        return idf;
+    }
+
+    public void setIdf(Idf idf) {
+        this.idf = idf;
+    }
+
+    /**
+     * 词项 IDF 加权(recsys.query.idf.*)。开启后 query 理解给 {@code TermWeight} 赋 IDF 权重
+     * (离线 IdfJob 物化到 Redis {@code idf:terms});Redis 缺失/未跑作业 → 全退中性 1.0,行为同接入前。
+     */
+    public static class Idf {
+        /** 是否启用 IDF 加权。关掉则权重恒 1.0(旧行为)。 */
+        private boolean enabled = true;
+        /** 内存缓存 IDF 表的刷新间隔(毫秒);到期重新 HGETALL,避免每次查询打 Redis。 */
+        private long refreshMs = 300_000;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public long getRefreshMs() {
+            return refreshMs;
+        }
+
+        public void setRefreshMs(long refreshMs) {
+            this.refreshMs = refreshMs;
+        }
     }
 
     /**

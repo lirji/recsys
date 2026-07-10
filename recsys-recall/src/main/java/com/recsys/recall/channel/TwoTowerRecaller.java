@@ -7,6 +7,7 @@ import ai.onnxruntime.OrtSession;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pgvector.PGvector;
+import com.recsys.common.rank.TowerScorer;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
@@ -42,7 +43,7 @@ import java.util.Map;
  * 由其他召回路兜底(架构要求:任一路失败不拖垮整体)。
  */
 @Component
-public class TwoTowerRecaller implements ChannelRecaller {
+public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
 
     private static final Logger log = LoggerFactory.getLogger(TwoTowerRecaller.class);
 
@@ -109,6 +110,51 @@ public class TwoTowerRecaller implements ChannelRecaller {
         } catch (Exception e) {
             log.debug("双塔召回失败 user={}: {}", ctx.userId(), e.getMessage());
             return List.of();
+        }
+    }
+
+    // ---- R6:TowerScorer —— 对候选集打双塔点积分,供 PreRankService 做学习型粗排 ----
+
+    @Override
+    public boolean isReady() {
+        return ready;
+    }
+
+    @Override
+    public Map<Long, Double> score(long userId, List<Long> itemIds) {
+        if (!ready || itemIds == null || itemIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            float[] userVec = userVector(userId);
+            if (userVec == null) {
+                return Map.of();
+            }
+            PGvector pv = new PGvector(userVec);
+            java.util.Set<Long> unique = new java.util.HashSet<>(itemIds);
+            String ph = String.join(",", java.util.Collections.nCopies(unique.size(), "?"));
+            Map<Long, Double> out = new java.util.HashMap<>(unique.size() * 2);
+            Object[] argsArr = new Object[unique.size() + 1];
+            argsArr[0] = pv;
+            int i = 1;
+            for (Long id : unique) {
+                argsArr[i++] = id;
+            }
+            // 只对候选集查 item 塔向量算余弦(1 - 距离);无向量的候选自然缺席
+            jdbc.query(
+                    "SELECT item_id, 1 - (embedding <=> ?) AS sim FROM item_tower_embedding " +
+                    "WHERE item_id IN (" + ph + ")",
+                    ps -> {
+                        ps.setObject(1, pv);
+                        for (int k = 1; k < argsArr.length; k++) {
+                            ps.setObject(k + 1, argsArr[k]);
+                        }
+                    },
+                    (rs, n) -> out.put(rs.getLong("item_id"), rs.getDouble("sim")));
+            return out;
+        } catch (Exception e) {
+            log.debug("双塔粗排打分失败 user={},退线性: {}", userId, e.getMessage());
+            return Map.of();
         }
     }
 

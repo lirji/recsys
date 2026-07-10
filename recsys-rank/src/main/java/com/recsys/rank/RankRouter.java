@@ -18,6 +18,7 @@ import java.util.List;
  * <ul>
  *   <li>strategy=onnx 且 LightGBM 模型就绪 → 走 {@link OnnxRankService};</li>
  *   <li>strategy=deepfm 且 DeepFM 模型就绪 → 走 {@link DeepFmRankService};</li>
+ *   <li>strategy=dcn 且 DCN v2 模型就绪 → 走 {@link DcnRankService};</li>
  *   <li>否则(strategy=v1 / 模型未就绪 / 模型返回空)→ 回退 {@link RuleRankService}。</li>
  * </ul>
  * Onnx/DeepFm 服务仅在对应 strategy 下存在(条件 Bean),故用 ObjectProvider 可选注入。
@@ -36,8 +37,11 @@ public class RankRouter implements RankService {
     private final RuleRankService rule;
     private final ObjectProvider<OnnxRankService> onnxProvider;
     private final ObjectProvider<DeepFmRankService> deepfmProvider;
+    private final ObjectProvider<DcnRankService> dcnProvider;
     private final ObjectProvider<MmoeRankService> mmoeProvider;
     private final ObjectProvider<DinRankService> dinProvider;
+    private final ObjectProvider<DienRankService> dienProvider;
+    private final ObjectProvider<SimRankService> simProvider;
     private final ObjectProvider<PleRankService> pleProvider;
     private final ObjectProvider<MeterRegistry> meterRegistryProvider;
     private final RankProperties props;
@@ -45,16 +49,22 @@ public class RankRouter implements RankService {
     public RankRouter(RuleRankService rule,
                       ObjectProvider<OnnxRankService> onnxProvider,
                       ObjectProvider<DeepFmRankService> deepfmProvider,
+                      ObjectProvider<DcnRankService> dcnProvider,
                       ObjectProvider<MmoeRankService> mmoeProvider,
                       ObjectProvider<DinRankService> dinProvider,
+                      ObjectProvider<DienRankService> dienProvider,
+                      ObjectProvider<SimRankService> simProvider,
                       ObjectProvider<PleRankService> pleProvider,
                       ObjectProvider<MeterRegistry> meterRegistryProvider,
                       RankProperties props) {
         this.rule = rule;
         this.onnxProvider = onnxProvider;
         this.deepfmProvider = deepfmProvider;
+        this.dcnProvider = dcnProvider;
         this.mmoeProvider = mmoeProvider;
         this.dinProvider = dinProvider;
+        this.dienProvider = dienProvider;
+        this.simProvider = simProvider;
         this.pleProvider = pleProvider;
         this.meterRegistryProvider = meterRegistryProvider;
         this.props = props;
@@ -63,6 +73,26 @@ public class RankRouter implements RankService {
     @Override
     public List<RankedItem> rank(long userId, List<Long> candidateItemIds, String scene) {
         return rank(userId, candidateItemIds, scene, null);
+    }
+
+    /**
+     * 当前全局策略的模型是否就绪(E4 readiness 探针用)。v1/规则/未知策略无需模型 → 恒 true;
+     * 模型策略(onnx/deepfm/dcn/mmoe/din/dien/ple)则看对应服务 isReady()。用于 k8s readiness:
+     * 部署了模型策略但模型没加载 → readiness 不通过,不给它导流(避免全量退化为规则打分而无人察觉)。
+     */
+    public boolean activeStrategyReady() {
+        String s = props.getStrategy() == null ? "v1" : props.getStrategy().toLowerCase();
+        return switch (s) {
+            case "onnx" -> { var x = onnxProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "deepfm" -> { var x = deepfmProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "dcn" -> { var x = dcnProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "mmoe" -> { var x = mmoeProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "din" -> { var x = dinProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "dien" -> { var x = dienProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "sim" -> { var x = simProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            case "ple" -> { var x = pleProvider.getIfAvailable(); yield x != null && x.isReady(); }
+            default -> true;   // v1 / 规则 / 未知:无模型依赖,恒就绪
+        };
     }
 
     /**
@@ -97,6 +127,17 @@ public class RankRouter implements RankService {
             }
             log.debug("DeepFM 返回空,回退规则排序 user={}", userId);
             return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("dcn".equals(requested)) {
+            DcnRankService dcn = dcnProvider.getIfAvailable();
+            if (dcn == null || !dcn.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = dcn.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "dcn", "ok");
+            }
+            log.debug("DCN 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
         } else if ("mmoe".equals(requested)) {
             MmoeRankService mmoe = mmoeProvider.getIfAvailable();
             if (mmoe == null || !mmoe.isReady()) {
@@ -118,6 +159,28 @@ public class RankRouter implements RankService {
                 return served(r, requested, "din", "ok");
             }
             log.debug("DIN 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("dien".equals(requested)) {
+            DienRankService dien = dienProvider.getIfAvailable();
+            if (dien == null || !dien.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = dien.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "dien", "ok");
+            }
+            log.debug("DIEN 返回空,回退规则排序 user={}", userId);
+            return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
+        } else if ("sim".equals(requested)) {
+            SimRankService sim = simProvider.getIfAvailable();
+            if (sim == null || !sim.isReady()) {
+                return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "not_ready");
+            }
+            List<RankedItem> r = sim.rank(userId, candidateItemIds, scene);
+            if (!r.isEmpty()) {
+                return served(r, requested, "sim", "ok");
+            }
+            log.debug("SIM 返回空,回退规则排序 user={}", userId);
             return served(rule.rank(userId, candidateItemIds, scene), requested, "rule", "empty");
         } else if ("ple".equals(requested)) {
             PleRankService ple = pleProvider.getIfAvailable();

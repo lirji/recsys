@@ -1,10 +1,12 @@
 package com.recsys.rank;
 
 import com.recsys.common.feature.FeatureService;
+import com.recsys.common.rank.TowerScorer;
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -35,14 +37,17 @@ public class PreRankService {
 
     private final FeatureService featureService;
     private final ContentService contentService;
+    private final ObjectProvider<TowerScorer> towerScorerProvider;   // R6:双塔粗排打分(可选,缺则线性)
     private final RankProperties props;
 
     private final int idxPop = FeatureAssembler.FEATURE_ORDER.indexOf("item_pop_norm");
     private final int idxAff = FeatureAssembler.FEATURE_ORDER.indexOf("user_cat_affinity");
 
-    public PreRankService(FeatureService featureService, ContentService contentService, RankProperties props) {
+    public PreRankService(FeatureService featureService, ContentService contentService,
+                          ObjectProvider<TowerScorer> towerScorerProvider, RankProperties props) {
         this.featureService = featureService;
         this.contentService = contentService;
+        this.towerScorerProvider = towerScorerProvider;
         this.props = props;
     }
 
@@ -66,6 +71,11 @@ public class PreRankService {
             double maxRecall = recallScores.values().stream().mapToDouble(Double::doubleValue).max().orElse(1.0);
             final double denom = maxRecall <= 0 ? 1.0 : maxRecall;
 
+            // R6:双塔学习分(mode=two-tower + 塔就绪时)。归一化后叠加进粗排分;缺向量的候选自然退线性。
+            Map<Long, Double> towerScores = towerScores(userId, candidateIds, cfg);
+            double towerMax = towerScores.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+            final double towerDenom = towerMax <= 0 ? 1.0 : towerMax;
+
             List<Scored> scored = new ArrayList<>(candidateIds.size());
             for (Long id : candidateIds) {
                 Item it = items.get(id);
@@ -75,6 +85,10 @@ public class PreRankService {
                 double s = cfg.getRecallWeight() * rNorm
                         + cfg.getPopWeight() * f[idxPop]
                         + cfg.getAffinityWeight() * f[idxAff];
+                Double tw = towerScores.get(id);
+                if (tw != null) {
+                    s += cfg.getTowerWeight() * (tw / towerDenom);   // 学习型双塔信号(归一化)
+                }
                 scored.add(new Scored(id, s));
             }
             scored.sort(Comparator.comparingDouble(Scored::score).reversed());
@@ -89,6 +103,23 @@ public class PreRankService {
             // 粗排是优化项,失败绝不阻断:退回全量候选交给精排
             log.warn("粗排失败,回退全量候选 user={}: {}", userId, e.getMessage());
             return candidateIds;
+        }
+    }
+
+    /** 双塔粗排分:仅在 mode=two-tower 且塔就绪时返回,否则空 map(退纯线性)。 */
+    private Map<Long, Double> towerScores(long userId, List<Long> candidateIds, RankProperties.PreRank cfg) {
+        if (!"two-tower".equalsIgnoreCase(cfg.getMode())) {
+            return Map.of();
+        }
+        TowerScorer scorer = towerScorerProvider.getIfAvailable();
+        if (scorer == null || !scorer.isReady()) {
+            return Map.of();   // 双塔未就绪 → 退纯线性(优雅降级)
+        }
+        try {
+            return scorer.score(userId, candidateIds);
+        } catch (Exception e) {
+            log.debug("双塔粗排打分异常,退线性 user={}: {}", userId, e.getMessage());
+            return Map.of();
         }
     }
 

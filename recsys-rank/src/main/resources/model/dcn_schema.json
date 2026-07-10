@@ -1,0 +1,24 @@
+{
+  "model": "dcn",
+  "dense_order": [
+    "item_pop_norm",
+    "item_avg_rating",
+    "user_act_norm",
+    "user_avg_rating",
+    "user_cat_affinity"
+  ],
+  "sparse_order": [
+    "user_id",
+    "item_id",
+    "category"
+  ],
+  "user_buckets": 5000,
+  "item_buckets": 20000,
+  "embed_dim": 16,
+  "sparse_cardinalities": [
+    5000,
+    20000,
+    20
+  ],
+  "semantic_id": false
+}
