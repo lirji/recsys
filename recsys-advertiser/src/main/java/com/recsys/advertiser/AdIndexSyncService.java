@@ -1,6 +1,8 @@
 package com.recsys.advertiser;
 
 import com.recsys.advertiser.dto.BidwordView;
+import com.recsys.advertiser.dto.CreativeView;
+import com.recsys.common.ad.AdCatalogEvent;
 import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
@@ -29,16 +31,25 @@ public class AdIndexSyncService {
 
     private final StringRedisTemplate redis;
     private final AdvertiserRepository repo;
+    private final AdCatalogEventPublisher catalogPublisher;
 
-    public AdIndexSyncService(StringRedisTemplate redis, AdvertiserRepository repo) {
+    public AdIndexSyncService(StringRedisTemplate redis, AdvertiserRepository repo,
+                              AdCatalogEventPublisher catalogPublisher) {
         this.redis = redis;
         this.repo = repo;
+        this.catalogPublisher = catalogPublisher;
     }
 
-    /** 广告当前是否应进倒排:广告 active 且其广告主 active。over_budget/paused 均视为不可服务。 */
+    /**
+     * 广告当前是否应进倒排(可服务集):广告 active + 审核 approved(A2)+ 广告主 active。
+     * over_budget/paused、pending_review/rejected 均视为不可服务 —— 待审/拒审广告不进倒排、不投放。
+     */
     public boolean servable(AdvertiserRepository.AdRow ad) {
         if (ad == null || !"active".equalsIgnoreCase(ad.status())) {
             return false;
+        }
+        if (!"approved".equalsIgnoreCase(ad.reviewStatus())) {
+            return false;   // 审核未通过(pending_review / rejected)不进可服务集
         }
         var adv = repo.findAdvertiserRaw(ad.advertiserId());
         return adv != null && "active".equalsIgnoreCase(adv.status());
@@ -60,6 +71,7 @@ public class AdIndexSyncService {
                 addMember(bw.keyword(), adId, bw.id(), ad.itemId(), ad.advertiserId(), ad.qualityScore(), bw.bid());
             }
         }
+        publishSnapshot(ad, ok);   // P1b:同步发广告目录事件(供 ad-serving 建可服务副本)
     }
 
     /** 重建某广告主下所有广告(广告主级 暂停/恢复 时调用)。 */
@@ -80,15 +92,18 @@ public class AdIndexSyncService {
         }
         // 同关键词重复 add 等价于更新 score(出价),无需先删
         removeAdFromKeyword(current.keyword(), adId);
-        if (servable(ad)) {
+        boolean ok = servable(ad);
+        if (ok) {
             addMember(current.keyword(), adId, current.id(), ad.itemId(), ad.advertiserId(),
                     ad.qualityScore(), current.bid());
         }
+        publishSnapshot(ad, ok);   // P1b
     }
 
     /** 删除竞价词后,从其关键词倒排移除该广告对应的 member。 */
     public void removeBidword(long adId, String keyword) {
         removeAdFromKeyword(keyword, adId);
+        publishSnapshot(adId);     // P1b:竞价词变化,重发快照(广告仍在)
     }
 
     /** 删广告后,把它从给定关键词集合的倒排里全部抹掉(keywords 取删除前的竞价词)。 */
@@ -96,6 +111,34 @@ public class AdIndexSyncService {
         for (String kw : keywords) {
             removeAdFromKeyword(kw, adId);
         }
+        catalogPublisher.publishTombstone(adId);   // P1b:广告已删,发墓碑
+    }
+
+    // ---------------- P1b:广告目录事件快照构建 ----------------
+
+    /** 读当前库状态构建并发布该广告目录快照;广告已不存在 → 墓碑。 */
+    private void publishSnapshot(long adId) {
+        AdvertiserRepository.AdRow ad = repo.findAdRow(adId);
+        if (ad == null) {
+            catalogPublisher.publishTombstone(adId);
+            return;
+        }
+        publishSnapshot(ad, servable(ad));
+    }
+
+    /** 用已取的 ad + servable 构建快照(含竞价词/创意),交发布器(开关关则 no-op)。 */
+    private void publishSnapshot(AdvertiserRepository.AdRow ad, boolean servable) {
+        List<AdCatalogEvent.Bidword> bws = repo.listBidwords(ad.adId()).stream()
+                .map(b -> new AdCatalogEvent.Bidword(b.id(), b.keyword(), b.matchType(), b.bid()))
+                .toList();
+        List<AdCatalogEvent.Creative> crs = repo.listCreatives(ad.adId()).stream()
+                .map((CreativeView c) -> new AdCatalogEvent.Creative(
+                        c.creativeId(), c.title(), c.landingUrl(), c.status()))
+                .toList();
+        catalogPublisher.publish(new AdCatalogEvent(
+                ad.adId(), servable, ad.advertiserId(), ad.itemId(), ad.title(), ad.landingUrl(),
+                ad.qualityScore(), ad.status(), ad.reviewStatus(), ad.optimizationType(), ad.targetCpa(),
+                ad.audienceId(), bws, crs, System.currentTimeMillis()));
     }
 
     // ---------------- Redis 原子操作(吞异常降级)----------------

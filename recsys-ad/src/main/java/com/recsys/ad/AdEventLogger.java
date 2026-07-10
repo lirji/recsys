@@ -105,14 +105,15 @@ public class AdEventLogger {
     }
 
     /**
-     * 写归因键 ad:expo:{req}:{adId} = "advertiserId;bidwordId;pctrCalib;ecpm;charged;position"
-     * (点击回查计费上下文:CPC 在点击时按 charged 扣预算)。
+     * 写归因键 ad:expo:{req}:{adId} = "advertiserId;bidwordId;pctrCalib;ecpm;charged;position;bidType"
+     * (回查计费上下文:按 bidType 在点击/曝光/转化事件扣 charged)。
      */
     private void attribute(String requestId, List<SponsoredAd> ads) {
         try {
             for (SponsoredAd a : ads) {
                 String v = a.advertiserId() + ";" + a.bidwordId() + ";" + a.pctrCalibrated()
-                        + ";" + a.ecpm() + ";" + a.chargedPrice() + ";" + a.position();
+                        + ";" + a.ecpm() + ";" + a.chargedPrice() + ";" + a.position()
+                        + ";" + (a.bidType() == null ? "CPC" : a.bidType());
                 redis.opsForValue().set(RedisKeys.adExposure(requestId, a.adId()), v, ATTRIBUTION_TTL);
             }
         } catch (Exception e) {
@@ -121,20 +122,21 @@ public class AdEventLogger {
     }
 
     /**
-     * 点击回查归因:取该次曝光算好的计费上下文(广告主 + GSP 单次点击扣费)。
-     * Redis 缺失(过期/未开)→ 回退查 ad_event 曝光行 + ad 表。查不到返回 null。
+     * 回查归因:取该次曝光算好的计费上下文(广告主 + GSP 扣费额 + 计费模式)。
+     * Redis 缺失(过期/未开)→ 回退查 ad_event 曝光行 + ad 表(含 optimization_type)。查不到返回 null。
      */
     public ClickAttribution readAttribution(String requestId, long adId) {
         try {
             String v = redis.opsForValue().get(RedisKeys.adExposure(requestId, adId));
             if (v != null) {
                 String[] p = v.split(";");
-                return new ClickAttribution(Long.parseLong(p[0]), Double.parseDouble(p[4]));
+                String bidType = p.length > 6 ? p[6] : "CPC";   // 兼容旧格式(无 bidType 段)
+                return new ClickAttribution(Long.parseLong(p[0]), Double.parseDouble(p[4]), bidType);
             }
         } catch (Exception e) {
             log.debug("读广告归因键失败,回退 DB req={} ad={}: {}", requestId, adId, e.getMessage());
         }
-        // 分库:ad_event(主库单表)与 ad(分片库)不能跨源 JOIN —— 先主库取计费额,再分片库按 ad_id 取广告主。
+        // 分库:ad_event(主库单表)与 ad(分片库)不能跨源 JOIN —— 先主库取计费额,再分片库按 ad_id 取广告主+计费模式。
         try {
             Double charged = jdbc.queryForObject(
                     "SELECT charged_price FROM ad_event " +
@@ -143,12 +145,11 @@ public class AdEventLogger {
             if (charged == null) {
                 return null;
             }
-            Long advertiserId = sharded.queryForObject(
-                    "SELECT advertiser_id FROM ad WHERE ad_id = ?", Long.class, adId);
-            if (advertiserId == null) {
-                return null;
-            }
-            return new ClickAttribution(advertiserId, charged);
+            var row = sharded.queryForMap(
+                    "SELECT advertiser_id, optimization_type FROM ad WHERE ad_id = ?", adId);
+            Long advertiserId = ((Number) row.get("advertiser_id")).longValue();
+            String bidType = (String) row.get("optimization_type");
+            return new ClickAttribution(advertiserId, charged, bidType == null ? "CPC" : bidType);
         } catch (Exception e) {
             return null;
         }
@@ -165,8 +166,8 @@ public class AdEventLogger {
         }
     }
 
-    /** 点击计费上下文。 */
-    public record ClickAttribution(long advertiserId, double chargedPrice) {
+    /** 计费上下文(点击/曝光/转化回查):广告主 + GSP 扣费额 + 计费模式(决定在哪个事件扣)。 */
+    public record ClickAttribution(long advertiserId, double chargedPrice, String bidType) {
     }
 
     @PreDestroy

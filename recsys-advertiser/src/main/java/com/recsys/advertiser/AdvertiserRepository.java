@@ -95,11 +95,13 @@ public class AdvertiserRepository {
 
     /** 插入广告,ad_id 由 ShardingSphere Snowflake 生成、getGeneratedKeys 回传(分库键=ad_id)。 */
     public long insertAd(long advertiserId, long itemId, String title, String landingUrl,
-                         double qualityScore, String status, String optimizationType, Double targetCpa) {
+                         double qualityScore, String status, String reviewStatus,
+                         String optimizationType, Double targetCpa) {
         return insertReturningKey("ad_id",
                 "INSERT INTO ad(advertiser_id,item_id,title,landing_url,quality_score,status," +
-                        "optimization_type,target_cpa) VALUES(?,?,?,?,?,?,?,?)",
-                advertiserId, itemId, title, landingUrl, qualityScore, status, optimizationType, targetCpa);
+                        "review_status,optimization_type,target_cpa) VALUES(?,?,?,?,?,?,?,?,?)",
+                advertiserId, itemId, title, landingUrl, qualityScore, status, reviewStatus,
+                optimizationType, targetCpa);
     }
 
     public void setAdLandingUrl(long adId, String url) {
@@ -162,18 +164,27 @@ public class AdvertiserRepository {
 
     private static final String SELECT_AD =
             "SELECT ad_id,advertiser_id,item_id,title,landing_url,quality_score,status," +
-            "optimization_type,target_cpa FROM ad";
+            "review_status,optimization_type,target_cpa,audience_id FROM ad";
 
     private static AdRow mapAd(java.sql.ResultSet rs, boolean hasEmbedding) throws java.sql.SQLException {
         Double cpa = (Double) rs.getObject("target_cpa");
+        Long aud = (Long) rs.getObject("audience_id");
         return new AdRow(rs.getLong("ad_id"), rs.getLong("advertiser_id"), rs.getLong("item_id"),
                 rs.getString("title"), rs.getString("landing_url"), rs.getDouble("quality_score"),
-                rs.getString("status"), rs.getString("optimization_type"), cpa, hasEmbedding);
+                rs.getString("status"), rs.getString("review_status"),
+                rs.getString("optimization_type"), cpa, aud, hasEmbedding);
     }
 
     private static AdRow withEmbedding(AdRow r, boolean hasEmbedding) {
         return new AdRow(r.adId(), r.advertiserId(), r.itemId(), r.title(), r.landingUrl(),
-                r.qualityScore(), r.status(), r.optimizationType(), r.targetCpa(), hasEmbedding);
+                r.qualityScore(), r.status(), r.reviewStatus(), r.optimizationType(), r.targetCpa(),
+                r.audienceId(), hasEmbedding);
+    }
+
+    /** 审核决定落库(A2):设 review_status + review_reason。 */
+    public int setAdReview(long adId, String reviewStatus, String reason) {
+        return jdbc.update("UPDATE ad SET review_status=?, review_reason=? WHERE ad_id=?",
+                reviewStatus, reason, adId);
     }
 
     private boolean embeddingExists(long adId) {
@@ -340,7 +351,8 @@ public class AdvertiserRepository {
 
     /** 广告库内行(含 has_emb 标志),service 据此装配 {@link AdView} 并做 reindex 决策。 */
     public record AdRow(long adId, long advertiserId, long itemId, String title, String landingUrl,
-                        double qualityScore, String status, String optimizationType, Double targetCpa,
+                        double qualityScore, String status, String reviewStatus,
+                        String optimizationType, Double targetCpa, Long audienceId,
                         boolean hasEmbedding) {
     }
 }

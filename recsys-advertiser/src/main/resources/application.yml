@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: recsys-advertiser
+  # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;
+  # 容器化/discovery 场景 NACOS_DISCOVERY=true 注册,供网关 lb://recsys-advertiser 解析。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
   datasource:
     # 分库分表:走 ShardingSphere-JDBC 驱动,真实数据源 / 分片规则在 sharding.yaml
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
@@ -13,6 +22,18 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  # P1b 广告目录事件化:发布 ad-catalog-events(KafkaTemplate 懒连接,不开则不连)。
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+recsys:
+  ad:
+    catalog:
+      # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。
+      publish-events: ${AD_CATALOG_PUBLISH:false}
 
 management:
   endpoints:

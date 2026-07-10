@@ -11,20 +11,22 @@ import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * 广告库读取(JDBC)。ad / bidword / advertiser / ad_embedding 的真源访问。
+ * 广告召回读取(JDBC)。负责<b>向量 ANN(ad_embedding,主库不分片)+ user_embedding</b> 的真源访问,
+ * 以及关键词 DB 兜底召回;广告<b>目录详情/出价</b>的读则委托 {@link AdCatalogReader}
+ * (sharded 直读分片库 / replica 读事件副本,P1b)。
  *
- * <p><b>分库分表(docs/05 §8)</b>:广告表(advertiser/ad/bidword/ad_creative)分布在 ds_0/ds_1,经
- * {@code adShardingJdbc}(ShardingSphere)读;而 {@code ad_embedding} 不分片(向量 ANN 需全量),其 pgvector
- * {@code <=>} 查询走主数据源 {@code jdbc} 直查。因此凡"向量 ANN + 广告详情"的方法都拆成两步:
- * 先用主库做 ANN 拿候选 {@code ad_id},再用分片库取 ad/advertiser 详情与出价(避免 single⋈sharded 跨源 JOIN
- * 与把 {@code <=>} 喂进 ShardingSphere 解析器)。各方法只读、失败返回空,降级判断留给上层召回服务。
+ * <p>凡"向量 ANN + 广告详情"的召回都两步:主库做 {@code <=>} ANN 拿候选 {@code ad_id},再经
+ * {@link AdCatalogReader#activeAdDetails}/{@link AdCatalogReader#bidMap} 回填详情与出价——这样详情读可在
+ * sharded/replica 间切换,而 pgvector 非标准算子始终走主库、不进 ShardingSphere 解析路径。各方法只读、失败返回空。
+ *
+ * <p><b>残留</b>:{@link #kwByDb} 的关键词→广告匹配仍扫描分片 {@code bidword}(关键词召回的 DB 兜底路;
+ * 主路走 Redis {@code bidword:inv},P1b 收尾已由 ad-serving 消费端维护)。其详情回填已走 {@link AdCatalogReader}。
  */
 @Repository
 public class AdRepository {
@@ -33,17 +35,21 @@ public class AdRepository {
 
     /** 主数据源:普通 Postgres(ad_embedding ANN / user_embedding 等 pgvector,行为不变)。 */
     private final JdbcTemplate jdbc;
-    /** 次数据源:ShardingSphere,读分片广告表(advertiser/ad/bidword/ad_creative)。 */
+    /** 次数据源:ShardingSphere —— 仅 kwByDb 的 bidword 关键词扫描仍用。 */
     private final JdbcTemplate sharded;
+    /** 目录读(标题/oCPC/详情/出价/定向):sharded 或 replica。 */
+    private final AdCatalogReader catalog;
 
-    public AdRepository(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded) {
+    public AdRepository(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+                        AdCatalogReader catalog) {
         this.jdbc = jdbc;
         this.sharded = sharded;
+        this.catalog = catalog;
     }
 
     /**
-     * 关键词召回(DB 兜底路):命中 {@code bidword.keyword ∈ keywords} 且广告/广告主 active 的候选。
-     * 分库:先查 bidword(按 ad_id 分片,keyword 过滤 → 广播合并),再按 ad_id 取 active 广告详情。
+     * 关键词召回(DB 兜底路):命中 {@code bidword.keyword ∈ keywords} 的候选;详情回填走 {@link AdCatalogReader}
+     * (故其可服务口径与 replica 一致)。bidword 关键词扫描仍在分片库(残留兜底路)。
      */
     public List<AdCandidate> kwByDb(Collection<String> keywords, Set<String> exactTerms, int limit) {
         if (keywords.isEmpty()) {
@@ -51,7 +57,6 @@ public class AdRepository {
         }
         String[] kws = keywords.toArray(new String[0]);
         try {
-            // 1) 命中竞价词(ad_id, bidwordId, keyword, bid)
             List<long[]> hits = new ArrayList<>();          // [adId, bidwordId]
             List<String> hitKw = new ArrayList<>();
             List<Double> hitBid = new ArrayList<>();
@@ -70,14 +75,13 @@ public class AdRepository {
             if (hits.isEmpty()) {
                 return List.of();
             }
-            // 2) 取 active 广告详情(广告/广告主 active)
-            Map<Long, AdDetail> details = activeAdDetails(adIdSet(hits));
+            Map<Long, AdCatalogReader.AdDetail> details = catalog.activeAdDetails(adIdSet(hits));
             List<AdCandidate> out = new ArrayList<>(hits.size());
             for (int i = 0; i < hits.size(); i++) {
                 long adId = hits.get(i)[0];
-                AdDetail d = details.get(adId);
+                AdCatalogReader.AdDetail d = details.get(adId);
                 if (d == null) {
-                    continue; // 广告/广告主非 active
+                    continue; // 广告/广告主非可服务
                 }
                 double bid = hitBid.get(i);
                 AdChannel ch = exactTerms.contains(hitKw.get(i)) ? AdChannel.KW_EXACT : AdChannel.KW_BROAD;
@@ -91,18 +95,12 @@ public class AdRepository {
         }
     }
 
-    /**
-     * 语义召回:query 向量 → ad_embedding 余弦 ANN(主库直查),再取 active 广告详情 + 出价(分片库)。
-     * embedding 为 null 时上层不应调用本方法。
-     */
+    /** 语义召回:query 向量 → ad_embedding 余弦 ANN(主库直查),再取可服务详情 + 出价(目录读)。 */
     public List<AdCandidate> semantic(float[] queryVec, int limit) {
         return annThenDetails(queryVec, limit, AdChannel.SEMANTIC_AD);
     }
 
-    /**
-     * U2A 定向召回(docs/05 §4.2):用户长期兴趣向量 → ad_embedding 余弦 ANN。query 无关的个性化补充。
-     * 新用户无向量 → 空。
-     */
+    /** U2A 定向召回:用户长期兴趣向量 → ad_embedding 余弦 ANN。新用户无向量 → 空。 */
     public List<AdCandidate> u2a(long userId, int limit) {
         float[] userVec = loadUserVector(userId);
         if (userVec == null) {
@@ -111,10 +109,9 @@ public class AdRepository {
         return annThenDetails(userVec, limit, AdChannel.U2A);
     }
 
-    /** ANN(主库 ad_embedding)→ 详情/出价(分片库)。recallScore=余弦相似度,保持 ANN 名次。 */
+    /** ANN(主库 ad_embedding)→ 详情/出价(目录读)。recallScore=余弦相似度,保持 ANN 名次。 */
     private List<AdCandidate> annThenDetails(float[] vec, int limit, AdChannel channel) {
         try {
-            // 1) 主库做 ad_embedding 余弦 ANN(ad_embedding 不分片,全量在 ds_0)
             PGvector pv = new PGvector(vec);
             LinkedHashMap<Long, Double> sims = new LinkedHashMap<>(); // adId → sim(保序)
             jdbc.query(
@@ -129,13 +126,12 @@ public class AdRepository {
             if (sims.isEmpty()) {
                 return List.of();
             }
-            // 2) 分片库取 active 详情 + 出价
-            Map<Long, AdDetail> details = activeAdDetails(sims.keySet());
-            Map<Long, Double> bids = bidMap(sims.keySet());
+            Map<Long, AdCatalogReader.AdDetail> details = catalog.activeAdDetails(sims.keySet());
+            Map<Long, Double> bids = catalog.bidMap(sims.keySet());
             List<AdCandidate> out = new ArrayList<>(sims.size());
             for (Map.Entry<Long, Double> e : sims.entrySet()) {
                 long adId = e.getKey();
-                AdDetail d = details.get(adId);
+                AdCatalogReader.AdDetail d = details.get(adId);
                 if (d == null) {
                     continue;
                 }
@@ -150,18 +146,18 @@ public class AdRepository {
         }
     }
 
-    /** 兜底召回:按 quality × 最高出价取头部活跃广告。分库:取 active 广告(分片) + 出价聚合(分片),Java 排序截断。 */
+    /** 兜底召回:按 quality × 最高出价取头部可服务广告(全量可服务详情 + 出价来自目录读)。 */
     public List<AdCandidate> hot(int limit) {
         try {
-            Map<Long, AdDetail> ads = activeAdDetails(null); // null = 全部 active
+            Map<Long, AdCatalogReader.AdDetail> ads = catalog.activeAdDetails(null); // null = 全部可服务
             if (ads.isEmpty()) {
                 return List.of();
             }
-            Map<Long, Double> bids = bidMap(null);
+            Map<Long, Double> bids = catalog.bidMap(null);
             List<AdCandidate> all = new ArrayList<>(ads.size());
-            for (Map.Entry<Long, AdDetail> e : ads.entrySet()) {
+            for (Map.Entry<Long, AdCatalogReader.AdDetail> e : ads.entrySet()) {
                 long adId = e.getKey();
-                AdDetail d = e.getValue();
+                AdCatalogReader.AdDetail d = e.getValue();
                 double bid = bids.getOrDefault(adId, 0.0);
                 all.add(new AdCandidate(adId, d.itemId(), d.advertiserId(), 0L,
                         d.quality() * bid, AdChannel.HOT_AD, bid, d.quality()));
@@ -174,94 +170,12 @@ public class AdRepository {
         }
     }
 
-    /**
-     * 取 active 广告(广告 active 且广告主非 paused)详情。{@code adIds=null} 取全部;否则按 ad_id 过滤。
-     * ad ⋈ advertiser 同按 advertiser_id 分库(绑定表)→ 单库内 JOIN、不跨库笛卡尔积。
-     */
-    private Map<Long, AdDetail> activeAdDetails(Collection<Long> adIds) {
-        Map<Long, AdDetail> out = new HashMap<>();
-        String base =
-                "SELECT a.ad_id, a.item_id, a.advertiser_id, a.quality_score " +
-                "FROM ad a JOIN advertiser adv ON adv.advertiser_id = a.advertiser_id AND adv.status <> 'paused' " +
-                "WHERE a.status = 'active'";
-        try {
-            if (adIds == null) {
-                sharded.query(base, rs -> { putDetail(out, rs); });
-            } else {
-                if (adIds.isEmpty()) {
-                    return out;
-                }
-                Long[] ids = adIds.toArray(new Long[0]);
-                sharded.query(base + " AND a.ad_id = ANY(?)",
-                        ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                        rs -> { putDetail(out, rs); });
-            }
-        } catch (Exception e) {
-            log.warn("取广告详情失败: {}", e.getMessage());
-        }
-        return out;
-    }
-
-    private static void putDetail(Map<Long, AdDetail> out, java.sql.ResultSet rs) throws java.sql.SQLException {
-        out.put(rs.getLong("ad_id"), new AdDetail(
-                rs.getLong("item_id"), rs.getLong("advertiser_id"), rs.getDouble("quality_score")));
-    }
-
-    /** 各广告最高出价。{@code adIds=null} 取全部;否则按 ad_id 过滤(bidword 按 ad_id 分库 → 路由/广播)。 */
-    private Map<Long, Double> bidMap(Collection<Long> adIds) {
-        Map<Long, Double> out = new HashMap<>();
-        try {
-            if (adIds == null) {
-                sharded.query("SELECT ad_id, COALESCE(MAX(bid),0) AS bid FROM bidword GROUP BY ad_id",
-                        rs -> { out.put(rs.getLong("ad_id"), rs.getDouble("bid")); });
-            } else {
-                if (adIds.isEmpty()) {
-                    return out;
-                }
-                Long[] ids = adIds.toArray(new Long[0]);
-                sharded.query(
-                        "SELECT ad_id, COALESCE(MAX(bid),0) AS bid FROM bidword WHERE ad_id = ANY(?) GROUP BY ad_id",
-                        ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                        rs -> { out.put(rs.getLong("ad_id"), rs.getDouble("bid")); });
-            }
-        } catch (Exception e) {
-            log.warn("取广告出价失败: {}", e.getMessage());
-        }
-        return out;
-    }
-
-    private static java.util.Set<Long> adIdSet(List<long[]> hits) {
-        java.util.Set<Long> s = new java.util.HashSet<>();
+    private static Set<Long> adIdSet(List<long[]> hits) {
+        Set<Long> s = new java.util.HashSet<>();
         for (long[] h : hits) {
             s.add(h[0]);
         }
         return s;
-    }
-
-    /**
-     * 批量取广告的 oCPC 参数(adId → {优化方式, 目标 CPA})。ad 按 advertiser_id 分库,按 ad_id 过滤 → 广播。
-     * 缺列/失败返回空 map。
-     */
-    public java.util.Map<Long, OcpcParams> ocpcParams(Collection<Long> adIds) {
-        if (adIds.isEmpty()) {
-            return java.util.Map.of();
-        }
-        Long[] ids = adIds.toArray(new Long[0]);
-        java.util.Map<Long, OcpcParams> out = new java.util.HashMap<>();
-        try {
-            sharded.query(
-                    "SELECT ad_id, optimization_type, target_cpa FROM ad WHERE ad_id = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                    rs -> {
-                        String type = rs.getString("optimization_type");
-                        double cpa = rs.getDouble("target_cpa");
-                        out.put(rs.getLong("ad_id"),
-                                new OcpcParams(type == null ? "CPC" : type, rs.wasNull() ? 0.0 : cpa));
-                    });
-        } catch (Exception e) {
-            log.warn("取广告 oCPC 参数失败,退 CPC: {}", e.getMessage());
-        }
-        return out;
     }
 
     /** 广告的出价优化方式与目标转化成本。 */
@@ -269,24 +183,6 @@ public class AdRepository {
         public boolean isOcpc() {
             return "OCPC".equalsIgnoreCase(optimizationType) && targetCpa > 0;
         }
-    }
-
-    /** 批量取广告创意标题(竞得后给前几条填标题)。ad 按 ad_id 过滤 → 广播。 */
-    public java.util.Map<Long, String> titles(Collection<Long> adIds) {
-        if (adIds.isEmpty()) {
-            return java.util.Map.of();
-        }
-        Long[] ids = adIds.toArray(new Long[0]);
-        java.util.Map<Long, String> out = new java.util.HashMap<>();
-        try {
-            sharded.query(
-                    "SELECT ad_id, title FROM ad WHERE ad_id = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                    rs -> { out.put(rs.getLong("ad_id"), rs.getString("title")); });
-        } catch (Exception e) {
-            log.warn("取广告标题失败: {}", e.getMessage());
-        }
-        return out;
     }
 
     /**
@@ -322,9 +218,5 @@ public class AdRepository {
                 return null;
             }
         }
-    }
-
-    /** 广告详情(ANN/关键词召回后回填用)。 */
-    private record AdDetail(long itemId, long advertiserId, double quality) {
     }
 }

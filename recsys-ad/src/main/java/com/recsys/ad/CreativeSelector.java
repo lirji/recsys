@@ -85,7 +85,7 @@ public class CreativeSelector {
         Map<Long, List<long[]>> byAd = new LinkedHashMap<>();
         String ph = String.join(",", adIds.stream().map(x -> "?").toList());
         jdbc.query(
-                "SELECT ad_id, creative_id FROM ad_creative WHERE status='active' AND ad_id IN (" + ph + ") " +
+                "SELECT ad_id, creative_id FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN (" + ph + ") " +
                 "ORDER BY ad_id, creative_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         byAd.computeIfAbsent(rs.getLong("ad_id"), k -> new ArrayList<>())
@@ -101,7 +101,7 @@ public class CreativeSelector {
         }
         String ph = String.join(",", adIds.stream().map(x -> "?").toList());
         jdbc.query(
-                "SELECT creative_id, title FROM ad_creative WHERE status='active' AND ad_id IN (" + ph + ")",
+                "SELECT creative_id, title FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN (" + ph + ")",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         titleById.put(rs.getLong("creative_id"), rs.getString("title")),
                 adIds.toArray());

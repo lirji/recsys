@@ -19,6 +19,31 @@
             <artifactId>recsys-common</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad-common</artifactId>
+        </dependency>
+        <!-- A6 延迟反馈 DFM ad-CVR(DfmCvrService):在线加载 model_dfm_cvr.onnx(onnxruntime)+
+             复用排序特征编码器 FeatureAssembler/SparseFeatureEncoder(recsys-rank)+ item 类目 ContentService(recsys-content)。
+             FeatureService 接口在 recsys-common 已有,impl 运行期由 rec-engine 提供。无环:rank/content 不反依赖 ad。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-rank</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+        </dependency>
+        <!-- AdPipeline(从 rec-engine 抽出的可复用广告管线)埋点用 Micrometer;
+             版本由 spring-boot-dependencies BOM 管理。宿主(rec-engine / ad-serving)均提供 MeterRegistry bean。 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>

@@ -18,6 +18,85 @@ public class AdProperties {
     private final AntiFraud antiFraud = new AntiFraud();
     private final Quality quality = new Quality();
     private final Dco dco = new Dco();
+    private final Gd gd = new Gd();
+    private final Cvr cvr = new Cvr();
+
+    public Cvr getCvr() {
+        return cvr;
+    }
+
+    /**
+     * 延迟反馈 DFM ad-CVR(A6,{@code recsys.ad.cvr.*})。默认关;开启且 {@link DfmCvrService} 就绪时,
+     * 用带删失联合训练的去偏 pCVR 覆盖复用的 MMoE 头。缺模型/未就绪 → 退回 MMoE 头(零风险)。
+     */
+    public static class Cvr {
+        private boolean enabled = false;
+        private String modelPath = "classpath:model/model_dfm_cvr.onnx";
+        private String schemaPath = "classpath:model/dfm_cvr_schema.json";
+        private String vocabPath = "classpath:model/dfm_cvr_category_vocab.json";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getModelPath() {
+            return modelPath;
+        }
+
+        public void setModelPath(String modelPath) {
+            this.modelPath = modelPath;
+        }
+
+        public String getSchemaPath() {
+            return schemaPath;
+        }
+
+        public void setSchemaPath(String schemaPath) {
+            this.schemaPath = schemaPath;
+        }
+
+        public String getVocabPath() {
+            return vocabPath;
+        }
+
+        public void setVocabPath(String vocabPath) {
+            this.vocabPath = vocabPath;
+        }
+    }
+
+    public Gd getGd() {
+        return gd;
+    }
+
+    /**
+     * 品牌广告 / GD 保量(A4,{@code recsys.ad.gd.*})。默认关;开启后落后于投放进度的合约优先出、竞价让位。
+     */
+    public static class Gd {
+        /** 是否启用 GD 保量分配。 */
+        private boolean enabled = false;
+        /** 落后容忍带:紧迫度(落后占期望比例)> tolerance 才保量,避免临界抖动。 */
+        private double tolerance = 0.02;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getTolerance() {
+            return tolerance;
+        }
+
+        public void setTolerance(double tolerance) {
+            this.tolerance = tolerance;
+        }
+    }
     /** pCTR 校准模型标识(对应离线 AdCalibrateJob 拟合的 ad:calib:{model})。默认随排序策略走。 */
     private String calibModel = "deepfm";
     /** 默认广告位数(slots)。 */

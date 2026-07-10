@@ -56,6 +56,19 @@ public class AdController {
         return service.setAdStatus(adId, status);
     }
 
+    /** 人审(A2):?decision=approve|reject[&reason=...]。approved 才进可服务集(倒排),故审核即决定投放。 */
+    @PostMapping("/api/advertiser/ad/{adId}/review")
+    public AdView review(@PathVariable long adId, @RequestParam String decision,
+                         @RequestParam(required = false) String reason) {
+        return service.reviewAd(adId, decision, reason);
+    }
+
+    /** 重新送审(A2):改动创意后重跑机审 → pending/rejected。 */
+    @PostMapping("/api/advertiser/ad/{adId}/submit-review")
+    public AdView submitReview(@PathVariable long adId) {
+        return service.submitForReview(adId);
+    }
+
     @DeleteMapping("/api/advertiser/ad/{adId}")
     public ResponseEntity<Map<String, Object>> delete(@PathVariable long adId) {
         service.deleteAd(adId);

@@ -1,6 +1,7 @@
 package com.recsys.ad;
 
 import com.recsys.common.ad.AdCandidate;
+import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.Calibrator;
 import com.recsys.common.ad.SponsoredAd;
 import org.springframework.stereotype.Service;
@@ -15,11 +16,14 @@ import java.util.Map;
  * <p><b>排序与计费分离</b>(变现正确性的核心)。排序分(Ad Rank)对齐业界 Quality Score 思路——
  * 把 query↔ad 相关性纳入排序,避免高出价但不相关的兜底广告盖过相关广告:
  * <ul>
- *   <li>有效质量 {@code effQuality = pCTR_calib × quality × relevance};</li>
- *   <li>排序:{@code eCPM(AdRank) = pacedBid × effQuality},降序,过滤 {@code eCPM < reserve};</li>
- *   <li>计费:GSP 次价——位置 i 扣费 = 让它保住该位所需的最小出价
- *       {@code price_i = eCPM_{i+1} / effQuality_i + ε},下限 reserve,上限自身出价。</li>
+ *   <li>计费因子 {@code billFactor}(每单位出价的每次曝光期望收入,<b>随计费模式变</b>,A1):
+ *       CPC/OCPC=pCTR×quality×relevance、CPM=quality×relevance、CPA/OCPM=pCTR×pCVR×quality×relevance;</li>
+ *   <li>排序:{@code eCPM(AdRank) = pacedBid × billFactor},降序,过滤 {@code eCPM < reserve};</li>
+ *   <li>计费:GSP 次价——{@code price_i = eCPM_{i+1} / billFactor_i + ε},<b>天然以自身计费单位计价</b>
+ *       (CPC 得每点击价、CPM 得每曝光价、CPA 得每转化价),下限 reserve,上限自身出价。</li>
  * </ul>
+ * <p>不同计费单位因此在同一场竞价里同尺可比;结算发生在各自计费事件(CPC/OCPC 点击、CPM/OCPM 曝光、
+ * CPA 转化),由编排层按 {@link com.recsys.common.ad.BidType} 分流(见 SearchAdsOrchestrator)。
  *
  * <p>红线:进 eCPM/计费的是 <b>校准后</b> pCTR(经 {@link Calibrator});pacing 折扣在出价上施加。
  * 本类无副作用(不扣预算、不写日志)——计费扣减与 ad_event 落库由编排层在拿到结果后执行,便于测试。
@@ -71,28 +75,28 @@ public class BiddingService {
                                      ListwiseExternality.Sim sim) {
         AdProperties.Auction cfg = props.getAuction();
 
-        // 1. 算 eCPM(AdRank = pacedBid × pCTR_calib × quality × relevance),过滤低于 reserve
+        // 1. 算 eCPM(AdRank = pacedBid × billFactor),过滤低于 reserve。
+        //    billFactor 是"每单位出价的每次曝光期望收入",按计费模式变——使 CPC/CPM/CPA 同尺可比(A1)。
         List<Scored> scored = new ArrayList<>(candidates.size());
         for (AdCandidate c : candidates) {
             double pctrRaw = pctrRawByItem.getOrDefault(c.itemId(), 0.0);
             double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
-            // oCPC:把目标 CPA 自动换算成出价(bid = targetCpa × pCVR × k);CPC 广告退手动出价
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
+            BidType type = BidType.from(ocpc.optimizationType());
             double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
-            double effBid = ocpcBidder.effectiveBid(
-                    ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), c.advertiserId(), pcvr);
+            double effBid = effectiveBid(type, ocpc, c, pcvr);
             double pacedBid = effBid * pacing.pacingFactor(c.advertiserId());
             double relevance = gate.relevance(c);
             // 精细化质量度(M7):有数据的广告用 ad-quality 算好的数据驱动分,缺失退广告自带 quality_score
             double quality = qualityScore.refined(c.adId(), c.quality());
-            double effQuality = pctrCalib * quality * relevance; // 有效质量(含相关性)
-            double ecpm = pacedBid * effQuality;
-            // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 effQuality(守红线)
+            double billFactor = billFactor(type, pctrCalib, pcvr, quality, relevance);
+            double ecpm = pacedBid * billFactor;
+            // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 billFactor(守红线)
             double rankEcpm = ecpm * explorer.boost(c.adId());
             if (rankEcpm < reserve) {
                 continue;
             }
-            scored.add(new Scored(c, effBid, pacedBid, pctrRaw, pctrCalib, quality, effQuality, ecpm, rankEcpm, relevance));
+            scored.add(new Scored(c, type, effBid, pacedBid, pctrRaw, pctrCalib, quality, billFactor, ecpm, rankEcpm, relevance));
         }
 
         // 2a. VCG 位置拍卖(docs/05 §4.6/§7 M7):激励相容,付"对其他人的外部性"。委托纯函数 VcgAuction。
@@ -115,9 +119,9 @@ public class BiddingService {
         List<SponsoredAd> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             Scored s = scored.get(i);
-            // 次位 Ad Rank:末位用 reserve 兜底
+            // 次位 Ad Rank:末位用 reserve 兜底。charged = nextRank/billFactor 天然以自身计费单位计价
             double nextRank = (i + 1 < scored.size()) ? scored.get(i + 1).rankEcpm : reserve;
-            double charged = s.effQuality <= 0 ? reserve : nextRank / s.effQuality + cfg.getPriceIncrement();
+            double charged = s.billFactor <= 0 ? reserve : nextRank / s.billFactor + cfg.getPriceIncrement();
             charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
             out.add(toAd(s, titleByAd, charged, i + 1));
         }
@@ -132,7 +136,7 @@ public class BiddingService {
         List<VcgAuction.Entry> entries = new ArrayList<>(scored.size());
         for (int i = 0; i < scored.size(); i++) {
             Scored s = scored.get(i);
-            entries.add(new VcgAuction.Entry(i, s.pacedBid, s.effQuality, s.rankEcpm, s.ecpm));
+            entries.add(new VcgAuction.Entry(i, s.pacedBid, s.billFactor, s.rankEcpm, s.ecpm));
         }
         List<VcgAuction.Placed> placed = VcgAuction.select(entries, theta, slots, reserve, priceIncrement);
         List<SponsoredAd> out = new ArrayList<>(placed.size());
@@ -150,7 +154,7 @@ public class BiddingService {
         for (int i = 0; i < scored.size(); i++) {
             Scored s = scored.get(i);
             entries.add(new ListwiseExternality.Entry(
-                    i, s.candidate.itemId(), s.pacedBid, s.effQuality, s.rankEcpm));
+                    i, s.candidate.itemId(), s.pacedBid, s.billFactor, s.rankEcpm));
         }
         List<ListwiseExternality.Placed> placed = ListwiseExternality.select(
                 entries, sim, lw.getExternalityWeight(), lw.getMinRetention(),
@@ -168,15 +172,48 @@ public class BiddingService {
                 c.adId(), c.itemId(), c.advertiserId(), c.bidwordId(),
                 titleByAd.getOrDefault(c.adId(), ""),
                 c.channel(), s.effBid, s.quality, s.relevance,   // quality = 进 eCPM 的精细化质量度(审计一致)
-                s.pctrRaw, s.pctrCalib, s.ecpm, charged, position, 0L);  // creativeId=0:默认创意,DCO 开启时编排层覆盖
+                s.pctrRaw, s.pctrCalib, s.ecpm, charged, position, 0L,  // creativeId=0:默认创意,DCO 开启时编排层覆盖
+                s.type.name());   // 计费模式:决定 charged 的计费单位 + 结算事件(A1)
+    }
+
+    /**
+     * 有效出价:OCPC 用 {@link OcpcBidder}(targetCpa×pCVR×k,per click);OCPM 取 targetCpa
+     * (billFactor 已含 pCTR×pCVR,故此处不再乘 pCVR);其余用手动出价。
+     */
+    private double effectiveBid(BidType type, AdRepository.OcpcParams ocpc, AdCandidate c, double pcvr) {
+        return switch (type) {
+            case OCPC -> ocpcBidder.effectiveBid(
+                    ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), c.advertiserId(), pcvr);
+            case OCPM -> ocpc.targetCpa() > 0 ? ocpc.targetCpa() : c.bid();
+            default -> c.bid();   // CPC / CPM / CPA:手动出价(各自的计费单位)
+        };
+    }
+
+    /**
+     * billFactor:eCPM = pacedBid × billFactor 中的因子,把不同计费单位的出价换算为每次曝光期望收入。
+     * <ul>
+     *   <li>CPC/OCPC(按点击):pCTR × quality × relevance;</li>
+     *   <li>CPM(按曝光):quality × relevance(收入不依赖点击);</li>
+     *   <li>CPA / OCPM(按转化优化):pCTR × pCVR × quality × relevance(曝光→点击→转化)。</li>
+     * </ul>
+     */
+    // package-private:供 BiddingServiceBillFactorTest 直接校验各计费模式的 eCPM 经济学(A1)
+    static double billFactor(BidType type, double pctrCalib, double pcvr,
+                             double quality, double relevance) {
+        double base = quality * relevance;
+        return switch (type) {
+            case CPC, OCPC -> pctrCalib * base;
+            case CPM -> base;
+            case CPA, OCPM -> pctrCalib * pcvr * base;
+        };
     }
 
     private static double clampProb(double p) {
         return Math.max(0.0, Math.min(1.0, p));
     }
 
-    private record Scored(AdCandidate candidate, double effBid, double pacedBid, double pctrRaw,
-                          double pctrCalib, double quality, double effQuality, double ecpm,
+    private record Scored(AdCandidate candidate, BidType type, double effBid, double pacedBid, double pctrRaw,
+                          double pctrCalib, double quality, double billFactor, double ecpm,
                           double rankEcpm, double relevance) {
     }
 }

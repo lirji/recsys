@@ -128,9 +128,13 @@ public class AdvertiserService {
         String title = req.title() == null ? "" : req.title();
         double quality = req.qualityScore() == null ? 1.0 : req.qualityScore();
         String status = normalizeAdStatus(req.status(), "active");
+        // 创意机审(A2):新建广告先过机审 → rejected(违禁)/ pending_review(待人审)。
+        // 可服务集只含 approved,故新广告默认<b>不投放</b>,须经 /review 人审通过后才进倒排。
+        CreativeReview.Decision review = CreativeReview.machineReview(title, req.landingUrl());
         // 主键由 DB IDENTITY 生成回传;落地页未提供时,用生成后的 adId 拼默认值
         long adId = repo.insertAd(advertiserId, req.itemId(), title, req.landingUrl(), quality, status,
-                optType, req.targetCpa());
+                review.status(), optType, req.targetCpa());
+        repo.setAdReview(adId, review.status(), review.reason());
         if (req.landingUrl() == null) {
             repo.setAdLandingUrl(adId, "https://example.com/ad/" + adId);
         }
@@ -146,8 +150,38 @@ public class AdvertiserService {
                 insertBidwordRow(adId, bw);
             }
         }
-        sync.reindexAd(adId); // 一次性按当前竞价词 + 可服务判定写倒排
-        log.info("新建广告 {} (advertiser={}, item={})", adId, advertiserId, req.itemId());
+        sync.reindexAd(adId); // 一次性按当前竞价词 + 可服务判定写倒排(pending/rejected → 不进倒排)
+        log.info("新建广告 {} (advertiser={}, item={}) 机审 → {}", adId, advertiserId, req.itemId(), review.status());
+        return getAd(adId);
+    }
+
+    /**
+     * 人审决定(A2):approve → approved(进倒排、可投放)、reject → rejected、其余 → pending。
+     * 变更 review_status 后 reindex —— approved 才进"可服务集"(倒排),故审核直接决定是否投放。
+     */
+    @Transactional
+    public AdView reviewAd(long adId, String decision, String reason) {
+        AdvertiserRepository.AdRow ad = repo.findAdRow(adId);
+        if (ad == null) {
+            throw notFound("广告 " + adId + " 不存在");
+        }
+        String status = CreativeReview.normalizeDecision(decision);
+        repo.setAdReview(adId, status, reason);
+        sync.reindexAd(adId); // approved → 进倒排;pending/rejected → 移出倒排
+        log.info("广告 {} 审核 → {}({})", adId, status, reason);
+        return getAd(adId);
+    }
+
+    /** 重新送审(A2):改动创意后重跑机审 → pending/rejected;approved 广告改动应先送审再复核。 */
+    @Transactional
+    public AdView submitForReview(long adId) {
+        AdvertiserRepository.AdRow ad = repo.findAdRow(adId);
+        if (ad == null) {
+            throw notFound("广告 " + adId + " 不存在");
+        }
+        CreativeReview.Decision d = CreativeReview.machineReview(ad.title(), ad.landingUrl());
+        repo.setAdReview(adId, d.status(), d.reason());
+        sync.reindexAd(adId);
         return getAd(adId);
     }
 

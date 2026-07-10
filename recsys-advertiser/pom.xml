@@ -20,6 +20,10 @@
             <artifactId>recsys-common</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad-common</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
@@ -30,6 +34,11 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- P0 微服务化:Nacos 服务发现(注册自身,供网关 lb:// 解析)。默认关。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
         <!-- 真源读写:advertiser / ad / ad_creative / bidword / ad_embedding -->
         <dependency>
@@ -60,6 +69,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- P1b 广告目录事件化:发布 ad-catalog-events(广告目录快照)。默认关(AD_CATALOG_PUBLISH=false),
+             KafkaTemplate 懒连接 —— 不开、无 Kafka 也能起。 -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <!-- A2:创意机审纯函数单测 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
