@@ -135,10 +135,17 @@ public class AdIndexSyncService {
                 .map((CreativeView c) -> new AdCatalogEvent.Creative(
                         c.creativeId(), c.title(), c.landingUrl(), c.status()))
                 .toList();
+        // #3:携带关联 item 向量(拆库后 ad-serving 消费端写自有 ad_embedding);读失败/无向量则 null。
+        String emb = null;
+        try {
+            emb = repo.itemEmbeddingText(ad.itemId());
+        } catch (Exception e) {
+            log.warn("读 item_embedding 失败 ad={} item={}: {}", ad.adId(), ad.itemId(), e.getMessage());
+        }
         catalogPublisher.publish(new AdCatalogEvent(
                 ad.adId(), servable, ad.advertiserId(), ad.itemId(), ad.title(), ad.landingUrl(),
                 ad.qualityScore(), ad.status(), ad.reviewStatus(), ad.optimizationType(), ad.targetCpa(),
-                ad.audienceId(), bws, crs, System.currentTimeMillis()));
+                ad.audienceId(), bws, crs, emb, System.currentTimeMillis()));
     }
 
     // ---------------- Redis 原子操作(吞异常降级)----------------

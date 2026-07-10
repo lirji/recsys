@@ -36,6 +36,7 @@ public class DelayModelJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(DelayModelJob.class);
 
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
     private final StringRedisTemplate redis;
 
     public DelayModelJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
@@ -50,6 +51,7 @@ public class DelayModelJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         int days = intArg(args, "days", 30);
         int minSamples = intArg(args, "min-samples", 50);
         double maxDelayDays = dblArg(args, "max-delay-days", 30.0);
@@ -60,8 +62,8 @@ public class DelayModelJob implements OfflineJob {
         Double[] agg = new Double[]{0.0, 0.0};  // [count, sumDelayDays]
         jdbc.query(
                 "SELECT EXTRACT(EPOCH FROM (cvt.ts - clk.ts)) / 86400.0 AS delay_days " +
-                "FROM ad_event cvt " +
-                "JOIN ad_event clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
+                "FROM " + aet + " cvt " +
+                "JOIN " + aet + " clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
                 "  AND clk.event_type='CLICK' " +
                 "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND " + since,
                 rs -> {

@@ -41,8 +41,10 @@ public class AdCatalogEventConsumer {
             List<AdCatalogEvent.Bidword> oldBidwords = repo.bidwordsOf(e.adId());
             if (e.servable()) {
                 repo.upsert(e);
+                repo.upsertEmbedding(e.adId(), e.embedding());   // #3:事件带向量 → 写自有 ad_embedding
             } else {
                 repo.delete(e.adId());
+                repo.deleteEmbedding(e.adId());
             }
             bidwordInv.apply(e, oldBidwords);
             log.debug("消费广告目录事件 adId={} servable={}", e.adId(), e.servable());

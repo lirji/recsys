@@ -25,6 +25,7 @@ public class AdExploreStatsJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(AdExploreStatsJob.class);
 
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
     private final StringRedisTemplate redis;
 
     public AdExploreStatsJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
@@ -39,13 +40,14 @@ public class AdExploreStatsJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         AtomicLong totalImp = new AtomicLong();
         int[] ads = {0};
         jdbc.query(
                 "SELECT ad_id, " +
                 "  SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS imp, " +
                 "  SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk " +
-                "FROM ad_event WHERE ad_id IS NOT NULL GROUP BY ad_id",
+                "FROM " + aet + " WHERE ad_id IS NOT NULL GROUP BY ad_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     long adId = rs.getLong("ad_id");
                     long imp = rs.getLong("imp");
@@ -60,14 +62,14 @@ public class AdExploreStatsJob implements OfflineJob {
         // 曝光取 IMPRESSION 上的 creative_id;点击按 (request_id, ad_id) 关联回其曝光行取 creative_id。
         Map<String, long[]> cstats = new HashMap<>();   // "adId:creativeId" → [imp, clk]
         jdbc.query(
-                "SELECT ad_id, creative_id, COUNT(*) AS imp FROM ad_event " +
+                "SELECT ad_id, creative_id, COUNT(*) AS imp FROM " + aet + " " +
                 "WHERE event_type='IMPRESSION' AND creative_id IS NOT NULL GROUP BY ad_id, creative_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                         cstats.computeIfAbsent(rs.getLong("ad_id") + ":" + rs.getLong("creative_id"),
                                 k -> new long[2])[0] = rs.getLong("imp"));
         jdbc.query(
-                "SELECT i.ad_id, i.creative_id, COUNT(*) AS clk FROM ad_event c " +
-                "JOIN ad_event i ON i.request_id = c.request_id AND i.ad_id = c.ad_id " +
+                "SELECT i.ad_id, i.creative_id, COUNT(*) AS clk FROM " + aet + " c " +
+                "JOIN " + aet + " i ON i.request_id = c.request_id AND i.ad_id = c.ad_id " +
                 "  AND i.event_type='IMPRESSION' AND i.creative_id IS NOT NULL " +
                 "WHERE c.event_type='CLICK' GROUP BY i.ad_id, i.creative_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->

@@ -44,6 +44,7 @@ public class OcpcCalibrateJob implements OfflineJob {
 
     /** 主库:ad_event(单表 ds_0)聚合。 */
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
     /** 分片库:ad(OCPC 广告 → 目标 CPA / 广告主映射)。 */
     private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
@@ -63,6 +64,7 @@ public class OcpcCalibrateJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         int days = intArg(args, "days", 7);
         double alpha = dblArg(args, "alpha", 0.5);
         double kMin = dblArg(args, "min", 0.2);
@@ -100,8 +102,8 @@ public class OcpcCalibrateJob implements OfflineJob {
         Map<Long, Double> spend = new HashMap<>();
         jdbc.query(
                 "SELECT clk.ad_id AS ad_id, SUM(imp.charged_price) AS s " +
-                "FROM ad_event clk " +
-                "JOIN ad_event imp ON imp.request_id = clk.request_id AND imp.ad_id = clk.ad_id " +
+                "FROM " + aet + " clk " +
+                "JOIN " + aet + " imp ON imp.request_id = clk.request_id AND imp.ad_id = clk.ad_id " +
                 "  AND imp.event_type='IMPRESSION' " +
                 "WHERE clk.event_type='CLICK' AND clk.ts >= " + since + " AND clk.ad_id = ANY(?) " +
                 "GROUP BY clk.ad_id",
@@ -120,8 +122,8 @@ public class OcpcCalibrateJob implements OfflineJob {
         jdbc.query(
                 "SELECT cvt.ad_id AS ad_id, " +
                 "       EXTRACT(EPOCH FROM (now() - clk.ts)) / 86400.0 AS elapsed_days " +
-                "FROM ad_event cvt " +
-                "JOIN ad_event clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
+                "FROM " + aet + " cvt " +
+                "JOIN " + aet + " clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
                 "  AND clk.event_type='CLICK' " +
                 "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since +
                 "  AND cvt.ad_id = ANY(?)",

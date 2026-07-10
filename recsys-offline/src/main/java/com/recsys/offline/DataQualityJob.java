@@ -51,11 +51,13 @@ public class DataQualityJob implements OfflineJob {
     /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
     private String bt = "user_behavior";
     private String it = "item";   // #3:item 读来源表(默认 item)
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         bt = BehaviorQuery.table(args);
         it = ItemQuery.table(args);
+        aet = AdEventQuery.table(args);
         double minCoverage = doubleArg(args, "min-embedding-coverage", 0.9);
         double maxEce = doubleArg(args, "max-ece", 0.05);
         double maxPsi = doubleArg(args, "max-psi", 0.25);
@@ -137,8 +139,8 @@ public class DataQualityJob implements OfflineJob {
                 "WITH impr AS (" +
                 "  SELECT request_id, ad_id, pctr_calib, " +
                 "         width_bucket(pctr_calib, 0, 1, 10) AS bin " +
-                "  FROM ad_event WHERE event_type='IMPRESSION' AND pctr_calib IS NOT NULL), " +
-                "clk AS (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CLICK') " +
+                "  FROM " + aet + " WHERE event_type='IMPRESSION' AND pctr_calib IS NOT NULL), " +
+                "clk AS (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') " +
                 "SELECT i.bin AS bin, count(*) AS n, avg(i.pctr_calib) AS mean_pred, " +
                 "  avg(CASE WHEN c.request_id IS NOT NULL THEN 1.0 ELSE 0.0 END) AS actual " +
                 "FROM impr i LEFT JOIN clk c ON c.request_id=i.request_id AND c.ad_id=i.ad_id " +

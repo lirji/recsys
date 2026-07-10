@@ -51,6 +51,7 @@ public class AttributionJob implements OfflineJob {
     private static final int IMPRESSION = 0, CLICK = 1, CONVERSION = 2;
 
     private final JdbcTemplate jdbc;   // 主库:ad_event 单表(ds_0),无需分片库
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
 
     public AttributionJob(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -63,6 +64,7 @@ public class AttributionJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         int days = intArg(args, "days", 30);
         String model = stringArg(args, "model", "position").toLowerCase();
         double halfLife = dblArg(args, "half-life-days", 3.0);
@@ -78,7 +80,7 @@ public class AttributionJob implements OfflineJob {
 
         // 按 user_id, ts 升序流式载入窗口内事件(教学规模,内存聚路径)。ep=epoch 秒,便于算 age。
         Map<Long, List<double[]>> byUser = new HashMap<>();  // user → [ep, adId, typeCode] 列表(已按 ts 升序)
-        jdbc.query("SELECT user_id, ad_id, event_type, EXTRACT(EPOCH FROM ts) AS ep FROM ad_event " +
+        jdbc.query("SELECT user_id, ad_id, event_type, EXTRACT(EPOCH FROM ts) AS ep FROM " + aet + " " +
                         "WHERE event_type IN ('IMPRESSION','CLICK','CONVERSION') AND " + since +
                         " ORDER BY user_id, ep",
                 (RowCallbackHandler) rs -> {

@@ -28,6 +28,7 @@ public class AdCalibrateJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(AdCalibrateJob.class);
 
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
     private final StringRedisTemplate redis;
 
     public AdCalibrateJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
@@ -42,14 +43,15 @@ public class AdCalibrateJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         String model = strArg(args, "model", "deepfm");
         int bins = intArg(args, "bins", 20);
 
         List<double[]> rows = new ArrayList<>(); // [pctr, clicked]
         jdbc.query(
                 "SELECT i.pctr, CASE WHEN c.ad_id IS NOT NULL THEN 1.0 ELSE 0.0 END AS clicked " +
-                "FROM ad_event i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CLICK') c " +
+                "FROM " + aet + " i " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') c " +
                 "  ON c.request_id = i.request_id AND c.ad_id = i.ad_id " +
                 "WHERE i.event_type = 'IMPRESSION' AND i.pctr IS NOT NULL " +
                 "ORDER BY i.pctr",

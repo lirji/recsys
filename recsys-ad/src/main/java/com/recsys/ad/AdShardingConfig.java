@@ -67,4 +67,36 @@ public class AdShardingConfig {
     public JdbcTemplate adShardingJdbc(@Qualifier("adShardingDataSource") DataSource ds) {
         return new JdbcTemplate(ds);
     }
+
+    /**
+     * #3 ad-serving 物理拆库:{@code ad_event}/{@code ad_embedding}/{@code ad_servable}(ad-serving 自有,非分片)
+     * 专用数据源。{@code AD_PG_DB} 未设 → 退回 {@code PG_DB} → {@code recsys}(默认与主库同库,行为完全不变);
+     * 设 {@code AD_PG_DB=recsys_ad} 即把这三张表读写指向 ad-serving 自有库(DB-per-service)。
+     *
+     * <p>注:主 {@code @Primary} 仍留 {@code item}/{@code item_embedding}/{@code user_embedding} 等<b>共享读</b>
+     * (AdRepository 读 user_embedding、rank ContentService 读 item、AdEmbeddingSimilarity 读 item_embedding),
+     * 故不能整体搬主库——只把三张 ad 自有表切到本数据源。含 ad_embedding ANN 所需的 {@code hnsw.ef_search}。
+     */
+    @Bean(name = "adDbDataSource")
+    public DataSource adDbDataSource() {
+        String db = env("AD_PG_DB", env("PG_DB", "recsys"));
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl("jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db);
+        ds.setUsername(env("PG_USER", "recsys"));
+        ds.setPassword(env("PG_PASSWORD", "recsys"));
+        ds.setDriverClassName("org.postgresql.Driver");
+        ds.setConnectionInitSql("SET hnsw.ef_search = 200");   // ad_embedding pgvector ANN 检索宽度
+        ds.setMaximumPoolSize(Integer.parseInt(env("AD_DB_POOL_MAX", "10")));
+        return ds;
+    }
+
+    @Bean(name = "adDbJdbc")
+    public JdbcTemplate adDbJdbc(@Qualifier("adDbDataSource") DataSource ds) {
+        return new JdbcTemplate(ds);
+    }
+
+    private static String env(String k, String def) {
+        String v = System.getenv(k);
+        return v == null || v.isBlank() ? def : v;
+    }
 }

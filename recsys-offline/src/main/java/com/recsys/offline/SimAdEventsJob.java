@@ -43,12 +43,12 @@ public class SimAdEventsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SimAdEventsJob.class);
 
-    /** 主库:ad_event 写(单表 ds_0)。 */
+    /** #3:ad_event 写走 adDbJdbc —— ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)。 */
     private final JdbcTemplate jdbc;
     /** 分片库:ad / ad_creative 读(ds_0/ds_1)。 */
     private final JdbcTemplate sharded;
 
-    public SimAdEventsJob(JdbcTemplate jdbc,
+    public SimAdEventsJob(@org.springframework.beans.factory.annotation.Qualifier("adDbJdbc") JdbcTemplate jdbc,
                           @org.springframework.beans.factory.annotation.Qualifier("adShardingJdbc")
                           JdbcTemplate sharded) {
         this.jdbc = jdbc;

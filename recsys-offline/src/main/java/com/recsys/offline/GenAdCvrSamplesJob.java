@@ -51,6 +51,7 @@ public class GenAdCvrSamplesJob implements OfflineJob {
     private static final String OUT = "train/ad_cvr_samples.csv";
 
     private final JdbcTemplate jdbc;       // 主库:ad_event(单表 ds_0)
+    private String aet = "ad_event";       // #3:ad_event 读来源表(默认 ad_event)
     private final JdbcTemplate sharded;    // 分片库:ad(ds_0/ds_1)→ item_id
     private final FeatureService featureService;
     private final ContentService contentService;
@@ -71,6 +72,7 @@ public class GenAdCvrSamplesJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        aet = AdEventQuery.table(args);
         int days = intArg(args, "days", 30);
         long seed = intArg(args, "seed", 42);
         String sinceClick = days > 0 ? "ts >= now() - interval '" + days + " days'" : "TRUE";
@@ -82,7 +84,7 @@ public class GenAdCvrSamplesJob implements OfflineJob {
 
         // 2. 已到达转化(ts<=now 右删失;不下界——转化晚于点击,匹配任一在窗点击):key=request_id:ad_id → 最早 conv epoch
         Map<String, Double> convEp = new HashMap<>();
-        jdbc.query("SELECT request_id, ad_id, EXTRACT(EPOCH FROM ts) AS conv_ep FROM ad_event " +
+        jdbc.query("SELECT request_id, ad_id, EXTRACT(EPOCH FROM ts) AS conv_ep FROM " + aet + " " +
                         "WHERE event_type='CONVERSION' AND ts <= now()",
                 (RowCallbackHandler) rs -> convEp.merge(
                         rs.getString("request_id") + ":" + rs.getLong("ad_id"), rs.getDouble("conv_ep"), Math::min));
@@ -90,7 +92,7 @@ public class GenAdCvrSamplesJob implements OfflineJob {
         // 3. 点击(窗口内)+ click epoch + elapsed
         List<Object[]> clicks = new ArrayList<>();   // [request_id, user_id, ad_id, click_ep, elapsed_days]
         jdbc.query("SELECT request_id, user_id, ad_id, EXTRACT(EPOCH FROM ts) AS click_ep, " +
-                        "EXTRACT(EPOCH FROM (now()-ts))/86400.0 AS elapsed_days FROM ad_event " +
+                        "EXTRACT(EPOCH FROM (now()-ts))/86400.0 AS elapsed_days FROM " + aet + " " +
                         "WHERE event_type='CLICK' AND " + sinceClick,
                 (RowCallbackHandler) rs -> clicks.add(new Object[]{
                         rs.getString("request_id"), rs.getLong("user_id"), rs.getLong("ad_id"),

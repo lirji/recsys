@@ -30,9 +30,11 @@ import java.util.Map;
 public class AdvertiserRepository {
 
     private final JdbcTemplate jdbc;
+    private final AdReportReader reportReader;   // #3:ad_event 聚合来源(db 直读 / grpc 调 ad-serving)
 
-    public AdvertiserRepository(JdbcTemplate jdbc) {
+    public AdvertiserRepository(JdbcTemplate jdbc, AdReportReader reportReader) {
         this.jdbc = jdbc;
+        this.reportReader = reportReader;
     }
 
     // ---------------- advertiser ----------------
@@ -290,6 +292,13 @@ public class AdvertiserRepository {
         jdbc.update("DELETE FROM ad_embedding WHERE ad_id=?", adId);
     }
 
+    /** #3:读 item 向量(pgvector ::text 形式),供广告目录事件携带(拆库后 ad-serving 消费端写自有 ad_embedding)。null=无向量。 */
+    public String itemEmbeddingText(long itemId) {
+        List<String> rows = jdbc.query("SELECT embedding::text FROM item_embedding WHERE item_id=?",
+                (rs, n) -> rs.getString(1), itemId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     // ---------------- 报表(ad_event 聚合)----------------
 
     /**
@@ -308,30 +317,15 @@ public class AdvertiserRepository {
         if (ads.isEmpty()) {
             return List.of();
         }
-        // ② ad_event 单表聚合(ad_id ∈ 该广告主的广告)
-        Long[] ids = ads.keySet().toArray(new Long[0]);
-        Map<Long, long[]> counts = new java.util.HashMap<>();  // adId -> [impr, clk, conv]
-        Map<Long, Double> spends = new java.util.HashMap<>();   // adId -> 已计费点击花费
-        jdbc.query(
-                "SELECT ad_id, " +
-                "  SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS impr, " +
-                "  SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk, " +
-                "  SUM(CASE WHEN event_type='CONVERSION' THEN 1 ELSE 0 END) AS conv, " +
-                "  COALESCE(SUM(CASE WHEN event_type='CLICK' THEN charged_price ELSE 0 END),0) AS spend " +
-                "FROM ad_event WHERE ad_id = ANY(?) GROUP BY ad_id",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                rs -> {
-                    counts.put(rs.getLong("ad_id"),
-                            new long[]{rs.getLong("impr"), rs.getLong("clk"), rs.getLong("conv")});
-                    spends.put(rs.getLong("ad_id"), rs.getDouble("spend"));
-                });
+        // ② ad_event 聚合经 seam(db 直读 / grpc 调 ad-serving);#3 拆库后 advertiser 不再直读 ad_event
+        Map<Long, AdReportReader.Stats> stats = reportReader.statsByAds(ads.keySet());
         // ③ 装配(无事件广告补 0)
         List<AdReportRow> out = new ArrayList<>(ads.size());
         for (Map.Entry<Long, String> e : ads.entrySet()) {
             long adId = e.getKey();
-            long[] c = counts.getOrDefault(adId, new long[]{0, 0, 0});
-            long impr = c[0], clk = c[1], conv = c[2];
-            double spend = spends.getOrDefault(adId, 0.0);
+            AdReportReader.Stats s = stats.getOrDefault(adId, new AdReportReader.Stats(0, 0, 0, 0));
+            long impr = s.impressions(), clk = s.clicks(), conv = s.conversions();
+            double spend = s.spend();
             double ctr = impr > 0 ? (double) clk / impr : 0;
             double cvr = clk > 0 ? (double) conv / clk : 0;
             double ecpm = impr > 0 ? spend / impr * 1000 : 0;

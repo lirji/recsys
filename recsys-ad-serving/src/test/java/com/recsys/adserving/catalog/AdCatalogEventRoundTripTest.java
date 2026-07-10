@@ -26,6 +26,7 @@ class AdCatalogEventRoundTripTest {
                 List.of(new AdCatalogEvent.Bidword(1L, "action", "EXACT", 1.5),
                         new AdCatalogEvent.Bidword(2L, "movie", "BROAD", 0.8)),
                 List.of(new AdCatalogEvent.Creative(9L, "Alt title", "http://x/lp2", "approved")),
+                "[0.1,0.2,0.3]",
                 1_700_000_000_000L);
 
         AdCatalogEvent back = mapper.readValue(mapper.writeValueAsString(e), AdCatalogEvent.class);
@@ -34,6 +35,7 @@ class AdCatalogEventRoundTripTest {
         assertEquals(2, back.bidwords().size());
         assertEquals("action", back.bidwords().get(0).keyword());
         assertEquals(1, back.creatives().size());
+        assertEquals("[0.1,0.2,0.3]", back.embedding());   // #3:事件携带的向量往返无损
         assertTrue(back.servable());
     }
 

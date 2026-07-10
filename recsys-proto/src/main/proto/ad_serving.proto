@@ -17,6 +17,9 @@ service AdServingService {
   rpc RecordClick (ClickRequest) returns (Ack);
   // 转化回传(CPA 计费 + 延迟转化建模)。
   rpc RecordConversion (ConversionRequest) returns (Ack);
+  // #3 ad-serving 物理拆库:advertiser 报表经此取 ad-serving 自有 ad_event 的按广告聚合(曝光/点击/转化/花费),
+  // 不再跨库直读 ad_event。advertiser 传自有 ad 表的 ad_id 列表,supplier 侧只碰 ad_event。
+  rpc GetAdEventStats (AdEventStatsRequest) returns (AdEventStatsReply);
   // 预留(频控所有权迁入 ad-serving 时启用):GetFeedAds(返回已频控过滤)/ RecordShownAds(回记频次)。
 }
 
@@ -51,6 +54,23 @@ message ConversionRequest {
 
 message Ack {
   bool ok = 1;
+}
+
+// —— #3 广告主报表:按 ad_id 取 ad_event 聚合 —— //
+message AdEventStatsRequest {
+  repeated int64 ad_id = 1;      // advertiser 自有 ad 表里该广告主的广告
+}
+
+message AdEventStatsReply {
+  repeated AdEventStat stats = 1;
+}
+
+message AdEventStat {
+  int64 ad_id = 1;
+  int64 impressions = 2;
+  int64 clicks = 3;
+  int64 conversions = 4;
+  double spend = 5;              // 已计费点击花费(charged_price 之和)
 }
 
 // —— 映射 com.recsys.common.ad.SponsoredAd(16 字段一一对应)——

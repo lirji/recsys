@@ -1,11 +1,15 @@
 package com.recsys.adserving.grpc;
 
 import com.recsys.ad.AdPipeline;
+import com.recsys.adserving.report.AdReportStatsRepository;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.ad.SponsoredAd;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.proto.AdProtoMapper;
 import com.recsys.proto.ad.v1.Ack;
+import com.recsys.proto.ad.v1.AdEventStat;
+import com.recsys.proto.ad.v1.AdEventStatsReply;
+import com.recsys.proto.ad.v1.AdEventStatsRequest;
 import com.recsys.proto.ad.v1.AdServingServiceGrpc;
 import com.recsys.proto.ad.v1.AdsReply;
 import com.recsys.proto.ad.v1.ClickRequest;
@@ -29,9 +33,11 @@ public class AdServingGrpcService extends AdServingServiceGrpc.AdServingServiceI
     private static final Logger log = LoggerFactory.getLogger(AdServingGrpcService.class);
 
     private final AdPipeline pipeline;
+    private final AdReportStatsRepository statsRepo;
 
-    public AdServingGrpcService(AdPipeline pipeline) {
+    public AdServingGrpcService(AdPipeline pipeline, AdReportStatsRepository statsRepo) {
         this.pipeline = pipeline;
+        this.statsRepo = statsRepo;
     }
 
     @Override
@@ -61,6 +67,19 @@ public class AdServingGrpcService extends AdServingServiceGrpc.AdServingServiceI
     public void recordConversion(ConversionRequest req, StreamObserver<Ack> obs) {
         pipeline.recordConversion(req.getRequestId(), req.getAdId(), req.getUserId());
         obs.onNext(Ack.newBuilder().setOk(true).build());
+        obs.onCompleted();
+    }
+
+    /** #3:advertiser 报表取自有 ad_event 聚合(不再跨库直读)。 */
+    @Override
+    public void getAdEventStats(AdEventStatsRequest req, StreamObserver<AdEventStatsReply> obs) {
+        AdEventStatsReply.Builder rb = AdEventStatsReply.newBuilder();
+        for (AdReportStatsRepository.Stat s : statsRepo.statsByAds(req.getAdIdList())) {
+            rb.addStats(AdEventStat.newBuilder()
+                    .setAdId(s.adId()).setImpressions(s.impressions()).setClicks(s.clicks())
+                    .setConversions(s.conversions()).setSpend(s.spend()).build());
+        }
+        obs.onNext(rb.build());
         obs.onCompleted();
     }
 

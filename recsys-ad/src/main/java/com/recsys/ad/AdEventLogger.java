@@ -45,8 +45,9 @@ public class AdEventLogger {
         return t;
     });
 
-    public AdEventLogger(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+    public AdEventLogger(@Qualifier("adDbJdbc") JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
                          StringRedisTemplate redis) {
+        // #3:ad_event 读写走 adDbJdbc(默认 recsys,AD_PG_DB 设则 ad-serving 自有库);ad 表仍走 sharded。
         this.jdbc = jdbc;
         this.sharded = sharded;
         this.redis = redis;

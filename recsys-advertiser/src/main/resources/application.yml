@@ -29,11 +29,21 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
+# #3 ad-serving 拆库:仅 recsys.ad.report.source=grpc 时 GrpcAdReportReader 建通道调 ad-serving。
+grpc:
+  client:
+    ad-serving:
+      address: ${AD_SERVING_GRPC:static://localhost:9095}
+      negotiation-type: plaintext
+
 recsys:
   ad:
     catalog:
       # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。
       publish-events: ${AD_CATALOG_PUBLISH:false}
+    # #3 ad-serving 物理拆库:报表 ad_event 聚合来源。db(默认,直读 ad_event,回滚落点)| grpc(调 ad-serving GetAdEventStats)。
+    report:
+      source: ${AD_REPORT_SOURCE:db}
 
 management:
   endpoints:

@@ -26,6 +26,8 @@ import java.util.List;
  * @param audienceId       定向人群包 id(A3,可空=不定向)
  * @param bidwords         竞价词(供倒排重建 / 关键词召回)
  * @param creatives        创意(供 DCO)
+ * @param embedding        关联 item 的向量(pgvector ::text 形式,如 "[0.1,...]";可空)。#3 ad-serving 物理拆库后,
+ *                         ad_embedding 与 item_embedding 不再同库,故由本事件携带、ad-serving 消费端写自有 ad_embedding。
  * @param ts               事件时间(epoch millis,仅审计;排序由 Kafka 分区有序保证)
  */
 public record AdCatalogEvent(long adId,
@@ -42,6 +44,7 @@ public record AdCatalogEvent(long adId,
                              Long audienceId,
                              List<Bidword> bidwords,
                              List<Creative> creatives,
+                             String embedding,
                              long ts) {
 
     /** Kafka 主题:广告目录事件。 */
@@ -55,7 +58,7 @@ public record AdCatalogEvent(long adId,
     /** 墓碑事件:广告不可服务(删除/下线/未过审),消费端据此从可服务副本移除。 */
     public static AdCatalogEvent tombstone(long adId, long ts) {
         return new AdCatalogEvent(adId, false, 0, 0, null, null, 0,
-                null, null, null, null, null, List.of(), List.of(), ts);
+                null, null, null, null, null, List.of(), List.of(), null, ts);
     }
 
     public record Bidword(long id, String keyword, String matchType, double bid) {

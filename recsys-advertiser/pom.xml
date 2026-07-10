@@ -23,6 +23,15 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-ad-common</artifactId>
         </dependency>
+        <!-- #3 ad-serving 拆库:report 经 gRPC 调 ad-serving 取 ad_event 聚合(recsys.ad.report.source=grpc)。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-proto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

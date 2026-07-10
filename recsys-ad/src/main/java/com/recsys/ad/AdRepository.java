@@ -33,16 +33,19 @@ public class AdRepository {
 
     private static final Logger log = LoggerFactory.getLogger(AdRepository.class);
 
-    /** 主数据源:普通 Postgres(ad_embedding ANN / user_embedding 等 pgvector,行为不变)。 */
+    /** 主数据源:普通 Postgres —— 仅 user_embedding(共享读,留主库)pgvector。 */
     private final JdbcTemplate jdbc;
+    /** #3:ad_embedding(ad-serving 自有)专用源 —— 默认 recsys,AD_PG_DB 设则拆库。 */
+    private final JdbcTemplate adDb;
     /** 次数据源:ShardingSphere —— 仅 kwByDb 的 bidword 关键词扫描仍用。 */
     private final JdbcTemplate sharded;
     /** 目录读(标题/oCPC/详情/出价/定向):sharded 或 replica。 */
     private final AdCatalogReader catalog;
 
-    public AdRepository(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
-                        AdCatalogReader catalog) {
+    public AdRepository(JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
+                        @Qualifier("adShardingJdbc") JdbcTemplate sharded, AdCatalogReader catalog) {
         this.jdbc = jdbc;
+        this.adDb = adDb;
         this.sharded = sharded;
         this.catalog = catalog;
     }
@@ -114,7 +117,7 @@ public class AdRepository {
         try {
             PGvector pv = new PGvector(vec);
             LinkedHashMap<Long, Double> sims = new LinkedHashMap<>(); // adId → sim(保序)
-            jdbc.query(
+            adDb.query(
                     "SELECT ad_id, 1 - (embedding <=> ?) AS sim FROM ad_embedding " +
                     "ORDER BY embedding <=> ? LIMIT ?",
                     ps -> {

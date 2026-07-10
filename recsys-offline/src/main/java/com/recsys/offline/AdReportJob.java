@@ -36,6 +36,7 @@ public class AdReportJob implements OfflineJob {
     private static final String OUT_DIR = "eval";
 
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
 
     public AdReportJob(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -48,6 +49,7 @@ public class AdReportJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        aet = AdEventQuery.table(args);
         String since = stringArg(args, "since", null);
         String timeFilter = since != null ? " AND i.ts >= ?::timestamp" : "";
 
@@ -59,10 +61,10 @@ public class AdReportJob implements OfflineJob {
                 "  COUNT(cvt.ad_id) AS conversions, " +
                 "  SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END) AS revenue, " +
                 "  AVG(i.relevance) AS avg_relevance " +
-                "FROM ad_event i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CLICK') clk " +
+                "FROM " + aet + " i " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') clk " +
                 "  ON clk.request_id = i.request_id AND clk.ad_id = i.ad_id " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CONVERSION') cvt " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CONVERSION') cvt " +
                 "  ON cvt.request_id = i.request_id AND cvt.ad_id = i.ad_id " +
                 "WHERE i.event_type = 'IMPRESSION'" + timeFilter +
                 " GROUP BY i.position ORDER BY i.position";
@@ -133,10 +135,10 @@ public class AdReportJob implements OfflineJob {
                 "SELECT COALESCE(i.ad_bucket,'(none)') AS bucket, " +
                 "  COUNT(*) AS impressions, COUNT(clk.ad_id) AS clicks, COUNT(cvt.ad_id) AS conversions, " +
                 "  SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END) AS revenue " +
-                "FROM ad_event i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CLICK') clk " +
+                "FROM " + aet + " i " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') clk " +
                 "  ON clk.request_id = i.request_id AND clk.ad_id = i.ad_id " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM ad_event WHERE event_type='CONVERSION') cvt " +
+                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CONVERSION') cvt " +
                 "  ON cvt.request_id = i.request_id AND cvt.ad_id = i.ad_id " +
                 "WHERE i.event_type = 'IMPRESSION'" + timeFilter +
                 " GROUP BY COALESCE(i.ad_bucket,'(none)') ORDER BY bucket";
@@ -176,7 +178,7 @@ public class AdReportJob implements OfflineJob {
     private long countInvalidClicks(String timeFilter, Object[] params) {
         try {
             Long n = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM ad_event i WHERE i.event_type='INVALID_CLICK'" + timeFilter,
+                    "SELECT COUNT(*) FROM " + aet + " i WHERE i.event_type='INVALID_CLICK'" + timeFilter,
                     Long.class, params);
             return n == null ? 0 : n;
         } catch (Exception e) {

@@ -36,15 +36,19 @@ public class SeedAdsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SeedAdsJob.class);
 
-    /** 主库:item/item_embedding 读、ad_embedding/ad_event 写(单表 ds_0)。 */
+    /** 主库:item/item_embedding 读(共享,留主库)。 */
     private final JdbcTemplate jdbc;
+    /** #3:ad_event/ad_embedding 写走 adDbJdbc —— ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)。 */
+    private final JdbcTemplate adDb;
     /** 分片库:advertiser/ad/bidword/ad_creative 写(按分片键落 ds_0/ds_1)。 */
     private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
 
-    public SeedAdsJob(JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+    public SeedAdsJob(JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
+                      @Qualifier("adShardingJdbc") JdbcTemplate sharded,
                       StringRedisTemplate redis) {
         this.jdbc = jdbc;
+        this.adDb = adDb;
         this.sharded = sharded;
         this.redis = redis;
     }
@@ -141,13 +145,19 @@ public class SeedAdsJob implements OfflineJob {
 
         // 4. ad_embedding(主库单表 ds_0):按已知 (adId,itemId) 从 item_embedding 拷贝。
         //    不能再 JOIN 分片的 ad(跨数据源),用逐条 INSERT ... SELECT(ad_embedding 与 item_embedding 同在主库)。
+        // #3 拆库:ad_embedding 与 item_embedding 可能不同库(AD_PG_DB),故从主库读向量(text 传输)→ 写 adDb。
         int embRows = 0;
         for (long[] ai : adItem) {
-            embRows += jdbc.update(
-                    "INSERT INTO ad_embedding(ad_id, embedding, model) " +
-                    "SELECT ?, e.embedding, e.model FROM item_embedding e WHERE e.item_id = ? " +
+            List<String[]> vecs = jdbc.query(
+                    "SELECT embedding::text AS v, model FROM item_embedding WHERE item_id = ?",
+                    (rs, n) -> new String[]{rs.getString("v"), rs.getString("model")}, ai[1]);
+            if (vecs.isEmpty() || vecs.get(0)[0] == null) {
+                continue;
+            }
+            embRows += adDb.update(
+                    "INSERT INTO ad_embedding(ad_id, embedding, model) VALUES(?, CAST(? AS vector), ?) " +
                     "ON CONFLICT (ad_id) DO NOTHING",
-                    ai[0], ai[1]);
+                    ai[0], vecs.get(0)[0], vecs.get(0)[1]);
         }
 
         log.info("seed-ads 完成:广告主 {} / 广告 {} / 创意 {}(每广告 {} 套,DCO 用)/ 竞价词 {} / ad_embedding {} 条;"
@@ -190,8 +200,8 @@ public class SeedAdsJob implements OfflineJob {
     }
 
     private void clear() {
-        // 主库单表:ad_event / ad_embedding
-        jdbc.execute("TRUNCATE ad_event, ad_embedding");
+        // #3:ad_event / ad_embedding 走 ad-serving 自有库(adDb)
+        adDb.execute("TRUNCATE ad_event, ad_embedding");
         // 分片库:advertiser/ad/bidword/ad_creative(ShardingSphere 把 TRUNCATE 下发到各分片;逐表避免依赖多表语法)
         for (String t : new String[]{"bidword", "ad_creative", "ad", "advertiser"}) {
             try {

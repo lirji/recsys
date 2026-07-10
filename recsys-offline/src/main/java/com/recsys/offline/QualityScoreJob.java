@@ -51,6 +51,7 @@ public class QualityScoreJob implements OfflineJob {
     private static final String OUT_DIR = "eval";
 
     private final JdbcTemplate jdbc;
+    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
     private final StringRedisTemplate redis;
 
     public QualityScoreJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
@@ -65,6 +66,7 @@ public class QualityScoreJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        aet = AdEventQuery.table(args);
         int days = intArg(args, "days", 30);
         int minImpr = intArg(args, "min-impr", 20);
         double wRel = dblArg(args, "w-rel", 0.3);
@@ -85,14 +87,14 @@ public class QualityScoreJob implements OfflineJob {
         // 每广告聚合:曝光数 + 相关性和、点击数、转化数(点击/转化按 request 去重)
         Map<Long, double[]> agg = new HashMap<>();   // adId → [impr, relSum, clicks, conv]
         jdbc.query("SELECT ad_id, COUNT(*) AS impr, SUM(COALESCE(relevance,0)) AS relsum " +
-                        "FROM ad_event WHERE event_type='IMPRESSION' AND " + since + " GROUP BY ad_id",
+                        "FROM " + aet + " WHERE event_type='IMPRESSION' AND " + since + " GROUP BY ad_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     double[] a = agg.computeIfAbsent(rs.getLong("ad_id"), k -> new double[4]);
                     a[0] = rs.getDouble("impr");
                     a[1] = rs.getDouble("relsum");
                 });
         jdbc.query("SELECT ad_id, COUNT(DISTINCT request_id) AS c " +
-                        "FROM ad_event WHERE event_type='CLICK' AND " + since + " GROUP BY ad_id",
+                        "FROM " + aet + " WHERE event_type='CLICK' AND " + since + " GROUP BY ad_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     double[] a = agg.get(rs.getLong("ad_id"));
                     if (a != null) {
@@ -100,7 +102,7 @@ public class QualityScoreJob implements OfflineJob {
                     }
                 });
         jdbc.query("SELECT ad_id, COUNT(DISTINCT request_id) AS c " +
-                        "FROM ad_event WHERE event_type='CONVERSION' AND " + since + " GROUP BY ad_id",
+                        "FROM " + aet + " WHERE event_type='CONVERSION' AND " + since + " GROUP BY ad_id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     double[] a = agg.get(rs.getLong("ad_id"));
                     if (a != null) {

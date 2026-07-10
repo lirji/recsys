@@ -8,6 +8,7 @@ import com.recsys.common.ad.AdCatalogEvent;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -30,10 +31,10 @@ public class AdServableRepository {
 
     private static final Logger log = LoggerFactory.getLogger(AdServableRepository.class);
 
-    private final JdbcTemplate jdbc;   // @Primary(AdShardingConfig):普通 PG 直连,非分片
+    private final JdbcTemplate jdbc;   // #3:adDbJdbc —— ad_servable 走 ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public AdServableRepository(JdbcTemplate jdbc) {
+    public AdServableRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
@@ -52,8 +53,36 @@ public class AdServableRepository {
             // 兼容旧表(schema 演进):CREATE TABLE IF NOT EXISTS 不给已存在的表加列,故显式补 P1b 收尾新增的列。
             jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS audience_id BIGINT");
             jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS max_bid DOUBLE PRECISION DEFAULT 0");
+            // #3 拆库:ad_embedding 也归 ad-serving 自有库(adDbJdbc),由目录事件带向量灌;防御性自建。
+            jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
+            jdbc.execute("CREATE TABLE IF NOT EXISTS ad_embedding "
+                    + "(ad_id BIGINT PRIMARY KEY, embedding vector(768), model TEXT)");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ad_embedding_hnsw ON ad_embedding "
+                    + "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200)");
         } catch (Exception e) {
-            log.warn("建 ad_servable 表失败(稍后消费/读会再暴露): {}", e.getMessage());
+            log.warn("建 ad_servable/ad_embedding 表失败(稍后消费/读会再暴露): {}", e.getMessage());
+        }
+    }
+
+    /** #3:从目录事件携带的向量(pgvector ::text)幂等 upsert ad_embedding(拆库后 ad_embedding 归 ad-serving 自有库)。 */
+    public void upsertEmbedding(long adId, String vecText) {
+        if (vecText == null || vecText.isBlank()) {
+            return;
+        }
+        try {
+            jdbc.update("INSERT INTO ad_embedding(ad_id, embedding, model) VALUES(?, CAST(? AS vector), 'catalog-event') "
+                    + "ON CONFLICT (ad_id) DO UPDATE SET embedding=EXCLUDED.embedding, model=EXCLUDED.model",
+                    adId, vecText);
+        } catch (Exception e) {
+            log.warn("upsert ad_embedding 失败 adId={}: {}", adId, e.getMessage());
+        }
+    }
+
+    public void deleteEmbedding(long adId) {
+        try {
+            jdbc.update("DELETE FROM ad_embedding WHERE ad_id=?", adId);
+        } catch (Exception e) {
+            log.debug("delete ad_embedding 失败 adId={}: {}", adId, e.getMessage());
         }
     }
 
