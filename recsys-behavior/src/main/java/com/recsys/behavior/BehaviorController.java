@@ -1,9 +1,12 @@
 package com.recsys.behavior;
 
 import com.recsys.common.dto.BehaviorEvent;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +21,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/behavior")
+@Validated   // 使方法参数级约束(批量大小上限、元素 @Valid)生效
 public class BehaviorController {
 
     private static final Logger log = LoggerFactory.getLogger(BehaviorController.class);
@@ -30,14 +34,15 @@ public class BehaviorController {
 
     /** 单条上报。 */
     @PostMapping
-    public ResponseEntity<Map<String, Object>> report(@RequestBody BehaviorEvent event) {
+    public ResponseEntity<Map<String, Object>> report(@Valid @RequestBody BehaviorEvent event) {
         service.record(event);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
-    /** 批量上报(前端可攒批降低请求数)。 */
+    /** 批量上报(前端可攒批降低请求数)。上限 1000 条,防止无界请求体拖垮服务。 */
     @PostMapping("/batch")
-    public ResponseEntity<Map<String, Object>> reportBatch(@RequestBody List<BehaviorEvent> events) {
+    public ResponseEntity<Map<String, Object>> reportBatch(
+            @RequestBody @Size(max = 1000, message = "单次批量上报最多 1000 条") List<@Valid BehaviorEvent> events) {
         if (events != null) {
             for (BehaviorEvent e : events) {
                 service.record(e);

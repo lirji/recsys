@@ -1,14 +1,19 @@
-import { useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Input, InputNumber, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { App, Alert, Button, Card, Input, InputNumber, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { getSearchAds, postAdClick, postAdConversion } from '../../api/ads';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import type { SponsoredAd } from '../../api/types';
 import { channelColor } from '../../components/explain/channelColors';
-import PipelineSteps from '../../components/explain/PipelineSteps';
+import FunnelBand from '../../components/funnel/FunnelBand';
+import { deriveAdStages } from '../../components/funnel/derive';
+import { BRAND, STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
+
+// 竞价链路图含 echarts —— 本页是急加载路由,故懒加载,保 echarts 不进首屏包。
+const AdBiddingChart = lazy(() => import('../../components/charts/AdBiddingChart'));
 
 const fmt = (n: number, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : '—');
 
@@ -26,6 +31,8 @@ export default function SearchAdsConsole() {
 
   const requestId = query.data?.requestId ?? '';
   const ads = query.data?.ads ?? [];
+  const stages = useMemo(() => deriveAdStages(ads), [ads]);
+  const flowing = !!query.data && !query.isFetching;
 
   const run = () => {
     if (!q.trim()) {
@@ -111,7 +118,7 @@ export default function SearchAdsConsole() {
       dataIndex: 'chargedPrice',
       width: 110,
       render: (v: number, r) => (
-        <Typography.Text strong style={{ color: '#2d6cdf' }} className="mono">
+        <Typography.Text strong style={{ color: BRAND }} className="mono">
           {fmt(v)}
           {r.chargedPrice < r.ecpm ? (
             <Tooltip title="次价 < eCPM,广告主省下价差">
@@ -156,9 +163,20 @@ export default function SearchAdsConsole() {
         </Space>
       </Card>
 
-      <Card size="small" title="竞价 / 计费流水线">
-        <PipelineSteps mode="ads" />
-      </Card>
+      <FunnelBand
+        dense
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
+
+      {ads.length > 0 ? (
+        <Card size="small" title="竞价链路 · bid → eCPM → 实收(GSP)">
+          <Suspense fallback={<Spin />}>
+            <AdBiddingChart ads={ads} />
+          </Suspense>
+        </Card>
+      ) : null}
 
       <Card
         title={`赞助广告 (${ads.length})`}

@@ -12,8 +12,8 @@ route:
 
 receivers:
   - name: default
-    # 教学环境默认不外发(只在 Alertmanager UI :9093 可见)。生产改成例如:
-    # slack_configs:
-    #   - api_url: <webhook>
-    #     channel: '#recsys-alerts'
-    # 或 webhook_configs: [{ url: 'http://your-notifier/hook' }]
+    # P2:投递到本地 webhook-logger(obs profile 一并起),把告警打到其日志——演示生产 Slack/钉钉/飞书 的等价投递面。
+    # 生产改成 slack_configs / 企业 webhook 即可,路由/分组/抑制策略不变。
+    webhook_configs:
+      - url: 'http://webhook-logger:5001/'
+        send_resolved: true

@@ -1,0 +1,34 @@
+# P3 配置/密钥分层:非敏感配置进 ConfigMap,敏感凭据进 Secret;各 Deployment 用 envFrom 注入。
+# 演示用明文 stringData —— 生产改用 SOPS / SealedSecrets 加密态入库(本地 KMS 等价物),或外部 Secret 存储。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recsys-config
+data:
+  PG_HOST: "postgres"
+  PG_PORT: "5432"
+  PG_DB: "recsys"
+  # 分库(ShardingSphere)用完整 URL 单占位符(多占位符解析有坑,见 sharding.yaml)
+  PG_JDBC_URL: "jdbc:postgresql://postgres:5432/recsys"
+  PG_DS1_JDBC_URL: "jdbc:postgresql://postgres:5432/recsys_ds1"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  KAFKA_SERVERS: "kafka:9092"
+  NACOS_ADDR: "nacos:8848"
+  NACOS_DISCOVERY: "true"
+  # 追踪导出到集群内 Tempo(obs)
+  OTLP_ENDPOINT: "http://tempo:4318/v1/traces"
+  # 安全默认开(全站)
+  RECSYS_SECURITY_ENABLED: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: recsys-secrets
+type: Opaque
+stringData:
+  PG_USER: "recsys"
+  PG_PASSWORD: "recsys"
+  RECSYS_INTERNAL_SECRET: "change-me-internal-hmac-secret-32bytes+"
+  RECSYS_EDGE_SECRET: "change-me-edge-jwt-hs256-secret-32bytes+"
+  GEMINI_API_KEY: ""

@@ -49,6 +49,15 @@ spring:
 # 广告管线所需配置(与 rec-engine 同源:rank 复用排序模型出 pCTR/pCVR;ad.* 是竞价/校准/pacing/EE/DCO 等)。
 # 未来接 Nacos config(spring.config.import=optional:nacos:recsys-ad-serving.yml)即可热更,与 rec-engine 一致。
 recsys:
+  # P0 安全:放行只读观测端点(供 Prometheus 抓 /actuator/prometheus);其余端点仍需内部 token。
+  #   缺此块时默认只放行 /actuator/health → prometheus 被 401、抓不到指标。
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
   embedding:
     dimension: 768
   rank:
@@ -149,7 +158,11 @@ management:
     health:
       probes:
         enabled: true
-      show-details: always
+      show-details: when_authorized   # P0:避免向匿名泄漏内部状态
   tracing:
     sampling:
       probability: 1.0
+  # P2:OTLP 导出 span 到 Tempo(默认 localhost:4318,OTLP_ENDPOINT 可覆盖)。
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

@@ -1,0 +1,162 @@
+# 在线主链路服务:gateway(南北向入口)、rec-engine(编排)、ad-serving(广告在线)。
+# 三探针沿用 rec-engine 模板;readiness 含 ModelReadinessHealthIndicator(坏模型不导流)。
+# envFrom 注入共享 ConfigMap/Secret;pod 注解供 Prometheus 服务发现抓取。
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-gateway
+  labels: { app: recsys-gateway }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: recsys-gateway }
+  template:
+    metadata:
+      labels: { app: recsys-gateway }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: gateway
+          image: recsys/gateway:latest
+          ports: [ { containerPort: 8080 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8080" }
+            - { name: SPRING_PROFILES_ACTIVE, value: "discovery" }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1024Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-gateway
+spec:
+  selector: { app: recsys-gateway }
+  ports: [ { name: http, port: 80, targetPort: 8080 } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-rec-engine
+  labels: { app: recsys-rec-engine }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: recsys-rec-engine }
+  template:
+    metadata:
+      labels: { app: recsys-rec-engine }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8081"
+    spec:
+      containers:
+        - name: rec-engine
+          image: recsys/rec-engine:latest
+          ports: [ { containerPort: 8081 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8081" }
+            - { name: RANK_STRATEGY, value: "v1" }
+            # 内容/用户上下文默认走 gRPC 跨进程;广告钱链路默认仍 in-process(kill-switch),
+            # 待 CI money-chain-gate 常绿后由 overlay 翻成 grpc(P3-E)。
+            - { name: CONTENT_SERVING_MODE, value: "grpc" }
+            - { name: USER_SERVING_MODE, value: "grpc" }
+            - { name: AD_SERVING_MODE, value: "in-process" }
+            - { name: CONTENT_GRPC, value: "static://recsys-content-service:9096" }
+            - { name: USER_GRPC, value: "static://recsys-user-service:9097" }
+            - { name: AD_SERVING_GRPC, value: "static://recsys-ad-serving:9095" }
+          resources:
+            requests: { cpu: "500m", memory: "768Mi" }
+            limits: { cpu: "2", memory: "1536Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8081 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8081 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8081 }
+            failureThreshold: 30
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-rec-engine
+spec:
+  selector: { app: recsys-rec-engine }
+  ports: [ { name: http, port: 80, targetPort: 8081 } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-ad-serving
+  labels: { app: recsys-ad-serving }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: recsys-ad-serving }
+  template:
+    metadata:
+      labels: { app: recsys-ad-serving }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8085"
+    spec:
+      containers:
+        - name: ad-serving
+          image: recsys/ad-serving:latest
+          ports:
+            - { name: http, containerPort: 8085 }
+            - { name: grpc, containerPort: 9095 }
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8085" }
+            - { name: GRPC_SERVER_PORT, value: "9095" }
+          resources:
+            requests: { cpu: "500m", memory: "768Mi" }
+            limits: { cpu: "2", memory: "1536Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8085 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8085 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-ad-serving
+spec:
+  selector: { app: recsys-ad-serving }
+  ports:
+    - { name: http, port: 8085, targetPort: 8085 }
+    - { name: grpc, port: 9095, targetPort: 9095 }

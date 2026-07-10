@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Space, Statistic, Tag, Typography } from 'antd';
 import { getFeed } from '../../api/feed';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import RecallTags from '../../components/explain/RecallTags';
-import PipelineSteps from '../../components/explain/PipelineSteps';
+import FunnelBand from '../../components/funnel/FunnelBand';
+import { deriveFeedStages } from '../../components/funnel/derive';
+import { channelColor } from '../../components/explain/channelColors';
+import { BRAND, STATUS, hexOfPreset } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
 export default function FeedConsole() {
@@ -22,6 +25,8 @@ export default function FeedConsole() {
 
   const entries = query.data?.entries ?? [];
   const adCount = entries.filter((e) => e.ad).length;
+  const stages = useMemo(() => deriveFeedStages(entries), [entries]);
+  const flowing = !!query.data && !query.isFetching;
 
   const run = () => {
     query.refetch().then((r) => {
@@ -55,9 +60,12 @@ export default function FeedConsole() {
         />
       </Space>
 
-      <Card size="small" title="混排流水线">
-        <PipelineSteps mode="feed" />
-      </Card>
+      <FunnelBand
+        dense
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
 
       <Card
         title={`Feed (${entries.length})`}
@@ -72,17 +80,17 @@ export default function FeedConsole() {
             {entries.map((e) => (
               <div
                 key={`${e.position}-${e.ad ? 'ad' : 'nat'}-${e.ad ? e.adId : e.itemId}`}
+                className="itc-row"
                 style={{
-                  border: '1px solid #eee',
-                  borderRadius: 10,
-                  padding: '10px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
                   background: e.ad ? '#fffbe6' : '#fff',
+                  borderLeft: `3px solid ${
+                    e.ad ? hexOfPreset('gold') : e.recallFrom.length ? hexOfPreset(channelColor(e.recallFrom[0])) : BRAND
+                  }`,
                 }}
               >
-                <div style={{ width: 28, textAlign: 'center', color: '#bbb', fontWeight: 700 }}>{e.position}</div>
+                <div className="itc-rank" style={{ color: '#8a94a6', background: '#f2f4f8' }}>
+                  {e.position}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Space size={8} wrap>
                     {e.ad ? <Tag color="gold">赞助</Tag> : null}

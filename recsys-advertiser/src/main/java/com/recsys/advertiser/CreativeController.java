@@ -2,6 +2,7 @@ package com.recsys.advertiser;
 
 import com.recsys.advertiser.dto.CreativeUpsert;
 import com.recsys.advertiser.dto.CreativeView;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -19,6 +21,7 @@ import java.util.Map;
  * 创意只决定展示、不进倒排/向量,故无在线召回同步。
  */
 @RestController
+@PreAuthorize("hasAnyRole('ADVERTISER','ADMIN')")   // P0 纵深防御
 public class CreativeController {
 
     private final AdvertiserService service;
@@ -28,7 +31,7 @@ public class CreativeController {
     }
 
     @PostMapping("/api/advertiser/ad/{adId}/creative")
-    public CreativeView add(@PathVariable long adId, @RequestBody CreativeUpsert req) {
+    public CreativeView add(@PathVariable long adId, @Valid @RequestBody CreativeUpsert req) {
         return service.addCreative(adId, req);
     }
 
@@ -38,7 +41,7 @@ public class CreativeController {
     }
 
     @PutMapping("/api/advertiser/creative/{id}")
-    public CreativeView update(@PathVariable long id, @RequestBody CreativeUpsert req) {
+    public CreativeView update(@PathVariable long id, @Valid @RequestBody CreativeUpsert req) {
         return service.updateCreative(id, req);
     }
 

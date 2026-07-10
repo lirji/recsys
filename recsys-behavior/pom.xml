@@ -18,6 +18,11 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>
         </dependency>
+        <!-- P0 安全:技术平台 starter(认证/校验/统一异常)。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-platform</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

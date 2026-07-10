@@ -22,12 +22,32 @@ spring:
       # 不因启动时连不上 DB 而失败 —— console 允许无 DB 启动,报表回退读本地 CSV(优雅降级)
       initialization-fail-timeout: -1
       minimum-idle: 0
+      # P1 弹性:连接池超时
+      connection-timeout: ${HIKARI_CONNECTION_TIMEOUT:3000}
+      validation-timeout: 2000
+      max-lifetime: 1800000
 
 recsys:
+  # P0 安全:控制台 BFF 是只读报表接口,放行 /api/console/**(网关侧亦公开 GET);健康探针放行。
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
+      - /api/console/**
   console:
     # 离线报表回退目录:主读 eval_report 表,表缺失/无数据时解析本地 eval/*.csv。
     # dev 下 console 进程 CWD=recsys-console,指向兄弟模块 recsys-offline/eval。
     eval-dir: ${EVAL_DIR:../recsys-offline/eval}
+    # 系统总览的真实实时指标:查 Prometheus(obs profile,默认 localhost:9090)求推荐/广告链路 P99 延迟与 QPS。
+    # 观测栈未起时优雅降级(前端不显示延迟指标,仍展示健康态)。PromQL 可覆盖,默认对齐 recsys.recommend.duration 计时器。
+    metrics:
+      enabled: ${SYSTEM_METRICS_ENABLED:true}
+      prometheus-url: ${PROMETHEUS_URL:http://localhost:9090}
+      connect-timeout-ms: ${SYSTEM_METRICS_CONNECT_TIMEOUT_MS:400}
+      read-timeout-ms: ${SYSTEM_METRICS_READ_TIMEOUT_MS:800}
     health:
       connect-timeout-ms: ${SYSTEM_HEALTH_CONNECT_TIMEOUT_MS:300}
       read-timeout-ms: ${SYSTEM_HEALTH_READ_TIMEOUT_MS:500}
@@ -74,3 +94,13 @@ recsys:
           kind: job
           passive-status: LOCAL_CLUSTER_JOB
           passive-message: Flink 作业按需启动,不按 HTTP 服务探测。
+
+# P2 可观测:暴露 prometheus 指标(供 Prometheus 抓取);健康明细仅授权可见。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized

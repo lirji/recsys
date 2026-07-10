@@ -3,6 +3,7 @@ import type {
   ServiceHealth,
   SystemApiEndpoint,
   SystemCommandGroup,
+  SystemMetrics,
   SystemModule,
   SystemOverview,
 } from './types';
@@ -19,6 +20,11 @@ export async function getSystemModules(): Promise<SystemModule[]> {
 
 export async function getSystemHealth(): Promise<ServiceHealth[]> {
   const { data } = await http.get<ServiceHealth[]>('/api/console/system/health');
+  return data;
+}
+
+export async function getSystemMetrics(): Promise<SystemMetrics> {
+  const { data } = await http.get<SystemMetrics>('/api/console/system/metrics');
   return data;
 }
 

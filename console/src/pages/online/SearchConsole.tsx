@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Space, Spin, Typography } from 'antd';
 import { getSearch } from '../../api/recommend';
@@ -6,7 +6,9 @@ import { makeEvent, reportBehavior } from '../../api/behavior';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import ItemCard from '../../components/explain/ItemCard';
-import PipelineSteps from '../../components/explain/PipelineSteps';
+import FunnelBand from '../../components/funnel/FunnelBand';
+import { deriveRecStages } from '../../components/funnel/derive';
+import { STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
 export default function SearchConsole() {
@@ -23,6 +25,8 @@ export default function SearchConsole() {
 
   const items = query.data?.items ?? [];
   const maxScore = items.reduce((m, it) => Math.max(m, it.score), 0);
+  const stages = useMemo(() => deriveRecStages(items), [items]);
+  const flowing = !!query.data && !query.isFetching;
 
   const run = () => {
     if (!q.trim()) {
@@ -62,9 +66,12 @@ export default function SearchConsole() {
         </Space>
       </Card>
 
-      <Card size="small" title="处理流水线">
-        <PipelineSteps mode="search" />
-      </Card>
+      <FunnelBand
+        dense
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
 
       <Card
         title={`搜索结果 (${items.length})`}

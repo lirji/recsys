@@ -42,6 +42,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # P1 弹性:Redis 命令/连接超时,抖动时快速失败退降级(vector/recall/bandit 等多路读 Redis)
+      timeout: ${REDIS_TIMEOUT:2000ms}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2000ms}
   # P4:消费 behavior-events 建"已看"读模型。监听器默认不启动(recsys.behavior.seen-consume)→ 无 Kafka 也能起。
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
@@ -71,6 +74,23 @@ grpc:
 # dataId=recsys-rec-engine.yml 即可热更——线上改 reserve-price/pacing/频控/ad-load 不重启(见上 spring.cloud.nacos)。
 # 本文件的值是 Nacos 不可达时的本地默认。
 recsys:
+  # P0 安全:边缘认证由网关负责,本服务做纵深防御(校验网关签发的内部令牌)。
+  # permit-paths 放行公开只读接口 + 健康探针;其余(/api/user、/api/ad、/api/experiment)需身份。
+  # 关闭安全:RECSYS_SECURITY_ENABLED=false(nosec,本地讲解用)。密钥生产从密钥分层注入,勿用默认。
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
+      - /api/recommend/**
+      - /api/search/**
+      - /api/feed/**
+      - /api/query/**
+  # P1 弹性:gRPC 客户端每调用 deadline(ms),防跨进程(ad-serving/content/user)无限挂起;与安全正交。
+  grpc:
+    deadline-ms: ${GRPC_DEADLINE_MS:800}
   # P2 内容服务网关模式:in-process=进程内直调 ContentService(默认=单体回退,零网络跳);
   # grpc=展示 hydrate 走 recsys-content-service。切换只改本项(或 CONTENT_SERVING_MODE),RecommendOrchestrator/前端零改动。
   content:
@@ -378,10 +398,23 @@ resilience4j:
         wait-duration-in-open-state: 15s
         permitted-number-of-calls-in-half-open-state: 3
         register-health-indicator: true
+      # P1 跨进程 gRPC 熔断:下游(ad-serving/content/user)故障时快速失败到降级(无广告 feed / 空 hydrate / 冷启动),
+      # 不因跨进程故障级联拖垮推荐主链路。deadline(recsys.grpc.deadline-ms)界定单调用时长,此处管熔断 + 半开探活。
+      ad-serving-grpc: &grpc-cb
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
+      content-grpc: *grpc-cb
+      user-grpc: *grpc-cb
 
 management:
   endpoints:
     web:
+      exposure:
+        # 修复:原缺 exposure 层级 → include 挂在 web 下无效 → 只暴露默认 health,prometheus/metrics 端点缺失。
         # refresh(P4):手动触发 /actuator/refresh 重绑配置(Nacos 自动推送外的兜底手段)
         include: health,info,metrics,prometheus,refresh
   endpoint:
@@ -389,7 +422,7 @@ management:
       # 暴露 k8s 探针端点 /actuator/health/{liveness,readiness}
       probes:
         enabled: true
-      show-details: always
+      show-details: when_authorized   # P0:仅向已认证用户展示健康明细,避免向匿名泄漏内部状态
       group:
         # readiness 组纳入模型就绪探针(E4):模型策略但模型没加载 → readiness DOWN,k8s 不导流
         readiness:
@@ -399,3 +432,7 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  # P2:OTLP 导出 span 到 Tempo(默认 localhost:4318;指向真实 Tempo 用 OTLP_ENDPOINT)。后端不可达则静默丢弃,不影响主流程。
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

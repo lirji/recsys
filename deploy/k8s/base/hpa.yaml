@@ -1,0 +1,37 @@
+# 自动扩缩容:在线主链路服务按 CPU 利用率横向伸缩(需集群装 metrics-server)。
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recsys-gateway
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: recsys-gateway }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recsys-rec-engine
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: recsys-rec-engine }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recsys-ad-serving
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: recsys-ad-serving }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-platform</artifactId>
+    <name>recsys-platform</name>
+    <description>
+        技术平台 starter(通用子域,DDD:非核心域)——跨服务共享的横切能力:统一异常处理、边缘/内部认证、
+        输入校验实现,后续再纳入弹性(resilience4j 默认)与可观测(共享 logback)。刻意与领域 Shared Kernel
+        recsys-common 分离:只有 web 服务依赖本模块,纯计算库(recall/rank/…)与离线作业不引入,保持领域契约纯净。
+        细粒度授权(owner 归属不变量)不在此,应落在各限界上下文的领域服务/聚合内。
+    </description>
+
+    <dependencies>
+        <!-- 作为「web 服务技术 starter」,这些依赖对下游 web 服务传递可见(纯库/离线作业不依赖本模块,不被污染)。
+             刻意<b>不引 spring-webmvc</b>:平台类只用 spring-web(经 security 传递)+ servlet-api 即可编译,
+             这样连响应式的网关也能安全依赖本模块(不会把 DispatcherServlet 带进 Spring Cloud Gateway 而启动失败)。
+             各 servlet app 的 webmvc/tomcat 由其自带的 spring-boot-starter-web 提供。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- P2 可观测:共享结构化日志编码器(logback-spring.xml 的 json profile 用)。传递给依赖 platform 的 web 服务。 -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+        </dependency>
+        <!-- 过滤器/异常处理器编译期需要 servlet API;运行时由承载容器提供,故 provided、不传递。 -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 仅测试:切片验证 servlet 安全链(401/403/200)需要 webmvc + 内嵌容器;不进主 artifact 依赖。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

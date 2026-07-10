@@ -30,6 +30,10 @@ recsys/
 ├── recsys-offline     # 离线作业(导入/灌向量/CF/样本/双塔)     [app] Track A/E
 │   └── sql/           # 数据库 schema(容器首启自动执行)
 ├── recsys-console     # 控制台后端 console-api(:8090)          [app] Track F
+├── recsys-advertiser      # 广告主管理服务(:8083)                        [app]
+├── recsys-ad-serving      # 广告投放内部服务(HTTP :8085 / gRPC :9095)    [app]
+├── recsys-content-service # 内容内部服务(HTTP :8086 / gRPC :9096)        [app]
+├── recsys-user-service    # 用户画像内部服务(HTTP :8087 / gRPC :9097)    [app]
 ├── recsys-streaming   # 实时特征 Flink 作业(本地 MiniCluster)  [app]
 └── console/           # 控制台前端(独立 Vite 工程,nginx 同源托管)  [前端]
 ```
@@ -48,6 +52,9 @@ cp .env.example .env        # 按需填写 GEMINI_API_KEY 等
 # 2. 启动中间件(核心:postgres + redis;schema 自动建好)
 docker compose up -d
 #   需要 kafka/nacos 时:docker compose --profile full up -d
+#   容器化全部后端服务(网关/编排/behavior/advertiser/console + 内部服务 ad-serving/content/user):
+#     docker compose --profile apps up -d    # 参数化 Dockerfile 逐个构建 fat jar,经 Nacos 服务发现互联
+#   观测栈(Prometheus/Grafana/Alertmanager/Tempo):docker compose --profile obs up -d
 
 # 3. 设置 JDK 21 并构建
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -59,18 +66,31 @@ mvn -pl recsys-rec-engine spring-boot:run
 
 ## 端口一览
 
-| 服务 | 端口 |
-|---|---|
-| gateway | 8080 |
-| rec-engine | 8081 |
-| behavior | 8082 |
-| web | 8090 |
-| postgres | 5432 |
-| redis | 6379 |
-| kafka(可选) | 9092 |
-| nacos(可选) | 8848 |
-| prometheus(obs) | 9090 |
-| grafana(obs) | 3001 |
+| 服务 | HTTP 端口 | gRPC 端口 | 说明 |
+|---|---|---|---|
+| gateway | 8080 | - | 统一 API 网关(南北向入口) |
+| rec-engine | 8081 | - | 推荐编排,对外主入口 |
+| behavior | 8082 | - | 行为采集 |
+| advertiser | 8083 | - | 广告主管理(写侧) |
+| ad-serving | 8085 | 9095 | 广告投放内部服务 |
+| content-service | 8086 | 9096 | 内容内部服务(gRPC,HTTP 仅 actuator) |
+| user-service | 8087 | 9097 | 用户画像内部服务(gRPC,HTTP 仅 actuator) |
+| console-api | 8090 | - | 控制台 BFF(离线报表 + 系统总览) |
+| postgres | 5432 | - | pgvector |
+| redis | 6379 | - | |
+| kafka(可选) | 9092 | - | `--profile full` |
+| nacos(可选) | 8848 | - | `--profile full` |
+| prometheus(obs) | 9090 | - | `--profile obs` |
+| grafana(obs) | 3001 | - | `--profile obs` |
+
+> **内部服务化模块**(`ad-serving`/`content-service`/`user-service`):以 gRPC 对内提供能力,rec-engine 默认走 `in-process`(单体)不依赖它们;设 `AD_SERVING_MODE=grpc` / `CONTENT_SERVING_MODE=grpc` / `USER_SERVING_MODE=grpc` 才切到 gRPC 调用。三者同时暴露 HTTP `/actuator/{health,prometheus}` 供健康探测与 Prometheus 抓取(需 `scanBasePackages` 含 `com.recsys.platform` 启用平台安全链,并在 `recsys.security.permit-paths` 放行 `/actuator/prometheus`)。
+>
+> ```bash
+> # 按需单独起某个内部服务(示例:内容服务)
+> mvn -pl recsys-content-service spring-boot:run   # HTTP :8086 + gRPC :9096
+> mvn -pl recsys-user-service    spring-boot:run   # HTTP :8087 + gRPC :9097
+> mvn -pl recsys-ad-serving      spring-boot:run   # HTTP :8085 + gRPC :9095
+> ```
 
 ## 在线观测性(Prometheus + Grafana)
 

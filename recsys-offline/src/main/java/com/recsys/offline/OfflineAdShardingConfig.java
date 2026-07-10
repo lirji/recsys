@@ -53,7 +53,8 @@ public class OfflineAdShardingConfig {
         ds.setDriver((java.sql.Driver)
                 Class.forName("org.apache.shardingsphere.driver.ShardingSphereDriver")
                         .getDeclaredConstructor().newInstance());
-        ds.setUrl("jdbc:shardingsphere:classpath:sharding.yaml");
+        // placeholder-type=environment:sharding.yaml 的 $${PG_HOST::}/$${PG_PORT::} 从环境变量解析(5.5 默认 none 不替换)
+        ds.setUrl("jdbc:shardingsphere:classpath:sharding.yaml?placeholder-type=environment");
         return ds;
     }
 

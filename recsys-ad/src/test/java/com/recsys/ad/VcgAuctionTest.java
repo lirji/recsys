@@ -1,5 +1,6 @@
 package com.recsys.ad;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 覆盖:单广告位退化为 GSP、位置折扣下的外部性定价、位置折扣全相等时人人付首落选者价、
  * 落选者不足时 reserve 托底边际、扣费落 [reserve, 自身出价]、theta 单调非增构造。
  */
+@Tag("money-chain")   // P1 钱链路验证闸门
 class VcgAuctionTest {
 
     private static final double EPS = 1e-6;

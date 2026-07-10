@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# prod:镜像指向 GHCR(release.yml 推送的 tag),在线主链路副本上调。
+# 密钥:base 的 recsys-secrets 是演示明文;生产应删掉它、改用 SealedSecrets / SOPS 加密态入库,
+# 或用外部 Secret 存储(External Secrets Operator)。此 overlay 保留 base 引用以便结构完整,替换 Secret 时移除即可。
+resources:
+  - ../../base
+
+images:
+  - { name: recsys/gateway,          newName: ghcr.io/your-org/recsys/recsys-gateway,          newTag: stable }
+  - { name: recsys/rec-engine,       newName: ghcr.io/your-org/recsys/recsys-rec-engine,       newTag: stable }
+  - { name: recsys/ad-serving,       newName: ghcr.io/your-org/recsys/recsys-ad-serving,       newTag: stable }
+  - { name: recsys/behavior,         newName: ghcr.io/your-org/recsys/recsys-behavior,         newTag: stable }
+  - { name: recsys/advertiser,       newName: ghcr.io/your-org/recsys/recsys-advertiser,       newTag: stable }
+  - { name: recsys/console-api,      newName: ghcr.io/your-org/recsys/recsys-console,           newTag: stable }
+  - { name: recsys/content-service,  newName: ghcr.io/your-org/recsys/recsys-content-service,  newTag: stable }
+  - { name: recsys/user-service,     newName: ghcr.io/your-org/recsys/recsys-user-service,     newTag: stable }
+
+replicas:
+  - { name: recsys-gateway, count: 3 }
+  - { name: recsys-rec-engine, count: 3 }
+  - { name: recsys-ad-serving, count: 3 }

@@ -15,6 +15,14 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  # P2:网关(南北向入口,QPS/限流/延迟)
+  - job_name: recsys-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          application: recsys-gateway
+
   - job_name: recsys-rec-engine
     metrics_path: /actuator/prometheus
     static_configs:
@@ -38,3 +46,35 @@ scrape_configs:
       - targets: ["host.docker.internal:8083"]
         labels:
           application: recsys-advertiser
+
+  # P2:广告在线服务(ad-serving 有 HTTP actuator;计费/竞价/营收核心指标 recsys.ad.* 在 rec-engine 已抓,此处补服务自身健康/JVM)
+  - job_name: recsys-ad-serving
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8085"]
+        labels:
+          application: recsys-ad-serving
+
+  # P2:控制台 BFF
+  - job_name: recsys-console
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8090"]
+        labels:
+          application: recsys-console
+
+  # P2:内部 gRPC 服务(content/user)。已加 spring-boot-starter-web + actuator/prometheus(与 ad-serving 同),
+  #      HTTP actuator 可被抓取;gRPC 端口另在 9096/9097,不走 HTTP。
+  - job_name: recsys-content-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8086"]
+        labels:
+          application: recsys-content-service
+
+  - job_name: recsys-user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8087"]
+        labels:
+          application: recsys-user-service

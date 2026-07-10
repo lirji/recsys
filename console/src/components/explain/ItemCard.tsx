@@ -3,8 +3,11 @@ import { Space, Typography } from 'antd';
 import type { RecommendItem } from '../../api/types';
 import RecallTags from './RecallTags';
 import ScoreBar from './ScoreBar';
+import { channelColor } from './channelColors';
+import { ACCENTS, BRAND, hexOfPreset, rgba } from '../../theme/tokens';
 
-// 单条推荐结果卡片:序号 + itemId + 召回来源标签 + 推荐理由 + 分数条 + 右侧操作区(如上报点击)。
+// 单条推荐结果卡片:序号徽章 + itemId + 召回来源标签 + 推荐理由 + 分数条 + 右侧操作区。
+// 左边框 accent = 首个召回通道色(一眼识别主召回路);前三名用渐变发光徽章。hover 微抬升见 index.css 的 .itc-row。
 export default function ItemCard({
   item,
   rank,
@@ -16,18 +19,24 @@ export default function ItemCard({
   maxScore: number;
   actions?: ReactNode;
 }) {
+  const accent = item.recallFrom.length ? hexOfPreset(channelColor(item.recallFrom[0])) : BRAND;
+  const top3 = rank <= 3;
   return (
-    <div
-      style={{
-        border: '1px solid #eee',
-        borderRadius: 10,
-        padding: '10px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-      }}
-    >
-      <div style={{ width: 28, textAlign: 'center', color: '#bbb', fontWeight: 700 }}>{rank}</div>
+    <div className="itc-row" style={{ borderLeft: `3px solid ${accent}` }}>
+      <div
+        className="itc-rank"
+        style={
+          top3
+            ? {
+                color: '#fff',
+                background: `linear-gradient(135deg, ${accent}, ${ACCENTS.rerank})`,
+                boxShadow: `0 0 12px -2px ${rgba(accent, 0.6)}`,
+              }
+            : { color: '#8a94a6', background: '#f2f4f8' }
+        }
+      >
+        {rank}
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Space size={8} wrap>
           <Typography.Text strong className="mono">
@@ -39,7 +48,7 @@ export default function ItemCard({
           <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>{item.reason}</div>
         ) : null}
       </div>
-      <ScoreBar value={item.score} max={maxScore} />
+      <ScoreBar value={item.score} max={maxScore} accent={accent} />
       {actions ? <div style={{ display: 'flex', gap: 6 }}>{actions}</div> : null}
     </div>
   );

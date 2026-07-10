@@ -1,0 +1,69 @@
+name: Release
+
+# P3 CD:打 tag(v*)或手动触发时,用参数化 Dockerfile 为每个 [app] 模块构建镜像 → 推 GHCR + Trivy 镜像扫描。
+# recsys-streaming(Flink,需 --add-opens)不在本镜像范围。
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { module: recsys-gateway,         port: 8080 }
+          - { module: recsys-rec-engine,       port: 8081 }
+          - { module: recsys-behavior,         port: 8082 }
+          - { module: recsys-advertiser,       port: 8083 }
+          - { module: recsys-ad-serving,       port: 8085 }
+          - { module: recsys-content-service,  port: 8086 }
+          - { module: recsys-user-service,     port: 8087 }
+          - { module: recsys-console,          port: 8090 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: |
+            MODULE=${{ matrix.module }}
+            PORT=${{ matrix.port }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.module }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/${{ matrix.module }}:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 镜像漏洞扫描。教学默认 exit-code=0(报告不阻断,避免基础镜像常驻 CVE 卡发布);
+      # 生产改 exit-code=1 + severity=CRITICAL,HIGH 即成硬门槛。
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.module }}:${{ github.ref_name }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'

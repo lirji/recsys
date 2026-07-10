@@ -1,6 +1,7 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
+import { useAuth } from './hooks/useAuth';
 import ProjectOverview from './pages/project/ProjectOverview';
 import RecommendConsole from './pages/online/RecommendConsole';
 import SearchConsole from './pages/online/SearchConsole';
@@ -18,6 +19,15 @@ import ReportsIndex from './pages/reports/ReportsIndex';
 // ECharts 较重的页面按需加载,避免进入首屏包(初次访问推荐台无需下载 echarts)。
 const AdvertiserReport = lazy(() => import('./pages/adv/AdvertiserReport'));
 const ReportViewer = lazy(() => import('./pages/reports/ReportViewer'));
+
+// 路由守卫:未登录(无当前身份)→ 重定向登录页,并记下来源页 from,登录后跳回。
+// 用 useAuth().user(响应式)而非直接读 localStorage:退出/切换时能即时触发重定向。
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <>{children}</>;
+}
 
 export default function AppRoutes() {
   return (

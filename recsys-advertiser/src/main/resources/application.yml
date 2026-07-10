@@ -16,12 +16,17 @@ spring:
   datasource:
     # 分库分表:走 ShardingSphere-JDBC 驱动,真实数据源 / 分片规则在 sharding.yaml
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
-    url: jdbc:shardingsphere:classpath:sharding.yaml
+    # placeholder-type=environment:让 sharding.yaml 里的 $${PG_HOST::}/$${PG_PORT::} 等从环境变量解析
+    # (ShardingSphere 5.5 默认 placeholder-type=none 不替换 → 端口为空 NumberFormatException)。
+    url: jdbc:shardingsphere:classpath:sharding.yaml?placeholder-type=environment
   data:
     # 同步竞价词倒排(bidword:inv:{keyword})+ 报表读当日已耗预算(ad:budget:{adv}:{day})
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # P1 弹性:Redis 命令/连接超时(pacing/预算读走 Redis,抖动时快速失败退降级)
+      timeout: ${REDIS_TIMEOUT:2000ms}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2000ms}
   # P1b 广告目录事件化:发布 ad-catalog-events(KafkaTemplate 懒连接,不开则不连)。
   kafka:
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
@@ -37,6 +42,14 @@ grpc:
       negotiation-type: plaintext
 
 recsys:
+  # P0 安全:广告主写侧管理面全部需 ADVERTISER/ADMIN(URL 层认证 + 控制器 @PreAuthorize 双闸)。
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
   ad:
     catalog:
       # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。

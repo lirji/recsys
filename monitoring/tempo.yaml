@@ -1,0 +1,24 @@
+# Grafana Tempo(P2):接收 recsys 各服务经 OTLP 导出的分布式 trace,供 Grafana 按 traceId 钻取跨进程调用链。
+# 单机本地演示:本地文件存储(非生产)。宿主机 Java 服务 → localhost:4318(容器 4318 映射到宿主)→ 此接收器。
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  max_block_duration: 5m
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal

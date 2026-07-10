@@ -31,6 +31,8 @@
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
+        <!-- 结构化日志 JSON 编码器(P2,非 Spring Boot BOM 管理的第三方,集中钉版本) -->
+        <logstash-logback.version>7.4</logstash-logback.version>
         <!-- 覆盖率度量 + 契约类覆盖率门槛(E3):0.8.12 支持 JDK 21 -->
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 微服务化:gRPC(服务间内部通信)+ protobuf(Published Language 契约,recsys-proto)。
@@ -45,6 +47,7 @@
 
     <modules>
         <module>recsys-common</module>
+        <module>recsys-platform</module>
         <module>recsys-ad-common</module>
         <module>recsys-proto</module>
         <module>recsys-gateway</module>
@@ -130,6 +133,13 @@
                 <artifactId>recsys-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- 技术平台 starter:跨服务通用子域(安全/异常/校验,后续弹性/可观测)。
+                 与领域 Shared Kernel(recsys-common)分离——只有 web 服务依赖它,纯库/离线作业不引入。 -->
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-platform</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.recsys</groupId>
                 <artifactId>recsys-ad-common</artifactId>
@@ -192,6 +202,12 @@
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
                 <version>${postgresql.version}</version>
+            </dependency>
+            <!-- P2 可观测:结构化日志编码器,集中管理版本(recsys-platform 与各服务引用时不写 version) -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

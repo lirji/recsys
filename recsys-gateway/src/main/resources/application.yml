@@ -43,8 +43,24 @@ spring:
           predicates:
             - Path=/api/console/**
 
+# P0 边缘认证:网关校验终端 JWT(edge-secret 签发)+ 签发内部令牌(internal-secret)传播给下游。
+# 三个密钥/开关须与下游服务一致(同 env);生产从密钥分层注入,勿用默认值。关闭安全:RECSYS_SECURITY_ENABLED=false。
+recsys:
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    edge-secret: ${RECSYS_EDGE_SECRET:recsys-dev-edge-jwt-secret-change-me-32bytes+}
+    edge-ttl-seconds: ${RECSYS_EDGE_TTL:3600}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  # P2 可观测:网关起 trace(链路头)+ 导出到 Tempo。
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

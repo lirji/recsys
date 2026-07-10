@@ -1,0 +1,86 @@
+# 内部 gRPC 服务:content-service(内容 hydrate)、user-service(用户画像)。纯 gRPC 无 HTTP,
+# 故用 tcpSocket 探针探 gRPC 端口(加 starter-web 后可换 httpGet + 被 Prometheus 抓取,见 P2 注记)。
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-content-service
+  labels: { app: recsys-content-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: recsys-content-service }
+  template:
+    metadata:
+      labels: { app: recsys-content-service }
+    spec:
+      containers:
+        - name: content-service
+          image: recsys/content-service:latest
+          ports: [ { name: grpc, containerPort: 9096 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: GRPC_SERVER_PORT, value: "9096" }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1024Mi" }
+          livenessProbe:
+            tcpSocket: { port: 9096 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket: { port: 9096 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-content-service
+spec:
+  selector: { app: recsys-content-service }
+  ports: [ { name: grpc, port: 9096, targetPort: 9096 } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-user-service
+  labels: { app: recsys-user-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: recsys-user-service }
+  template:
+    metadata:
+      labels: { app: recsys-user-service }
+    spec:
+      containers:
+        - name: user-service
+          image: recsys/user-service:latest
+          ports: [ { name: grpc, containerPort: 9097 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: GRPC_SERVER_PORT, value: "9097" }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1024Mi" }
+          livenessProbe:
+            tcpSocket: { port: 9097 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket: { port: 9097 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-user-service
+spec:
+  selector: { app: recsys-user-service }
+  ports: [ { name: grpc, port: 9097, targetPort: 9097 } ]

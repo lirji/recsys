@@ -1,0 +1,20 @@
+# 仅暴露网关(南北向单一入口);所有 /api/** 经网关鉴权+路由到下游,下游 Service 不对外。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: recsys-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: recsys.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: recsys-gateway
+                port:
+                  number: 80

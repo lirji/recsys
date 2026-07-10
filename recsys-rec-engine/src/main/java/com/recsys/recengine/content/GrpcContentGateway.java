@@ -5,7 +5,10 @@ import com.recsys.proto.ContentProtoMapper;
 import com.recsys.proto.content.v1.BatchGetItemsReply;
 import com.recsys.proto.content.v1.BatchGetItemsRequest;
 import com.recsys.proto.content.v1.ContentServiceGrpc;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -23,10 +26,13 @@ import java.util.Map;
 @ConditionalOnProperty(name = "recsys.content.serving.mode", havingValue = "grpc")
 public class GrpcContentGateway implements ContentGateway {
 
+    private static final Logger log = LoggerFactory.getLogger(GrpcContentGateway.class);
+
     @GrpcClient("content")
     private ContentServiceGrpc.ContentServiceBlockingStub stub;
 
     @Override
+    @CircuitBreaker(name = "content-grpc", fallbackMethod = "findByIdsFallback")
     public Map<Long, Item> findByIds(List<Long> itemIds) {
         if (itemIds == null || itemIds.isEmpty()) {
             return Map.of();
@@ -34,5 +40,14 @@ public class GrpcContentGateway implements ContentGateway {
         BatchGetItemsReply reply = stub.batchGetItems(
                 BatchGetItemsRequest.newBuilder().addAllItemIds(itemIds).build());
         return ContentProtoMapper.toItemMap(reply.getItemsList());
+    }
+
+    /**
+     * hydrate 降级(P1):content-service 不可达/超时/熔断时返回空 map,推荐主链路照常返回(展示字段缺失但不 5xx)。
+     * 上层编排对缺 Item 的候选 fail-soft(不因单次 hydrate 失败整条推荐失败)。
+     */
+    Map<Long, Item> findByIdsFallback(List<Long> itemIds, Throwable t) {
+        log.warn("content gRPC hydrate 降级为空(候选展示字段缺失): {}", t.toString());
+        return Map.of();
     }
 }

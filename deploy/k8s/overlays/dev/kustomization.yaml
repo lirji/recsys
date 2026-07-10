@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# dev:单副本省资源(适合 kind/minikube/单机),无 HPA;镜像用本地构建的 recsys/*:latest。
+# 关安全演示:把 RECSYS_SECURITY_ENABLED 置 false(见下方 patch,默认注释)。
+resources:
+  - ../../base
+
+replicas:
+  - { name: recsys-gateway, count: 1 }
+  - { name: recsys-rec-engine, count: 1 }
+  - { name: recsys-ad-serving, count: 1 }
+  - { name: recsys-behavior, count: 1 }
+  - { name: recsys-advertiser, count: 1 }
+  - { name: recsys-console, count: 1 }
+  - { name: recsys-content-service, count: 1 }
+  - { name: recsys-user-service, count: 1 }
+
+# dev 下 Nacos 可选,默认关服务发现(用 k8s Service DNS 静态地址已够);HPA 下限降到 1(dev 单副本)。
+patches:
+  - target: { kind: ConfigMap, name: recsys-config }
+    patch: |-
+      - op: replace
+        path: /data/NACOS_DISCOVERY
+        value: "false"
+  - target: { kind: HorizontalPodAutoscaler }
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1

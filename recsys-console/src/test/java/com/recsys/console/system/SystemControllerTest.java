@@ -20,7 +20,9 @@ class SystemControllerTest {
         target.setPassiveMessage("按需运行");
         properties.setTargets(List.of(target));
         SystemHealthService healthService = new SystemHealthService(properties);
-        SystemController controller = new SystemController(overviewService, healthService);
+        SystemMetricsProperties metricsProperties = new SystemMetricsProperties();
+        SystemMetricsService metricsService = new SystemMetricsService(metricsProperties);
+        SystemController controller = new SystemController(overviewService, healthService, metricsService);
 
         assertThat(controller.overview().projectName()).isEqualTo("recsys");
         assertThat(controller.modules()).isNotEmpty();
@@ -29,5 +31,20 @@ class SystemControllerTest {
         assertThat(controller.health()).singleElement()
                 .extracting(SystemOverview.ServiceHealth::status)
                 .isEqualTo("JOB_ONLY");
+    }
+
+    @Test
+    void metricsDegradeGracefullyWhenDisabled() {
+        // 观测栈未起 / 关闭时,/metrics 不外呼、优雅降级为 unavailable。
+        SystemMetricsProperties props = new SystemMetricsProperties();
+        props.setEnabled(false);
+        SystemController controller = new SystemController(
+                new SystemOverviewService(),
+                new SystemHealthService(new SystemHealthProperties()),
+                new SystemMetricsService(props));
+
+        SystemMetrics metrics = controller.metrics();
+        assertThat(metrics.available()).isFalse();
+        assertThat(metrics.recommendP99Ms()).isNull();
     }
 }

@@ -33,6 +33,11 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
+        <!-- P2 可观测:OTLP exporter,把 span 导出到 Tempo(management.otlp.tracing.endpoint);后端不可达时静默丢弃 -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
         <!-- 结构化日志:logback JSON 编码器(含 MDC:traceId/userId/scene) -->
         <dependency>
             <groupId>net.logstash.logback</groupId>
@@ -53,6 +58,16 @@
         </dependency>
         <!-- 微服务化:调 recsys-ad-serving 的 gRPC 契约(消息 + stub + ACL mapper)+ gRPC 客户端(net.devh)。
              仅 recsys.ad.serving.mode=grpc 时 GrpcAdServingGateway 才装配并注入 @GrpcClient;默认 in-process 不建通道。 -->
+        <!-- P0 安全:技术平台 starter(认证/校验/统一异常);rec-engine scanBasePackages=com.recsys 自动装配。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-platform</artifactId>
+        </dependency>
+        <!-- P1 弹性:显式引入 resilience4j(此前靠 recall/embedding 传递),用于 gRPC 网关 @CircuitBreaker 降级。 -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
             <artifactId>recsys-proto</artifactId>

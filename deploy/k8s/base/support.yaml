@@ -1,0 +1,139 @@
+# 写侧/支撑 HTTP 服务:behavior(行为接入)、advertiser(广告主管理)、console(报表 BFF)。
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-behavior
+  labels: { app: recsys-behavior }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: recsys-behavior }
+  template:
+    metadata:
+      labels: { app: recsys-behavior }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8082"
+    spec:
+      containers:
+        - name: behavior
+          image: recsys/behavior:latest
+          ports: [ { containerPort: 8082 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8082" }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1024Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8082 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8082 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-behavior
+spec:
+  selector: { app: recsys-behavior }
+  ports: [ { name: http, port: 80, targetPort: 8082 } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-advertiser
+  labels: { app: recsys-advertiser }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: recsys-advertiser }
+  template:
+    metadata:
+      labels: { app: recsys-advertiser }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8083"
+    spec:
+      containers:
+        - name: advertiser
+          image: recsys/advertiser:latest
+          ports: [ { containerPort: 8083 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8083" }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1", memory: "1024Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8083 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8083 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-advertiser
+spec:
+  selector: { app: recsys-advertiser }
+  ports: [ { name: http, port: 80, targetPort: 8083 } ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-console
+  labels: { app: recsys-console }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: recsys-console }
+  template:
+    metadata:
+      labels: { app: recsys-console }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8090"
+    spec:
+      containers:
+        - name: console
+          image: recsys/console-api:latest
+          ports: [ { containerPort: 8090 } ]
+          envFrom:
+            - configMapRef: { name: recsys-config }
+            - secretRef: { name: recsys-secrets }
+          env:
+            - { name: SERVER_PORT, value: "8090" }
+          resources:
+            requests: { cpu: "100m", memory: "384Mi" }
+            limits: { cpu: "500m", memory: "768Mi" }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8090 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8090 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsys-console
+spec:
+  selector: { app: recsys-console }
+  ports: [ { name: http, port: 80, targetPort: 8090 } ]

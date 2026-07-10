@@ -26,3 +26,73 @@ body {
   white-space: pre;
   margin: 0;
 }
+
+/* 内容卡片:磨砂玻璃质感,与页底蓝/青/紫光晕成一套色系 —— 半透明白 + 背板模糊,让页底渐变从卡片里透出。
+   双类名(0,2,0)优先级压过 AntD 用 colorBgContainer 给 .ant-card 刷的白底;只作用于 bordered 内容卡片,
+   不动输入框/下拉等同 token 控件,也不动顶部 bordered=false 的控制条。inset 高光给玻璃一点边缘反光。 */
+.ant-card.ant-card-bordered {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 249, 255, 0.78));
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  border-color: rgba(120, 150, 210, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 1px 2px rgba(20, 40, 90, 0.04),
+    0 12px 30px -16px rgba(35, 60, 120, 0.18);
+}
+/* 卡片标题分割线也用带蓝调的柔描边,和玻璃边缘协调。 */
+.ant-card.ant-card-bordered > .ant-card-head {
+  border-bottom-color: rgba(120, 150, 210, 0.16);
+}
+
+/* 结果行(推荐 / 搜索 / Feed 共用):hover 微抬升 + 阴影。左边框 accent 与 rank 徽章的动态色走内联 style。
+   放在全局表里(而非每行内联 <style>),避免列表 N 行注入 N 份重复样式,并让 :hover / 减少动效媒体查询干净可用。 */
+.itc-row {
+  border: 1px solid #eef0f4;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.itc-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -8px rgba(20, 40, 90, 0.25);
+  border-color: #dbe3f0;
+}
+.itc-rank {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+/* 分数条:渐变发光填充,值变化时平滑过渡。 */
+.scb-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.scb-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .itc-row {
+    transition: none;
+  }
+  .itc-row:hover {
+    transform: none;
+  }
+  .scb-fill {
+    transition: none;
+  }
+}

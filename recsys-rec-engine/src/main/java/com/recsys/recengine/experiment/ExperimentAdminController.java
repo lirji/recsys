@@ -3,6 +3,7 @@ package com.recsys.recengine.experiment;
 import com.recsys.common.constant.RedisKeys;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +31,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/experiment")
+@PreAuthorize("hasRole('ADMIN')")   // P0 纵深防御:除网关粗粒度 RBAC 外,服务侧再校验管理员身份
 public class ExperimentAdminController {
 
     private final ObjectProvider<StringRedisTemplate> redisProvider;

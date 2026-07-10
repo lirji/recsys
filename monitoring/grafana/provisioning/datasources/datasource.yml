@@ -9,3 +9,11 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: true
+
+  # P2 分布式追踪数据源:按 traceId 查看跨进程调用链(网关→rec-engine→gRPC 下游)
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: true

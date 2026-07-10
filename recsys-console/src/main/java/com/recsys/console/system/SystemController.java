@@ -17,10 +17,13 @@ public class SystemController {
 
     private final SystemOverviewService service;
     private final SystemHealthService healthService;
+    private final SystemMetricsService metricsService;
 
-    public SystemController(SystemOverviewService service, SystemHealthService healthService) {
+    public SystemController(SystemOverviewService service, SystemHealthService healthService,
+                            SystemMetricsService metricsService) {
         this.service = service;
         this.healthService = healthService;
+        this.metricsService = metricsService;
     }
 
     @GetMapping("/overview")
@@ -36,6 +39,11 @@ public class SystemController {
     @GetMapping("/health")
     public List<ServiceHealth> health() {
         return healthService.health();
+    }
+
+    @GetMapping("/metrics")
+    public SystemMetrics metrics() {
+        return metricsService.metrics();
     }
 
     @GetMapping("/apis")

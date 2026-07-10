@@ -18,9 +18,34 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
         </dependency>
+        <!-- P0 边缘认证:响应式 Spring Security + OAuth2 Resource Server(校验终端 JWT)。
+             复用 recsys-platform 的 InternalToken/AuthProperties,在网关签发内部令牌传播身份给下游。
+             注:网关是响应式栈,只借用 platform 的纯 JDK 令牌工具与配置类,platform 的 servlet 安全链因
+             无 DispatcherServlet 不会在此激活。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-platform</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- P2 可观测:网关是南北向入口,须起 trace(否则跨进程链断头)+ 暴露 prometheus 指标。 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
         <!-- E7:网关限流 RequestRateLimiter 用 Redis 令牌桶(响应式);默认关(GATEWAY_RATE_LIMIT_ENABLED),
              开启时需 Redis。反应式栈故用 data-redis-reactive。 -->

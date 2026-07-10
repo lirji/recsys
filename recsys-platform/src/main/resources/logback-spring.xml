@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  结构化日志 + tracing 关联(docs/06 可观测)。
-  - traceId/spanId 由 micrometer-tracing-bridge-otel 自动注入 MDC(一次请求跨召回/排序/重排可串联)。
-  - userId/scene 由 RecommendOrchestrator 显式放 MDC(业务上下文)。
-  默认 profile:可读控制台(带 trace/user 便于本地关联)。
-  json profile(-Dspring.profiles.active=json):LogstashEncoder 输出 JSON,含全部 MDC,可直进 ELK/Loki。
+  全站共享结构化日志(P2,放在 recsys-platform)。依赖 platform 的 web 服务自动继承,无需各自维护一份。
+  - traceId/spanId 由 micrometer-tracing 自动注入 MDC(一次请求跨进程可串联,配合 Tempo 钻取)。
+  - userId/scene 等业务 MDC 由各服务按需放入(如 RecommendOrchestrator)。
+  - app 字段取 spring.application.name,故每个服务打自己的名字。
+  默认 profile:可读控制台;json profile(-Dspring.profiles.active=json):LogstashEncoder 输出 JSON,可直进 ELK/Loki。
 -->
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="recsys"/>
 
     <springProfile name="!json">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{HH:mm:ss.SSS} %-5level [trace=%X{traceId:-} user=%X{userId:-} scene=%X{scene:-}] %logger{36} - %msg%n</pattern>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [${appName} trace=%X{traceId:-} user=%X{userId:-} scene=%X{scene:-}] %logger{36} - %msg%n</pattern>
             </encoder>
         </appender>
         <root level="INFO">
@@ -24,7 +25,7 @@
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <!-- 默认已含全部 MDC(traceId/spanId/userId/scene)+ 时间/级别/logger/thread/message -->
-                <customFields>{"app":"recsys-rec-engine"}</customFields>
+                <customFields>{"app":"${appName}"}</customFields>
             </encoder>
         </appender>
         <root level="INFO">

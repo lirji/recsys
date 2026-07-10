@@ -1,0 +1,28 @@
+# P3 供应链安全:Dependabot 自动追踪依赖漏洞/更新并开 PR。覆盖后端 Maven、前端 npm、Docker 基础镜像、CI actions。
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # 把 Spring/测试等同族升级合并成一个 PR,减少噪声
+      spring:
+        patterns: ["org.springframework*", "io.micrometer*", "io.opentelemetry*"]
+
+  - package-ecosystem: "npm"
+    directory: "/console"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

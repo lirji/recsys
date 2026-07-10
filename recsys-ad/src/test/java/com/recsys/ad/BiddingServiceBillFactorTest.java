@@ -1,6 +1,7 @@
 package com.recsys.ad;
 
 import com.recsys.common.ad.BidType;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code eCPM = pacedBid × billFactor} 在一场竞价里同尺可比,GSP {@code charged = nextRank/billFactor}
  * 天然以自身计费单位计价。billFactor 变错 = 跨类型竞价与计费全错,故此为变现正确性护栏。
  */
+@Tag("money-chain")   // P1 钱链路验证闸门
 class BiddingServiceBillFactorTest {
 
     private static final double EPS = 1e-9;

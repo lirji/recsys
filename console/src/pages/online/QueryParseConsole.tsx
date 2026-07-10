@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Descriptions, Input, Space, Table, Tag, Typography } from 'antd';
 import { parseQuery } from '../../api/query';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
+import FunnelBand from '../../components/funnel/FunnelBand';
+import { deriveQueryStages } from '../../components/funnel/derive';
+import { STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
 export default function QueryParseConsole() {
@@ -17,6 +20,8 @@ export default function QueryParseConsole() {
   });
   const sq = query.data;
   const embDim = sq?.embedding?.length ?? 0;
+  const stages = useMemo(() => deriveQueryStages(sq), [sq]);
+  const flowing = !!sq && !query.isFetching;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -35,6 +40,13 @@ export default function QueryParseConsole() {
           <Typography.Text type="secondary">userId={userId}</Typography.Text>
         </Space>
       </Card>
+
+      <FunnelBand
+        dense
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
 
       {query.isError ? <Alert type="error" message={toApiError(query.error).message} showIcon /> : null}
 

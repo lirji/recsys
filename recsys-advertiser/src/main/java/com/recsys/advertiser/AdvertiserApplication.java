@@ -11,7 +11,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * (Redis 竞价词倒排 {@code bidword:inv:{keyword}} + {@code ad_embedding})保持一致,
  * 让新建/暂停/改价的广告对在线链路即时生效——契约与离线 {@code seed-ads} 一致。
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"com.recsys.advertiser", "com.recsys.platform"})
 public class AdvertiserApplication {
     public static void main(String[] args) {
         SpringApplication.run(AdvertiserApplication.class, args);

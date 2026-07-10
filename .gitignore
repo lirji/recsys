@@ -41,3 +41,7 @@ recsys-offline/eval/*.csv
 recsys-embedding/train/vocab.txt
 recsys-embedding/train/*.json
 recsys-embedding/train/tokenizer*
+
+# 本机运行专用(端口重映射),勿提交
+monitoring/prometheus.local.yml
+docker-compose.local.yml

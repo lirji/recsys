@@ -261,3 +261,15 @@ export interface SystemOverview {
   apis: SystemApiEndpoint[];
   commands: SystemCommandGroup[];
 }
+
+// 来自 Prometheus 的真实实时指标(/api/console/system/metrics);观测栈未起时 available=false、各值为 null。
+export interface SystemMetrics {
+  available: boolean;
+  source: string;
+  message: string;
+  recommendP99Ms: number | null;
+  recommendAvgMs: number | null;
+  recommendQps: number | null;
+  adP99Ms: number | null;
+  checkedAt: number;
+}

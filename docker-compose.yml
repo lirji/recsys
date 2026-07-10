@@ -9,9 +9,10 @@ services:
     image: pgvector/pgvector:pg16
     container_name: recsys-postgres
     environment:
-      POSTGRES_DB: recsys
-      POSTGRES_USER: recsys
-      POSTGRES_PASSWORD: recsys
+      # P0 凭据外部化:默认值仅供本地 dev;生产/共享环境用 .env 覆盖(勿提交真实密钥)。
+      POSTGRES_DB: ${PG_DB:-recsys}
+      POSTGRES_USER: ${PG_USER:-recsys}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-recsys}
     ports:
       - "5432:5432"
     volumes:
@@ -82,6 +83,18 @@ services:
     ports:
       - "9090:9090"
 
+  # P2 分布式追踪后端:接收各服务 OTLP span(宿主 Java 服务 → localhost:4318),Grafana 按 traceId 钻取跨进程链路
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: recsys-tempo
+    profiles: ["obs"]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./monitoring/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    ports:
+      - "3200:3200"   # Tempo 查询 API(Grafana 数据源用)
+      - "4318:4318"   # OTLP HTTP 接收端
+
   # 告警路由(SLO 告警的通知面);教学默认不外发,UI 在 :9093
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -92,6 +105,17 @@ services:
     ports:
       - "9093:9093"
 
+  # P2:告警接收演示端——Alertmanager 把告警 POST 到这里,容器日志即可见(`docker logs recsys-webhook-logger`)。
+  # 演示生产 Slack/钉钉/飞书 投递的等价物,不接真实外部服务。
+  webhook-logger:
+    image: mendhak/http-https-echo:34
+    container_name: recsys-webhook-logger
+    profiles: ["obs"]
+    environment:
+      HTTP_PORT: "5001"
+    ports:
+      - "5001:5001"
+
   grafana:
     image: grafana/grafana:11.2.0
     container_name: recsys-grafana
@@ -99,8 +123,8 @@ services:
     depends_on:
       - prometheus
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

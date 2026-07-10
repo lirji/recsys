@@ -35,7 +35,22 @@ management:
     health:
       probes:
         enabled: true
-      show-details: always
+      show-details: when_authorized   # P0:避免向匿名泄漏内部状态
   tracing:
     sampling:
       probability: 1.0
+  # P2:OTLP 导出 span 到 Tempo(默认 localhost:4318,OTLP_ENDPOINT 可覆盖)。
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+recsys:
+  # P0 安全:内部 gRPC 服务放行只读观测端点(与 advertiser 同),供 Prometheus 抓 /actuator/prometheus;
+  #   其余端点仍需内部 token。缺此块时默认只放行 /actuator/health → prometheus 被 401、抓不到指标。
+  security:
+    enabled: ${RECSYS_SECURITY_ENABLED:true}
+    internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus

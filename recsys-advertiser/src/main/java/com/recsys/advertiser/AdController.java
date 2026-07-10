@@ -2,6 +2,7 @@ package com.recsys.advertiser;
 
 import com.recsys.advertiser.dto.AdUpsert;
 import com.recsys.advertiser.dto.AdView;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -22,6 +24,7 @@ import java.util.Map;
  * 写操作会同步在线竞价词倒排 + ad_embedding。
  */
 @RestController
+@PreAuthorize("hasAnyRole('ADVERTISER','ADMIN')")   // P0 纵深防御
 public class AdController {
 
     private final AdvertiserService service;
@@ -31,7 +34,7 @@ public class AdController {
     }
 
     @PostMapping("/api/advertiser/{advertiserId}/ad")
-    public AdView create(@PathVariable long advertiserId, @RequestBody AdUpsert req) {
+    public AdView create(@PathVariable long advertiserId, @Valid @RequestBody AdUpsert req) {
         return service.createAd(advertiserId, req);
     }
 
@@ -46,7 +49,7 @@ public class AdController {
     }
 
     @PutMapping("/api/advertiser/ad/{adId}")
-    public AdView update(@PathVariable long adId, @RequestBody AdUpsert req) {
+    public AdView update(@PathVariable long adId, @Valid @RequestBody AdUpsert req) {
         return service.updateAd(adId, req);
     }
 

@@ -49,3 +49,37 @@ jobs:
           name: jacoco-reports
           path: '**/target/site/jacoco/**'
           if-no-files-found: ignore
+
+  # P1 钱链路验证闸门:一个独立、可见的 required check。只跑 @Tag("money-chain") 的计费关键测试——
+  # GSP 次价 / bill-factor / oCPC 计费数学(BiddingServiceBillFactorTest/VcgAuctionTest/BidTypeTest)
+  # + SponsoredAd 经 proto 边界逐字段无损(AdBillingProtoParityTest)。
+  # 语义:in-process 与 gRPC 两种 ad-serving 模式必须收一样的钱。此 gate 常绿是 P3 把 AD_SERVING_MODE
+  # 翻成 grpc 默认的硬前提——不绿不翻转。
+  money-chain-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Money-chain consistency gate
+        run: mvn -B -e -pl recsys-ad-common,recsys-proto,recsys-ad -am test -Dgroups=money-chain -DfailIfNoTests=false
+
+  # P3 供应链安全:Trivy 文件系统扫描——后端 Maven / 前端 npm 依赖漏洞(SCA)+ IaC/配置误配。
+  # 与 Dependabot(自动升级 PR)互补。教学默认不阻断(报告);生产设 exit-code=1 + severity 收紧即成硬门槛。
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan (deps + misconfig)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'

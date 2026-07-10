@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -14,20 +14,28 @@ import {
   Table,
   Tag,
   Timeline,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
   ApiOutlined,
   ApartmentOutlined,
   CheckCircleOutlined,
+  ClockCircleOutlined,
   ClusterOutlined,
   CodeOutlined,
+  DashboardOutlined,
   DeploymentUnitOutlined,
+  DollarOutlined,
   PlayCircleOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import { getSystemHealth, getSystemOverview } from '../../api/system';
+import RecFunnelHero from '../../components/RecFunnelHero';
+import CollapsibleCard from '../../components/CollapsibleCard';
+import { getSystemHealth, getSystemMetrics, getSystemOverview } from '../../api/system';
 import { toApiError } from '../../api/client';
+import { ACCENTS } from '../../theme/tokens';
 import type { ServiceHealth, SystemApiEndpoint, SystemLink, SystemModule } from '../../api/types';
 
 const typeColor: Record<string, string> = {
@@ -72,13 +80,52 @@ export default function ProjectOverview() {
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
+  // 真实实时指标(Prometheus 经 console BFF)。观测栈未起时接口回 available=false → 优雅降级不显示延迟。
+  const metricsQuery = useQuery({
+    queryKey: ['system-metrics'],
+    queryFn: getSystemMetrics,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
 
   const overview = overviewQuery.data;
   const modules = overview?.modules ?? [];
   const health = healthQuery.data ?? [];
   const appCount = modules.filter((m) => m.type === 'app').length;
   const libCount = modules.filter((m) => m.type === 'lib').length;
-  const liveCount = health.filter((h) => h.status === 'UP').length;
+  // 漏斗 hero 的真实数据:整条 recall→rank→rerank 由 recsys-rec-engine 在线编排,故其健康即漏斗活/死;
+  // 其余为常驻 HTTP 服务在线比与模块/链路/接口计数(全部来自 /api/console/system,无写死数值)。
+  const engineStatus = health.find((h) => h.service === 'recsys-rec-engine')?.status;
+  // 只数常驻 HTTP 服务(kind=app):离线/流式作业是 JOB_ONLY 被动态,永远不会 UP,计入分母会误显"未全在线"。
+  // 与漏斗 hero 的"在线服务"口径一致(避免同名指标一处 6/8 一处 6/10)。
+  const liveApps = health.filter((h) => h.kind === 'app' && h.status === 'UP').length;
+  const totalApps = health.filter((h) => h.kind === 'app').length;
+  const metrics = metricsQuery.data;
+  const metricsAvailable = metrics?.available ?? false;
+
+  // 实时指标卡:值来自 Prometheus,不可用/无流量 → 显示灰色 "—"(不编造)。
+  const metricCard = (
+    title: string,
+    icon: ReactNode,
+    value: number | null | undefined,
+    opts?: { suffix?: string; precision?: number },
+  ) => {
+    const has = metricsAvailable && value != null;
+    return (
+      <Col xs={12} lg={6}>
+        <Card size="small">
+          <Statistic
+            title={title}
+            value={has ? value : '—'}
+            precision={has ? opts?.precision ?? 0 : undefined}
+            suffix={has ? opts?.suffix : undefined}
+            prefix={icon}
+            valueStyle={has ? undefined : { color: '#bfbfbf' }}
+          />
+        </Card>
+      </Col>
+    );
+  };
 
   const moduleColumns = useMemo(
     () => [
@@ -228,31 +275,74 @@ export default function ProjectOverview() {
         </Space>
       </Card>
 
+      <RecFunnelHero
+        engineStatus={engineStatus}
+        healthLoading={healthQuery.isLoading}
+        liveApps={liveApps}
+        totalApps={totalApps}
+        moduleCount={modules.length}
+        linkCount={overview.links.length}
+        apiCount={overview.apis.length}
+        p99Ms={metricsAvailable ? metrics?.recommendP99Ms ?? null : null}
+        qps={metricsAvailable ? metrics?.recommendQps ?? null : null}
+        adP99Ms={metricsAvailable ? metrics?.adP99Ms ?? null : null}
+      />
+
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="模块总数" value={modules.length} prefix={<ClusterOutlined />} />
+            <Statistic title="模块总数" value={modules.length} prefix={<ClusterOutlined style={{ color: ACCENTS.recall }} />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="可运行服务" value={appCount} prefix={<DeploymentUnitOutlined />} />
+            <Statistic title="可运行服务" value={appCount} prefix={<DeploymentUnitOutlined style={{ color: ACCENTS.gsp }} />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="领域模块" value={libCount} prefix={<ApartmentOutlined />} />
+            <Statistic title="领域模块" value={libCount} prefix={<ApartmentOutlined style={{ color: ACCENTS.rerank }} />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="在线服务" value={health.length === 0 ? '-' : `${liveCount}/${health.length}`} prefix={<CheckCircleOutlined />} />
+            <Statistic
+              title="在线服务"
+              value={totalApps === 0 ? '-' : `${liveApps}/${totalApps}`}
+              prefix={<CheckCircleOutlined style={{ color: ACCENTS.rank }} />}
+            />
           </Card>
         </Col>
       </Row>
 
-      <Card
+      <CollapsibleCard
+        title="实时链路指标"
+        icon={<DashboardOutlined />}
+        accent={ACCENTS.rank}
+        extra={
+          metricsQuery.isLoading ? (
+            <Typography.Text type="secondary">检测中…</Typography.Text>
+          ) : metricsAvailable ? (
+            <Typography.Text type="secondary">数据源 Prometheus · 15 秒自动刷新</Typography.Text>
+          ) : (
+            <Tooltip title={metrics?.message ?? '未接入观测栈,需 docker compose --profile obs + 正确的 PROMETHEUS_URL'}>
+              <Typography.Text type="warning">观测栈未接入 · 设置 PROMETHEUS_URL</Typography.Text>
+            </Tooltip>
+          )
+        }
+      >
+        <Row gutter={[16, 16]}>
+          {metricCard('推荐 P99 延迟', <ClockCircleOutlined />, metrics?.recommendP99Ms, { suffix: 'ms' })}
+          {metricCard('推荐 QPS', <DashboardOutlined />, metrics?.recommendQps, { precision: 2 })}
+          {metricCard('推荐平均延迟', <ThunderboltOutlined />, metrics?.recommendAvgMs, { suffix: 'ms' })}
+          {metricCard('广告 P99 延迟', <DollarOutlined />, metrics?.adP99Ms, { suffix: 'ms' })}
+        </Row>
+      </CollapsibleCard>
+
+      <CollapsibleCard
         title="服务健康"
+        icon={<CheckCircleOutlined />}
+        accent={ACCENTS.gsp}
         extra={
           <Space>
             {healthQuery.isFetching ? <Typography.Text type="secondary">刷新中</Typography.Text> : null}
@@ -285,9 +375,9 @@ export default function ProjectOverview() {
             scroll={{ x: 860 }}
           />
         )}
-      </Card>
+      </CollapsibleCard>
 
-      <Card title="核心链路" extra={<PlayCircleOutlined />}>
+      <CollapsibleCard title="核心链路" icon={<PlayCircleOutlined />} accent={ACCENTS.recall}>
         <Row gutter={[16, 16]}>
           {overview.links.map((link: SystemLink) => (
             <Col key={link.name} xs={24} lg={12} xl={8}>
@@ -307,9 +397,9 @@ export default function ProjectOverview() {
             </Col>
           ))}
         </Row>
-      </Card>
+      </CollapsibleCard>
 
-      <Card title="模块地图">
+      <CollapsibleCard title="模块地图" icon={<ClusterOutlined />} accent={ACCENTS.rerank}>
         {modules.length === 0 ? (
           <Empty description="暂无模块元数据。" />
         ) : (
@@ -322,9 +412,9 @@ export default function ProjectOverview() {
             scroll={{ x: 980 }}
           />
         )}
-      </Card>
+      </CollapsibleCard>
 
-      <Card title="API 目录" extra={<ApiOutlined />}>
+      <CollapsibleCard title="API 目录" icon={<ApiOutlined />} accent={ACCENTS.ad}>
         {overview.apis.length === 0 ? (
           <Empty description="暂无 API 目录。" />
         ) : (
@@ -337,9 +427,9 @@ export default function ProjectOverview() {
             scroll={{ x: 900 }}
           />
         )}
-      </Card>
+      </CollapsibleCard>
 
-      <Card title="启动命令" extra={<CodeOutlined />}>
+      <CollapsibleCard title="启动命令" icon={<CodeOutlined />} accent={ACCENTS.gsp}>
         {overview.commands.length === 0 ? (
           <Empty description="暂无启动命令。" />
         ) : (
@@ -361,7 +451,7 @@ export default function ProjectOverview() {
             ))}
           </Row>
         )}
-      </Card>
+      </CollapsibleCard>
     </Space>
   );
 }

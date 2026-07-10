@@ -25,6 +25,11 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>
         </dependency>
+        <!-- gRPC 身份传播 interceptor 复用 platform 的 InternalToken(技术横切,非领域契约)。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-platform</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
             <artifactId>recsys-ad-common</artifactId>

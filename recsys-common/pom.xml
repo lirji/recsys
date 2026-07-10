@@ -13,7 +13,8 @@
     <name>recsys-common</name>
     <description>共享契约:接口、DTO、常量。所有模块依赖它,改动需广播。</description>
 
-    <!-- 纯库模块:不打成可执行 jar,不引入 web 依赖,保持轻量 -->
+    <!-- 纯领域 Shared Kernel:只放领域契约(接口/DTO/常量/RedisKeys),不引入 web/安全等技术依赖,保持轻量稳定。
+         跨服务的技术横切(安全/异常/校验)在 recsys-platform,不污染领域契约。 -->
     <dependencies>
         <dependency>
             <groupId>jakarta.validation</groupId>
