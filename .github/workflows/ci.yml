@@ -1,0 +1,51 @@
+name: CI
+
+# 最小 CI(E3):build + 测试门槛 + JaCoCo 契约类覆盖率门槛 + ONNX 单文件校验 + 在线/离线契约跨语言校验。
+# 目标:任何改动若破坏"在线/离线一致性"或"陈旧 target/classes / 外部权重"这类部署即崩的隐患,都在合入前拦截。
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+# 并发:同一分支新推送取消旧运行,省 CI 资源
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # clean verify:强制重编(clean 防陈旧 target/classes 把旧资源打进 jar)+ 跑全部测试
+      # + verify 阶段触发 JaCoCo 契约类覆盖率门槛(契约编码器覆盖率跌破 50% 即失败)。
+      # ubuntu runner 自带 Docker,E2 的 Testcontainers 集成测试可直接运行。
+      - name: Build, test & coverage gate
+        run: mvn -B -e clean verify
+
+      # ONNX 必须是单文件自包含,否则在线从 classpath 加载缺权重而崩。
+      - name: ONNX self-contained check
+        run: bash scripts/check_onnx_selfcontained.sh
+
+      # 在线(Java)/离线(Python)编码契约共读同一 golden 固件,此步校验 Python 侧;
+      # Java 侧由上面的 mvn verify(RankEncoderContractGoldenTest)覆盖。
+      - name: On/offline contract cross-check (Python)
+        run: python3 scripts/verify_contracts.py
+
+      # 覆盖率报告存档,便于人工查看趋势(不阻断)。
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: '**/target/site/jacoco/**'
+          if-no-files-found: ignore

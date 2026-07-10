@@ -29,9 +29,12 @@ recsys/
 ├── recsys-behavior    # 行为采集(:8082)                       [app] Track E
 ├── recsys-offline     # 离线作业(导入/灌向量/CF/样本/双塔)     [app] Track A/E
 │   └── sql/           # 数据库 schema(容器首启自动执行)
-├── recsys-web         # 演示前端(:8090)                       [app] Track F
-└── recsys-streaming   # 实时特征 Flink 作业(本地 MiniCluster)  [app]
+├── recsys-console     # 控制台后端 console-api(:8090)          [app] Track F
+├── recsys-streaming   # 实时特征 Flink 作业(本地 MiniCluster)  [app]
+└── console/           # 控制台前端(独立 Vite 工程,nginx 同源托管)  [前端]
 ```
+
+> 前后端分离:前端为仓库根 `console/`(React SPA,`npm run dev` / nginx),后端 `recsys-console` 只提供控制台 BFF 接口(离线报表读取等)。见 `console/README.md`。
 
 > `[lib]` 为被依赖的计算/领域库(不打可执行 jar);`[app]` 为可执行服务。
 > 单体起步:`rec-engine` 聚合各 `[lib]` 在一个进程内跑通;后续可平滑拆为独立微服务。

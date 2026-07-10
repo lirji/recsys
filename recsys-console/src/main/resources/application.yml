@@ -1,0 +1,30 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: recsys-console
+  # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;
+  # 容器化/discovery 场景 NACOS_DISCOVERY=true 注册,供网关 lb://recsys-console 解析。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # 不因启动时连不上 DB 而失败 —— console 允许无 DB 启动,报表回退读本地 CSV(优雅降级)
+      initialization-fail-timeout: -1
+      minimum-idle: 0
+
+recsys:
+  console:
+    # 离线报表回退目录:主读 eval_report 表,表缺失/无数据时解析本地 eval/*.csv。
+    # dev 下 console 进程 CWD=recsys-console,指向兄弟模块 recsys-offline/eval。
+    eval-dir: ${EVAL_DIR:../recsys-offline/eval}

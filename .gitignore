@@ -27,6 +27,13 @@ logs/
 __pycache__/
 *.pyc
 
+# 前端(console)依赖与构建产物;前后端分离后 console 独立构建,产物由 nginx 托管
+node_modules/
+console/node_modules/
+console/dist/
+console/.vite/
+console/*.tsbuildinfo
+
 # 训练数据与离线产物（由离线作业 / 训练脚本生成，可复现）
 recsys-offline/train/*.csv
 recsys-offline/eval/*.csv

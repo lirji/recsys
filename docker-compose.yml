@@ -57,9 +57,11 @@ services:
       - "9092:9092"
 
   nacos:
-    image: nacos/nacos-server:v2.3.2
+    # v2.4.3 起有原生 arm64 多架构镜像(v2.3.2 仅 amd64,Apple Silicon 上模拟会卡死);standalone 内嵌 Derby。
+    image: nacos/nacos-server:v2.4.3
     container_name: recsys-nacos
-    profiles: ["full"]
+    # apps profile 也需要 Nacos(服务注册发现 + rec-engine 配置中心),故一并纳入。
+    profiles: ["full", "apps"]
     environment:
       MODE: standalone
     ports:
@@ -107,6 +109,203 @@ services:
     ports:
       # 宿主机 3000 常被占(docker-proxy 残留),映射到 3001 规避
       - "3001:3000"
+
+  # ---- 控制台前端:docker compose --profile console up -d 才启动 ----
+  # 前后端分离后前端独立为 console/ 工程;此服务用 nginx 同源托管构建产物 + 反代 /api 到宿主机上的网关。
+  # dev 阶段无需它,直接 `cd console && npm run dev`(Vite :5173 proxy 到 :8080)即可。
+  console:
+    build: ./console
+    container_name: recsys-console-web
+    profiles: ["console"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # 网关跑在宿主机 :8080;若把各 Java app 也容器化进同网络,改成 http://gateway:8080
+      RECSYS_GATEWAY: http://host.docker.internal:8080
+    ports:
+      - "8095:80"
+
+  # ---- 在线服务容器(P0 微服务化):docker compose --profile apps up -d ----
+  # 参数化 Dockerfile(MODULE/PORT)构建各 fat jar,全部接入 Nacos 服务发现(NACOS_DISCOVERY=true),
+  # 网关以 discovery profile 走 lb://。同网络内 PG=postgres:5432 / REDIS=redis / NACOS=nacos:8848(用服务名)。
+  # 仅网关对宿主暴露(:8080=统一入口);其余服务内部互通(经 Nacos lb:// 与容器 DNS)。
+  # 前端 console/(--profile console)把 RECSYS_GATEWAY 指向本网关即可全链路容器化(改成 http://gateway:8080)。
+  gateway:
+    build:
+      context: .
+      args:
+        MODULE: recsys-gateway
+        PORT: 8080
+    container_name: recsys-gateway
+    profiles: ["apps"]
+    depends_on:
+      nacos:
+        condition: service_started
+    environment:
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SPRING_PROFILES_ACTIVE: discovery   # 切 lb:// 动态路由(application-discovery.yml)
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"   # 统一入口
+
+  rec-engine:
+    build:
+      context: .
+      args:
+        MODULE: recsys-rec-engine
+        PORT: 8081
+    container_name: recsys-rec-engine
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      REDIS_HOST: redis
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8081
+      # 广告在线服务走 gRPC(容器 DNS);切 in-process 则退回进程内 AdPipeline(单体等价)
+      AD_SERVING_MODE: grpc
+      AD_SERVING_GRPC: static://ad-serving:9095
+      # 内容服务走 gRPC(展示 hydrate);切 in-process 则退回进程内 ContentService(单体等价)
+      CONTENT_SERVING_MODE: grpc
+      CONTENT_GRPC: static://content:9096
+      # 用户画像服务走 gRPC(冷启动兴趣);切 in-process 则退回进程内 UserProfileService(单体等价)
+      USER_SERVING_MODE: grpc
+      USER_GRPC: static://user:9097
+
+  ad-serving:
+    build:
+      context: .
+      args:
+        MODULE: recsys-ad-serving
+        PORT: 8085
+    container_name: recsys-ad-serving
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      REDIS_HOST: redis
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8085
+      # gRPC 端口(net.devh);rec-engine 经容器 DNS ad-serving:9095 连
+      GRPC_SERVER_PORT: 9095
+
+  behavior:
+    build:
+      context: .
+      args:
+        MODULE: recsys-behavior
+        PORT: 8082
+    container_name: recsys-behavior
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      REDIS_HOST: redis
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8082
+
+  advertiser:
+    build:
+      context: .
+      args:
+        MODULE: recsys-advertiser
+        PORT: 8083
+    container_name: recsys-advertiser
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres    # 分库分表 sharding.yaml 的 $${PG_HOST::localhost} 走此环境变量
+      REDIS_HOST: redis
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8083
+
+  console-api:
+    build:
+      context: .
+      args:
+        MODULE: recsys-console
+        PORT: 8090
+    container_name: recsys-console-api
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8090
+
+  content:
+    build:
+      context: .
+      args:
+        MODULE: recsys-content-service
+        PORT: 8086
+    container_name: recsys-content-service
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8086
+      GRPC_SERVER_PORT: 9096   # rec-engine 经容器 DNS content:9096 连
+
+  user:
+    build:
+      context: .
+      args:
+        MODULE: recsys-user-service
+        PORT: 8087
+    container_name: recsys-user-service
+    profiles: ["apps"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      PG_HOST: postgres
+      NACOS_ADDR: nacos:8848
+      NACOS_DISCOVERY: "true"
+      SERVER_PORT: 8087
+      GRPC_SERVER_PORT: 9097   # rec-engine 经容器 DNS user:9097 连
 
 volumes:
   pgdata:

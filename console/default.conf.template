@@ -1,0 +1,30 @@
+# 控制台前端(console)nginx 配置模板。nginx 官方镜像启动时用 envsubst 把 ${RECSYS_GATEWAY} 替换成环境变量,
+# 且只替换已定义的环境变量,故 $uri/$host 等 nginx 变量不受影响。
+# 同源托管静态资源 + 反代 /api 到网关 —— 浏览器只与本 origin 通信,零 CORS。
+server {
+    listen       80;
+    server_name  _;
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # SPA 深链回退:非静态资源的导航路径都回退到 index.html,交给 react-router。
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 反向代理:所有 /api/** 转发到网关。默认经 host.docker.internal 打宿主机上的 gateway:8080;
+    # 若网关也在容器网络里,把 RECSYS_GATEWAY 换成 http://gateway:8080。
+    location /api/ {
+        proxy_pass         ${RECSYS_GATEWAY};
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    location /assets/ {
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+}

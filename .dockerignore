@@ -1,0 +1,16 @@
+# 构建镜像时排除:体积大 / 与构建无关 / 会拖慢上下文传输(尤其 .venv 含 torch,数 GB)
+**/target/
+**/.venv/
+**/*.pyc
+**/__pycache__/
+.git/
+.github/
+.idea/
+*.iml
+eval/
+pgdata/
+**/node_modules/
+scratchpad/
+# 大模型权重(BGE 等)不入镜像;排序 ONNX 作为 resources 会随 mvn package 打进 jar
+**/models/
+*.log

@@ -20,6 +20,8 @@
 
         <spring-boot.version>3.2.5</spring-boot.version>
         <spring-cloud.version>2023.0.1</spring-cloud.version>
+        <!-- P4 配置中心:Spring Cloud Alibaba(Nacos config)。2023.0.1.x 对齐 Spring Cloud 2023.0.1 + Spring Boot 3.2.x -->
+        <spring-cloud-alibaba.version>2023.0.1.3</spring-cloud-alibaba.version>
 
         <pgvector.version>0.1.6</pgvector.version>
         <onnxruntime.version>1.17.1</onnxruntime.version>
@@ -29,24 +31,39 @@
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
+        <!-- 覆盖率度量 + 契约类覆盖率门槛(E3):0.8.12 支持 JDK 21 -->
+        <jacoco.version>0.8.12</jacoco.version>
+        <!-- 微服务化:gRPC(服务间内部通信)+ protobuf(Published Language 契约,recsys-proto)。
+             grpc 1.64.0 / protobuf 3.25.3 / net.devh grpc-spring-boot-starter 3.1.0.RELEASE 三者相互对齐,
+             且对齐 Spring Boot 3.2.x。protoc/protoc-gen-grpc-java 按 os.detected.classifier 拉原生二进制。 -->
+        <grpc.version>1.64.0</grpc.version>
+        <protobuf.version>3.25.3</protobuf.version>
+        <grpc-spring.version>3.1.0.RELEASE</grpc-spring.version>
+        <protobuf-plugin.version>0.6.1</protobuf-plugin.version>
+        <os-plugin.version>1.7.1</os-plugin.version>
     </properties>
 
     <modules>
         <module>recsys-common</module>
+        <module>recsys-ad-common</module>
+        <module>recsys-proto</module>
         <module>recsys-gateway</module>
         <module>recsys-rec-engine</module>
         <module>recsys-query</module>
         <module>recsys-recall</module>
         <module>recsys-rank</module>
         <module>recsys-ad</module>
+        <module>recsys-ad-serving</module>
         <module>recsys-advertiser</module>
         <module>recsys-feature</module>
         <module>recsys-embedding</module>
         <module>recsys-content</module>
+        <module>recsys-content-service</module>
         <module>recsys-user</module>
+        <module>recsys-user-service</module>
         <module>recsys-behavior</module>
         <module>recsys-offline</module>
-        <module>recsys-web</module>
+        <module>recsys-console</module>
         <module>recsys-streaming</module>
     </modules>
 
@@ -68,13 +85,54 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- 注:引入 Nacos 时在此加 spring-cloud-alibaba-dependencies BOM
-                 (需选用与 Spring Cloud 2023.0.x 匹配且中央仓库存在的版本) -->
+            <!-- Spring Cloud Alibaba BOM(P4):Nacos 配置中心。版本 2023.0.1.x 与上面的
+                 Spring Cloud 2023.0.1 / Spring Boot 3.2.x 对齐;只有 rec-engine 引 nacos-config starter。 -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- gRPC BOM:统一 grpc-* 版本(1.64.0),与 protobuf 3.25.x / net.devh 3.1.0 对齐 -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <!-- net.devh:把 gRPC server/client 融进 Spring Boot(@GrpcService/@GrpcClient + Nacos discovery 发现) -->
+            <dependency>
+                <groupId>net.devh</groupId>
+                <artifactId>grpc-server-spring-boot-starter</artifactId>
+                <version>${grpc-spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.devh</groupId>
+                <artifactId>grpc-client-spring-boot-starter</artifactId>
+                <version>${grpc-spring.version}</version>
+            </dependency>
 
             <!-- 内部模块统一版本管理(子模块引用时无需写 version) -->
             <dependency>
                 <groupId>com.recsys</groupId>
+                <artifactId>recsys-proto</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
                 <artifactId>recsys-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-ad-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -166,6 +224,59 @@
                 <configuration>
                     <parameters>true</parameters>
                 </configuration>
+            </plugin>
+
+            <!-- JaCoCo 覆盖率(E3):全模块度量 + report;check 只对"在线/离线契约类"设线覆盖门槛,
+                 靠 CLASS 级 includes 精确命中——不含这些类的模块(DTO/编排/无测试模块)规则空匹配即通过,
+                 因此不会误伤,只锁死"契约编码器绝不能失去测试覆盖"这一条底线(防倒退)。 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>jacoco-report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>jacoco-contract-gate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <haltOnFailure>true</haltOnFailure>
+                            <rules>
+                                <rule>
+                                    <element>CLASS</element>
+                                    <includes>
+                                        <include>com.recsys.rank.FeatureAssembler</include>
+                                        <include>com.recsys.rank.SparseFeatureEncoder</include>
+                                        <include>com.recsys.rank.SequenceEncoder</include>
+                                        <include>com.recsys.common.ad.BidwordInvCodec</include>
+                                        <include>com.recsys.embedding.BgeTokenizer</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.50</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -29,8 +29,8 @@ groups:
       # 排序模型回退率(请求 onnx/deepfm/mmoe/din/ple 却 served=rule)
       - record: recsys:rank_fallback_ratio
         expr: |
-          sum(rate(recsys_rank_total{served="rule",requested=~"onnx|deepfm|mmoe|din|ple"}[5m]))
-          / clamp_min(sum(rate(recsys_rank_total{requested=~"onnx|deepfm|mmoe|din|ple"}[5m])), 0.001)
+          sum(rate(recsys_rank_total{served="rule",requested=~"onnx|deepfm|mmoe|din|dien|ple"}[5m]))
+          / clamp_min(sum(rate(recsys_rank_total{requested=~"onnx|deepfm|mmoe|din|dien|ple"}[5m])), 0.001)
 
   # ---------- 告警:可用性 / 延迟 / 依赖 / 质量 ----------
   - name: recsys-alerts
@@ -95,3 +95,82 @@ groups:
         annotations:
           summary: "空召回率激增"
           description: "空召回速率 {{ $value }}/s;查 pgvector/CF 存储是否掉数据或 embedding 外呼熔断。"
+
+  # ---------- 广告变现 SLI(docs/07 P1):core 指标 recsys.ad.* 在 rec-engine(8081)已埋点 ----------
+  # 口径:duration timer 的 outcome ∈ {ok, no_candidate, error, empty_query};
+  #   * "广告请求" = 带 query 的请求 = outcome ∈ {ok, no_candidate, error}(剔除 empty_query);
+  #   * "填充" = outcome=ok(竞得并返回广告);"曝光/impression" ≈ fill 计数(竞得广告位数)。
+  - name: recsys-ad-sli
+    interval: 15s
+    rules:
+      # 广告编排 P99 延迟(秒)
+      - record: recsys:ad_latency_p99
+        expr: histogram_quantile(0.99, sum(rate(recsys_ad_duration_seconds_bucket[5m])) by (le))
+      # 请求级填充率:竞得广告的请求 / 带 query 的广告请求
+      - record: recsys:ad_fill_ratio
+        expr: |
+          sum(rate(recsys_ad_duration_seconds_count{outcome="ok"}[5m]))
+          / clamp_min(sum(rate(recsys_ad_duration_seconds_count{outcome=~"ok|no_candidate|error"}[5m])), 0.001)
+      # 广告 CTR = 点击 / 曝光(fill)
+      - record: recsys:ad_ctr
+        expr: |
+          sum(rate(recsys_ad_click_total[5m]))
+          / clamp_min(sum(rate(recsys_ad_fill_total[5m])), 0.001)
+      # eCPM(分/千次曝光)= 营收(分) / 曝光 × 1000
+      - record: recsys:ad_ecpm_cents
+        expr: |
+          sum(rate(recsys_ad_revenue_cents_total[5m]))
+          / clamp_min(sum(rate(recsys_ad_fill_total[5m])), 0.001) * 1000
+      # 无效点击占比(反作弊拦截 / 归因失败)
+      - record: recsys:ad_invalid_click_ratio
+        expr: |
+          sum(rate(recsys_ad_invalid_click_total[5m]))
+          / clamp_min(sum(rate(recsys_ad_click_total[5m])) + sum(rate(recsys_ad_invalid_click_total[5m])), 0.001)
+
+  # ---------- 广告变现告警 ----------
+  - name: recsys-ad-alerts
+    rules:
+      # 广告链路 P99 > 300ms(比推荐 200ms 宽:多了 query 理解 + 校准 + 拍卖)
+      - alert: AdServingLatencyP99High
+        expr: recsys:ad_latency_p99 > 0.3
+        for: 10m
+        labels: {severity: warning, slo: ad-latency}
+        annotations:
+          summary: "搜索广告 P99 延迟 > 300ms"
+          description: "P99={{ $value }}s 持续 10m;查广告召回/相关性门槛/竞价+校准/排序模型打分。"
+
+      # 填充率过低:相关性门槛过严 / 召回缺广告 / 预算普遍耗尽
+      - alert: AdFillRatioLow
+        expr: recsys:ad_fill_ratio < 0.5 and sum(rate(recsys_ad_duration_seconds_count{outcome=~"ok|no_candidate"}[5m])) > 0.05
+        for: 15m
+        labels: {severity: warning, slo: ad-fill}
+        annotations:
+          summary: "广告填充率 < 50%"
+          description: "填充率 {{ $value | humanizePercentage }} 持续 15m;查相关性门槛、竞价词倒排、pacing 预算。"
+
+      # 有广告请求却零填充(召回/竞价链路整体故障)
+      - alert: AdNoFill
+        expr: sum(rate(recsys_ad_fill_total[10m])) == 0 and sum(rate(recsys_ad_duration_seconds_count{outcome=~"ok|no_candidate"}[10m])) > 0.05
+        for: 15m
+        labels: {severity: critical, slo: ad-fill}
+        annotations:
+          summary: "广告零填充(有请求但无广告竞得)"
+          description: "10m 内有广告请求却零竞得;查广告召回(倒排/向量)、相关性门槛、竞价与 Redis 预算键。"
+
+      # 无效点击激增:反作弊误杀 / 归因链路故障 / 刷量攻击
+      - alert: AdInvalidClickSpike
+        expr: recsys:ad_invalid_click_ratio > 0.3 and sum(rate(recsys_ad_click_total[5m]) + rate(recsys_ad_invalid_click_total[5m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "无效点击占比 > 30%"
+          description: "无效点击占比 {{ $value | humanizePercentage }};查反作弊阈值/曝光归因 TTL/是否刷量。"
+
+      # 广告主管理服务下线(仅在 8083 被抓取且曾上报后生效;未部署时无 series 不误报)
+      - alert: AdvertiserDown
+        expr: up{application="recsys-advertiser"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "advertiser(广告主管理)抓取不到"
+          description: "{{ $labels.instance }} 的 /actuator/prometheus 连续 5m 抓取失败;写侧管理面可能已宕。"

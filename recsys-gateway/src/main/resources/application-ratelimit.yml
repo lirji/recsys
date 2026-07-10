@@ -1,0 +1,21 @@
+# 网关限流 profile(E7)—— 仅在 `--spring.profiles.active=ratelimit` 时生效,需 Redis。
+# 默认(无此 profile)网关不加限流、不连 Redis,本地零依赖可跑。
+#
+# 令牌桶:每个 key(见 RateLimitConfig.userKeyResolver:userId → IP → global)独立限流。
+#   replenishRate = 每秒补充令牌(稳态 QPS 上限/键);burstCapacity = 桶容量(允许的瞬时突发);
+#   requestedTokens = 每请求耗令牌。超限返回 429 Too Many Requests。
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    gateway:
+      # 全局默认过滤器:对所有路由施加 Redis 令牌桶限流
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: ${GATEWAY_RATE_LIMIT_RPS:50}
+            redis-rate-limiter.burstCapacity: ${GATEWAY_RATE_LIMIT_BURST:100}
+            redis-rate-limiter.requestedTokens: 1
+            key-resolver: "#{@userKeyResolver}"

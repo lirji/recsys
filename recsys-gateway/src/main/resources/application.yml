@@ -4,7 +4,18 @@ server:
 spring:
   application:
     name: recsys-gateway
+  # E7:网关限流(Redis 令牌桶)是 opt-in 的 `ratelimit` profile —— 默认关,不影响无 Redis 的本地运行。
+  # 开启:`--spring.profiles.active=ratelimit`(需 Redis);限流配置见 application-ratelimit.yml。
   cloud:
+    # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 网关用下面的静态 http://localhost 路由,
+    # 无 Nacos 也能起。以 `--spring.profiles.active=discovery`(见 application-discovery.yml)切到 lb:// 动态路由,
+    # 需 NACOS_DISCOVERY=true + 各服务已注册。
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
     gateway:
       routes:
         # rec-engine 对外全部入口 → 8081(补全:此前只路由了 /api/recommend,其余落到 /**→web 不可达)。
@@ -13,7 +24,7 @@ spring:
         - id: rec-engine
           uri: http://localhost:8081
           predicates:
-            - Path=/api/recommend/**,/api/search/**,/api/search-ads/**,/api/feed/**,/api/query/**,/api/user/**,/api/ad/**
+            - Path=/api/recommend/**,/api/search/**,/api/search-ads/**,/api/feed/**,/api/query/**,/api/user/**,/api/ad/**,/api/experiment/**
         # 行为上报 → behavior
         - id: behavior
           uri: http://localhost:8082
@@ -25,11 +36,12 @@ spring:
           uri: http://localhost:8083
           predicates:
             - Path=/api/advertiser/**
-        # 演示前端 → web
-        - id: web
+        # 控制台后端(console-api):离线报表读取等 BFF 接口 → console
+        # 前后端分离后前端不再由网关托管(由 nginx 同源托管并反代 /api 到本网关),故去掉旧的 /**→web 兜底路由。
+        - id: console
           uri: http://localhost:8090
           predicates:
-            - Path=/**
+            - Path=/api/console/**
 
 management:
   endpoints:

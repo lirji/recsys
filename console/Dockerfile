@@ -1,0 +1,19 @@
+# 控制台前端(console)镜像:多阶段 —— node 构建 SPA → nginx 同源托管 + 反代 /api。
+#   docker build -t recsys/console ./console
+#   docker run -p 8095:80 -e RECSYS_GATEWAY=http://host.docker.internal:8080 recsys/console
+
+# ---------- 构建阶段 ----------
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
+COPY . .
+RUN npm run build
+
+# ---------- 运行阶段 ----------
+FROM nginx:1.27-alpine
+# 网关地址(容器内默认打宿主机上的 gateway:8080);nginx 镜像启动时 envsubst 注入到 default.conf.template
+ENV RECSYS_GATEWAY=http://host.docker.internal:8080
+COPY default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
