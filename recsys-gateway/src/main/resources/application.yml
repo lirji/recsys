@@ -22,24 +22,24 @@ spring:
         # 含:推荐 / 搜索 / 搜索广告 / 混排 feed / query 理解 / 冷启动兴趣 / 广告点击·转化(/api/ad/*)。
         # 注:/api/ad/** 与 /api/advertiser/**(→8083)不重叠(第二段 ad≠advertiser),互不误路由。
         - id: rec-engine
-          uri: http://localhost:8081
+          uri: http://localhost:${REC_ENGINE_PORT:8081}
           predicates:
             - Path=/api/recommend/**,/api/search/**,/api/search-ads/**,/api/feed/**,/api/query/**,/api/user/**,/api/ad/**,/api/experiment/**
         # 行为上报 → behavior
         - id: behavior
-          uri: http://localhost:8082
+          uri: http://localhost:${BEHAVIOR_PORT:8082}
           predicates:
             - Path=/api/behavior/**
         # 广告主管理(广告主/广告/创意/竞价词 CRUD + 报表)→ advertiser
         # 全在 /api/advertiser/** 命名空间下,不与 rec-engine 的 /api/ad/click、/api/ad/conversion 冲突
         - id: advertiser
-          uri: http://localhost:8083
+          uri: http://localhost:${ADVERTISER_PORT:8083}
           predicates:
             - Path=/api/advertiser/**
         # 控制台后端(console-api):离线报表读取等 BFF 接口 → console
         # 前后端分离后前端不再由网关托管(由 nginx 同源托管并反代 /api 到本网关),故去掉旧的 /**→web 兜底路由。
         - id: console
-          uri: http://localhost:8090
+          uri: http://localhost:${CONSOLE_PORT:8090}
           predicates:
             - Path=/api/console/**
 
