@@ -28,3 +28,49 @@ recsys:
     # 离线报表回退目录:主读 eval_report 表,表缺失/无数据时解析本地 eval/*.csv。
     # dev 下 console 进程 CWD=recsys-console,指向兄弟模块 recsys-offline/eval。
     eval-dir: ${EVAL_DIR:../recsys-offline/eval}
+    health:
+      connect-timeout-ms: ${SYSTEM_HEALTH_CONNECT_TIMEOUT_MS:300}
+      read-timeout-ms: ${SYSTEM_HEALTH_READ_TIMEOUT_MS:500}
+      targets:
+        - service: recsys-console
+          name: 控制台 BFF
+          kind: app
+          url: ${RECSYS_CONSOLE_URL:http://localhost:8090}
+        - service: recsys-gateway
+          name: 网关
+          kind: app
+          url: ${RECSYS_GATEWAY_URL:http://localhost:8080}
+        - service: recsys-rec-engine
+          name: 推荐编排
+          kind: app
+          url: ${RECSYS_REC_ENGINE_URL:http://localhost:8081}
+        - service: recsys-behavior
+          name: 行为采集
+          kind: app
+          url: ${RECSYS_BEHAVIOR_URL:http://localhost:8082}
+        - service: recsys-advertiser
+          name: 广告主后台
+          kind: app
+          url: ${RECSYS_ADVERTISER_URL:http://localhost:8083}
+        - service: recsys-ad-serving
+          name: 广告投放内部服务
+          kind: app
+          url: ${RECSYS_AD_SERVING_URL:http://localhost:8085}
+        - service: recsys-content-service
+          name: 内容内部服务
+          kind: app
+          url: ${RECSYS_CONTENT_SERVICE_URL:http://localhost:8086}
+        - service: recsys-user-service
+          name: 用户内部服务
+          kind: app
+          url: ${RECSYS_USER_SERVICE_URL:http://localhost:8087}
+        - service: recsys-offline
+          name: 离线作业
+          kind: job
+          passive-status: JOB_ONLY
+          passive-message: 按需运行,不按常驻 HTTP 服务探测。
+        - service: recsys-streaming
+          name: 实时特征作业
+          kind: job
+          passive-status: LOCAL_CLUSTER_JOB
+          passive-message: Flink 作业按需启动,不按 HTTP 服务探测。

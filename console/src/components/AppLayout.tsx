@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Layout, Menu, InputNumber, Select, Space, Typography, Grid } from 'antd';
 import {
+  ClusterOutlined,
   ThunderboltOutlined,
   SearchOutlined,
   DollarOutlined,
@@ -19,6 +20,14 @@ const { useBreakpoint } = Grid;
 
 // 三分区导航:在线调试台 / 广告主后台 / 离线报表。路由 key 与 router.tsx 的 path 一一对应。
 const menuItems = [
+  {
+    key: 'grp-project',
+    label: '项目',
+    type: 'group' as const,
+    children: [
+      { key: '/overview', icon: <ClusterOutlined />, label: <Link to="/overview">系统总览</Link> },
+    ],
+  },
   {
     key: 'grp-online',
     label: '在线调试台',

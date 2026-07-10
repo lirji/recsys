@@ -203,3 +203,61 @@ export interface ReportTable {
   columns: string[];
   rows: string[][];
 }
+
+// ===== 系统总览(recsys-console 的 /api/console/system)=====
+export interface SystemModule {
+  name: string;
+  type: 'frontend' | 'app' | 'job' | 'lib' | string;
+  description: string;
+  port?: number | null;
+  grpcPort?: number | null;
+  gatewayPrefixes: string[];
+  dependencies: string[];
+  runnable: boolean;
+  frontendPath?: string | null;
+}
+
+export interface SystemLink {
+  name: string;
+  description: string;
+  steps: string[];
+  frontendPath?: string | null;
+}
+
+export interface SystemApiEndpoint {
+  method: string;
+  path: string;
+  service: string;
+  description: string;
+  frontendPath?: string | null;
+}
+
+export interface SystemCommandItem {
+  label: string;
+  command: string;
+}
+
+export interface SystemCommandGroup {
+  name: string;
+  items: SystemCommandItem[];
+}
+
+export interface ServiceHealth {
+  service: string;
+  name: string;
+  kind: string;
+  url?: string | null;
+  status: string;
+  message: string;
+  checkedAt: number;
+}
+
+export interface SystemOverview {
+  projectName: string;
+  description: string;
+  stack: string;
+  modules: SystemModule[];
+  links: SystemLink[];
+  apis: SystemApiEndpoint[];
+  commands: SystemCommandGroup[];
+}

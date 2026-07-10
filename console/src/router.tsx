@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Spin } from 'antd';
+import ProjectOverview from './pages/project/ProjectOverview';
 import RecommendConsole from './pages/online/RecommendConsole';
 import SearchConsole from './pages/online/SearchConsole';
 import SearchAdsConsole from './pages/online/SearchAdsConsole';
@@ -22,7 +23,10 @@ export default function AppRoutes() {
   return (
     <Suspense fallback={<Spin style={{ margin: 40 }} />}>
       <Routes>
-        <Route path="/" element={<Navigate to="/recommend" replace />} />
+        <Route path="/" element={<Navigate to="/overview" replace />} />
+
+        {/* 项目总览 */}
+        <Route path="/overview" element={<ProjectOverview />} />
 
         {/* Phase 1 — 在线调试台 */}
         <Route path="/recommend" element={<RecommendConsole />} />
@@ -44,7 +48,7 @@ export default function AppRoutes() {
         <Route path="/reports" element={<ReportsIndex />} />
         <Route path="/reports/:category" element={<ReportViewer />} />
 
-        <Route path="*" element={<Navigate to="/recommend" replace />} />
+        <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </Suspense>
   );
