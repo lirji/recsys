@@ -49,6 +49,9 @@ public class AdServableRepository {
                         audience_id BIGINT, max_bid DOUBLE PRECISION DEFAULT 0,
                         servable BOOLEAN NOT NULL DEFAULT TRUE, bidwords_json TEXT, creatives_json TEXT,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""");
+            // 兼容旧表(schema 演进):CREATE TABLE IF NOT EXISTS 不给已存在的表加列,故显式补 P1b 收尾新增的列。
+            jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS audience_id BIGINT");
+            jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS max_bid DOUBLE PRECISION DEFAULT 0");
         } catch (Exception e) {
             log.warn("建 ad_servable 表失败(稍后消费/读会再暴露): {}", e.getMessage());
         }
