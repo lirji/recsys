@@ -1,0 +1,155 @@
+server:
+  port: 8085
+
+# gRPC 服务端(net.devh):rec-engine 作为 client 连此端口。plaintext(本地/内网;生产加 TLS)。
+grpc:
+  server:
+    port: 9095
+
+spring:
+  application:
+    name: recsys-ad-serving
+  # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;
+  # 容器化/discovery 场景 NACOS_DISCOVERY=true 注册。metadata.gRPC_port 供 net.devh discovery:///recsys-ad-serving
+  # 解析 gRPC 端口(否则默认解析到 HTTP 端口);第一刀 gRPC east-west 默认用容器 DNS static://,此项为可选增强。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
+        metadata:
+          gRPC_port: ${GRPC_SERVER_PORT:9095}
+  # 与 rec-engine 读侧一致的主数据源(AdShardingConfig 装配主=普通 PG,承载 ad_event / ad_embedding pgvector ANN;
+  # 次=ShardingSphere 读分片广告目录 advertiser/ad/bidword/ad_creative)。
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-init-sql: SET hnsw.ef_search = 200
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN:5}
+      connection-timeout: ${DB_POOL_CONN_TIMEOUT_MS:3000}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  # P1b:消费 ad-catalog-events 建可服务副本。监听器默认不启动(recsys.ad.catalog.consume=false)→ 无 Kafka 也能起。
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    consumer:
+      group-id: recsys-ad-serving-catalog
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+# 广告管线所需配置(与 rec-engine 同源:rank 复用排序模型出 pCTR/pCVR;ad.* 是竞价/校准/pacing/EE/DCO 等)。
+# 未来接 Nacos config(spring.config.import=optional:nacos:recsys-ad-serving.yml)即可热更,与 rec-engine 一致。
+recsys:
+  embedding:
+    dimension: 768
+  rank:
+    strategy: ${RANK_STRATEGY:v1}
+    onnx-model-path: classpath:model/model.onnx
+    deepfm-model-path: classpath:model/model_deepfm.onnx
+    rank-schema-path: classpath:model/rank_schema.json
+    category-vocab-path: classpath:model/category_vocab.json
+    dcn-model-path: classpath:model/model_dcn.onnx
+    dcn-schema-path: classpath:model/dcn_schema.json
+    dcn-category-vocab-path: classpath:model/dcn_category_vocab.json
+    mmoe-model-path: classpath:model/model_mmoe.onnx
+    mmoe-schema-path: classpath:model/mmoe_schema.json
+    mmoe-category-vocab-path: classpath:model/mmoe_category_vocab.json
+    din-model-path: classpath:model/model_din.onnx
+    din-schema-path: classpath:model/din_schema.json
+    din-category-vocab-path: classpath:model/din_category_vocab.json
+    ple-model-path: classpath:model/model_ple.onnx
+    ple-schema-path: classpath:model/ple_schema.json
+    ple-category-vocab-path: classpath:model/ple_category_vocab.json
+    dien-model-path: classpath:model/model_dien.onnx
+    dien-schema-path: classpath:model/dien_schema.json
+    dien-category-vocab-path: classpath:model/dien_category_vocab.json
+    sim-model-path: classpath:model/model_sim.onnx
+    sim-schema-path: classpath:model/sim_schema.json
+    sim-category-vocab-path: classpath:model/sim_category_vocab.json
+    sim-long-history: 500
+    multi-task:
+      cvr-bias: 0.1
+      cvr-weight: 1.0
+    pre-rank:
+      enabled: true
+      limit: 50
+      recall-weight: 1.0
+      pop-weight: 0.3
+      affinity-weight: 0.5
+  # 搜索广告:与 rec-engine 的 recsys.ad.* 完全一致(AdProperties 绑定)。
+  ad:
+    # P1b 广告目录来源:sharded(默认,直读广告主分片目录库,回滚落点)| replica(读事件构建的自有 ad_servable,DB-per-service)。
+    catalog:
+      source: ${AD_CATALOG_SOURCE:sharded}
+      consume: ${AD_CATALOG_CONSUME:false}   # 是否启动 ad-catalog-events 监听器(replica 模式需先开它灌副本)
+    slots: 3
+    calib-model: ${AD_CALIB_MODEL:deepfm}
+    recall:
+      kw: 200
+      semantic: 100
+      u2a: 80
+      hot: 50
+      relevance-threshold: 0.05
+      kw-weight: 0.6
+      sem-weight: 0.4
+    auction:
+      reserve-price: 0.1
+      price-increment: 0.01
+      listwise:
+        enabled: ${AD_LISTWISE_ENABLED:false}
+        externality-weight: 0.5
+        min-retention: 0.3
+    ocpc:
+      enabled: ${AD_OCPC_ENABLED:true}
+      default-pcvr: 0.1
+      max-bid: 0.0
+    cvr:
+      enabled: ${AD_CVR_DFM_ENABLED:false}
+      model-path: classpath:model/model_dfm_cvr.onnx
+      schema-path: classpath:model/dfm_cvr_schema.json
+      vocab-path: classpath:model/dfm_cvr_category_vocab.json
+    ad-load:
+      enabled: ${AD_LOAD_ENABLED:true}
+      slots: [2, 6, 10]
+      max-ads: 3
+    freq:
+      enabled: ${AD_FREQ_ENABLED:true}
+      per-ad: 3
+      per-advertiser: 8
+    exploration:
+      enabled: ${AD_EXPLORE_ENABLED:true}
+      coef: 0.5
+      max-boost: 3.0
+    anti-fraud:
+      enabled: ${AD_ANTIFRAUD_ENABLED:true}
+      max-clicks-per-minute: 20
+    pacing:
+      enabled: ${AD_PACING_ENABLED:true}
+    quality:
+      enabled: ${AD_QUALITY_ENABLED:true}
+    dco:
+      enabled: ${AD_DCO_ENABLED:false}
+      ucb-coef: 0.5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0

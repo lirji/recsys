@@ -39,6 +39,34 @@
             <artifactId>logstash-logback-encoder</artifactId>
             <version>7.4</version>
         </dependency>
+        <!-- P4 配置中心:Nacos config。经 spring.config.import=optional:nacos:... 拉取 recsys.ad.*/fusion.* 热更配置;
+             传递引入 spring-cloud-context(提供 ConfigurationPropertiesRebinder + /actuator/refresh)。
+             optional: 前缀 + 默认关(server 不可达即跳过)→ 无 Nacos 也能起,契合本仓库优雅降级硬约束。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+        <!-- P0 微服务化:Nacos 服务发现(注册自身,供网关 lb:// 解析)。默认关,无 Nacos 也能起。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <!-- 微服务化:调 recsys-ad-serving 的 gRPC 契约(消息 + stub + ACL mapper)+ gRPC 客户端(net.devh)。
+             仅 recsys.ad.serving.mode=grpc 时 GrpcAdServingGateway 才装配并注入 @GrpcClient;默认 in-process 不建通道。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-proto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+        </dependency>
+        <!-- P4:消费 behavior-events 建"已看"读模型(SeenItemsConsumer)。监听器默认不启动
+             (recsys.behavior.seen-consume=false)→ 无 Kafka 也能起。 -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
         <!-- 单体起步:直接聚合各计算/领域库;拆微服务时改为远程调用 -->
         <dependency>
             <groupId>com.recsys</groupId>
@@ -51,6 +79,10 @@
         <dependency>
             <groupId>com.recsys</groupId>
             <artifactId>recsys-rank</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad-common</artifactId>
         </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
@@ -75,6 +107,24 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <!-- E2 核心链路集成测试:Testcontainers 起 pgvector + redis,跑真实 recall→prerank→rank→rerank。
+             版本由 spring-boot-dependencies 的 testcontainers BOM 管理(无需显式 version)。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

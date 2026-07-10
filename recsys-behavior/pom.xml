@@ -31,6 +31,11 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- P0 微服务化:Nacos 服务发现(注册自身,供网关 lb:// 解析)。默认关。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
         <!-- 收到点击时回查曝光分桶归因键(expo:{user}:{item}),算在线分桶 CTR -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

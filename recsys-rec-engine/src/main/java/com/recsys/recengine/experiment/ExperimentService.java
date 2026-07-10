@@ -19,9 +19,11 @@ public class ExperimentService {
     private static final int BUCKETS = 100;
 
     private final ExperimentProperties props;
+    private final ExperimentOverrideService override;   // P3:Redis 动态覆盖(放量/开关,不重启)
 
-    public ExperimentService(ExperimentProperties props) {
+    public ExperimentService(ExperimentProperties props, ExperimentOverrideService override) {
         this.props = props;
+        this.override = override;
     }
 
     /** 为该用户在所有已配置的层上做分桶,返回各层命中的 variant。 */
@@ -37,7 +39,7 @@ public class ExperimentService {
             if (variants == null || variants.isEmpty()) {
                 continue;
             }
-            ExperimentProperties.Variant chosen = pick(userId, cfg, variants);
+            ExperimentProperties.Variant chosen = pick(userId, layer, cfg, variants);
             decision.put(layer, chosen.getName(), chosen.getParams());
         }
         return decision;
@@ -52,31 +54,38 @@ public class ExperimentService {
         if (cfg == null || cfg.getVariants() == null || cfg.getVariants().isEmpty()) {
             return null;
         }
-        return pick(userId, cfg, cfg.getVariants());
+        return pick(userId, ExperimentDecision.LAYER_AD, cfg, cfg.getVariants());
     }
 
-    private ExperimentProperties.Variant pick(long userId,
+    private ExperimentProperties.Variant pick(long userId, String layer,
                                               ExperimentProperties.Layer cfg,
                                               List<ExperimentProperties.Variant> variants) {
-        // 实验关闭:固定第一个 variant 作基线
-        if (!props.isEnabled()) {
+        // 全局开关:Redis 覆盖优先,否则静态。关闭 → 固定第一个 variant 作基线
+        Boolean gEnabled = override.globalEnabled();
+        boolean enabled = gEnabled != null ? gEnabled : props.isEnabled();
+        // 层开关:Redis 覆盖该层 off → 该层也退基线(实现"停某层实验"不重启)
+        Boolean lEnabled = override.layerEnabled(layer);
+        if (!enabled || Boolean.FALSE.equals(lEnabled)) {
             return variants.get(0);
         }
+        // 变体权重:Redis 覆盖优先(放量/停止),否则静态 weight
         int totalWeight = 0;
-        for (var v : variants) {
-            totalWeight += Math.max(0, v.getWeight());
+        int[] w = new int[variants.size()];
+        for (int i = 0; i < variants.size(); i++) {
+            Integer ov = override.variantWeight(layer, variants.get(i).getName());
+            w[i] = Math.max(0, ov != null ? ov : variants.get(i).getWeight());
+            totalWeight += w[i];
         }
         if (totalWeight <= 0) {
             return variants.get(0);
         }
         int bucket = Math.floorMod((userId + "|" + cfg.getSalt()).hashCode(), BUCKETS);
-        // 把 [0,100) 的桶按权重比例映射到各 variant
-        int threshold = bucket * totalWeight; // 比较 threshold/100 < cumWeight 等价 bucket*total < cum*100
+        int threshold = bucket * totalWeight; // bucket*total < cum*100 等价 bucket/100 < cum/total
         int cum = 0;
-        for (var v : variants) {
-            cum += Math.max(0, v.getWeight());
+        for (int i = 0; i < variants.size(); i++) {
+            cum += w[i];
             if (threshold < cum * BUCKETS) {
-                return v;
+                return variants.get(i);
             }
         }
         return variants.get(variants.size() - 1);

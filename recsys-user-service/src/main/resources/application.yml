@@ -1,0 +1,41 @@
+server:
+  port: 8087
+
+grpc:
+  server:
+    port: 9097
+
+spring:
+  application:
+    name: recsys-user-service
+  # P3 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
+        metadata:
+          gRPC_port: ${GRPC_SERVER_PORT:9097}
+  # app_user:普通 Postgres 主数据源(非分片)。#3 物理拆库:USER_PG_DB 未设→退回 PG_DB→recsys(默认不变);
+  # 设 USER_PG_DB=recsys_user 即 user 服务写自有库(DB-per-service),其它服务经 gRPC 读,不直读。
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${USER_PG_DB:${PG_DB:recsys}}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0

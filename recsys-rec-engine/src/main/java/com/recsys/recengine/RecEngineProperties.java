@@ -18,9 +18,62 @@ public class RecEngineProperties {
     private final Search search = new Search();
     private final ColdStart coldStart = new ColdStart();
     private final Filter filter = new Filter();
+    private final Shadow shadow = new Shadow();
 
     public Rerank getRerank() {
         return rerank;
+    }
+
+    public Shadow getShadow() {
+        return shadow;
+    }
+
+    /**
+     * 排序影子流量(P5,{@code recsys.shadow.*}):按比例对部分请求<b>异步并行</b>跑一个影子排序策略,
+     * 只对比打点(与主策略的 top-K 重合度、影子耗时),<b>不影响返回结果</b>。用于新模型上线前的
+     * 在线灰度评估——与 A/B 的 rank 层(真实分流金丝雀)互补:影子零风险(不进用户结果)、可全量观测差异。
+     */
+    public static class Shadow {
+        /** 是否启用影子排序。 */
+        private boolean enabled = false;
+        /** 影子策略名(v1/onnx/deepfm/mmoe/din/dien/ple);空或等于主策略则不跑。 */
+        private String strategy = "";
+        /** 采样比例 [0,1]:按 userId 确定性采样,同一用户稳定进出影子集,便于横比。 */
+        private double sampleRate = 0.1;
+        /** 对比的 top-K 重合度口径。 */
+        private int k = 10;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getStrategy() {
+            return strategy;
+        }
+
+        public void setStrategy(String strategy) {
+            this.strategy = strategy;
+        }
+
+        public double getSampleRate() {
+            return sampleRate;
+        }
+
+        public void setSampleRate(double sampleRate) {
+            this.sampleRate = sampleRate;
+        }
+
+        public int getK() {
+            return k;
+        }
+
+        public void setK(int k) {
+            this.k = k;
+        }
     }
 
     public Search getSearch() {
@@ -190,6 +243,9 @@ public class RecEngineProperties {
         /** 近线增量学习 FTRL-LR 信号:融合时加 ftrlWeight·pFtrl(user,item)。 */
         private final Ftrl ftrl = new Ftrl();
 
+        /** R7 全量 contextual bandit(LinUCB/Thompson)探索信号:融合时加 banditWeight·探索加成。 */
+        private final Bandit bandit = new Bandit();
+
         public double getRecallWeight() {
             return recallWeight;
         }
@@ -226,6 +282,10 @@ public class RecEngineProperties {
             return ftrl;
         }
 
+        public Bandit getBandit() {
+            return bandit;
+        }
+
         /**
          * 近线增量学习 FTRL-LR 信号:在融合分上加 {@code weight · pFtrl(user,item)}(协同过滤味的近线学习分)。
          * 模型缺失时打分为 0,故默认开也不改行为(直到跑 train-ftrl)。weight=0 或 enabled=false 关闭。
@@ -248,6 +308,55 @@ public class RecEngineProperties {
 
             public void setWeight(double weight) {
                 this.weight = weight;
+            }
+        }
+
+        /**
+         * R7 全量 contextual bandit(LinUCB/Thompson)探索信号:在融合分上加
+         * {@code weight · banditScore(x)}。x=排序稠密特征(与离线 bandit-stats 经 FeatureAssembler 同源)。
+         * <ul>
+         *   <li>{@code mode=linucb}:banditScore = θ̂ᵀx + alpha·√(xᵀA⁻¹x)(点估计 + 置信宽度);</li>
+         *   <li>{@code mode=thompson}:banditScore = θ̃ᵀx(每请求采一次 θ̃~N(θ̂,alpha²A⁻¹))。</li>
+         * </ul>
+         * 模型缺失(未跑 bandit-stats)→ 打分 0,故即便开启也不改行为。默认 <b>关</b>(改变排序,需显式启用)。
+         * weight/alpha 可经 recsys:tuning 热更;mode 走静态 yml(切换重启)。
+         */
+        public static class Bandit {
+            private boolean enabled = false;
+            private double weight = 0.3;
+            private double alpha = 1.0;
+            private String mode = "linucb";   // linucb | thompson
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public double getWeight() {
+                return weight;
+            }
+
+            public void setWeight(double weight) {
+                this.weight = weight;
+            }
+
+            public double getAlpha() {
+                return alpha;
+            }
+
+            public void setAlpha(double alpha) {
+                this.alpha = alpha;
+            }
+
+            public String getMode() {
+                return mode;
+            }
+
+            public void setMode(String mode) {
+                this.mode = mode;
             }
         }
 

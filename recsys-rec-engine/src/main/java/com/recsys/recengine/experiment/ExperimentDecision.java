@@ -31,6 +31,12 @@ public final class ExperimentDecision {
         return c == null ? Map.of() : c.params();
     }
 
+    /** 某层命中的变体名(未分桶该层 → null)。 */
+    public String variant(String layer) {
+        Chosen c = byLayer.get(layer);
+        return c == null ? null : c.name();
+    }
+
     /** recall 层启用的召回路;params.channels 缺省/为空 → 返回空列表(表示全开)。 */
     public List<RecallChannel> recallChannels() {
         String csv = params(LAYER_RECALL).get("channels");

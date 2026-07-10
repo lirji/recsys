@@ -54,6 +54,10 @@ public class BehaviorService {
     @Value("${recsys.behavior.topic:behavior-events}")
     private String topic;
 
+    /** P4:是否在入库之外**额外**把事件发到 behavior-events(供在线/离线消费者建读模型)。默认关,不改 use-kafka 语义。 */
+    @Value("${recsys.behavior.publish-events:false}")
+    private boolean publishEvents;
+
     public BehaviorService(JdbcTemplate jdbc,
                            ObjectProvider<KafkaTemplate<String, String>> kafkaProvider,
                            StringRedisTemplate redis,
@@ -77,6 +81,29 @@ public class BehaviorService {
             log.warn("use-kafka=true 但 KafkaTemplate 不可用,降级直接入库");
         }
         insert(ev);
+        // P4:DB 是 user_behavior 写权威;开 publish-events 时额外把事件发到 behavior-events,
+        // 供在线(rec-engine 已看读模型)/离线消费者建各自读模型(双写过渡)。
+        if (publishEvents) {
+            publishEvent(ev);
+        }
+    }
+
+    /** 仅发布事件(已入库,失败不再回插;best-effort)。 */
+    private void publishEvent(BehaviorEvent ev) {
+        KafkaTemplate<String, String> kafka = kafkaProvider.getIfAvailable();
+        if (kafka == null) {
+            return;
+        }
+        try {
+            kafka.send(topic, String.valueOf(ev.userId()), mapper.writeValueAsString(ev))
+                    .whenComplete((r, e) -> {
+                        if (e != null) {
+                            log.warn("发布 behavior-events 失败 user={}: {}", ev.userId(), e.getMessage());
+                        }
+                    });
+        } catch (Exception e) {
+            log.warn("序列化/发布 behavior-events 失败: {}", e.getMessage());
+        }
     }
 
     /**

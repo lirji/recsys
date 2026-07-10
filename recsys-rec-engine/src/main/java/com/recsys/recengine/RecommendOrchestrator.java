@@ -10,7 +10,7 @@ import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.common.recall.RecallService;
-import com.recsys.content.ContentService;
+import com.recsys.recengine.content.ContentGateway;
 import com.recsys.content.Item;
 import com.recsys.rank.PreRankService;
 import com.recsys.rank.RankRouter;
@@ -57,7 +57,7 @@ public class RecommendOrchestrator {
     private final RecallService recallService;
     private final RankRouter rankRouter;
     private final PreRankService preRankService;
-    private final ContentService contentService;
+    private final ContentGateway contentGateway;
     private final RecCache recCache;
     private final RecEngineProperties props;
     private final ExperimentService experimentService;
@@ -69,13 +69,16 @@ public class RecommendOrchestrator {
     private final PersonalizationScorer personalizationScorer;
     private final RecScoreCalibrator recScoreCalibrator;
     private final FtrlScorer ftrlScorer;
+    private final BanditScorer banditScorer;
     private final DynamicTuningService tuning;
     private final MeterRegistry meterRegistry;
+    private final ShadowRankRunner shadowRankRunner;
 
     public RecommendOrchestrator(RecallService recallService,
                                  RankRouter rankRouter,
                                  PreRankService preRankService,
-                                 ContentService contentService,
+                                 ShadowRankRunner shadowRankRunner,
+                                 ContentGateway contentGateway,
                                  RecCache recCache,
                                  RecEngineProperties props,
                                  ExperimentService experimentService,
@@ -87,12 +90,14 @@ public class RecommendOrchestrator {
                                  PersonalizationScorer personalizationScorer,
                                  RecScoreCalibrator recScoreCalibrator,
                                  FtrlScorer ftrlScorer,
+                                 BanditScorer banditScorer,
                                  DynamicTuningService tuning,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
         this.preRankService = preRankService;
-        this.contentService = contentService;
+        this.shadowRankRunner = shadowRankRunner;
+        this.contentGateway = contentGateway;
         this.recCache = recCache;
         this.props = props;
         this.experimentService = experimentService;
@@ -104,6 +109,7 @@ public class RecommendOrchestrator {
         this.personalizationScorer = personalizationScorer;
         this.recScoreCalibrator = recScoreCalibrator;
         this.ftrlScorer = ftrlScorer;
+        this.banditScorer = banditScorer;
         this.tuning = tuning;
         this.meterRegistry = meterRegistry;
     }
@@ -204,6 +210,9 @@ public class RecommendOrchestrator {
             // 4. 排序(按实验选中的策略;null 回落全局配置)
             List<RankedItem> ranked = rankRouter.rank(
                     req.userId(), candidateIds, req.scene(), decision.rankStrategy());
+            // 4b. 影子流量(P5):按比例异步用影子策略再排一次,只对比打点、不影响返回(零风险灰度评估)
+            shadowRankRunner.maybeShadow(req.userId(), candidateIds, req.scene(),
+                    decision.rankStrategy(), ranked);
 
             // 5. 融合召回分 + 排序分(归一化召回分,权重可由 rank 层实验覆盖)。
             // 召回分已在 MultiChannelRecallService 内按路归一化到 [0,1],这里再做一次全局归一化兜底。
@@ -239,6 +248,15 @@ public class RecommendOrchestrator {
             double ftrlWeight = tuning.getDouble("fusion.ftrl.weight", ftrlCfg.getWeight());
             boolean useFtrl = tuning.getBoolean("fusion.ftrl.enabled", ftrlCfg.isEnabled())
                     && ftrlWeight != 0 && ftrlScorer.isReady();
+            // R7 全量 contextual bandit(LinUCB/Thompson):融合分再加 banditWeight·探索加成(用排序特征空间
+            // 不确定性驱动欠曝上下文探索;模型缺失打分 0,默认关)。Thompson 每请求采一次 θ̃(整批候选共用)。
+            RecEngineProperties.Fusion.Bandit banditCfg = props.getFusion().getBandit();
+            double banditWeight = tuning.getDouble("fusion.bandit.weight", banditCfg.getWeight());
+            double banditAlpha = tuning.getDouble("fusion.bandit.alpha", banditCfg.getAlpha());
+            boolean useBandit = tuning.getBoolean("fusion.bandit.enabled", banditCfg.isEnabled())
+                    && banditWeight != 0 && banditScorer.isReady();
+            BanditScorer.Session banditSession = useBandit
+                    ? banditScorer.forRequest(banditCfg.getMode(), banditAlpha) : null;
             List<RerankCandidate> fused = new ArrayList<>(ranked.size());
             for (RankedItem ri : ranked) {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
@@ -247,6 +265,9 @@ public class RecommendOrchestrator {
                 double base = recallWeight * rNorm + rankWeight * rankScore;
                 if (useFtrl) {
                     base += ftrlWeight * ftrlScorer.score(req.userId(), ri.itemId());
+                }
+                if (useBandit) {
+                    base += banditWeight * banditSession.score(ri.featureSnapshot());
                 }
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
@@ -271,7 +292,7 @@ public class RecommendOrchestrator {
                 rerankStrategy = decision.rerankStrategy();
             }
             List<Long> fusedIds = fused.stream().map(RerankCandidate::itemId).toList();
-            Map<Long, Item> itemMap = contentService.findByIds(fusedIds);
+            Map<Long, Item> itemMap = contentGateway.findByIds(fusedIds);
             List<RecommendItem> items = rerankRouter.rerank(
                     rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams));
 

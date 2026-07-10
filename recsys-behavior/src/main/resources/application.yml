@@ -4,8 +4,19 @@ server:
 spring:
   application:
     name: recsys-behavior
+  # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;
+  # 容器化/discovery 场景 NACOS_DISCOVERY=true 注册,供网关 lb://recsys-behavior 解析。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    # #3 物理拆库:behavior 上下文可独占自有库。BEHAVIOR_PG_DB 未设 → 退回 PG_DB → recsys(默认不变);
+    # 设 BEHAVIOR_PG_DB=recsys_behavior 即 behavior 写自有库(DB-per-service),其它服务/离线不受影响。
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${BEHAVIOR_PG_DB:${PG_DB:recsys}}
     username: ${PG_USER:recsys}
     password: ${PG_PASSWORD:recsys}
     driver-class-name: org.postgresql.Driver
@@ -25,6 +36,8 @@ recsys:
     # true=写 Kafka, false=直接入库(v1 可先 false,不依赖 Kafka)
     use-kafka: ${BEHAVIOR_USE_KAFKA:false}
     topic: behavior-events
+    # P4:入库之外额外发 behavior-events(供 rec-engine 已看读模型等消费)。默认关,不改 use-kafka 语义。
+    publish-events: ${BEHAVIOR_PUBLISH_EVENTS:false}
 
 management:
   endpoints:

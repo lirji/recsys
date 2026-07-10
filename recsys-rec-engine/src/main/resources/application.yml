@@ -4,6 +4,27 @@ server:
 spring:
   application:
     name: recsys-rec-engine
+  # P4 配置中心:从 Nacos 拉取热更配置(dataId=recsys-rec-engine.yml,group=DEFAULT_GROUP)。
+  # optional: → Nacos 不可达时跳过、退回本地 yml 默认(优雅降级硬约束,无 Nacos 也能起);去掉 optional: 则 Nacos 必达。
+  # Nacos 里改 recsys.ad.*(reserve/pacing/频控/ad-load)或 recsys.fusion.*,refresh-enabled 会自动重绑 @ConfigurationProperties,
+  # 在线 30s 内生效不重启(消费方读的是活的 AdProperties getter,故无需给每个 bean 加 @RefreshScope)。
+  config:
+    import: "optional:nacos:recsys-rec-engine.yml"
+  cloud:
+    nacos:
+      config:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        file-extension: yaml            # dataId 后缀 + 解析格式(与本文件同为 yaml)
+        namespace: ${NACOS_NAMESPACE:}   # 空=public;多环境隔离时按环境切
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        refresh-enabled: true            # Nacos 推送变更即自动 refresh(否则仅启动时拉一次)
+      # P0 微服务化:Nacos 服务发现(注册自身,供网关 lb://recsys-rec-engine 解析)。
+      # 默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;容器化/discovery 场景设 true。
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
   datasource:
     url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
     username: ${PG_USER:recsys}
@@ -21,9 +42,49 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  # P4:消费 behavior-events 建"已看"读模型。监听器默认不启动(recsys.behavior.seen-consume)→ 无 Kafka 也能起。
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    consumer:
+      group-id: recsys-rec-engine-seen
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
-# 推荐链路可调参数(生产可迁移到 Nacos 配置中心热更)
+# gRPC 客户端(net.devh):仅 recsys.ad.serving.mode=grpc 时 GrpcAdServingGateway 注入 @GrpcClient("ad-serving") 才建通道。
+# 默认静态地址(无需 Nacos,契合优雅降级);接 Nacos discovery 后可改 discovery://recsys-ad-serving 做客户端负载均衡。
+grpc:
+  client:
+    ad-serving:
+      address: ${AD_SERVING_GRPC:static://localhost:9095}
+      negotiation-type: plaintext
+    # P2 内容服务:仅 recsys.content.serving.mode=grpc 时 GrpcContentGateway 建通道。
+    content:
+      address: ${CONTENT_GRPC:static://localhost:9096}
+      negotiation-type: plaintext
+    # P3 用户画像服务:仅 recsys.user.serving.mode=grpc 时 GrpcUserGateway 建通道。
+    user:
+      address: ${USER_GRPC:static://localhost:9097}
+      negotiation-type: plaintext
+
+# 推荐链路可调参数。P4 已接 Nacos:把本 recsys.* 树(尤其 recsys.ad.* / recsys.fusion.*)放到 Nacos
+# dataId=recsys-rec-engine.yml 即可热更——线上改 reserve-price/pacing/频控/ad-load 不重启(见上 spring.cloud.nacos)。
+# 本文件的值是 Nacos 不可达时的本地默认。
 recsys:
+  # P2 内容服务网关模式:in-process=进程内直调 ContentService(默认=单体回退,零网络跳);
+  # grpc=展示 hydrate 走 recsys-content-service。切换只改本项(或 CONTENT_SERVING_MODE),RecommendOrchestrator/前端零改动。
+  content:
+    serving:
+      mode: ${CONTENT_SERVING_MODE:in-process}
+  # P3 用户画像服务网关模式:in-process=进程内直调 UserProfileService(默认=单体回退);grpc=调 recsys-user-service。
+  user:
+    serving:
+      mode: ${USER_SERVING_MODE:in-process}
+  # P4 已看来源:db(默认,直读 user_behavior,回滚落点)| replica(读 seen:{user} 事件读模型,DB-per-service)。
+  behavior:
+    seen-source: ${SEEN_SOURCE:db}
+    seen-consume: ${SEEN_CONSUME:false}   # 是否启动 behavior-events 监听器建 seen 读模型(replica 模式需先开它灌读模型)
+    topic: behavior-events
   recall:
     quota:
       vector: 200
@@ -60,12 +121,16 @@ recsys:
       enabled: true            # LLM query 理解(拼写纠错/意图/改写);仅在 recsys.llm 就绪时实际生效
       max-expansions: 3        # LLM 改写扩展并入 rewrites 的上限
   rank:
-    # v1=规则, onnx=LightGBM, deepfm=DeepFM, mmoe=MMoE多目标(ESMM), din=DIN序列, ple=PLE多目标(失败均回退规则)
+    # v1=规则, onnx=LightGBM, deepfm=DeepFM, dcn=DCN v2 显式交叉, mmoe=MMoE多目标(ESMM), din=DIN序列, dien=DIEN兴趣演化, sim=SIM长序列, ple=PLE多目标(失败均回退规则)
     strategy: ${RANK_STRATEGY:v1}
     onnx-model-path: classpath:model/model.onnx
     deepfm-model-path: classpath:model/model_deepfm.onnx
     rank-schema-path: classpath:model/rank_schema.json
     category-vocab-path: classpath:model/category_vocab.json
+    # DCN v2 显式高阶交叉(train_dcn.py 产出;与 DeepFM 同在线契约:dense[N,5]+sparse[N,3]→ctr[N,1])
+    dcn-model-path: classpath:model/model_dcn.onnx
+    dcn-schema-path: classpath:model/dcn_schema.json
+    dcn-category-vocab-path: classpath:model/dcn_category_vocab.json
     # MMoE 多目标(train_mmoe.py 产出)
     mmoe-model-path: classpath:model/model_mmoe.onnx
     mmoe-schema-path: classpath:model/mmoe_schema.json
@@ -78,6 +143,15 @@ recsys:
     ple-model-path: classpath:model/model_ple.onnx
     ple-schema-path: classpath:model/ple_schema.json
     ple-category-vocab-path: classpath:model/ple_category_vocab.json
+    # DIEN 兴趣演化(train_dien.py 产出;GRU 兴趣抽取 + AUGRU 演化;在线 4 输入/2 输出契约同 DIN)
+    dien-model-path: classpath:model/model_dien.onnx
+    dien-schema-path: classpath:model/dien_schema.json
+    dien-category-vocab-path: classpath:model/dien_category_vocab.json
+    # SIM 长序列(train_sim.py 产出;GSU 类目硬检索长历史 + ESU=DIN 注意力;契约同 DIN)
+    sim-model-path: classpath:model/model_sim.onnx
+    sim-schema-path: classpath:model/sim_schema.json
+    sim-category-vocab-path: classpath:model/sim_category_vocab.json
+    sim-long-history: 500          # GSU 检索基:每请求拉用户近 N 条正反馈供类目检索
     # 多目标融合(mmoe/din 共用):finalScore = pCTR·(cvrBias + cvrWeight·pCVR)
     # cvrBias=0、cvrWeight=1 → 退化为 ESMM 的 pCTCVR=pCTR·pCVR
     multi-task:
@@ -110,6 +184,13 @@ recsys:
     ftrl:
       enabled: true
       weight: 0.5
+    # R7 全量 contextual bandit(LinUCB/Thompson)探索:融合分加 weight·探索加成,用排序特征空间不确定性
+    # 驱动欠曝上下文的探索(离线 bandit-stats 攒 A/b → BANDIT_MODEL;缺模型打分 0)。默认关(改排序,需显式开)。
+    bandit:
+      enabled: ${FUSION_BANDIT_ENABLED:false}
+      weight: 0.3                # 融合混合系数(与排序分同尺;调小=以探索为主,不与排序打架)
+      alpha: 1.0                 # LinUCB 置信宽度 / Thompson 采样标准差倍数(热更)
+      mode: linucb               # linucb | thompson(mode 走静态 yml,切换重启)
     # 召回路加权(channel 名大写)。TAG 已叠加实时类目偏好(rt:user),抬权让"用户当下/长期兴趣"
     # 不被 HOT/CF 高热度在全局归一化中压过;多路命中取最大 boost。设 1.0 即关闭该路加权。
     channel-boost:
@@ -153,6 +234,11 @@ recsys:
     cache-ttl-seconds: 86400
   # 搜索广告(docs/05):query→ad 召回 + relevance-gate + eCPM 竞价 + GSP 计费 + 预算 pacing + pCTR 校准
   ad:
+    # 广告在线服务网关模式(微服务化第一刀,docs 计划 F):in-process=进程内直调 AdPipeline(默认=单体回退,
+    # 零网络跳、行为等同拆分前);grpc=跨进程调 recsys-ad-serving。切换只改本项(或 AD_SERVING_MODE),
+    # gateway / SearchAdsController / FeedOrchestrator 一概零改动 —— 这是绞杀者迁移的一键切换与回滚点。
+    serving:
+      mode: ${AD_SERVING_MODE:in-process}
     slots: 3                       # 广告位数
     calib-model: ${AD_CALIB_MODEL:deepfm}   # pCTR 校准表标识(对应 ad-calibrate 作业 ad:calib:{model})
     recall:
@@ -176,6 +262,13 @@ recsys:
       enabled: ${AD_OCPC_ENABLED:true}
       default-pcvr: 0.1            # 排序模型(mmoe/din)未给 pCVR 时的兜底先验转化率
       max-bid: 0.0                 # 自动出价上限(元);<=0 不封顶
+    # A6 延迟反馈 DFM ad-CVR:开启且 model_dfm_cvr.onnx 就绪时,用带删失联合训练的**去偏** pCVR 覆盖复用 MMoE 头
+    # (根治延迟转化删失偏置);缺模型/未就绪退回 MMoE 头。默认关(改 pCVR 来源,需显式开)。train_dfm.py 产出。
+    cvr:
+      enabled: ${AD_CVR_DFM_ENABLED:false}
+      model-path: classpath:model/model_dfm_cvr.onnx
+      schema-path: classpath:model/dfm_cvr_schema.json
+      vocab-path: classpath:model/dfm_cvr_category_vocab.json
     # 混排 Ad Load(docs/05 §4.8):/api/feed 把广告按位次/密度混入自然结果
     ad-load:
       enabled: ${AD_LOAD_ENABLED:true}
@@ -273,12 +366,30 @@ resilience4j:
         wait-duration-in-open-state: 30s     # 熔断后 30s 转半开探活
         permitted-number-of-calls-in-half-open-state: 3
         register-health-indicator: true
+      # E7:pgvector VECTOR 召回熔断。pg 宕机时快速失败到空(其它召回路兜底),避免每请求苦等召回超时。
+      pgvector-recall:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
 
 management:
   endpoints:
     web:
-      exposure:
-        include: health,info,metrics,prometheus
+        # refresh(P4):手动触发 /actuator/refresh 重绑配置(Nacos 自动推送外的兜底手段)
+        include: health,info,metrics,prometheus,refresh
+  endpoint:
+    health:
+      # 暴露 k8s 探针端点 /actuator/health/{liveness,readiness}
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        # readiness 组纳入模型就绪探针(E4):模型策略但模型没加载 → readiness DOWN,k8s 不导流
+        readiness:
+          include: readinessState,modelReadiness
   # 分布式追踪:采样率(教学全采;生产按 QPS 降到 0.01~0.1)。traceId/spanId 自动进 MDC 与结构化日志关联。
   # 要导出 span 到后端:加 opentelemetry-exporter-otlp 依赖 + management.otlp.tracing.endpoint 指向 Tempo/Jaeger。
   tracing:

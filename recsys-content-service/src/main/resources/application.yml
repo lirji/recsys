@@ -1,0 +1,42 @@
+server:
+  port: 8086
+
+# gRPC 服务端(net.devh):rec-engine 作为 client 连此端口。
+grpc:
+  server:
+    port: 9096
+
+spring:
+  application:
+    name: recsys-content-service
+  # P2 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起。
+  # metadata.gRPC_port 供 net.devh discovery:///recsys-content-service 解析 gRPC 端口(可选;默认走容器 DNS static://)。
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_DISCOVERY:false}
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        namespace: ${NACOS_NAMESPACE:}
+        metadata:
+          gRPC_port: ${GRPC_SERVER_PORT:9096}
+  # item 表:普通 Postgres 主数据源(非分片)。
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    username: ${PG_USER:recsys}
+    password: ${PG_PASSWORD:recsys}
+    driver-class-name: org.postgresql.Driver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0

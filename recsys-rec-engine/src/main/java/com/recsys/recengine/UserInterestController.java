@@ -1,6 +1,6 @@
 package com.recsys.recengine;
 
-import com.recsys.user.UserProfileService;
+import com.recsys.recengine.user.UserGateway;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,21 +21,21 @@ import java.util.Map;
 @RestController
 public class UserInterestController {
 
-    private final UserProfileService userProfileService;
+    private final UserGateway userGateway;
 
-    public UserInterestController(UserProfileService userProfileService) {
-        this.userProfileService = userProfileService;
+    public UserInterestController(UserGateway userGateway) {
+        this.userGateway = userGateway;
     }
 
     @PostMapping("/api/user/{id}/interests")
     public Map<String, Object> setInterests(@PathVariable("id") long userId,
                                             @RequestBody List<String> categories) {
-        userProfileService.updateInterests(userId, categories);
+        userGateway.updateInterests(userId, categories);
         return Map.of("userId", userId, "categories", categories, "ok", true);
     }
 
     @GetMapping("/api/user/{id}/interests")
     public Map<String, Object> getInterests(@PathVariable("id") long userId) {
-        return Map.of("userId", userId, "categories", userProfileService.getInterests(userId));
+        return Map.of("userId", userId, "categories", userGateway.getInterests(userId));
     }
 }

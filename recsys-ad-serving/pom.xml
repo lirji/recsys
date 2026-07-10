@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.recsys</groupId>
+        <artifactId>recsys</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>recsys-ad-serving</artifactId>
+    <name>recsys-ad-serving</name>
+    <description>
+        广告在线服务(微服务化第一刀,DDD Advertising Auction &amp; Billing 限界上下文的在线侧)。
+        以 gRPC 承接从 rec-engine 剥离出的广告管线:召回→相关性→预算→定向→pCTR/pCVR(复用排序模型)→
+        校准→oCPC→eCPM 竞价→GSP 计费→DCO→GD→曝光→点击/转化计费。复用 recsys-ad(领域库)+ recsys-rank
+        (pCTR/pCVR,进程内 Shared Kernel);query 理解/实验分桶仍在 rec-engine。
+    </description>
+
+    <dependencies>
+        <!-- 广告领域库:传递带来 rank/content/feature/common/ad-common + redis/jdbc/pgvector/shardingsphere/onnxruntime -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-ad</artifactId>
+        </dependency>
+        <!-- gRPC 契约(消息 + 服务 stub)+ 边界 ACL mapper -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-proto</artifactId>
+        </dependency>
+        <!-- gRPC 服务端(net.devh):@GrpcService 自动注册到内嵌 gRPC server -->
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-server-spring-boot-starter</artifactId>
+        </dependency>
+        <!-- P1b 广告目录事件化:消费 ad-catalog-events 建可服务副本 ad_servable。
+             监听器默认不启动(AD_CATALOG_CONSUME=false)→ 不连 Kafka、无 Kafka 也能起。 -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <!-- P0 微服务化:Nacos 服务发现(注册自身,供网关 lb:// / rec-engine discovery:/// 解析)。默认关。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- 分布式追踪:gRPC 入站 span 与 rec-engine 的 traceId 关联(一条 trace 贯穿 gateway→rec-engine→ad-serving) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
