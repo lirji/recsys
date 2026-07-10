@@ -21,10 +21,14 @@ public class ColdStartDetector {
     private static final Logger log = LoggerFactory.getLogger(ColdStartDetector.class);
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate derived;   // #3:user_embedding 走派生库(user_behavior 计数留 @Primary)
     private final RecEngineProperties props;
 
-    public ColdStartDetector(JdbcTemplate jdbc, RecEngineProperties props) {
+    public ColdStartDetector(JdbcTemplate jdbc,
+                             @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+                             RecEngineProperties props) {
         this.jdbc = jdbc;
+        this.derived = derived;
         this.props = props;
     }
 
@@ -39,7 +43,7 @@ public class ColdStartDetector {
             if (behaviorCount != null && behaviorCount >= props.getColdStart().getMinBehaviors()) {
                 return false;
             }
-            Integer hasVec = jdbc.queryForObject(
+            Integer hasVec = derived.queryForObject(
                     "SELECT count(*) FROM user_embedding WHERE user_id=?", Integer.class, userId);
             boolean cold = hasVec == null || hasVec == 0;
             if (cold) {

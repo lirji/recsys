@@ -33,7 +33,8 @@ public class DppReranker implements Reranker {
 
     private final JdbcTemplate jdbc;
 
-    public DppReranker(JdbcTemplate jdbc) {
+    public DppReranker(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                       JdbcTemplate jdbc) {   // #3:item_embedding 走派生库
         this.jdbc = jdbc;
     }
 

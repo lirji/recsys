@@ -33,7 +33,7 @@ public class AdRepository {
 
     private static final Logger log = LoggerFactory.getLogger(AdRepository.class);
 
-    /** 主数据源:普通 Postgres —— 仅 user_embedding(共享读,留主库)pgvector。 */
+    /** #3:user_embedding(rec-serving 派生读模型)走派生库 derivedJdbc(默认 recsys,DERIVED_PG_DB 设则拆库)。 */
     private final JdbcTemplate jdbc;
     /** #3:ad_embedding(ad-serving 自有)专用源 —— 默认 recsys,AD_PG_DB 设则拆库。 */
     private final JdbcTemplate adDb;
@@ -42,7 +42,7 @@ public class AdRepository {
     /** 目录读(标题/oCPC/详情/出价/定向):sharded 或 replica。 */
     private final AdCatalogReader catalog;
 
-    public AdRepository(JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
+    public AdRepository(@Qualifier("derivedJdbc") JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
                         @Qualifier("adShardingJdbc") JdbcTemplate sharded, AdCatalogReader catalog) {
         this.jdbc = jdbc;
         this.adDb = adDb;

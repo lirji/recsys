@@ -95,6 +95,30 @@ public class AdShardingConfig {
         return new JdbcTemplate(ds);
     }
 
+    /**
+     * #3 rec-serving 派生向量读模型库:{@code item_embedding}/{@code item_tower_embedding}/{@code item_semantic_id}/
+     * {@code user_embedding}(离线烘焙的派生工件,走"读模型复制")专用数据源。{@code DERIVED_PG_DB} 未设 → {@code PG_DB}
+     * → {@code recsys}(默认与主库同库,行为不变);设 {@code DERIVED_PG_DB=recsys_vec} 即把这四张表读写指向 rec-serving
+     * 自有派生库。含 pgvector ANN 所需 {@code hnsw.ef_search}。主 {@code @Primary} 仍留 item_local/user_behavior 等读。
+     */
+    @Bean(name = "derivedDbDataSource")
+    public DataSource derivedDbDataSource() {
+        String db = env("DERIVED_PG_DB", env("PG_DB", "recsys"));
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl("jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db);
+        ds.setUsername(env("PG_USER", "recsys"));
+        ds.setPassword(env("PG_PASSWORD", "recsys"));
+        ds.setDriverClassName("org.postgresql.Driver");
+        ds.setConnectionInitSql("SET hnsw.ef_search = 200");   // item_embedding/item_tower_embedding pgvector ANN
+        ds.setMaximumPoolSize(Integer.parseInt(env("DERIVED_DB_POOL_MAX", "20")));
+        return ds;
+    }
+
+    @Bean(name = "derivedJdbc")
+    public JdbcTemplate derivedJdbc(@Qualifier("derivedDbDataSource") DataSource ds) {
+        return new JdbcTemplate(ds);
+    }
+
     private static String env(String k, String def) {
         String v = System.getenv(k);
         return v == null || v.isBlank() ? def : v;

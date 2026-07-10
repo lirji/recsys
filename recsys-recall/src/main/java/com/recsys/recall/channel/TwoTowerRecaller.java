@@ -56,7 +56,8 @@ public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
     private int userBuckets;
     private volatile boolean ready = false;
 
-    public TwoTowerRecaller(JdbcTemplate jdbc, RecallProperties props) {
+    public TwoTowerRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                            JdbcTemplate jdbc, RecallProperties props) {   // #3:item_tower_embedding 走派生库
         this.jdbc = jdbc;
         this.props = props;
     }

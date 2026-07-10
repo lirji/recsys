@@ -36,7 +36,8 @@ public class MultimodalBackfillJob implements OfflineJob {
     private final JdbcTemplate jdbc;
     private final EmbeddingClient embeddingClient;
 
-    public MultimodalBackfillJob(JdbcTemplate jdbc, EmbeddingClient embeddingClient) {
+    public MultimodalBackfillJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                                 JdbcTemplate jdbc, EmbeddingClient embeddingClient) {   // #3:item_embedding 走派生库
         this.jdbc = jdbc;
         this.embeddingClient = embeddingClient;
     }

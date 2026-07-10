@@ -36,19 +36,23 @@ public class SeedAdsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SeedAdsJob.class);
 
-    /** 主库:item/item_embedding 读(共享,留主库)。 */
+    /** 主库:item 读(content 本地副本,留主库)。 */
     private final JdbcTemplate jdbc;
     /** #3:ad_event/ad_embedding 写走 adDbJdbc —— ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)。 */
     private final JdbcTemplate adDb;
+    /** #3:item_embedding 读走派生库(默认 recsys,DERIVED_PG_DB 设则拆库)。 */
+    private final JdbcTemplate derived;
     /** 分片库:advertiser/ad/bidword/ad_creative 写(按分片键落 ds_0/ds_1)。 */
     private final JdbcTemplate sharded;
     private final StringRedisTemplate redis;
 
     public SeedAdsJob(JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
+                      @Qualifier("derivedJdbc") JdbcTemplate derived,
                       @Qualifier("adShardingJdbc") JdbcTemplate sharded,
                       StringRedisTemplate redis) {
         this.jdbc = jdbc;
         this.adDb = adDb;
+        this.derived = derived;
         this.sharded = sharded;
         this.redis = redis;
     }
@@ -74,17 +78,18 @@ public class SeedAdsJob implements OfflineJob {
         List<long[]> items = new ArrayList<>(); // [itemId]
         List<String> titles = new ArrayList<>();
         List<String> categories = new ArrayList<>();
-        jdbc.query(
-                "SELECT i.item_id, i.title, i.category, " +
-                "       (e.item_id IS NOT NULL) AS has_vec " +
-                "FROM " + it + " i LEFT JOIN item_embedding e ON e.item_id = i.item_id " +
-                "ORDER BY has_vec DESC, random() LIMIT ?",
-                rs -> {
-                    items.add(new long[]{rs.getLong("item_id")});
-                    titles.add(rs.getString("title"));
-                    categories.add(rs.getString("category"));
-                },
-                numAds);
+        // #3 拆库:item(主库)与 item_embedding(派生库)可能不同库,拆两读 + Java 排序,等价原 ORDER BY has_vec DESC, random()
+        java.util.Set<Long> withVec = new java.util.HashSet<>(
+                derived.queryForList("SELECT item_id FROM item_embedding", Long.class));
+        List<Object[]> pool = jdbc.query("SELECT item_id, title, category FROM " + it,
+                (rs, n) -> new Object[]{rs.getLong("item_id"), rs.getString("title"), rs.getString("category")});
+        java.util.Collections.shuffle(pool, rnd);   // random()
+        pool.sort((a, b) -> Boolean.compare(withVec.contains((Long) b[0]), withVec.contains((Long) a[0])));  // has_vec DESC(稳定排序保随机)
+        for (Object[] row : pool.subList(0, Math.min(numAds, pool.size()))) {
+            items.add(new long[]{(Long) row[0]});
+            titles.add((String) row[1]);
+            categories.add((String) row[2]);
+        }
         if (items.isEmpty()) {
             log.warn("item 表为空,先跑 --job=import-items");
             return;
@@ -148,7 +153,7 @@ public class SeedAdsJob implements OfflineJob {
         // #3 拆库:ad_embedding 与 item_embedding 可能不同库(AD_PG_DB),故从主库读向量(text 传输)→ 写 adDb。
         int embRows = 0;
         for (long[] ai : adItem) {
-            List<String[]> vecs = jdbc.query(
+            List<String[]> vecs = derived.query(
                     "SELECT embedding::text AS v, model FROM item_embedding WHERE item_id = ?",
                     (rs, n) -> new String[]{rs.getString("v"), rs.getString("model")}, ai[1]);
             if (vecs.isEmpty() || vecs.get(0)[0] == null) {

@@ -40,7 +40,8 @@ public class SemanticRecaller implements ChannelRecaller {
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
     private final RecallProperties props;
 
-    public SemanticRecaller(JdbcTemplate jdbc,
+    public SemanticRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                            JdbcTemplate jdbc,   // #3:item_embedding ANN 走派生库
                             ItemCatalogReader itemCatalog,
                             ObjectProvider<EmbeddingClient> embeddingProvider,
                             RecallProperties props) {

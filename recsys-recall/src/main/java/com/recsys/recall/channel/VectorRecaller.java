@@ -30,7 +30,8 @@ public class VectorRecaller implements ChannelRecaller {
     private final JdbcTemplate jdbc;
     private final RecallProperties props;
 
-    public VectorRecaller(JdbcTemplate jdbc, RecallProperties props) {
+    public VectorRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                          JdbcTemplate jdbc, RecallProperties props) {   // #3:向量读走派生库(默认 recsys)
         this.jdbc = jdbc;
         this.props = props;
     }

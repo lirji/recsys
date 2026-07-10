@@ -38,9 +38,12 @@ public class DataQualityJob implements OfflineJob {
     private static final String OUT_DIR = "eval";
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate derived;   // #3:item_embedding/user_embedding 覆盖率计数走派生库
 
-    public DataQualityJob(JdbcTemplate jdbc) {
+    public DataQualityJob(JdbcTemplate jdbc,
+                          @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived) {
         this.jdbc = jdbc;
+        this.derived = derived;
     }
 
     @Override
@@ -69,9 +72,9 @@ public class DataQualityJob implements OfflineJob {
         // 1. Embedding 覆盖率
         try {
             long items = count("SELECT count(*) FROM " + it);
-            long itemEmb = count("SELECT count(*) FROM item_embedding");
+            long itemEmb = derived.queryForObject("SELECT count(*) FROM item_embedding", Long.class);
             long users = count("SELECT count(DISTINCT user_id) FROM " + bt + "");
-            long userEmb = count("SELECT count(*) FROM user_embedding");
+            long userEmb = derived.queryForObject("SELECT count(*) FROM user_embedding", Long.class);
             double itemCov = DataQuality.coverage(itemEmb, items);
             double userCov = DataQuality.coverage(userEmb, users);
             report.put("item_embedding_coverage", fmt(itemCov));

@@ -33,7 +33,8 @@ public class MmrReranker implements Reranker {
 
     private final JdbcTemplate jdbc;
 
-    public MmrReranker(JdbcTemplate jdbc) {
+    public MmrReranker(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                       JdbcTemplate jdbc) {   // #3:item_embedding 走派生库
         this.jdbc = jdbc;
     }
 

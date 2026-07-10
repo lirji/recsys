@@ -26,7 +26,8 @@ public class AdEmbeddingSimilarity {
 
     private final JdbcTemplate jdbc;
 
-    public AdEmbeddingSimilarity(JdbcTemplate jdbc) {
+    public AdEmbeddingSimilarity(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                                 JdbcTemplate jdbc) {   // #3:item_embedding 走派生库
         this.jdbc = jdbc;
     }
 

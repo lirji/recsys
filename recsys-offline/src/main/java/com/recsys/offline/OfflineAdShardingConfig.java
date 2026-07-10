@@ -86,6 +86,29 @@ public class OfflineAdShardingConfig {
         return new JdbcTemplate(ds);
     }
 
+    /**
+     * #3 rec-serving 派生向量库(离线侧):烘焙者(backfill-embedding/import-tower/import-semantic-id/user-embedding/
+     * backfill-multimodal)+ 读者(seed-ads/lookalike/data-quality)读写 item_embedding/item_tower_embedding/
+     * item_semantic_id/user_embedding 走此源。{@code DERIVED_PG_DB} 未设 → {@code PG_DB} → recsys(默认不变)。
+     */
+    @Bean(name = "derivedDbDataSource")
+    public DataSource derivedDbDataSource() {
+        String db = env("DERIVED_PG_DB", env("PG_DB", "recsys"));
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl("jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db);
+        ds.setUsername(env("PG_USER", "recsys"));
+        ds.setPassword(env("PG_PASSWORD", "recsys"));
+        ds.setDriverClassName("org.postgresql.Driver");
+        ds.setConnectionInitSql("SET hnsw.ef_search = 200");
+        ds.setMaximumPoolSize(Integer.parseInt(env("DERIVED_DB_POOL_MAX", "20")));
+        return ds;
+    }
+
+    @Bean(name = "derivedJdbc")
+    public JdbcTemplate derivedJdbc(@Qualifier("derivedDbDataSource") DataSource ds) {
+        return new JdbcTemplate(ds);
+    }
+
     private static String env(String k, String def) {
         String v = System.getenv(k);
         return v == null || v.isBlank() ? def : v;

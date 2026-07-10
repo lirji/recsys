@@ -33,7 +33,8 @@ public class LookalikeJob implements OfflineJob {
     private final JdbcTemplate jdbc;
     private final StringRedisTemplate redis;
 
-    public LookalikeJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
+    public LookalikeJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate jdbc,
+                        StringRedisTemplate redis) {   // #3:user_embedding 走派生库
         this.jdbc = jdbc;
         this.redis = redis;
     }

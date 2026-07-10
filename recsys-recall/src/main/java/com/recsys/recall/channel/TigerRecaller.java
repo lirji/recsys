@@ -46,6 +46,7 @@ public class TigerRecaller implements ChannelRecaller {
     private static final Logger log = LoggerFactory.getLogger(TigerRecaller.class);
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate derived;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
     private final RecallProperties props;
 
     private OrtEnvironment env;
@@ -54,8 +55,11 @@ public class TigerRecaller implements ChannelRecaller {
     private int levels, codes, base, bos, maxHist;
     private volatile boolean ready = false;
 
-    public TigerRecaller(JdbcTemplate jdbc, RecallProperties props) {
+    public TigerRecaller(JdbcTemplate jdbc,
+                         @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+                         RecallProperties props) {
         this.jdbc = jdbc;
+        this.derived = derived;
         this.props = props;
     }
 
@@ -231,19 +235,19 @@ public class TigerRecaller implements ChannelRecaller {
 
     /** 生成的语义 ID → item:精确 (c0,c1,c2),无则 (c0,c1),再无则 (c0) 前缀兜底。 */
     private List<Long> itemsForCodes(int[] gen) {
-        List<Long> ids = jdbc.queryForList(
+        List<Long> ids = derived.queryForList(
                 "SELECT item_id FROM item_semantic_id WHERE c0=? AND c1=? AND c2=? LIMIT 20",
                 Long.class, gen[0], gen[1], gen[2]);
         if (!ids.isEmpty()) {
             return ids;
         }
-        ids = jdbc.queryForList(
+        ids = derived.queryForList(
                 "SELECT item_id FROM item_semantic_id WHERE c0=? AND c1=? LIMIT 20",
                 Long.class, gen[0], gen[1]);
         if (!ids.isEmpty()) {
             return ids;
         }
-        return jdbc.queryForList(
+        return derived.queryForList(
                 "SELECT item_id FROM item_semantic_id WHERE c0=? LIMIT 20", Long.class, gen[0]);
     }
 
@@ -253,7 +257,7 @@ public class TigerRecaller implements ChannelRecaller {
             return out;
         }
         Long[] ids = itemIds.toArray(new Long[0]);
-        jdbc.query(
+        derived.query(
                 "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE item_id = ANY(?)",
                 ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getLong("item_id"),

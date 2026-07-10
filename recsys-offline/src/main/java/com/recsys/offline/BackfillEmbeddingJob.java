@@ -34,7 +34,8 @@ public class BackfillEmbeddingJob implements OfflineJob {
 
     public BackfillEmbeddingJob(ContentService contentService,
                                 EmbeddingClient embeddingClient,
-                                JdbcTemplate jdbc) {
+                                @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                                JdbcTemplate jdbc) {   // #3:item_embedding 走派生库(item 读经 ContentService)
         this.contentService = contentService;
         this.embeddingClient = embeddingClient;
         this.jdbc = jdbc;

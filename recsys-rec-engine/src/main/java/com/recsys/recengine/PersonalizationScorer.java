@@ -26,7 +26,8 @@ public class PersonalizationScorer {
 
     private final JdbcTemplate jdbc;
 
-    public PersonalizationScorer(JdbcTemplate jdbc) {
+    public PersonalizationScorer(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
+                                 JdbcTemplate jdbc) {   // #3:item_embedding+user_embedding(一条 SQL)走派生库
         this.jdbc = jdbc;
     }
 

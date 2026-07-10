@@ -30,10 +30,14 @@ import java.util.Map;
 public class AdvertiserRepository {
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate derived;   // #3:item_embedding 读走 rec-serving 派生库(默认 recsys)
     private final AdReportReader reportReader;   // #3:ad_event 聚合来源(db 直读 / grpc 调 ad-serving)
 
-    public AdvertiserRepository(JdbcTemplate jdbc, AdReportReader reportReader) {
+    public AdvertiserRepository(JdbcTemplate jdbc,
+                                @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+                                AdReportReader reportReader) {
         this.jdbc = jdbc;
+        this.derived = derived;
         this.reportReader = reportReader;
     }
 
@@ -279,13 +283,19 @@ public class AdvertiserRepository {
 
     // ---------------- ad_embedding(在线语义召回依赖)----------------
 
-    /** 从 item_embedding 拷贝该广告关联 item 的向量(item 无向量则 0 行)。upsert 语义。 */
+    /** 从 item_embedding 拷贝该广告关联 item 的向量(item 无向量则 0 行)。upsert 语义。
+     *  #3 拆库:item_embedding(派生库)与 ad_embedding(分片库)可能不同库,拆读(derived,text 传输)+写(jdbc)。 */
     public int copyEmbeddingFromItem(long adId, long itemId) {
+        List<String[]> v = derived.query(
+                "SELECT embedding::text AS e, model FROM item_embedding WHERE item_id=?",
+                (rs, n) -> new String[]{rs.getString("e"), rs.getString("model")}, itemId);
+        if (v.isEmpty() || v.get(0)[0] == null) {
+            return 0;
+        }
         return jdbc.update(
-                "INSERT INTO ad_embedding(ad_id, embedding, model) " +
-                "SELECT ?, e.embedding, e.model FROM item_embedding e WHERE e.item_id=? " +
+                "INSERT INTO ad_embedding(ad_id, embedding, model) VALUES(?, CAST(? AS vector), ?) " +
                 "ON CONFLICT (ad_id) DO UPDATE SET embedding=EXCLUDED.embedding, model=EXCLUDED.model",
-                adId, itemId);
+                adId, v.get(0)[0], v.get(0)[1]);
     }
 
     public void deleteEmbedding(long adId) {
@@ -294,7 +304,7 @@ public class AdvertiserRepository {
 
     /** #3:读 item 向量(pgvector ::text 形式),供广告目录事件携带(拆库后 ad-serving 消费端写自有 ad_embedding)。null=无向量。 */
     public String itemEmbeddingText(long itemId) {
-        List<String> rows = jdbc.query("SELECT embedding::text FROM item_embedding WHERE item_id=?",
+        List<String> rows = derived.query("SELECT embedding::text FROM item_embedding WHERE item_id=?",
                 (rs, n) -> rs.getString(1), itemId);
         return rows.isEmpty() ? null : rows.get(0);
     }

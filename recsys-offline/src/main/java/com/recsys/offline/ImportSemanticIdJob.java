@@ -33,7 +33,7 @@ public class ImportSemanticIdJob implements OfflineJob {
 
     private final JdbcTemplate jdbc;
 
-    public ImportSemanticIdJob(JdbcTemplate jdbc) {
+    public ImportSemanticIdJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
@@ -103,8 +103,9 @@ public class ImportSemanticIdJob implements OfflineJob {
     }
 
     private void ensureTable() {
+        // #3:去 REFERENCES item 外键(派生库拆分后跨库不成立)
         jdbc.execute("CREATE TABLE IF NOT EXISTS item_semantic_id (" +
-                "item_id BIGINT PRIMARY KEY REFERENCES item(item_id), " +
+                "item_id BIGINT PRIMARY KEY, " +
                 "c0 INT NOT NULL, c1 INT NOT NULL, c2 INT NOT NULL, model TEXT)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_semid_prefix ON item_semantic_id (c0, c1, c2)");
     }

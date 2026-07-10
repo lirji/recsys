@@ -38,10 +38,14 @@ public class SemanticIdRecaller implements ChannelRecaller {
     private static final Logger log = LoggerFactory.getLogger(SemanticIdRecaller.class);
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate derived;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
     private final RecallProperties props;
 
-    public SemanticIdRecaller(JdbcTemplate jdbc, RecallProperties props) {
+    public SemanticIdRecaller(JdbcTemplate jdbc,
+                              @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+                              RecallProperties props) {
         this.jdbc = jdbc;
+        this.derived = derived;
         this.props = props;
     }
 
@@ -71,7 +75,7 @@ public class SemanticIdRecaller implements ChannelRecaller {
 
             // 候选 = 与任一种子同粗簇(c0)的所有 item;在 Java 里按最长公共前缀深度打分
             Map<Long, Double> best = new HashMap<>();
-            jdbc.query(
+            derived.query(
                     "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE c0 = ANY(?)",
                     ps -> ps.setArray(1, ps.getConnection().createArrayOf("integer", c0s)),
                     (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
@@ -121,7 +125,7 @@ public class SemanticIdRecaller implements ChannelRecaller {
     private Map<Long, int[]> loadCodes(List<Long> itemIds) {
         Long[] ids = itemIds.toArray(new Long[0]);
         Map<Long, int[]> out = new HashMap<>();
-        jdbc.query(
+        derived.query(
                 "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE item_id = ANY(?)",
                 ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getLong("item_id"),
