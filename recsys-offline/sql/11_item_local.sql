@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS item_local (
 );
 -- 全文检索 GIN 索引(LEXICAL/BM25 召回必需,否则全表扫描)。
 CREATE INDEX IF NOT EXISTS idx_item_local_title_tsv ON item_local USING gin (title_tsv);
+-- 类目 + 热度 / 纯热度 btree(与权威 item 同,TAG/HOT 热路径必需,否则全表扫 + Top-N 排序)。
+CREATE INDEX IF NOT EXISTS idx_item_local_category_pop ON item_local (category, popularity DESC);
+CREATE INDEX IF NOT EXISTS idx_item_local_popularity ON item_local (popularity DESC);

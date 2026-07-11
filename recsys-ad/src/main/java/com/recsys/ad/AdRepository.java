@@ -6,11 +6,13 @@ import com.recsys.common.ad.AdChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,15 @@ public class AdRepository {
     private final JdbcTemplate sharded;
     /** 目录读(标题/oCPC/详情/出价/定向):sharded 或 replica。 */
     private final AdCatalogReader catalog;
+
+    // HOT 兜底召回缓存:activeAdDetails(null)+bidMap(null) 是两次跨分片全表扫,每请求都跑代价高;
+    // 而"可服务广告集 + 出价"变化慢(建/停/审/改价才变)。用短 TTL 进程内缓存全量排好序的兜底列表,
+    // 把"每请求两次全扫"降为"每 TTL 一次"。TTL=0 即关闭(每次重扫,回退原行为)。staleness ≤ TTL。
+    @Value("${recsys.ad.recall.hot-cache-ttl-ms:30000}")
+    private long hotCacheTtlMs = 30000;
+    private volatile List<AdCandidate> hotCache;      // 全量、已按 recallScore 降序、不可变
+    private volatile long hotCacheExpiresAt;
+    private final Object hotLock = new Object();
 
     public AdRepository(@Qualifier("derivedJdbc") JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
                         @Qualifier("adShardingJdbc") JdbcTemplate sharded, AdCatalogReader catalog) {
@@ -151,26 +162,57 @@ public class AdRepository {
 
     /** 兜底召回:按 quality × 最高出价取头部可服务广告(全量可服务详情 + 出价来自目录读)。 */
     public List<AdCandidate> hot(int limit) {
-        try {
-            Map<Long, AdCatalogReader.AdDetail> ads = catalog.activeAdDetails(null); // null = 全部可服务
-            if (ads.isEmpty()) {
-                return List.of();
+        List<AdCandidate> all = hotAll();
+        if (all.size() <= limit) {
+            return all;
+        }
+        return all.subList(0, limit);   // 已按 recallScore 降序,取头部(下游只读迭代)
+    }
+
+    /**
+     * 全量兜底广告(已按 recallScore 降序、不可变),带短 TTL 缓存。缓存新鲜直接返回;过期时在锁内
+     * 双检重扫一次(避免并发多路 HOT 同时全扫)。扫描失败退空(与原行为一致,不污染缓存)。
+     */
+    private List<AdCandidate> hotAll() {
+        long now = System.currentTimeMillis();
+        List<AdCandidate> cached = hotCache;
+        if (cached != null && hotCacheExpiresAt > now) {
+            return cached;
+        }
+        synchronized (hotLock) {
+            now = System.currentTimeMillis();
+            if (hotCache != null && hotCacheExpiresAt > now) {
+                return hotCache;   // 别的线程刚刷过,直接用
             }
-            Map<Long, Double> bids = catalog.bidMap(null);
-            List<AdCandidate> all = new ArrayList<>(ads.size());
-            for (Map.Entry<Long, AdCatalogReader.AdDetail> e : ads.entrySet()) {
-                long adId = e.getKey();
-                AdCatalogReader.AdDetail d = e.getValue();
-                double bid = bids.getOrDefault(adId, 0.0);
-                all.add(new AdCandidate(adId, d.itemId(), d.advertiserId(), 0L,
-                        d.quality() * bid, AdChannel.HOT_AD, bid, d.quality()));
+            try {
+                List<AdCandidate> all = scanHot();
+                hotCache = all;
+                hotCacheExpiresAt = now + Math.max(0L, hotCacheTtlMs);
+                return all;
+            } catch (Exception e) {
+                log.warn("兜底广告召回失败: {}", e.getMessage());
+                return List.of();   // 不缓存失败,下次重试
             }
-            all.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
-            return all.size() > limit ? all.subList(0, limit) : all;
-        } catch (Exception e) {
-            log.warn("兜底广告召回失败: {}", e.getMessage());
+        }
+    }
+
+    /** 全量可服务广告 → AdCandidate,按 recallScore 降序;两次跨分片全扫的真源(被 {@link #hotAll} 缓存)。 */
+    private List<AdCandidate> scanHot() {
+        Map<Long, AdCatalogReader.AdDetail> ads = catalog.activeAdDetails(null); // null = 全部可服务
+        if (ads.isEmpty()) {
             return List.of();
         }
+        Map<Long, Double> bids = catalog.bidMap(null);
+        List<AdCandidate> all = new ArrayList<>(ads.size());
+        for (Map.Entry<Long, AdCatalogReader.AdDetail> e : ads.entrySet()) {
+            long adId = e.getKey();
+            AdCatalogReader.AdDetail d = e.getValue();
+            double bid = bids.getOrDefault(adId, 0.0);
+            all.add(new AdCandidate(adId, d.itemId(), d.advertiserId(), 0L,
+                    d.quality() * bid, AdChannel.HOT_AD, bid, d.quality()));
+        }
+        all.sort((a, b) -> Double.compare(b.recallScore(), a.recallScore()));
+        return Collections.unmodifiableList(all);   // 缓存共享,置不可变防下游误改
     }
 
     private static Set<Long> adIdSet(List<long[]> hits) {
@@ -189,37 +231,27 @@ public class AdRepository {
     }
 
     /**
-     * 读用户长期兴趣向量(口径同推荐 VECTOR 通道,主库 user_embedding)。PGvector 类型未注册时降级文本解析;
-     * 新用户/无向量返回 null。
+     * 读用户长期兴趣向量(口径同推荐 VECTOR 通道,主库 user_embedding)。新用户/无向量返回 null。
+     * JDBC 未注册 pgvector 类型时 {@code getObject} 强转 PGvector 必抛异常 —— 旧写法每次先抛再走文本兜底
+     * (多一次查询 + 异常开销)。全仓未注册该类型,故直接查 {@code ::text} 一次到位。
      */
     private float[] loadUserVector(long userId) {
         try {
-            List<PGvector> rows = jdbc.query(
-                    "SELECT embedding FROM user_embedding WHERE user_id=?",
-                    (rs, n) -> (PGvector) rs.getObject("embedding"), userId);
+            List<String> rows = jdbc.query(
+                    "SELECT embedding::text FROM user_embedding WHERE user_id=?",
+                    (rs, n) -> rs.getString(1), userId);
             if (rows.isEmpty() || rows.get(0) == null) {
                 return null;
             }
-            return rows.get(0).toArray();
-        } catch (Exception e) {
-            log.debug("读取 user_embedding 失败,尝试文本解析: {}", e.getMessage());
-            try {
-                List<String> rows = jdbc.query(
-                        "SELECT embedding::text FROM user_embedding WHERE user_id=?",
-                        (rs, n) -> rs.getString(1), userId);
-                if (rows.isEmpty() || rows.get(0) == null) {
-                    return null;
-                }
-                String[] parts = rows.get(0).replace("[", "").replace("]", "").split(",");
-                float[] v = new float[parts.length];
-                for (int i = 0; i < parts.length; i++) {
-                    v[i] = Float.parseFloat(parts[i].trim());
-                }
-                return v;
-            } catch (Exception ex) {
-                log.debug("文本解析 user_embedding 也失败: {}", ex.getMessage());
-                return null;
+            String[] parts = rows.get(0).replace("[", "").replace("]", "").split(",");
+            float[] v = new float[parts.length];
+            for (int i = 0; i < parts.length; i++) {
+                v[i] = Float.parseFloat(parts[i].trim());
             }
+            return v;
+        } catch (Exception e) {
+            log.debug("读取 user_embedding 失败: {}", e.getMessage());
+            return null;
         }
     }
 }

@@ -7,8 +7,10 @@ import com.recsys.common.ad.SponsoredAd;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 竞价排序(eCPM)+ 拍卖计费(GSP),docs/05 §4.5/§4.6。
@@ -75,6 +77,19 @@ public class BiddingService {
                                      ListwiseExternality.Sim sim) {
         AdProperties.Auction cfg = props.getAuction();
 
+        // 0. 批量预取每候选/每广告主的 Redis 参数(各一次 MGET),避免竞价循环里逐候选 N 次串行往返。
+        //    返回稀疏 Map(缺失/默认值不入 Map),循环内 getOrDefault 保持与逐条读完全一致的数值语义。
+        Set<Long> adIds = new HashSet<>();
+        Set<Long> advIds = new HashSet<>();
+        for (AdCandidate c : candidates) {
+            adIds.add(c.adId());
+            advIds.add(c.advertiserId());
+        }
+        Map<Long, Double> pacingByAdv = pacing.pacingFactors(advIds);
+        Map<Long, Double> qualityByAd = qualityScore.refinedBatch(adIds);
+        Map<Long, Double> boostByAd = explorer.boosts(adIds);
+        Map<Long, Double> ocpcCoefByAdv = ocpcBidder.coefficients(advIds);
+
         // 1. 算 eCPM(AdRank = pacedBid × billFactor),过滤低于 reserve。
         //    billFactor 是"每单位出价的每次曝光期望收入",按计费模式变——使 CPC/CPM/CPA 同尺可比(A1)。
         List<Scored> scored = new ArrayList<>(candidates.size());
@@ -84,15 +99,15 @@ public class BiddingService {
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
             BidType type = BidType.from(ocpc.optimizationType());
             double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
-            double effBid = effectiveBid(type, ocpc, c, pcvr);
-            double pacedBid = effBid * pacing.pacingFactor(c.advertiserId());
+            double effBid = effectiveBid(type, ocpc, c, pcvr, ocpcCoefByAdv.getOrDefault(c.advertiserId(), 1.0));
+            double pacedBid = effBid * pacingByAdv.getOrDefault(c.advertiserId(), 1.0);
             double relevance = gate.relevance(c);
             // 精细化质量度(M7):有数据的广告用 ad-quality 算好的数据驱动分,缺失退广告自带 quality_score
-            double quality = qualityScore.refined(c.adId(), c.quality());
+            double quality = qualityByAd.getOrDefault(c.adId(), c.quality());
             double billFactor = billFactor(type, pctrCalib, pcvr, quality, relevance);
             double ecpm = pacedBid * billFactor;
             // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 billFactor(守红线)
-            double rankEcpm = ecpm * explorer.boost(c.adId());
+            double rankEcpm = ecpm * boostByAd.getOrDefault(c.adId(), 1.0);
             if (rankEcpm < reserve) {
                 continue;
             }
@@ -180,10 +195,11 @@ public class BiddingService {
      * 有效出价:OCPC 用 {@link OcpcBidder}(targetCpa×pCVR×k,per click);OCPM 取 targetCpa
      * (billFactor 已含 pCTR×pCVR,故此处不再乘 pCVR);其余用手动出价。
      */
-    private double effectiveBid(BidType type, AdRepository.OcpcParams ocpc, AdCandidate c, double pcvr) {
+    private double effectiveBid(BidType type, AdRepository.OcpcParams ocpc, AdCandidate c, double pcvr,
+                                double ocpcCoef) {
         return switch (type) {
             case OCPC -> ocpcBidder.effectiveBid(
-                    ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), c.advertiserId(), pcvr);
+                    ocpc.optimizationType(), ocpc.targetCpa(), c.bid(), pcvr, ocpcCoef);
             case OCPM -> ocpc.targetCpa() > 0 ? ocpc.targetCpa() : c.bid();
             default -> c.bid();   // CPC / CPM / CPA:手动出价(各自的计费单位)
         };

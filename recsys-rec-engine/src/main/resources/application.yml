@@ -26,17 +26,26 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         namespace: ${NACOS_NAMESPACE:}
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}
+    # socketTimeout/connectTimeout(秒):底层 socket 读/连不再无限阻塞——PG 挂起时读超时即抛 SQLException,
+    # 连接被弃用、调用线程被真正回收(cancel(true) 对阻塞 socket 读无效的补足,配合召回舱壁根治"慢路占死线程")。
+    url: "jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:recsys}?socketTimeout=${PG_SOCKET_TIMEOUT:30}&connectTimeout=${PG_CONNECT_TIMEOUT:5}"
     username: ${PG_USER:recsys}
     password: ${PG_PASSWORD:recsys}
     driver-class-name: org.postgresql.Driver
     hikari:
-      # 每条物理连接建立后执行一次:把 HNSW 运行期检索宽度设到 ≥ 最大召回 LIMIT(vector/two-tower 均 200)。
+      # 每条物理连接建立后执行一次:(1) 把 HNSW 运行期检索宽度设到 ≥ 最大召回 LIMIT(vector/two-tower 均 200)。
       # 否则默认 ef_search=40,LIMIT 200 的向量召回只保证约 40 个真近邻、其余为低质量填充(召回被静默腰斩)。
-      connection-init-sql: SET hnsw.ef_search = 200
+      # (2) 服务端 statement_timeout(毫秒):主库承载 content/rank/lexical 等较重读,取<b>宽松</b> 10s 上限
+      # (仅防失控慢查询,不误杀正常查询;向量 ANN 快查库另在 AdShardingConfig 取更紧的 2s)。
+      connection-init-sql: SET hnsw.ef_search = 200; SET statement_timeout = ${PG_PRIMARY_STATEMENT_TIMEOUT_MS:10000}
       # 显式池配置:默认 max=10 在多路召回(单次请求并发多条独立 JDBC + 3~4 次 ANN)下易连接饥饿。
+      # 单请求连接扇出已降:近期正反馈物品编排层每请求取一次下发 I2I/SWING/GENERATIVE(原 3 次→1 次)、
+      # 向量读去掉必然失败的 getObject 二次查询;故 max=20 在中等并发下够用。要进一步扩容按实测再调:
+      # 压测观察 Hikari `hikari.connections.pending`/`.timeout` 指标 → 非零且持续则上调 DB_POOL_MAX
+      # (同时确认 Postgres max_connections 覆盖所有服务的池之和,默认 100),并按需上调 DERIVED_DB_POOL_MAX。
       maximum-pool-size: ${DB_POOL_MAX:20}
-      minimum-idle: ${DB_POOL_MIN:5}
+      # min-idle=10:突发流量下备足热连接,避免边界处现建连接的毫秒级尖刺(稳态多占几条空闲连接,PG 开销可忽略)。
+      minimum-idle: ${DB_POOL_MIN:10}
       connection-timeout: ${DB_POOL_CONN_TIMEOUT_MS:3000}
   data:
     redis:
@@ -105,6 +114,9 @@ recsys:
     serving:
       mode: ${USER_SERVING_MODE:in-process}
   # P4 已看来源:db(默认,直读 user_behavior,回滚落点)| replica(读 seen:{user} 事件读模型,DB-per-service)。
+  # 延迟提示:db 模式是每请求 `SELECT DISTINCT item_id ... WHERE user_id=?` 全历史扫(重度用户历史越长越慢、
+  # 且并行召回时各占一条连接)。生产建议切 replica(SEEN_SOURCE=replica) → 一次 Redis SMEMBERS 取已看集,
+  # 常数级、不占 JDBC 连接;切前需先 SEEN_CONSUME=true 让 behavior-events 监听器灌好 seen:{user} 读模型。
   behavior:
     seen-source: ${SEEN_SOURCE:db}
     seen-consume: ${SEEN_CONSUME:false}   # 是否启动 behavior-events 监听器建 seen 读模型(replica 模式需先开它灌读模型)
@@ -388,6 +400,15 @@ resilience4j:
         minimum-number-of-calls: 10          # 攒够 10 次调用才评估失败率
         failure-rate-threshold: 60           # 失败率 ≥60% → 熔断
         wait-duration-in-open-state: 30s     # 熔断后 30s 转半开探活
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
+      # LLM query 理解(generateContent)熔断:同步外呼在 query 链路最前端,Gemini 慢/挂时快速失败到词法兜底,
+      # 不因它每请求苦等(read 3s × 重试退避)拖垮 search/search-ads/feed。仅 LLM_ENABLED=true 时才有调用。
+      gemini-llm:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 3
         register-health-indicator: true
       # E7:pgvector VECTOR 召回熔断。pg 宕机时快速失败到空(其它召回路兜底),避免每请求苦等召回超时。

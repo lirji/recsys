@@ -8,6 +8,7 @@ import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.common.query.TermWeight;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -20,6 +21,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 /**
  * 广告召回:query→ad 多路并行,合并去重。每路独立降级(架构铁律)。
@@ -45,6 +50,13 @@ public class JdbcAdRecallService implements AdRecallService {
     private final AdRepository repo;
     private final StringRedisTemplate redis;
     private final AdProperties props;
+    // 小线程池:四路召回相互独立 → 并行执行(而非串行四路之和)。HOT 全表扫因此与 keyword/u2a 重叠,
+    // 不再叠加到关键词路后面。每路 fail-soft(异常当空),兑现类契约"任一路失败不影响整体"。
+    private final ExecutorService pool = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "ad-recall");
+        t.setDaemon(true);
+        return t;
+    });
 
     public JdbcAdRecallService(AdRepository repo, StringRedisTemplate redis, AdProperties props) {
         this.repo = repo;
@@ -52,46 +64,80 @@ public class JdbcAdRecallService implements AdRecallService {
         this.props = props;
     }
 
+    @PreDestroy
+    void shutdown() {
+        pool.shutdownNow();
+    }
+
     @Override
     public List<AdCandidate> recall(AdRecallContext ctx) {
         StructuredQuery q = ctx.query();
+
+        // 四路并行发起(各自内部判 enable,不启用则返回空);随后按固定顺序 keyword→semantic→u2a→hot
+        // 合并——mergeKeep 冲突解析只看 channel 优先级/取 max,与合并顺序无关;LinkedHashMap 插入顺序也
+        // 与串行一致,故输出(集合 + 顺序)与原串行逐项相等,纯粹是把四路的等待重叠起来。
+        CompletableFuture<List<AdCandidate>> fKw = supply(() -> keywordPath(ctx, q));
+        CompletableFuture<List<AdCandidate>> fSem = supply(() -> semanticPath(ctx, q));
+        CompletableFuture<List<AdCandidate>> fU2a = supply(() -> u2aPath(ctx));
+        CompletableFuture<List<AdCandidate>> fHot = supply(() -> hotPath(ctx));
+
         Map<Long, AdCandidate> merged = new LinkedHashMap<>();
-
-        // 1. 关键词路(原始词项 + 改写词)
-        if (q != null && (ctx.isEnabled(AdChannel.KW_EXACT) || ctx.isEnabled(AdChannel.KW_BROAD))) {
-            Set<String> terms = new LinkedHashSet<>();
-            for (TermWeight tw : q.terms()) {
-                terms.add(tw.term());
-            }
-            Set<String> all = new LinkedHashSet<>(terms);
-            all.addAll(q.rewrites());
-            for (AdCandidate c : keyword(all, terms, props.getRecall().getKw())) {
+        for (List<AdCandidate> part : List.of(fKw.join(), fSem.join(), fU2a.join(), fHot.join())) {
+            for (AdCandidate c : part) {
                 mergeKeep(merged, c);
             }
         }
-
-        // 2. 语义路(query 向量可用时)
-        if (q != null && q.hasEmbedding() && ctx.isEnabled(AdChannel.SEMANTIC_AD)) {
-            for (AdCandidate c : repo.semantic(q.embedding(), props.getRecall().getSemantic())) {
-                mergeKeep(merged, c);
-            }
-        }
-
-        // 3. U2A 定向路(用户长期向量 → ad_embedding,query 无关的个性化补充)
-        if (ctx.userId() > 0 && ctx.isEnabled(AdChannel.U2A)) {
-            for (AdCandidate c : repo.u2a(ctx.userId(), props.getRecall().getU2a())) {
-                mergeKeep(merged, c);
-            }
-        }
-
-        // 4. 兜底路
-        if (ctx.isEnabled(AdChannel.HOT_AD)) {
-            for (AdCandidate c : repo.hot(props.getRecall().getHot())) {
-                mergeKeep(merged, c);
-            }
-        }
-
         return new ArrayList<>(merged.values());
+    }
+
+    /** 提交一路召回到线程池,fail-soft:该路异常/降级时返回空,不拖累其余路(架构铁律)。 */
+    private CompletableFuture<List<AdCandidate>> supply(Supplier<List<AdCandidate>> path) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return path.get();
+            } catch (Exception e) {
+                log.debug("广告召回某路失败,跳过: {}", e.getMessage());
+                return List.of();
+            }
+        }, pool);
+    }
+
+    /** 1. 关键词路(原始词项 + 改写词)。 */
+    private List<AdCandidate> keywordPath(AdRecallContext ctx, StructuredQuery q) {
+        if (q == null || !(ctx.isEnabled(AdChannel.KW_EXACT) || ctx.isEnabled(AdChannel.KW_BROAD))) {
+            return List.of();
+        }
+        Set<String> terms = new LinkedHashSet<>();
+        for (TermWeight tw : q.terms()) {
+            terms.add(tw.term());
+        }
+        Set<String> all = new LinkedHashSet<>(terms);
+        all.addAll(q.rewrites());
+        return keyword(all, terms, props.getRecall().getKw());
+    }
+
+    /** 2. 语义路(query 向量可用时)。 */
+    private List<AdCandidate> semanticPath(AdRecallContext ctx, StructuredQuery q) {
+        if (q == null || !q.hasEmbedding() || !ctx.isEnabled(AdChannel.SEMANTIC_AD)) {
+            return List.of();
+        }
+        return repo.semantic(q.embedding(), props.getRecall().getSemantic());
+    }
+
+    /** 3. U2A 定向路(用户长期向量 → ad_embedding,query 无关的个性化补充)。 */
+    private List<AdCandidate> u2aPath(AdRecallContext ctx) {
+        if (ctx.userId() <= 0 || !ctx.isEnabled(AdChannel.U2A)) {
+            return List.of();
+        }
+        return repo.u2a(ctx.userId(), props.getRecall().getU2a());
+    }
+
+    /** 4. 兜底路。 */
+    private List<AdCandidate> hotPath(AdRecallContext ctx) {
+        if (!ctx.isEnabled(AdChannel.HOT_AD)) {
+            return List.of();
+        }
+        return repo.hot(props.getRecall().getHot());
     }
 
     /** 关键词召回:Redis 倒排优先,整体不可用/空时回退 DB。 */

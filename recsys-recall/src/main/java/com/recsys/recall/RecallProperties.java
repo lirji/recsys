@@ -65,8 +65,18 @@ public class RecallProperties {
         private boolean enabled = true;
         /** 单路召回超时(毫秒);超时当空,交由其余路/热门兜底。 */
         private long timeoutMs = 150;
-        /** 召回线程池大小(建议 ≈ 通道数)。 */
+        /** 召回线程池大小(建议 ≈ 通道数)。舱壁开启时作为<b>慢池</b>大小;关闭时为单池大小。 */
         private int poolSize = 12;
+        /**
+         * 舱壁隔离:把慢通道(pgvector ANN / ONNX / 重 DB)与快通道(HOT/TAG/I2I 等兜底)拆到<b>各自线程池</b>——
+         * 慢通道超时后 {@code cancel(true)} 不中断阻塞调用、线程被占,但只占<b>慢池</b>,快池(兜底路)始终有线程可用,
+         * 不被拖垮。false=退回单池(原行为)。
+         */
+        private boolean bulkheadEnabled = true;
+        /** 快通道线程池大小(舱壁开启时生效)。 */
+        private int fastPoolSize = 6;
+        /** 归入慢池的通道(逗号分隔,大小写不敏感;未列出的通道走快池)。 */
+        private String slowChannels = "VECTOR,SEMANTIC,TWO_TOWER,GENERATIVE,TIGER,U2U,LEXICAL";
 
         public boolean isEnabled() {
             return enabled;
@@ -90,6 +100,30 @@ public class RecallProperties {
 
         public void setPoolSize(int poolSize) {
             this.poolSize = poolSize;
+        }
+
+        public boolean isBulkheadEnabled() {
+            return bulkheadEnabled;
+        }
+
+        public void setBulkheadEnabled(boolean bulkheadEnabled) {
+            this.bulkheadEnabled = bulkheadEnabled;
+        }
+
+        public int getFastPoolSize() {
+            return fastPoolSize;
+        }
+
+        public void setFastPoolSize(int fastPoolSize) {
+            this.fastPoolSize = fastPoolSize;
+        }
+
+        public String getSlowChannels() {
+            return slowChannels;
+        }
+
+        public void setSlowChannels(String slowChannels) {
+            this.slowChannels = slowChannels;
         }
     }
 

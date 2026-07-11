@@ -1,5 +1,6 @@
 package com.recsys.content;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于 JdbcTemplate 的物品服务实现,默认读共享 {@code item} 表。
@@ -24,8 +26,23 @@ public class JdbcContentService implements ContentService {
 
     private final JdbcTemplate jdbc;
 
+    // item 元数据近乎静态(title/category/tags/popularity 极少变),却在一次推荐里被粗排/精排/重排
+    // 分别查库(每次全列 SELECT,含 description/tags 重字段)。进程内 TTL 缓存把 2、3 次重复读变成
+    // 内存命中,并跨请求复用热门 item;save() 就地失效。默认开,可 recsys.content.cache.enabled=false 关。
+    @Value("${recsys.content.cache.enabled:true}")
+    private boolean cacheEnabled = true;
+    @Value("${recsys.content.cache.ttl-seconds:300}")
+    private long cacheTtlSeconds = 300;
+    @Value("${recsys.content.cache.max-size:50000}")
+    private int cacheMaxSize = 50000;
+    private final ConcurrentHashMap<Long, CacheEntry> cache = new ConcurrentHashMap<>();
+
     public JdbcContentService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /** 缓存条目:item + 过期时刻(毫秒)。 */
+    private record CacheEntry(Item item, long expiresAt) {
     }
 
     /** item 目录表名:{@code item}(共享,默认)或子类覆盖为 {@code item_local}(本地副本)。 */
@@ -53,10 +70,17 @@ public class JdbcContentService implements ContentService {
 
     @Override
     public Item findById(long itemId) {
-        List<Item> list = jdbc.query(
-                "SELECT item_id,title,category,tags,description,popularity FROM " + table() + " WHERE item_id=?",
-                MAPPER, itemId);
-        return list.isEmpty() ? null : list.get(0);
+        if (cacheEnabled) {
+            CacheEntry e = cache.get(itemId);
+            if (e != null && e.expiresAt() > now()) {
+                return e.item();
+            }
+        }
+        Item it = fetchById(itemId);
+        if (cacheEnabled && it != null) {
+            putCache(itemId, it);
+        }
+        return it;
     }
 
     @Override
@@ -65,6 +89,45 @@ public class JdbcContentService implements ContentService {
         if (itemIds == null || itemIds.isEmpty()) {
             return result;
         }
+        if (!cacheEnabled) {
+            return fetchByIds(itemIds);
+        }
+        // 命中缓存的直接取,未命中(或过期)的收集起来一次性查库回填
+        long now = now();
+        List<Long> misses = new ArrayList<>();
+        for (Long id : itemIds) {
+            CacheEntry e = cache.get(id);
+            if (e != null && e.expiresAt() > now) {
+                result.put(id, e.item());   // 命中(item 非 null:仅缓存存在的 item,与"不在 map 中"契约一致)
+            } else {
+                misses.add(id);
+            }
+        }
+        if (!misses.isEmpty()) {
+            Map<Long, Item> fetched = fetchByIds(misses);
+            if (!fetched.isEmpty()) {
+                maybeEvict();
+                long exp = now + cacheTtlSeconds * 1000L;
+                for (Item it : fetched.values()) {
+                    cache.put(it.itemId(), new CacheEntry(it, exp));
+                }
+            }
+            result.putAll(fetched);
+        }
+        return result;
+    }
+
+    /** 直读单个 item(不经缓存)。 */
+    private Item fetchById(long itemId) {
+        List<Item> list = jdbc.query(
+                "SELECT item_id,title,category,tags,description,popularity FROM " + table() + " WHERE item_id=?",
+                MAPPER, itemId);
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    /** 直读一批 item(不经缓存),返回 id->Item(不存在的 id 不在 map 中)。 */
+    private Map<Long, Item> fetchByIds(List<Long> itemIds) {
+        Map<Long, Item> result = new HashMap<>();
         String placeholders = String.join(",", itemIds.stream().map(x -> "?").toList());
         List<Item> items = jdbc.query(
                 "SELECT item_id,title,category,tags,description,popularity FROM " + table()
@@ -74,6 +137,27 @@ public class JdbcContentService implements ContentService {
             result.put(it.itemId(), it);
         }
         return result;
+    }
+
+    private void putCache(long id, Item it) {
+        maybeEvict();
+        cache.put(id, new CacheEntry(it, now() + cacheTtlSeconds * 1000L));
+    }
+
+    /** 超过上限时先清过期项,仍超限则整表清空(item 目录有界,极少触发;防无界增长)。 */
+    private void maybeEvict() {
+        if (cache.size() < cacheMaxSize) {
+            return;
+        }
+        long now = now();
+        cache.entrySet().removeIf(en -> en.getValue().expiresAt() <= now);
+        if (cache.size() >= cacheMaxSize) {
+            cache.clear();
+        }
+    }
+
+    private static long now() {
+        return System.currentTimeMillis();
     }
 
     @Override
@@ -100,6 +184,7 @@ public class JdbcContentService implements ContentService {
             ps.setDouble(6, item.popularity());
             return ps;
         });
+        cache.remove(item.itemId());   // 写后失效:下次读回填最新
     }
 
     @Override

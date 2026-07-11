@@ -6,6 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * oCPC 智能出价(docs/05 §6,M6)。把广告主的"目标转化成本(target_cpa)"自动换算成本次竞价的出价。
  *
@@ -44,13 +50,21 @@ public class OcpcBidder {
      */
     public double effectiveBid(String optimizationType, double targetCpa, double manualBid,
                                long advertiserId, double pcvr) {
+        return effectiveBid(optimizationType, targetCpa, manualBid, pcvr, coefficient(advertiserId));
+    }
+
+    /**
+     * 有效出价的重载:接受<b>预取好</b>的调节系数 k,不再回库读 Redis。
+     * 供 {@link BiddingService} 竞价循环用批量预取的 k 计算,避免每候选一次 Redis 往返。
+     */
+    public double effectiveBid(String optimizationType, double targetCpa, double manualBid,
+                               double pcvr, double coefficient) {
         boolean ocpc = "OCPC".equalsIgnoreCase(optimizationType) && targetCpa > 0;
         if (!props.getOcpc().isEnabled() || !ocpc) {
             return manualBid;
         }
         double p = pcvr > 0 ? pcvr : props.getOcpc().getDefaultPcvr();
-        double k = coefficient(advertiserId);
-        double bid = targetCpa * p * k;
+        double bid = targetCpa * p * coefficient;
         double cap = props.getOcpc().getMaxBid();
         if (cap > 0) {
             bid = Math.min(bid, cap);
@@ -61,15 +75,52 @@ public class OcpcBidder {
     /** 读广告主 oCPC 调节系数 k(ad:ocpc:{adv});缺失/异常 → 1.0。 */
     public double coefficient(long advertiserId) {
         try {
-            String s = redis.opsForValue().get(RedisKeys.adOcpc(advertiserId));
-            if (s != null && !s.isBlank()) {
+            return parseCoef(redis.opsForValue().get(RedisKeys.adOcpc(advertiserId)));
+        } catch (Exception e) {
+            log.debug("读 oCPC 系数失败,退 1.0: {}", e.getMessage());
+            return 1.0;
+        }
+    }
+
+    /**
+     * 批量取 oCPC 调节系数(一次 MGET),供竞价循环预取避免每候选一次 Redis 往返。
+     * 返回的 Map 只含"命中且有效(&gt;0)"的广告主;缺失/异常 → 不入 Map,调用方 getOrDefault(adv, 1.0)。
+     */
+    public Map<Long, Double> coefficients(Collection<Long> advertiserIds) {
+        if (advertiserIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = advertiserIds.stream().distinct().collect(Collectors.toList());
+        try {
+            List<String> keys = ids.stream().map(RedisKeys::adOcpc).collect(Collectors.toList());
+            List<String> vals = redis.opsForValue().multiGet(keys);
+            Map<Long, Double> out = new HashMap<>();
+            if (vals != null) {
+                for (int i = 0; i < ids.size() && i < vals.size(); i++) {
+                    double k = parseCoef(vals.get(i));
+                    if (k != 1.0) {   // 只有非默认系数才入 Map;1.0 与缺失等价,交给 getOrDefault
+                        out.put(ids.get(i), k);
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.debug("批量读 oCPC 系数失败,退 1.0: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** 解析 oCPC 系数字符串:命中且有限且&gt;0 → 用它;否则 1.0。 */
+    private static double parseCoef(String s) {
+        if (s != null && !s.isBlank()) {
+            try {
                 double k = Double.parseDouble(s.trim());
                 if (Double.isFinite(k) && k > 0) {
                     return k;
                 }
+            } catch (NumberFormatException ignored) {
+                // 非数字 → 退 1.0
             }
-        } catch (Exception e) {
-            log.debug("读 oCPC 系数失败,退 1.0: {}", e.getMessage());
         }
         return 1.0;
     }

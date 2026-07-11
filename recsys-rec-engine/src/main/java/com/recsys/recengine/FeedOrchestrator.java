@@ -17,6 +17,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -41,6 +44,13 @@ public class FeedOrchestrator {
     private final AdMixer adMixer;
     private final FrequencyCapService frequencyCap;
     private final AdProperties adProps;
+    // 小线程池:让"取广告(召回+竞价+频控)"与"取自然结果"重叠执行,而非串行。
+    // 广告链路失败已 fail-soft 返回空,不影响自然流;队列满/异常退纯自然流。
+    private final ExecutorService adPool = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "feed-ads");
+        t.setDaemon(true);
+        return t;
+    });
 
     public FeedOrchestrator(RecommendOrchestrator recommendOrchestrator,
                             SearchAdsOrchestrator searchAdsOrchestrator,
@@ -56,24 +66,27 @@ public class FeedOrchestrator {
 
     public BlendedFeedResponse feed(long userId, String query, int size, String scene) {
         String sc = (scene == null || scene.isBlank()) ? SEARCH_SCENE : scene;
-        // 1. 自然结果(有 query 则 query 驱动)
+
+        // 1+2. 自然结果与广告是两条相互独立的重链路 → 并行。广告(召回+竞价+频控)提交到线程池,
+        //       自然结果在当前线程算,二者重叠;feed 端到端 ≈ max(自然, 广告) 而非二者之和。
+        boolean adEnabled = query != null && !query.isBlank() && adProps.getAdLoad().isEnabled();
+        CompletableFuture<AdResult> adFuture = adEnabled
+                ? CompletableFuture.supplyAsync(() -> loadAds(userId, query, sc), adPool)
+                : CompletableFuture.completedFuture(AdResult.EMPTY);
+
         RecommendResponse organic =
                 recommendOrchestrator.recommend(new RecommendRequest(userId, size, sc, query));
         int target = size > 0 ? size : organic.items().size();
 
-        // 2. 广告(仅 query 驱动 + Ad Load 开启)
-        String requestId = null;
-        List<SponsoredAd> ads = List.of();
-        if (query != null && !query.isBlank() && adProps.getAdLoad().isEnabled()) {
-            try {
-                SearchAdsResponse adsResp =
-                        searchAdsOrchestrator.searchAds(userId, query, adProps.getAdLoad().getMaxAds(), sc);
-                requestId = adsResp.requestId();
-                ads = frequencyCap.filter(userId, adsResp.ads());   // 3. 频控过滤
-            } catch (Exception e) {
-                log.debug("混排取广告失败,退纯自然流 user={}: {}", userId, e.getMessage());
-            }
+        // 3. 汇合广告结果(loadAds 内部已 fail-soft;join 再兜一层防线程池拒绝/中断)
+        AdResult adResult = AdResult.EMPTY;
+        try {
+            adResult = adFuture.join();
+        } catch (Exception e) {
+            log.debug("混排取广告失败,退纯自然流 user={}: {}", userId, e.getMessage());
         }
+        String requestId = adResult.requestId();
+        List<SponsoredAd> ads = adResult.ads();
 
         // 4. 混排
         List<FeedEntry> entries = adMixer.mix(organic.items(), ads, Math.max(target, organic.items().size()));
@@ -97,5 +110,23 @@ public class FeedOrchestrator {
         log.debug("混排信息流 user={} q=[{}] 自然={} 广告={} 展示广告={}",
                 userId, query, organic.items().size(), ads.size(), shownAdIds.size());
         return new BlendedFeedResponse(userId, query, requestId, entries, organic.traceId());
+    }
+
+    /** 取竞得广告 + 频控过滤,内部 fail-soft(异常退空广告),供并行任务调用。 */
+    private AdResult loadAds(long userId, String query, String scene) {
+        try {
+            SearchAdsResponse adsResp =
+                    searchAdsOrchestrator.searchAds(userId, query, adProps.getAdLoad().getMaxAds(), scene);
+            List<SponsoredAd> filtered = frequencyCap.filter(userId, adsResp.ads());   // 频控过滤
+            return new AdResult(adsResp.requestId(), filtered);
+        } catch (Exception e) {
+            log.debug("混排取广告失败,退纯自然流 user={}: {}", userId, e.getMessage());
+            return AdResult.EMPTY;
+        }
+    }
+
+    /** 并行广告任务的结果:请求 ID + 频控后广告。 */
+    private record AdResult(String requestId, List<SponsoredAd> ads) {
+        static final AdResult EMPTY = new AdResult(null, List.of());
     }
 }

@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS item (
 );
 -- 全文检索 GIN 索引(LEXICAL 召回必需)
 CREATE INDEX IF NOT EXISTS idx_item_title_tsv ON item USING gin (title_tsv);
+-- 类目 + 热度 btree:TAG 召回 byCategories(WHERE category IN (...) ORDER BY popularity DESC LIMIT k)
+-- 直接 index-only 取 Top-N、免排序;否则每次(几乎每个非冷启动请求)全表 Seq Scan + Top-N Sort。
+CREATE INDEX IF NOT EXISTS idx_item_category_pop ON item (category, popularity DESC);
+-- 纯热度:HOT 兜底 hotByPopularity(ORDER BY popularity DESC)与 fusion 的 pop-debias。
+CREATE INDEX IF NOT EXISTS idx_item_popularity ON item (popularity DESC);
 -- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
 ALTER TABLE item ADD COLUMN IF NOT EXISTS title_tsv tsvector GENERATED ALWAYS AS
     (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED;

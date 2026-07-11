@@ -6,6 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 新广告 EE 探索(docs/05 §6):解决"新广告无 CTR 历史 → 纯 eCPM 排序永远不给曝光 → 永远是新广告"
  * 的冷启动陷阱。给曝光不足的广告一个 <b>UCB 探索加成</b>,抬升其<b>排序</b> eCPM,让它有机会拿到
@@ -42,13 +48,43 @@ public class ExplorationService {
         }
         try {
             long adImp = readLong(RedisKeys.adStats(adId));     // 缺失=0 → 新广告,最大加成
-            long total = total();
-            double ucb = cfg.getCoef() * Math.sqrt(Math.log(total + Math.E) / (adImp + 1.0));
-            return Math.min(cfg.getMaxBoost(), 1.0 + ucb);
+            return ucbBoost(adImp, total(), cfg);
         } catch (Exception e) {
             log.debug("EE 探索加成计算失败,退 1.0: {}", e.getMessage());
             return 1.0;
         }
+    }
+
+    /**
+     * 批量取探索加成(一次 MGET),供竞价循环预取避免每候选一次 Redis 往返。
+     * <b>对每个请求的广告都算加成</b>(缺 stats → adImp=0 → 新广告最大加成);关闭/异常 → 返回空 Map,
+     * 调用方 getOrDefault(adId, 1.0) 退无探索。
+     */
+    public Map<Long, Double> boosts(Collection<Long> adIds) {
+        AdProperties.Exploration cfg = props.getExploration();
+        if (!cfg.isEnabled() || adIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = adIds.stream().distinct().collect(Collectors.toList());
+        try {
+            List<String> keys = ids.stream().map(RedisKeys::adStats).collect(Collectors.toList());
+            List<String> vals = redis.opsForValue().multiGet(keys);
+            long total = total();
+            Map<Long, Double> out = new HashMap<>();
+            for (int i = 0; i < ids.size(); i++) {
+                long adImp = parseImp(vals != null && i < vals.size() ? vals.get(i) : null);
+                out.put(ids.get(i), ucbBoost(adImp, total, cfg));
+            }
+            return out;
+        } catch (Exception e) {
+            log.debug("批量 EE 探索加成计算失败,退 1.0: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private static double ucbBoost(long adImp, long total, AdProperties.Exploration cfg) {
+        double ucb = cfg.getCoef() * Math.sqrt(Math.log(total + Math.E) / (adImp + 1.0));
+        return Math.min(cfg.getMaxBoost(), 1.0 + ucb);
     }
 
     private long total() {
@@ -63,7 +99,11 @@ public class ExplorationService {
 
     /** ad:stats 形如 "imp,clk" 或纯数字;取首段为曝光数。缺失/异常 → 0。 */
     private long readLong(String key) {
-        String s = redis.opsForValue().get(key);
+        return parseImp(redis.opsForValue().get(key));
+    }
+
+    /** 解析 ad:stats 字符串("imp,clk" 或纯数字)首段为曝光数;缺失/异常 → 0。 */
+    private static long parseImp(String s) {
         if (s == null || s.isBlank()) {
             return 0;
         }

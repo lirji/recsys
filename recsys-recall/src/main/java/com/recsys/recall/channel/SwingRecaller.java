@@ -46,7 +46,7 @@ public class SwingRecaller implements ChannelRecaller {
 
     @Override
     public List<RecallItem> recall(RecallContext ctx) {
-        List<Long> seeds = recentItems(ctx.userId(), props.getQuota().getI2iSeed());
+        List<Long> seeds = seeds(ctx, props.getQuota().getI2iSeed());
         if (seeds.isEmpty()) {
             return List.of();
         }
@@ -72,6 +72,15 @@ public class SwingRecaller implements ChannelRecaller {
             out.add(new RecallItem(e.getKey(), e.getValue(), RecallChannel.SWING));
         }
         return out;
+    }
+
+    /** 种子物品:优先用编排层预取的近期正反馈(取前 n 前缀,与 SQL LIMIT n 逐项等价);未预取则回退查库。 */
+    private List<Long> seeds(RecallContext ctx, int n) {
+        List<Long> prefetched = ctx.recentPositiveItems();
+        if (prefetched != null) {
+            return prefetched.size() > n ? prefetched.subList(0, n) : prefetched;
+        }
+        return recentItems(ctx.userId(), n);
     }
 
     private List<Long> recentItems(long userId, int n) {

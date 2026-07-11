@@ -82,11 +82,11 @@ public class AdShardingConfig {
     public DataSource adDbDataSource() {
         String db = env("AD_PG_DB", env("PG_DB", "recsys"));
         HikariDataSource ds = new HikariDataSource();
-        ds.setJdbcUrl("jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db);
+        ds.setJdbcUrl(pgUrl(env("PG_HOST", "localhost"), env("PG_PORT", "5432"), db));
         ds.setUsername(env("PG_USER", "recsys"));
         ds.setPassword(env("PG_PASSWORD", "recsys"));
         ds.setDriverClassName("org.postgresql.Driver");
-        ds.setConnectionInitSql("SET hnsw.ef_search = 200");   // ad_embedding pgvector ANN 检索宽度
+        ds.setConnectionInitSql(annInitSql());   // ad_embedding pgvector ANN 检索宽度 + 服务端 statement_timeout
         ds.setMaximumPoolSize(Integer.parseInt(env("AD_DB_POOL_MAX", "10")));
         return ds;
     }
@@ -106,13 +106,33 @@ public class AdShardingConfig {
     public DataSource derivedDbDataSource() {
         String db = env("DERIVED_PG_DB", env("PG_DB", "recsys"));
         HikariDataSource ds = new HikariDataSource();
-        ds.setJdbcUrl("jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db);
+        ds.setJdbcUrl(pgUrl(env("PG_HOST", "localhost"), env("PG_PORT", "5432"), db));
         ds.setUsername(env("PG_USER", "recsys"));
         ds.setPassword(env("PG_PASSWORD", "recsys"));
         ds.setDriverClassName("org.postgresql.Driver");
-        ds.setConnectionInitSql("SET hnsw.ef_search = 200");   // item_embedding/item_tower_embedding pgvector ANN
+        ds.setConnectionInitSql(annInitSql());   // item_* pgvector ANN 检索宽度 + 服务端 statement_timeout
         ds.setMaximumPoolSize(Integer.parseInt(env("DERIVED_DB_POOL_MAX", "20")));
         return ds;
+    }
+
+    /**
+     * 派生/ad 快查数据源的 JDBC URL,带底层 {@code socketTimeout}/{@code connectTimeout}(秒)。
+     * <p>这是"彻底回收"的关键:PG 网络挂起时 socket 读默认无限阻塞,{@code cancel(true)} 对阻塞的 socket 读无效,
+     * 召回工作线程被永久占住;设 socketTimeout 后读超时即抛 SQLException → 连接被 Hikari 弃用、线程被真正回收。
+     */
+    private static String pgUrl(String host, String port, String db) {
+        return "jdbc:postgresql://" + host + ":" + port + "/" + db
+                + "?socketTimeout=" + env("PG_SOCKET_TIMEOUT", "30")
+                + "&connectTimeout=" + env("PG_CONNECT_TIMEOUT", "5");
+    }
+
+    /**
+     * ANN 快查数据源连接初始化:pgvector 检索宽度 + <b>服务端 {@code statement_timeout}(毫秒)</b>。
+     * <p>statement_timeout 让慢查询在服务端按 ms 粒度中止(比秒级 socketTimeout 更快回收慢池线程),
+     * 仅用于 derived/adDb 这类<b>快查</b>数据源(向量 ANN 单查亚秒级);较重的主库不设此紧界(见 application.yml)。
+     */
+    private static String annInitSql() {
+        return "SET hnsw.ef_search = 200; SET statement_timeout = " + env("PG_ANN_STATEMENT_TIMEOUT_MS", "2000");
     }
 
     @Bean(name = "derivedJdbc")

@@ -2,6 +2,7 @@ package com.recsys.embedding;
 
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.llm.LlmClient;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -54,7 +55,11 @@ public class GeminiChatClient implements LlmClient {
         return props.getModel();
     }
 
+    // 弹性护栏:generateContent 是在线 query 理解链路最前端的同步外呼,Gemini 慢/挂时即便有 read 超时
+    // (llmRestClient 3s)也会每请求苦等 + 重试退避。熔断达阈值即快速失败(抛 CallNotPermittedException)——
+    // 由 QueryUnderstandingServiceImpl.enrichWithLlm 的 catch 降级纯词法,半开态自动探活。范式同 gemini-embedding。
     @Override
+    @CircuitBreaker(name = "gemini-llm")
     public String complete(String systemPrompt, String userPrompt) {
         if (!isReady()) {
             throw new IllegalStateException("LLM 未就绪(未配置 GEMINI_API_KEY 或 recsys.llm.enabled=false)");

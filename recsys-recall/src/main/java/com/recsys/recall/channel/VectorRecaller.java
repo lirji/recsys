@@ -69,23 +69,12 @@ public class VectorRecaller implements ChannelRecaller {
         return List.of();
     }
 
+    /**
+     * 读用户向量。JDBC 未注册 pgvector 类型时,{@code rs.getObject} 对 vector 列返回 PGobject、强转
+     * PGvector 必抛 ClassCastException —— 旧写法每次都先抛异常再走文本兜底(多一次查询 + 异常开销)。
+     * 全仓未注册该类型,故直接查 {@code ::text} 一次到位,免去必然失败的 getObject 尝试。
+     */
     private float[] loadUserVector(long userId) {
-        try {
-            List<PGvector> rows = jdbc.query(
-                    "SELECT embedding FROM user_embedding WHERE user_id=?",
-                    (rs, n) -> (PGvector) rs.getObject("embedding"), userId);
-            if (rows.isEmpty() || rows.get(0) == null) {
-                return null;
-            }
-            return rows.get(0).toArray();
-        } catch (Exception e) {
-            // user_embedding 列若未注册 PGvector 类型,降级用文本解析
-            log.debug("读取 user_embedding 失败,尝试文本解析: {}", e.getMessage());
-            return loadUserVectorAsText(userId);
-        }
-    }
-
-    private float[] loadUserVectorAsText(long userId) {
         List<String> rows = jdbc.query(
                 "SELECT embedding::text FROM user_embedding WHERE user_id=?",
                 (rs, n) -> rs.getString(1), userId);

@@ -6,6 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 精细化质量度在线查表(docs/05 §7 M7):把进 eCPM 的 {@code quality} 从广告自带的随机基线
  * ({@code ad.quality_score})替换为离线 {@code ad-quality} 作业算好的<b>可解释、数据驱动</b>分数
@@ -42,15 +48,52 @@ public class QualityScoreService {
             return fallback;
         }
         try {
-            String s = redis.opsForValue().get(RedisKeys.adQuality(adId));
-            if (s != null && !s.isBlank()) {
+            return parseQuality(redis.opsForValue().get(RedisKeys.adQuality(adId)), fallback);
+        } catch (Exception e) {
+            log.debug("读取精细化质量度失败,退基线 {}: {}", fallback, e.getMessage());
+            return fallback;
+        }
+    }
+
+    /**
+     * 批量取精细化质量度(一次 MGET),供竞价循环预取避免每候选一次 Redis 往返。
+     * 返回的 Map 只含"命中且有效(&gt;0)"的广告;缺失/关闭/异常 → 不入 Map,调用方 getOrDefault(adId, fallback)。
+     */
+    public Map<Long, Double> refinedBatch(Collection<Long> adIds) {
+        if (!props.getQuality().isEnabled() || adIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = adIds.stream().distinct().collect(Collectors.toList());
+        try {
+            List<String> keys = ids.stream().map(RedisKeys::adQuality).collect(Collectors.toList());
+            List<String> vals = redis.opsForValue().multiGet(keys);
+            Map<Long, Double> out = new HashMap<>();
+            if (vals != null) {
+                for (int i = 0; i < ids.size() && i < vals.size(); i++) {
+                    double q = parseQuality(vals.get(i), Double.NaN);
+                    if (!Double.isNaN(q)) {
+                        out.put(ids.get(i), q);
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.debug("批量读精细化质量度失败,退基线: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** 解析质量度字符串:命中且有限且&gt;0 → 用它;否则退 {@code fallback}。 */
+    private static double parseQuality(String s, double fallback) {
+        if (s != null && !s.isBlank()) {
+            try {
                 double q = Double.parseDouble(s.trim());
                 if (Double.isFinite(q) && q > 0) {
                     return q;
                 }
+            } catch (NumberFormatException ignored) {
+                // 非数字 → 退 fallback
             }
-        } catch (Exception e) {
-            log.debug("读取精细化质量度失败,退基线 {}: {}", fallback, e.getMessage());
         }
         return fallback;
     }

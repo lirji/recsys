@@ -104,12 +104,49 @@ public class PacingService {
         }
         try {
             String v = redis.opsForValue().get(RedisKeys.adPacing(advertiserId));
-            if (v == null) {
-                return 1.0;
+            return parseFactor(v);
+        } catch (Exception e) {
+            return 1.0;
+        }
+    }
+
+    /**
+     * 批量取 pacing 系数(一次 MGET),供竞价循环预取避免每候选一次 Redis 往返。
+     * 返回的 Map 只含"命中且有效(&gt;0)"的广告主;缺失/关闭/异常 → 不入 Map,调用方 getOrDefault(adv, 1.0)。
+     */
+    public Map<Long, Double> pacingFactors(Collection<Long> advertiserIds) {
+        if (!props.getPacing().isEnabled() || advertiserIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = advertiserIds.stream().distinct().collect(Collectors.toList());
+        try {
+            List<String> keys = ids.stream().map(RedisKeys::adPacing).collect(Collectors.toList());
+            List<String> vals = redis.opsForValue().multiGet(keys);
+            Map<Long, Double> out = new HashMap<>();
+            if (vals != null) {
+                for (int i = 0; i < ids.size() && i < vals.size(); i++) {
+                    double f = parseFactor(vals.get(i));
+                    if (f < 1.0) {   // 只有真折扣才入 Map;=1.0 与缺失等价,交给 getOrDefault
+                        out.put(ids.get(i), f);
+                    }
+                }
             }
+            return out;
+        } catch (Exception e) {
+            log.debug("批量读 pacing 系数失败,退不折扣: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** 解析 pacing 系数字符串:缺失/非法/&le;0 → 1.0;否则 min(1.0, f)。 */
+    private static double parseFactor(String v) {
+        if (v == null) {
+            return 1.0;
+        }
+        try {
             double f = Double.parseDouble(v);
             return f <= 0 ? 1.0 : Math.min(1.0, f);
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             return 1.0;
         }
     }
