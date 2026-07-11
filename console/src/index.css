@@ -85,6 +85,27 @@ body {
   transition: width 0.5s ease;
 }
 
+/* 骨架屏基元:灰底 + 掠过高光 shimmer。组合成结果行/图表/StatCard 形状(见 components/Skeletons.tsx)。 */
+.skl {
+  position: relative;
+  overflow: hidden;
+  background: #eaeef4;
+  border-radius: 6px;
+}
+.skl::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: skl-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skl-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .itc-row {
     transition: none;
@@ -93,6 +114,44 @@ body {
     transform: none;
   }
   .scb-fill {
+    transition: none;
+  }
+  .skl::after {
+    animation: none;
+  }
+}
+
+/* —— a11y:跳到主内容链接 —— 默认离屏(不占布局),键盘 Tab 聚焦时滑入左上角。 */
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: -56px;
+  z-index: 2000;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #2d6cdf;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 6px 20px -6px rgba(20, 40, 90, 0.4);
+  transition: top 0.18s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 12px;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* —— a11y:全局键盘焦点描边 —— 仅键盘导航(:focus-visible)出现,鼠标点击不触发,不影响 AntD 自带 hover/active。 */
+:focus-visible {
+  outline: 2px solid #2d6cdf;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
     transition: none;
   }
 }

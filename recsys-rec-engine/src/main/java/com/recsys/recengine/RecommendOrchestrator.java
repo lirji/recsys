@@ -1,5 +1,6 @@
 package com.recsys.recengine;
 
+import com.recsys.common.dto.RecommendExplain;
 import com.recsys.common.dto.RecommendItem;
 import com.recsys.common.dto.RecommendRequest;
 import com.recsys.common.dto.RecommendResponse;
@@ -8,6 +9,7 @@ import com.recsys.common.query.StructuredQuery;
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
+import com.recsys.common.recall.RecallExplain;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.common.recall.RecallService;
 import com.recsys.recengine.content.ContentGateway;
@@ -114,8 +116,22 @@ public class RecommendOrchestrator {
         this.meterRegistry = meterRegistry;
     }
 
+    /** 兼容入口:不带 explain。既有调用点(FeedOrchestrator 等)零改动。 */
     public RecommendResponse recommend(RecommendRequest req) {
+        return recommend(req, false);
+    }
+
+    /**
+     * 推荐编排主流程。{@code explain=true} 时额外收集逐阶段候选数 / 去重前每路原始召回数 /
+     * 去重后每路贡献 / 每条打分分解,填进 {@link RecommendExplain} 随响应返回;并**旁路结果缓存**
+     * (读写都跳过),避免 explain 载荷污染普通请求缓存。热路径(explain=false)零额外分配。
+     */
+    public RecommendResponse recommend(RecommendRequest req, boolean explain) {
         String traceId = UUID.randomUUID().toString().substring(0, 8);
+        // explain 收集器:非 explain 时全为 null,后续均 if(explain) 守卫,热路径无额外开销。
+        RecallExplain recallExplain = explain ? new RecallExplain() : null;
+        List<RecommendExplain.Stage> explainStages = explain ? new ArrayList<>() : null;
+        Map<Long, RecommendExplain.ScoreBreakdown> explainScores = explain ? new LinkedHashMap<>() : null;
         // 观测:整条编排耗时(P99 是核心 SLA 指标),tag 区分排序策略/冷启动/结果状态
         Timer.Sample sample = Timer.start(meterRegistry);
         String rankTag = "na";
@@ -125,8 +141,9 @@ public class RecommendOrchestrator {
             // 结构化日志:把业务上下文放 MDC(traceId/spanId 由 micrometer-tracing 自动注入);finally 清理
             org.slf4j.MDC.put("userId", String.valueOf(req.userId()));
             org.slf4j.MDC.put("scene", req.scene() == null ? "" : req.scene());
-            // 1. 结果缓存(搜索请求按 userId+scene 缓存会让不同 query 串味,故 query 驱动时跳过缓存)
-            if (!req.hasQuery()) {
+            // 1. 结果缓存(搜索请求按 userId+scene 缓存会让不同 query 串味,故 query 驱动时跳过缓存;
+            //    explain 请求也旁路缓存 —— 既不命中普通缓存、也不把 explain 载荷写回污染普通请求)
+            if (!req.hasQuery() && !explain) {
                 RecommendResponse cached = recCache.get(req.userId(), req.scene());
                 if (cached != null) {
                     meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
@@ -165,9 +182,9 @@ public class RecommendOrchestrator {
                         req.userId(), sq.normalized(), sq.intents(), channels);
             }
 
-            // 3. 召回(按本次启用的路)
+            // 3. 召回(按本次启用的路)。explain 时挂 sink 收去重前每路原始召回数(null 则召回热路径零改动)。
             List<RecallItem> recalled = recallService.recall(new RecallContext(
-                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, recallParams));
+                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, recallParams, recallExplain));
             if (recalled.isEmpty()) {
                 meterRegistry.counter("recsys.recommend.empty", "stage", "recall").increment();
                 outcome = "empty";
@@ -262,13 +279,10 @@ public class RecommendOrchestrator {
                 double rNorm = recallScore.getOrDefault(ri.itemId(), 0.0) / maxR;
                 double rankScore = calibrate
                         ? recScoreCalibrator.calibrate(ri.score(), calibCfg.getModel()) : ri.score();
-                double base = recallWeight * rNorm + rankWeight * rankScore;
-                if (useFtrl) {
-                    base += ftrlWeight * ftrlScorer.score(req.userId(), ri.itemId());
-                }
-                if (useBandit) {
-                    base += banditWeight * banditSession.score(ri.featureSnapshot());
-                }
+                // ftrl/bandit 抽成局部量(等价重构:未启用即 0),便于 explain 分项暴露、且不改数学。
+                double ftrlTerm = useFtrl ? ftrlWeight * ftrlScorer.score(req.userId(), ri.itemId()) : 0.0;
+                double banditTerm = useBandit ? banditWeight * banditSession.score(ri.featureSnapshot()) : 0.0;
+                double base = recallWeight * rNorm + rankWeight * rankScore + ftrlTerm + banditTerm;
                 double boost = RecEngineProperties.Fusion.boostFor(recallChannel.get(ri.itemId()), boostMap);
                 double persBoost = 1.0 + persW * Math.max(0.0, affinity.getOrDefault(ri.itemId(), 0.0));
                 double debias = 1.0;
@@ -277,7 +291,12 @@ public class RecommendOrchestrator {
                             : ri.featureSnapshot().getOrDefault("item_pop_norm", 0.0);
                     debias = 1.0 / Math.pow(1.0 + Math.max(0.0, popNorm), popBeta);
                 }
-                fused.add(new RerankCandidate(ri.itemId(), base * boost * persBoost * debias));
+                double finalScore = base * boost * persBoost * debias;
+                if (explain) {
+                    explainScores.put(ri.itemId(), new RecommendExplain.ScoreBreakdown(
+                            rNorm, rankScore, ftrlTerm, banditTerm, base, boost, persBoost, debias, finalScore));
+                }
+                fused.add(new RerankCandidate(ri.itemId(), finalScore));
             }
             fused.sort((a, b) -> Double.compare(b.score(), a.score()));
 
@@ -296,11 +315,19 @@ public class RecommendOrchestrator {
             List<RecommendItem> items = rerankRouter.rerank(
                     rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams));
 
-            RecommendResponse resp = new RecommendResponse(req.userId(), req.scene(), items, traceId);
+            // explain:用上面本已算出的真实局部量组装逐阶段计数 / 去重前每路原始召回 / 去重后每路贡献 / 打分分解。
+            RecommendExplain explainObj = explain
+                    ? buildExplain(explainStages, recallExplain, recallChannel, explainScores,
+                            recalled.size(), recallScore.size(), preRankIn, candidateIds.size(),
+                            ranked.size(), fused.size(), items.size())
+                    : null;
+            RecommendResponse resp = new RecommendResponse(req.userId(), req.scene(), items, traceId, explainObj);
 
-            // 7. 曝光埋点(异步,带分桶)+ 结果缓存
+            // 7. 曝光埋点(异步,带分桶)+ 结果缓存(explain 请求旁路缓存写,避免污染普通请求)
             exposureLogger.log(req.userId(), req.scene(), bucketTag, items);
-            recCache.put(req.userId(), req.scene(), resp);
+            if (!explain) {
+                recCache.put(req.userId(), req.scene(), resp);
+            }
             log.debug("推荐完成 user={} cold={} bucket=[{}] trace={} items={}",
                     req.userId(), cold, bucketTag, traceId, items.size());
             return resp;
@@ -320,6 +347,45 @@ public class RecommendOrchestrator {
             org.slf4j.MDC.remove("userId");
             org.slf4j.MDC.remove("scene");
         }
+    }
+
+    /**
+     * 组装 explain:逐阶段候选 in/out、去重前每路原始召回数(来自召回 sink)、去重后每路对候选池的贡献数、
+     * 打分分解。全部用编排主流程本已算出的真实局部量,无任何虚构。
+     */
+    private static RecommendExplain buildExplain(
+            List<RecommendExplain.Stage> stages,
+            RecallExplain recallExplain,
+            Map<Long, List<String>> recallChannel,
+            Map<Long, RecommendExplain.ScoreBreakdown> scores,
+            int recalledSize, int filteredSize, int preRankIn, int preRankOut,
+            int rankedSize, int fusedSize, int finalSize) {
+        stages.add(new RecommendExplain.Stage("recall", recalledSize, recalledSize));
+        stages.add(new RecommendExplain.Stage("filter", recalledSize, filteredSize));
+        stages.add(new RecommendExplain.Stage("preRank", preRankIn, preRankOut));
+        stages.add(new RecommendExplain.Stage("rank", preRankOut, rankedSize));
+        stages.add(new RecommendExplain.Stage("fusion", rankedSize, fusedSize));
+        stages.add(new RecommendExplain.Stage("rerank", fusedSize, finalSize));
+
+        // 去重前每路原始召回数(sink 真值)
+        List<RecommendExplain.ChannelRecall> channelRecall = new ArrayList<>();
+        if (recallExplain != null) {
+            for (var e : recallExplain.perChannel().entrySet()) {
+                channelRecall.add(new RecommendExplain.ChannelRecall(e.getKey().name(), e.getValue()));
+            }
+        }
+        // 去重后每路对候选池的贡献数(同一 item 命中多路则各路各计一次)
+        Map<String, Integer> contrib = new LinkedHashMap<>();
+        for (List<String> chs : recallChannel.values()) {
+            for (String ch : chs) {
+                contrib.merge(ch, 1, Integer::sum);
+            }
+        }
+        List<RecommendExplain.ChannelContribution> channelContribution = new ArrayList<>();
+        for (var e : contrib.entrySet()) {
+            channelContribution.add(new RecommendExplain.ChannelContribution(e.getKey(), e.getValue()));
+        }
+        return new RecommendExplain(stages, channelRecall, channelContribution, scores);
     }
 
     /** 召回路里属于 query 驱动的两路:SEMANTIC 用归一化 query,TAG 叠加意图类目。 */

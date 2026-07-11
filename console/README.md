@@ -20,15 +20,23 @@
 
 ## 本地开发 (dev)
 
+**推荐:整栈一键起**(脚本会把后端 8 个 app + 前端 Vite 都拉起,并把 `/api` 指到本机网关端口,免手敲 env):
+
 ```bash
-# 先起后端(至少网关 :8080;按需起 rec-engine/behavior/advertiser/recsys-console)
-cd console
-npm install
-npm run dev            # Vite :5173,/api 代理到 http://localhost:8080(RECSYS_GATEWAY 可覆盖)
-# 打开 http://localhost:5173
+scripts/dev-local.sh up          # 起后端(仓库根执行;端口/连接见 scripts/dev-local.env)
+scripts/dev-local.sh frontend    # 起 Vite:5173,/api → 本机网关端口(默认 8080,本机 9080)
+# 打开 http://localhost:5173,用演示身份(admin)登录
 ```
 
-dev 阶段浏览器只与 :5173 通信,Vite 把 `/api` 反代到网关。某后端未起时对应页面显示错误提示(优雅降级),不影响其它页面。
+只跑前端(后端已在别处起好):
+
+```bash
+cd console && npm install
+# RECSYS_GATEWAY 指向你的网关地址;本机网关重映射到 9080 时务必带上,否则默认代理 8080(可能是别的进程 → 页面 500)
+RECSYS_GATEWAY=http://localhost:9080 npm run dev   # Vite :5173
+```
+
+dev 阶段浏览器只与 :5173 通信,Vite 把 `/api` 反代到网关。某后端未起时对应页面显示错误提示(优雅降级),不影响其它页面。详见 `docs/08-本地运行.md`。
 
 ## 构建 / 部署 (prod)
 

@@ -45,3 +45,7 @@ recsys-embedding/train/tokenizer*
 # 本机运行专用(端口重映射),勿提交
 monitoring/prometheus.local.yml
 docker-compose.local.yml
+
+# 本地开发覆盖(端口等,机器相关)
+scripts/dev-local.env
+.dev/

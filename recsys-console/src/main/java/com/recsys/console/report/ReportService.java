@@ -76,6 +76,24 @@ public class ReportService {
         return listCsv();
     }
 
+    /**
+     * 取某分类下最新一份报表(list 已按 created_at/mtime 倒序,取首条并读取);
+     * 无该分类报表或读取失败返回 null。供一键诊断 / 告警面板复用。
+     */
+    @Nullable
+    public ReportTable latest(String category) {
+        try {
+            for (ReportFileInfo info : list()) {
+                if (category.equals(info.category())) {
+                    return read(info.fileName());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("取最新 {} 报表失败: {}", category, e.getMessage());
+        }
+        return null;
+    }
+
     public ReportTable read(String name) {
         if (name == null || !SAFE_NAME.matcher(name).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "非法文件名");

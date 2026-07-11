@@ -1,8 +1,12 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Spin } from 'antd';
 import { useAuth } from './hooks/useAuth';
+import { ChartSkeleton } from './components/Skeletons';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProjectOverview from './pages/project/ProjectOverview';
+import User360 from './pages/project/User360';
+import Diagnosis from './pages/project/Diagnosis';
+import AlertsPanel from './pages/project/Alerts';
 import RecommendConsole from './pages/online/RecommendConsole';
 import SearchConsole from './pages/online/SearchConsole';
 import SearchAdsConsole from './pages/online/SearchAdsConsole';
@@ -30,13 +34,20 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 export default function AppRoutes() {
+  // 单页崩溃只毁自身:ErrorBoundary 包在 <Routes> 外(侧栏外壳仍在);resetKey=当前路径,
+  // 导航到别的页 → 边界自动清错恢复。
+  const location = useLocation();
   return (
-    <Suspense fallback={<Spin style={{ margin: 40 }} />}>
-      <Routes>
+    <ErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={<div style={{ margin: 20 }}><ChartSkeleton height={360} /></div>}>
+        <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
 
-        {/* 项目总览 */}
+        {/* 项目总览 + 用户360 / 诊断 / 告警 */}
         <Route path="/overview" element={<ProjectOverview />} />
+        <Route path="/user360" element={<User360 />} />
+        <Route path="/diagnosis" element={<Diagnosis />} />
+        <Route path="/alerts" element={<AlertsPanel />} />
 
         {/* Phase 1 — 在线调试台 */}
         <Route path="/recommend" element={<RecommendConsole />} />
@@ -60,6 +71,7 @@ export default function AppRoutes() {
 
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
-    </Suspense>
+      </Suspense>
+    </ErrorBoundary>
   );
 }

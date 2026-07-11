@@ -13,12 +13,15 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
+  AlertOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   BulbOutlined,
+  MedicineBoxOutlined,
   CheckOutlined,
   ClusterOutlined,
   DollarOutlined,
@@ -39,6 +42,9 @@ import { useGlobalUser } from '../hooks/useGlobalUser';
 import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS, getCurrentUser, type Role } from '../api/auth';
 import { toApiError } from '../api/client';
+import { NAV_DESTINATIONS } from '../api/nav';
+import CommandPalette from './CommandPalette';
+import { openCommandPalette } from '../hooks/useCommandPalette';
 import { BRAND, SURFACE, rgba } from '../theme/tokens';
 
 const { Header, Sider, Content } = Layout;
@@ -78,43 +84,39 @@ const SHELL_CSS = `
 .shell-sider .ant-menu-inline-collapsed .ant-menu-item-group-title{display:none;}
 `;
 
-// 三分区导航:在线调试台 / 广告主后台 / 离线报表。路由 key 与 router.tsx 的 path 一一对应。
+// 三分区导航:项目 / 在线调试台 / 广告主后台 / 离线报表。
+// 目的地清单从 api/nav.ts 的 NAV_DESTINATIONS 派生 —— 与命令面板(⌘K)「同源」,只在此处补图标(视觉)。
 // label 用纯文本(非 <Link>):导航走 Menu onClick→navigate(key),这样收起成图标栏时点图标也能跳转,
 // 且收起态的悬浮 tooltip 直接用 label 文本,干净。
-const menuItems = [
-  {
-    key: 'grp-project',
-    label: '项目',
-    type: 'group' as const,
-    children: [{ key: '/overview', icon: <ClusterOutlined />, label: '系统总览' }],
-  },
-  {
-    key: 'grp-online',
-    label: '在线调试台',
-    type: 'group' as const,
-    children: [
-      { key: '/recommend', icon: <ThunderboltOutlined />, label: '推荐' },
-      { key: '/search', icon: <SearchOutlined />, label: '搜索' },
-      { key: '/search-ads', icon: <DollarOutlined />, label: '搜索广告' },
-      { key: '/feed', icon: <AppstoreOutlined />, label: '混排 Feed' },
-      { key: '/query', icon: <BulbOutlined />, label: 'Query 理解' },
-      { key: '/experiment', icon: <ExperimentOutlined />, label: '实验管理' },
-      { key: '/user-interests', icon: <HeartOutlined />, label: '冷启动兴趣' },
-    ],
-  },
-  {
-    key: 'grp-adv',
-    label: '广告主后台',
-    type: 'group' as const,
-    children: [{ key: '/advertiser', icon: <ShopOutlined />, label: '广告主 / 广告' }],
-  },
-  {
-    key: 'grp-report',
-    label: '离线报表',
-    type: 'group' as const,
-    children: [{ key: '/reports', icon: <BarChartOutlined />, label: '评测 / 报表' }],
-  },
-];
+const NAV_ICON: Record<string, ReactNode> = {
+  '/overview': <ClusterOutlined />,
+  '/user360': <UserOutlined />,
+  '/diagnosis': <MedicineBoxOutlined />,
+  '/alerts': <AlertOutlined />,
+  '/recommend': <ThunderboltOutlined />,
+  '/search': <SearchOutlined />,
+  '/search-ads': <DollarOutlined />,
+  '/feed': <AppstoreOutlined />,
+  '/query': <BulbOutlined />,
+  '/experiment': <ExperimentOutlined />,
+  '/user-interests': <HeartOutlined />,
+  '/advertiser': <ShopOutlined />,
+  '/reports': <BarChartOutlined />,
+};
+
+// 分组展示顺序(= 侧边菜单分区顺序)。
+const GROUP_ORDER = ['项目', '在线调试台', '广告主后台', '离线报表'] as const;
+
+const menuItems = GROUP_ORDER.map((g) => ({
+  key: `grp-${g}`,
+  label: g,
+  type: 'group' as const,
+  children: NAV_DESTINATIONS.filter((d) => d.group === g).map((d) => ({
+    key: d.path,
+    icon: NAV_ICON[d.path],
+    label: d.label,
+  })),
+}));
 
 const SCENES = ['feed', 'search', 'detail', 'related'];
 
@@ -199,7 +201,15 @@ function IdentitySwitcher() {
           <div
             key={uname}
             role="button"
+            tabIndex={0}
+            aria-label={`切换为 ${uname}(${rm.label})`}
             onClick={() => handleSwitch(uname)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSwitch(uname);
+              }
+            }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = rowBg(active, true);
             }}
@@ -238,7 +248,15 @@ function IdentitySwitcher() {
       <Divider style={{ margin: '6px 4px' }} />
       <div
         role="button"
+        tabIndex={0}
+        aria-label="退出登录"
         onClick={handleLogout}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleLogout();
+          }
+        }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = '#fff1f0';
         }}
@@ -273,6 +291,16 @@ function IdentitySwitcher() {
     >
       <div
         role="button"
+        tabIndex={0}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`当前身份 ${user?.username ?? '未登录'},激活可切换身份或退出登录`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = '#fafafa';
           e.currentTarget.style.borderColor = '#e6e6e6';
@@ -343,6 +371,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
+      {/* a11y:跳到主内容 —— 默认离屏,键盘聚焦时浮现;激活后焦点落到 #main-content。 */}
+      <a href="#main-content" className="skip-link">
+        跳到主内容
+      </a>
       <Sider
         className="shell-sider"
         theme="light"
@@ -353,7 +385,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         onCollapse={setCollapsed}
         trigger={null}
         collapsedWidth={screens.lg ? 72 : 0}
-        style={{ background: SURFACE.sider, borderRight: `1px solid ${SURFACE.cardBorder}` }}
+        style={{
+          background: SURFACE.sider,
+          borderRight: `1px solid ${SURFACE.cardBorder}`,
+          // 侧栏吸附:页面变长时随 window 滚动也保持可见(机制同 Header 的 sticky)。
+          // height:100vh + alignSelf:flex-start 抵消 flex 行的默认 stretch,让 100vh 生效;
+          // overflow:auto 兜底菜单超高时侧栏内部独立滚动。
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          alignSelf: 'flex-start',
+          overflow: 'auto',
+        }}
       >
         <style>{SHELL_CSS}</style>
         <div className={`shell-brand${collapsed ? ' shell-brand--collapsed' : ''}`}>
@@ -362,13 +405,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </span>
           {!collapsed && <span className="shell-logo">recsys 控制台</span>}
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ borderInlineEnd: 0, background: 'transparent' }}
-        />
+        <nav aria-label="主导航">
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={({ key }) => navigate(key)}
+            style={{ borderInlineEnd: 0, background: 'transparent' }}
+          />
+        </nav>
       </Sider>
       <Layout style={{ background: SURFACE.page }}>
         <Header
@@ -391,6 +436,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             onClick={toggleCollapsed}
           />
           <Space size="middle" align="center">
+            {screens.md && (
+              <Tooltip title="命令面板 · ⌘K / Ctrl+K">
+                <Button
+                  type="text"
+                  aria-label="打开命令面板,快捷键 Command 或 Ctrl 加 K"
+                  onClick={() => openCommandPalette()}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6b86' }}
+                >
+                  <SearchOutlined />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>⌘K</span>
+                </Button>
+              </Tooltip>
+            )}
             <Space size={6}>
               <Typography.Text type="secondary">userId</Typography.Text>
               <InputNumber min={1} value={userId} onChange={(v) => v && setUserId(v)} style={{ width: 110 }} />
@@ -408,8 +466,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <IdentitySwitcher />
           </Space>
         </Header>
-        <Content style={{ margin: 20 }}>{children}</Content>
+        <Content
+          id="main-content"
+          role="main"
+          tabIndex={-1}
+          style={{ margin: 20, outline: 'none' }}
+        >
+          {children}
+        </Content>
       </Layout>
+      {/* 命令面板全局挂载一次(⌘K / 顶栏按钮触发),Modal 走 portal,置于外壳内即可。 */}
+      <CommandPalette />
     </Layout>
   );
 }

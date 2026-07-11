@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Card, Space, Spin, Table } from 'antd';
+import { Alert, Card, Space, Table } from 'antd';
+import { BarChartOutlined, LineChartOutlined } from '@ant-design/icons';
+import { ChartSkeleton } from '../../components/Skeletons';
 import { useParams } from 'react-router-dom';
 import { advertiserReport } from '../../api/advertiser';
 import { toApiError } from '../../api/client';
 import type { AdReportRow } from '../../api/types';
 import EBar from '../../components/charts/EBar';
+import CollapsibleCard from '../../components/CollapsibleCard';
+import { ACCENTS } from '../../theme/tokens';
 
 export default function AdvertiserReport() {
   const { id } = useParams();
@@ -26,17 +30,23 @@ export default function AdvertiserReport() {
     { title: 'eCPM', dataIndex: 'ecpm', width: 100, render: (v: number) => v?.toFixed(2) },
   ];
 
-  if (query.isLoading) return <Spin />;
+  if (query.isLoading)
+    return (
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <ChartSkeleton height={220} />
+        <ChartSkeleton height={300} />
+      </Space>
+    );
   if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card title={`广告主 #${advertiserId} 投放报表`}>
+      <Card title={`广告主 #${advertiserId} 投放报表`} style={{ borderLeft: `3px solid ${ACCENTS.gsp}` }}>
         <Table<AdReportRow> rowKey="adId" size="small" columns={columns} dataSource={rows} pagination={false} />
       </Card>
       {rows.length > 0 ? (
         <>
-          <Card size="small" title="曝光 / 点击 / 转化">
+          <CollapsibleCard title="曝光 / 点击 / 转化" icon={<BarChartOutlined />} accent={ACCENTS.recall}>
             <EBar
               categories={labels}
               series={[
@@ -45,8 +55,8 @@ export default function AdvertiserReport() {
                 { name: '转化', data: rows.map((r) => r.conversions) },
               ]}
             />
-          </Card>
-          <Card size="small" title="CTR / CVR (%)">
+          </CollapsibleCard>
+          <CollapsibleCard title="CTR / CVR (%)" icon={<LineChartOutlined />} accent={ACCENTS.rank}>
             <EBar
               categories={labels}
               yName="%"
@@ -55,7 +65,7 @@ export default function AdvertiserReport() {
                 { name: 'CVR%', data: rows.map((r) => +(r.cvr * 100).toFixed(3)) },
               ]}
             />
-          </Card>
+          </CollapsibleCard>
         </>
       ) : null}
     </Space>

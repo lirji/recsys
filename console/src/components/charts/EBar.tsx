@@ -1,12 +1,12 @@
-import ReactECharts from 'echarts-for-react';
-import { ECHARTS_THEME, PALETTE, barGradient } from './echartsTheme';
+import { PALETTE, barGradient } from './echartsTheme';
+import ChartFrame from './ChartFrame';
 
 export interface BarSeries {
   name: string;
   data: number[];
 }
 
-// 通用分组柱状图封装(ECharts)。广告报表 / 离线报表复用。接入 recsys 主题:渐变柱 + 深玻璃 tooltip。
+// 通用分组柱状图封装(ECharts)。广告报表 / 离线报表复用。接入 recsys 主题:渐变柱 + 深玻璃 tooltip;右上角可导出 PNG。
 export default function EBar({
   categories,
   series,
@@ -28,8 +28,9 @@ export default function EBar({
       name: s.name,
       type: 'bar' as const,
       data: s.data,
+      emphasis: { focus: 'series' as const },
       itemStyle: { color: barGradient(PALETTE[i % PALETTE.length]), borderRadius: [4, 4, 0, 0] as [number, number, number, number] },
     })),
   };
-  return <ReactECharts option={option} theme={ECHARTS_THEME} style={{ height }} notMerge lazyUpdate />;
+  return <ChartFrame option={option} height={height} />;
 }

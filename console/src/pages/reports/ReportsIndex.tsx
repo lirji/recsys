@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Card, Col, Empty, List, Row, Spin, Tag, Typography } from 'antd';
+import { Alert, Card, Col, List, Row, Tag, Typography } from 'antd';
+import { InboxOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import { getReportIndex } from '../../api/report';
+import { getReportIndex, vizCategoryOf } from '../../api/report';
 import { toApiError } from '../../api/client';
+import { ChartSkeleton } from '../../components/Skeletons';
+import EmptyState from '../../components/EmptyState';
+import { ACCENTS } from '../../theme/tokens';
 import type { ReportFileInfo } from '../../api/types';
 
 const CATS: { key: string; label: string; job: string }[] = [
@@ -11,6 +15,9 @@ const CATS: { key: string; label: string; job: string }[] = [
   { key: 'ad-report', label: '广告变现报表', job: 'ad-report' },
   { key: 'data-quality', label: '数据质量巡检', job: 'data-quality' },
   { key: 'ad-quality', label: '广告质量度', job: 'ad-quality' },
+  { key: 'ad-attribution', label: '多触点归因 MTA', job: 'ad-attribution' },
+  { key: 'ad-delay', label: '延迟转化建模', job: 'ad-delay' },
+  { key: 'bandit', label: 'Bandit 探索统计', job: 'bandit-stats' },
   { key: 'other', label: '其它', job: '' },
 ];
 
@@ -19,9 +26,10 @@ const kb = (n: number) => (n < 1024 ? `${n}B` : `${(n / 1024).toFixed(1)}KB`);
 export default function ReportsIndex() {
   const query = useQuery({ queryKey: ['report-index'], queryFn: getReportIndex });
   const files = query.data ?? [];
-  const byCat = (c: string) => files.filter((f) => f.category === c);
+  // 用前端派生分类分组,与 ReportViewer 的 dispatch 口径一致(隐藏类型也各自成组)。
+  const byCat = (c: string) => files.filter((f) => vizCategoryOf(f.fileName) === c);
 
-  if (query.isLoading) return <Spin />;
+  if (query.isLoading) return <ChartSkeleton height={200} />;
   if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
 
   return (
@@ -30,7 +38,12 @@ export default function ReportsIndex() {
         读取 <span className="mono">recsys-offline/eval/*.csv</span>(离线评测/报表作业产物)。若为空,先运行对应离线作业生成 CSV。
       </Typography.Paragraph>
       {files.length === 0 ? (
-        <Empty description="eval 目录暂无报表 CSV(先跑 eval / ab-report / ad-report / data-quality 等作业)" />
+        <EmptyState
+          icon={<InboxOutlined />}
+          accent={ACCENTS.rank}
+          title="eval 目录暂无报表 CSV"
+          description="先跑 eval / ab-report / ad-report / data-quality 等离线作业生成 CSV。"
+        />
       ) : (
         <Row gutter={[16, 16]}>
           {CATS.filter((c) => byCat(c.key).length > 0).map((c) => (

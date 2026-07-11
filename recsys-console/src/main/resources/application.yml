@@ -26,6 +26,14 @@ spring:
       connection-timeout: ${HIKARI_CONNECTION_TIMEOUT:3000}
       validation-timeout: 2000
       max-lifetime: 1800000
+  # 用户360 聚合在线实时态(rt:user / rt:user:seq / seen / cache:rec)。短超时快速失败,
+  # Redis 不可达时用户360 只返回 DB 部分(UserProfileService 内 try/catch 降级,不 500)。
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: ${REDIS_TIMEOUT:800ms}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:500ms}
 
 recsys:
   # P0 安全:控制台 BFF 是只读报表接口,放行 /api/console/**(网关侧亦公开 GET);健康探针放行。

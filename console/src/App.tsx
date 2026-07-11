@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
 import AppRoutes, { RequireAuth } from './router';
 import LoginPage from './pages/LoginPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { setMessageApi } from './api/notify';
 import { setRedirectToLogin } from './api/nav';
 
@@ -28,11 +29,14 @@ export default function App() {
   if (location.pathname === '/login') {
     return <LoginPage />;
   }
+  // 顶层兜底边界:连外壳(AppLayout)都崩时也不至于整屏白。resetKey=路径,切页可恢复。
   return (
-    <RequireAuth>
-      <AppLayout>
-        <AppRoutes />
-      </AppLayout>
-    </RequireAuth>
+    <ErrorBoundary resetKey={location.pathname}>
+      <RequireAuth>
+        <AppLayout>
+          <AppRoutes />
+        </AppLayout>
+      </RequireAuth>
+    </ErrorBoundary>
   );
 }

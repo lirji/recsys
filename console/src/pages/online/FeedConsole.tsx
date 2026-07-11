@@ -4,11 +4,15 @@ import { App, Alert, Button, Card, Input, InputNumber, Space, Statistic, Tag, Ty
 import { getFeed } from '../../api/feed';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
+import { useItemMeta } from '../../hooks/useItemMeta';
+import { AppstoreOutlined } from '@ant-design/icons';
 import RecallTags from '../../components/explain/RecallTags';
 import FunnelBand from '../../components/funnel/FunnelBand';
+import EmptyState from '../../components/EmptyState';
+import PageHeader from '../../components/PageHeader';
 import { deriveFeedStages } from '../../components/funnel/derive';
 import { channelColor } from '../../components/explain/channelColors';
-import { BRAND, STATUS, hexOfPreset } from '../../theme/tokens';
+import { ACCENTS, BRAND, STATUS, hexOfPreset } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
 export default function FeedConsole() {
@@ -25,6 +29,8 @@ export default function FeedConsole() {
 
   const entries = query.data?.entries ?? [];
   const adCount = entries.filter((e) => e.ad).length;
+  // 只给自然结果查元数据(广告标题走广告侧,feed entry 未携带);裸 #itemId 显示成真实标题。
+  const itemMeta = useItemMeta(entries.filter((e) => !e.ad).map((e) => e.itemId));
   const stages = useMemo(() => deriveFeedStages(entries), [entries]);
   const flowing = !!query.data && !query.isFetching;
 
@@ -36,6 +42,11 @@ export default function FeedConsole() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <PageHeader
+        title="混排 Feed 调试台"
+        accent={ACCENTS.rerank}
+        description="自然推荐 + 广告竞价按 Ad Load 位次/密度混排,带频控与「赞助」标记。"
+      />
       <Card size="small" bordered={false}>
         <Space wrap>
           <span>size</span>
@@ -74,7 +85,17 @@ export default function FeedConsole() {
         {query.isError ? (
           <Alert type="error" message={toApiError(query.error).message} showIcon />
         ) : entries.length === 0 ? (
-          <Typography.Text type="secondary">暂无 feed(检查推荐/广告是否就绪)。</Typography.Text>
+          <EmptyState
+            icon={<AppstoreOutlined />}
+            accent={ACCENTS.rerank}
+            title="暂无混排 Feed"
+            description="检查自然推荐与广告是否就绪。"
+            action={
+              <Button type="primary" onClick={run}>
+                拉取混排 Feed
+              </Button>
+            }
+          />
         ) : (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             {entries.map((e) => (
@@ -94,9 +115,20 @@ export default function FeedConsole() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Space size={8} wrap>
                     {e.ad ? <Tag color="gold">赞助</Tag> : null}
-                    <Typography.Text strong className="mono">
-                      {e.ad ? `ad #${e.adId}` : `#${e.itemId}`}
-                    </Typography.Text>
+                    {!e.ad && itemMeta(e.itemId)?.title ? (
+                      <>
+                        <Typography.Text strong ellipsis style={{ maxWidth: 260 }}>
+                          {itemMeta(e.itemId)!.title}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" className="mono" style={{ fontSize: 12 }}>
+                          #{e.itemId}
+                        </Typography.Text>
+                      </>
+                    ) : (
+                      <Typography.Text strong className="mono">
+                        {e.ad ? `ad #${e.adId}` : `#${e.itemId}`}
+                      </Typography.Text>
+                    )}
                     <RecallTags channels={e.recallFrom} />
                   </Space>
                   {e.reason ? <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>{e.reason}</div> : null}

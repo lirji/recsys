@@ -73,6 +73,14 @@ public class MultiChannelRecallService implements RecallService {
         // 各路并行调用(有界线程池 + 单路超时);任一路超时/异常当空,不阻断其余路与合并。
         List<List<RecallItem>> perChannel = runRecallers(active, ctx);
 
+        // explain(可空 sink):记去重前每路原始召回数。active 与 perChannel 索引对齐,故直接取 size()。
+        if (ctx.explain() != null) {
+            for (int i = 0; i < active.size(); i++) {
+                List<RecallItem> ch = perChannel.get(i);
+                ctx.explain().record(active.get(i).channel(), ch == null ? 0 : ch.size());
+            }
+        }
+
         // itemId -> 合并后的条目(记录来源与召回分)。合并逻辑与串/并行无关,顺序与 active 对齐(结果确定)。
         Map<Long, Merged> merged = new LinkedHashMap<>();
         for (List<RecallItem> items : perChannel) {

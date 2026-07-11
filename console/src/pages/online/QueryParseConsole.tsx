@@ -5,8 +5,9 @@ import { parseQuery } from '../../api/query';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import FunnelBand from '../../components/funnel/FunnelBand';
+import PageHeader from '../../components/PageHeader';
 import { deriveQueryStages } from '../../components/funnel/derive';
-import { STATUS } from '../../theme/tokens';
+import { ACCENTS, STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
 export default function QueryParseConsole() {
@@ -25,6 +26,11 @@ export default function QueryParseConsole() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <PageHeader
+        title="Query 理解"
+        accent={ACCENTS.gsp}
+        description="分词 / 意图 / 改写 / 向量化 —— 搜索与搜索广告的共同入口。"
+      />
       <Card size="small" bordered={false}>
         <Space wrap>
           <span>q</span>

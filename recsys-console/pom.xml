@@ -22,6 +22,12 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>
         </dependency>
+        <!-- 物料元数据:复用 content 库的 ContentService(JdbcContentService 读主库 item 表),
+             供控制台把全站裸 #itemId 显示成真实标题/类目。仅传递 recsys-common/web/jdbc/postgresql(均已有)。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-content</artifactId>
+        </dependency>
         <!-- P0 安全:技术平台 starter(认证/校验/统一异常)。 -->
         <dependency>
             <groupId>com.recsys</groupId>
@@ -53,6 +59,12 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+        </dependency>
+        <!-- 用户360:聚合在线实时态(rt:user 实时类目偏好 / rt:user:seq 序列 / seen / cache:rec)。
+             Redis 不可达时优雅降级(只返回 DB 部分,不 500)。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>

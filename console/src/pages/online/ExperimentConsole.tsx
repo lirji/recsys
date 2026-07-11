@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Divider, InputNumber, Popconfirm, Space, Spin, Switch, Table, Typography } from 'antd';
+import { App, Alert, Button, Card, Divider, InputNumber, Popconfirm, Space, Spin, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import {
   clearOverride,
   getExperiment,
@@ -9,11 +9,17 @@ import {
   setVariantWeight,
 } from '../../api/experiment';
 import { toApiError } from '../../api/client';
+import AbSignificancePanel from '../../components/experiment/AbSignificancePanel';
+import { useAbReport, variantOnlineStat } from '../../components/experiment/abReport';
 
 export default function ExperimentConsole() {
   const { message } = App.useApp();
   const query = useQuery({ queryKey: ['experiment'], queryFn: getExperiment });
   const snap = query.data;
+
+  // 在线 A/B 结果(最新 ab-report):独立取数,任何态都不阻塞放量控件。
+  const abQuery = useAbReport();
+  const abRows = abQuery.data?.rows ?? [];
 
   // 可编辑权重副本,键 `${layer}/${variant}`。
   const [weights, setWeights] = useState<Record<string, number>>({});
@@ -58,6 +64,13 @@ export default function ExperimentConsole() {
           </Popconfirm>
         </Space>
       </Card>
+
+      <AbSignificancePanel
+        data={abQuery.data}
+        isLoading={abQuery.isLoading}
+        isError={abQuery.isError}
+        error={abQuery.error}
+      />
 
       {Object.entries(snap.staticLayers).map(([layer, cfg]) => (
         <Card
@@ -108,6 +121,32 @@ export default function ExperimentConsole() {
                       >
                         保存
                       </Button>
+                    </Space>
+                  );
+                },
+              },
+              {
+                title: (
+                  <Tooltip title="按变体名匹配 ab-report 分桶(bucket 内的「层:变体」token),跨桶聚合曝光/点击得该变体的边际在线 CTR;命名对不上则显示无匹配。">
+                    <span>在线 CTR / 显著?</span>
+                  </Tooltip>
+                ),
+                key: 'online',
+                width: 240,
+                render: (_, row) => {
+                  if (abQuery.isLoading) return <Typography.Text type="secondary">加载中…</Typography.Text>;
+                  if (abRows.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+                  const st = variantOnlineStat(abRows, layer, row.variant);
+                  if (!st) return <Typography.Text type="secondary">无匹配曝光</Typography.Text>;
+                  return (
+                    <Space size={6}>
+                      <Typography.Text className="mono">
+                        {Number.isFinite(st.ctr) ? (st.ctr * 100).toFixed(2) + '%' : 'n/a'}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        · {st.buckets}桶/{st.impressions}曝光
+                      </Typography.Text>
+                      {st.anySignificant ? <Tag color="green">含显著桶</Tag> : null}
                     </Space>
                   );
                 },

@@ -1,0 +1,56 @@
+name: console-ci
+
+# 前端(console/)工程底座 CI:lint → typecheck → 单测 → 构建。
+# 仅当 console/ 或本 workflow 变更时触发,不与后端 ci.yml(Maven)相互干扰。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'console/**'
+      - '.github/workflows/console-ci.yml'
+  pull_request:
+    paths:
+      - 'console/**'
+      - '.github/workflows/console-ci.yml'
+
+# 同一分支新推送取消旧运行,省 CI 资源。
+concurrency:
+  group: console-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      # 从 lockfile 干净安装(可复现;lockfile 与 package.json 不一致即失败)。
+      - name: Install dependencies
+        run: npm ci
+
+      # ESLint(flat config):允许 warning,有 error 即失败。
+      - name: Lint
+        run: npm run lint
+
+      # 类型检查(tsc -b,含 project references)。
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Vitest 单测(一次性运行,非 watch)。
+      - name: Unit tests
+        run: npm run test:run
+
+      # 生产构建(tsc -b && vite build),确保产物可出。
+      - name: Build
+        run: npm run build

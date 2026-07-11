@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * 只对外提供控制台 BFF 接口(当前:离线报表读取 /api/console/report/**)。
  * 前端已独立为仓库根 console/ 的 Vite 工程,由 nginx 同源托管、经网关访问。
  */
-@SpringBootApplication(scanBasePackages = {"com.recsys.console", "com.recsys.platform"})
+@SpringBootApplication(scanBasePackages = {"com.recsys.console", "com.recsys.platform", "com.recsys.content"})
 @ConfigurationPropertiesScan
 public class ConsoleApplication {
     public static void main(String[] args) {

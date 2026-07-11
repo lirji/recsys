@@ -3,14 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Card,
   Col,
-  Descriptions,
   Empty,
   Row,
   Space,
-  Spin,
-  Statistic,
   Table,
   Tag,
   Timeline,
@@ -33,6 +29,9 @@ import {
 import { Link } from 'react-router-dom';
 import RecFunnelHero from '../../components/RecFunnelHero';
 import CollapsibleCard from '../../components/CollapsibleCard';
+import StatCard from '../../components/StatCard';
+import PageHeader from '../../components/PageHeader';
+import { ChartSkeleton, StatCardsSkeleton } from '../../components/Skeletons';
 import { getSystemHealth, getSystemMetrics, getSystemOverview } from '../../api/system';
 import { toApiError } from '../../api/client';
 import { ACCENTS } from '../../theme/tokens';
@@ -108,21 +107,20 @@ export default function ProjectOverview() {
     title: string,
     icon: ReactNode,
     value: number | null | undefined,
+    accent: string,
     opts?: { suffix?: string; precision?: number },
   ) => {
     const has = metricsAvailable && value != null;
     return (
       <Col xs={12} lg={6}>
-        <Card size="small">
-          <Statistic
-            title={title}
-            value={has ? value : '—'}
-            precision={has ? opts?.precision ?? 0 : undefined}
-            suffix={has ? opts?.suffix : undefined}
-            prefix={icon}
-            valueStyle={has ? undefined : { color: '#bfbfbf' }}
-          />
-        </Card>
+        <StatCard
+          title={title}
+          icon={icon}
+          accent={has ? accent : '#c0c6d0'}
+          value={has ? (opts?.precision != null ? Number(value).toFixed(opts.precision) : value) : '—'}
+          suffix={has ? opts?.suffix : undefined}
+          valueColor={has ? undefined : '#bfbfbf'}
+        />
       </Col>
     );
   };
@@ -231,7 +229,14 @@ export default function ProjectOverview() {
     [],
   );
 
-  if (overviewQuery.isLoading) return <Spin />;
+  if (overviewQuery.isLoading)
+    return (
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <ChartSkeleton height={132} />
+        <StatCardsSkeleton />
+        <ChartSkeleton height={220} />
+      </Space>
+    );
   if (overviewQuery.isError) {
     return (
       <Alert
@@ -247,8 +252,17 @@ export default function ProjectOverview() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card
-        bordered={false}
+      <PageHeader
+        title={`${overview.projectName} 系统总览`}
+        accent={ACCENTS.recall}
+        description={
+          <>
+            {overview.description}
+            <div style={{ marginTop: 4 }}>
+              技术栈:{overview.stack} · 健康检查最近 {checkedAtText(health)}
+            </div>
+          </>
+        }
         extra={
           <Button
             loading={overviewQuery.isFetching || healthQuery.isFetching}
@@ -260,20 +274,7 @@ export default function ProjectOverview() {
             刷新
           </Button>
         }
-      >
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            {overview.projectName} 系统总览
-          </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-            {overview.description}
-          </Typography.Paragraph>
-          <Descriptions size="small" column={1}>
-            <Descriptions.Item label="技术栈">{overview.stack}</Descriptions.Item>
-            <Descriptions.Item label="健康检查">最近检查 {checkedAtText(health)}</Descriptions.Item>
-          </Descriptions>
-        </Space>
-      </Card>
+      />
 
       <RecFunnelHero
         engineStatus={engineStatus}
@@ -290,28 +291,21 @@ export default function ProjectOverview() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card size="small">
-            <Statistic title="模块总数" value={modules.length} prefix={<ClusterOutlined style={{ color: ACCENTS.recall }} />} />
-          </Card>
+          <StatCard title="模块总数" value={modules.length} icon={<ClusterOutlined />} accent={ACCENTS.recall} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card size="small">
-            <Statistic title="可运行服务" value={appCount} prefix={<DeploymentUnitOutlined style={{ color: ACCENTS.gsp }} />} />
-          </Card>
+          <StatCard title="可运行服务" value={appCount} icon={<DeploymentUnitOutlined />} accent={ACCENTS.gsp} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card size="small">
-            <Statistic title="领域模块" value={libCount} prefix={<ApartmentOutlined style={{ color: ACCENTS.rerank }} />} />
-          </Card>
+          <StatCard title="领域模块" value={libCount} icon={<ApartmentOutlined />} accent={ACCENTS.rerank} />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card size="small">
-            <Statistic
-              title="在线服务"
-              value={totalApps === 0 ? '-' : `${liveApps}/${totalApps}`}
-              prefix={<CheckCircleOutlined style={{ color: ACCENTS.rank }} />}
-            />
-          </Card>
+          <StatCard
+            title="在线服务"
+            value={totalApps === 0 ? '-' : `${liveApps}/${totalApps}`}
+            icon={<CheckCircleOutlined />}
+            accent={ACCENTS.rank}
+          />
         </Col>
       </Row>
 
@@ -332,10 +326,10 @@ export default function ProjectOverview() {
         }
       >
         <Row gutter={[16, 16]}>
-          {metricCard('推荐 P99 延迟', <ClockCircleOutlined />, metrics?.recommendP99Ms, { suffix: 'ms' })}
-          {metricCard('推荐 QPS', <DashboardOutlined />, metrics?.recommendQps, { precision: 2 })}
-          {metricCard('推荐平均延迟', <ThunderboltOutlined />, metrics?.recommendAvgMs, { suffix: 'ms' })}
-          {metricCard('广告 P99 延迟', <DollarOutlined />, metrics?.adP99Ms, { suffix: 'ms' })}
+          {metricCard('推荐 P99 延迟', <ClockCircleOutlined />, metrics?.recommendP99Ms, ACCENTS.rank, { suffix: 'ms' })}
+          {metricCard('推荐 QPS', <DashboardOutlined />, metrics?.recommendQps, ACCENTS.recall, { precision: 2 })}
+          {metricCard('推荐平均延迟', <ThunderboltOutlined />, metrics?.recommendAvgMs, ACCENTS.gsp, { suffix: 'ms' })}
+          {metricCard('广告 P99 延迟', <DollarOutlined />, metrics?.adP99Ms, ACCENTS.ad, { suffix: 'ms' })}
         </Row>
       </CollapsibleCard>
 
@@ -362,7 +356,7 @@ export default function ProjectOverview() {
             action={<Button onClick={() => healthQuery.refetch()}>重试</Button>}
           />
         ) : healthQuery.isLoading ? (
-          <Spin />
+          <ChartSkeleton height={200} />
         ) : health.length === 0 ? (
           <Empty description="暂无健康检查结果,服务可能未配置 health target。" />
         ) : (

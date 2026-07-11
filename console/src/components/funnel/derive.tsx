@@ -8,9 +8,16 @@ import {
   NodeIndexOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import type { ReactNode } from 'react';
 import type { FunnelStage } from './FunnelBand';
 import { ACCENTS } from '../../theme/tokens';
-import type { FeedEntry, RecommendItem, SponsoredAd, StructuredQuery } from '../../api/types';
+import type {
+  FeedEntry,
+  RecommendExplain,
+  RecommendItem,
+  SponsoredAd,
+  StructuredQuery,
+} from '../../api/types';
 
 // 把在线各链路的真实响应,派生成漏斗带的 stage 数组(纯函数)。
 // 诚实标注:推荐/Feed 响应是「漏斗后的扁平列表」,API 无逐阶段真实候选数,故计数取响应能算出的口径
@@ -18,8 +25,49 @@ import type { FeedEntry, RecommendItem, SponsoredAd, StructuredQuery } from '../
 
 const fx = (n: number, d = 3) => (Number.isFinite(n) ? n.toFixed(d) : '—');
 
+// 真实 explain 的 6 阶段展示元信息(名字 → 标签/图标/配色)。
+const REC_STAGE_META: Record<string, { label: string; sub: string; accent: string; icon: ReactNode }> = {
+  recall: { label: '召回 Recall', sub: '12 路多通道候选', accent: ACCENTS.recall, icon: <ClusterOutlined /> },
+  filter: { label: '已看过滤 / 去重', sub: '剔除已正反馈 + 跨路合并去重', accent: ACCENTS.recall, icon: <FilterOutlined /> },
+  preRank: { label: '粗排 PreRank', sub: '轻量打分砍到 top-K', accent: ACCENTS.rank, icon: <FunctionOutlined /> },
+  rank: { label: '精排 Rank', sub: 'ONNX / 规则打分', accent: ACCENTS.rank, icon: <LineChartOutlined /> },
+  fusion: { label: '融合 Fusion', sub: 'recall×rank + 通道加成 + 去偏', accent: ACCENTS.rerank, icon: <NodeIndexOutlined /> },
+  rerank: { label: '重排 / 截断', sub: 'diversity / mmr / dpp · top-N', accent: ACCENTS.rerank, icon: <DeploymentUnitOutlined /> },
+};
+
+// 用真实 explain 的逐阶段 in/out 计数构造漏斗带(替代反推伪造值)。
+function deriveRecStagesFromExplain(explain: RecommendExplain): FunnelStage[] {
+  const rawTotal = explain.channelRecall.reduce((s, c) => s + c.rawCount, 0);
+  const liveChannels = explain.channelRecall.filter((c) => c.rawCount > 0).length;
+  return explain.stages.map((st) => {
+    const meta = REC_STAGE_META[st.name] ?? {
+      label: st.name,
+      sub: '',
+      accent: ACCENTS.rank,
+      icon: <FunctionOutlined />,
+    };
+    const sub =
+      st.name === 'recall'
+        ? `${liveChannels} 路命中 · 去重前原始召回 ${rawTotal} 条`
+        : meta.sub;
+    return {
+      key: st.name,
+      label: meta.label,
+      sub,
+      accent: meta.accent,
+      icon: meta.icon,
+      count: st.out,
+      metric: { label: 'in→out', value: `${st.in}→${st.out}` },
+    };
+  });
+}
+
 // ── 推荐 / 搜索:召回 → 排序 → 重排/截断 ──
-export function deriveRecStages(items: RecommendItem[]): FunnelStage[] {
+// explain 存在(?explain=true 返回)时用真实逐阶段计数;否则退回从最终扁平列表反推的口径(不虚构漏损)。
+export function deriveRecStages(items: RecommendItem[], explain?: RecommendExplain | null): FunnelStage[] {
+  if (explain && explain.stages?.length) {
+    return deriveRecStagesFromExplain(explain);
+  }
   const has = items.length > 0;
   const channels = new Set(items.flatMap((i) => i.recallFrom)).size;
   const maxScore = items.reduce((m, i) => Math.max(m, i.score), 0);

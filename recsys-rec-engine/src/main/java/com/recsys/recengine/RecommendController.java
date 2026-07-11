@@ -29,15 +29,17 @@ public class RecommendController {
             @RequestParam long userId,
             @RequestParam(required = false, defaultValue = "0") int size,
             @RequestParam(required = false) String scene,
-            @RequestParam(required = false) String q) {
-        return orchestrator.recommend(new RecommendRequest(userId, size, scene, q));
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "false") boolean explain) {
+        return orchestrator.recommend(new RecommendRequest(userId, size, scene, q), explain);
     }
 
     @GetMapping("/api/search")
     public RecommendResponse search(
             @RequestParam("q") String q,
             @RequestParam(required = false, defaultValue = "0") long userId,
-            @RequestParam(required = false, defaultValue = "0") int size) {
-        return orchestrator.recommend(new RecommendRequest(userId, size, SEARCH_SCENE, q));
+            @RequestParam(required = false, defaultValue = "0") int size,
+            @RequestParam(required = false, defaultValue = "false") boolean explain) {
+        return orchestrator.recommend(new RecommendRequest(userId, size, SEARCH_SCENE, q), explain);
     }
 }

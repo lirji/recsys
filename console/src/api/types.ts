@@ -12,6 +12,47 @@ export interface RecommendResponse {
   scene: string;
   items: RecommendItem[];
   traceId: string;
+  explain?: RecommendExplain | null; // 仅 explain=true 请求返回;否则 null
+}
+
+// ===== 在线链路 explain(?explain=true 时后端返回的真实逐阶段计数 / 打分分解) =====
+export interface FunnelStageCount {
+  name: string; // recall/filter/preRank/rank/fusion/rerank
+  in: number;
+  out: number;
+}
+export interface ChannelRecall {
+  channel: string;
+  rawCount: number; // 去重前该路原始召回条数
+}
+export interface ChannelContribution {
+  channel: string;
+  count: number; // 去重后该路对候选池的贡献条数
+}
+export interface ScoreBreakdown {
+  rNorm: number;
+  rankScore: number;
+  ftrl: number;
+  bandit: number;
+  base: number;
+  boost: number;
+  persBoost: number;
+  debias: number;
+  finalScore: number;
+}
+export interface RecommendExplain {
+  stages: FunnelStageCount[];
+  channelRecall: ChannelRecall[];
+  channelContribution: ChannelContribution[];
+  scores: Record<string, ScoreBreakdown>; // itemId(字符串键) → 打分分解
+}
+
+// ===== 物料元数据(/api/console/items,把裸 #itemId 显示成真实标题/类目) =====
+export interface ItemMeta {
+  itemId: number;
+  title: string;
+  category: string;
+  tags: string[];
 }
 
 // ===== 搜索广告 =====
@@ -272,4 +313,59 @@ export interface SystemMetrics {
   recommendQps: number | null;
   adP99Ms: number | null;
   checkedAt: number;
+}
+
+// ===== 用户360(/api/console/user/{id}) =====
+export interface UserBehaviorRow {
+  itemId: number;
+  action: string;
+  ts: number;
+  bucket: string | null;
+  position: number | null;
+  scene: string | null;
+  value: number | null;
+}
+export interface UserStats {
+  totalInteractions: number;
+  actionCounts: Record<string, number>;
+  distinctCategories: number;
+  bucketsSeen: string[];
+}
+export interface UserRealtime {
+  available: boolean;
+  rtCategoryPrefs: Record<string, number>;
+  recentSeqItems: number[];
+  recCached: boolean;
+  seenCount: number;
+}
+export interface UserProfileView {
+  userId: number;
+  exists: boolean;
+  profileJson: string | null;
+  profileUpdatedAt: number | null;
+  hasEmbedding: boolean;
+  stats: UserStats;
+  recentBehavior: UserBehaviorRow[];
+  realtime: UserRealtime;
+}
+
+// ===== 一键诊断(/api/console/diagnosis) =====
+export interface DiagnosisCheck {
+  key: string;
+  name: string;
+  status: string; // PASS / WARN / FAIL / INFO
+  detail: string;
+}
+export interface DiagnosisReport {
+  overall: string; // PASS / WARN / FAIL
+  checks: DiagnosisCheck[];
+  checkedAt: number;
+}
+
+// ===== 告警面板(/api/console/alerts) =====
+export interface AlertItem {
+  level: string; // INFO / WARN / ERROR
+  source: string;
+  message: string;
+  ts: number;
 }

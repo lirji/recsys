@@ -17,6 +17,7 @@ import {
   Steps,
   Tag,
 } from 'antd';
+import { PictureOutlined, SafetyCertificateOutlined, TagsOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   deleteAd,
@@ -31,6 +32,8 @@ import type { AdUpsert, AdView } from '../../api/types';
 import { StatusTag } from '../../components/adv/statusTags';
 import CreativePanel from '../../components/adv/CreativePanel';
 import BidwordPanel from '../../components/adv/BidwordPanel';
+import CollapsibleCard from '../../components/CollapsibleCard';
+import { ACCENTS } from '../../theme/tokens';
 
 export default function AdDetail() {
   const { adId } = useParams();
@@ -81,6 +84,7 @@ export default function AdDetail() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card
         title={`广告 #${ad.adId}`}
+        style={{ borderLeft: `3px solid ${ACCENTS.recall}` }}
         extra={
           <Space>
             <Button onClick={() => setEditOpen(true)}>编辑</Button>
@@ -112,7 +116,7 @@ export default function AdDetail() {
         </Descriptions>
       </Card>
 
-      <Card size="small" title="生命周期 / 审核">
+      <CollapsibleCard title="生命周期 / 审核" icon={<SafetyCertificateOutlined />} accent={ACCENTS.rank}>
         <Steps
           size="small"
           style={{ marginBottom: 16 }}
@@ -146,14 +150,14 @@ export default function AdDetail() {
           showIcon
           message="在线只服务 approved 广告(倒排/DB 召回/DCO 三处闸门);审核状态未在 AdView 返回,此处步骤为示意,以操作结果为准。"
         />
-      </Card>
+      </CollapsibleCard>
 
-      <Card size="small" title="创意">
+      <CollapsibleCard title="创意" icon={<PictureOutlined />} accent={ACCENTS.rerank}>
         <CreativePanel adId={id} />
-      </Card>
-      <Card size="small" title="竞价词">
+      </CollapsibleCard>
+      <CollapsibleCard title="竞价词" icon={<TagsOutlined />} accent={ACCENTS.ad}>
         <BidwordPanel adId={id} />
-      </Card>
+      </CollapsibleCard>
 
       <Modal title="编辑广告" open={editOpen} onOk={submitEdit} onCancel={() => setEditOpen(false)}>
         <Form form={form} layout="vertical">

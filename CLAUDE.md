@@ -10,6 +10,19 @@
 
 ## 构建与运行
 
+**本地整栈一键起(推荐)**——`scripts/dev-local.sh` 固化了所有 env/端口/启动顺序坑,详见 `docs/08-本地运行.md`:
+
+```bash
+scripts/dev-local.sh up          # 起 8 个后端 app(基础设施检查 → staggered + 健康检查)
+scripts/dev-local.sh frontend    # 起前端 Vite(自动指向本机网关端口)→ http://localhost:5173
+scripts/dev-local.sh status      # 各服务健康表    down/restart/logs <svc> 同名子命令
+# 本机端口冲突(8080-8090/5432/6379 被占)→ 覆盖写进 scripts/dev-local.env(见 .env.example;已 gitignore)。
+# 脚本内建规避的四个坑:必须 bash 非 zsh;网关也要 RECSYS_SECURITY_ENABLED=false(否则 /api/advertiser 等 401);
+# rec-engine/advertiser/ad-serving 都要 PG_JDBC_URL+PG_DS1_JDBC_URL(ad 读侧 ShardingSphere,否则健康 DOWN/广告标题空);staggered 启动避免 pg 连接池风暴。
+```
+
+手动/单服务:
+
 ```bash
 # JDK 21（pom 中设置 java.version=21）
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
