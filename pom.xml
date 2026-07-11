@@ -28,7 +28,7 @@
         <lombok.version>1.18.30</lombok.version>
         <postgresql.version>42.7.3</postgresql.version>
         <!-- 实时特征流作业(recsys-streaming):Flink 1.20 支持 Java 21 -->
-        <flink.version>1.20.0</flink.version>
+        <flink.version>2.3.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
         <!-- 结构化日志 JSON 编码器(P2,非 Spring Boot BOM 管理的第三方,集中钉版本) -->
