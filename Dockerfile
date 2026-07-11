@@ -38,7 +38,7 @@ RUN mvn -B -q -pl ${MODULE} -am -DskipTests package \
     && cp ${MODULE}/target/${MODULE}-*.jar /build/app.jar
 
 # ---------- 运行阶段 ----------
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 ARG PORT=8080
 WORKDIR /app
 # 非 root 运行
