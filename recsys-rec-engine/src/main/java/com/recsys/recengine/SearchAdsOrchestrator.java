@@ -35,21 +35,23 @@ public class SearchAdsOrchestrator {
     private final ExperimentService experimentService;
     private final AdServingGateway gateway;
     private final AdProperties props;
+    private final TraceIds traceIds;
 
     public SearchAdsOrchestrator(QueryUnderstandingService queryService,
                                  ExperimentService experimentService,
                                  AdServingGateway gateway,
-                                 AdProperties props) {
+                                 AdProperties props,
+                                 TraceIds traceIds) {
         this.queryService = queryService;
         this.experimentService = experimentService;
         this.gateway = gateway;
         this.props = props;
+        this.traceIds = traceIds;
     }
 
     public SearchAdsResponse searchAds(long userId, String query, int slots, String scene) {
         if (query == null || query.isBlank()) {
-            String traceId = UUID.randomUUID().toString().substring(0, 8);
-            return new SearchAdsResponse(userId, query, UUID.randomUUID().toString(), List.of(), traceId);
+            return new SearchAdsResponse(userId, query, UUID.randomUUID().toString(), List.of(), traceIds.current());
         }
 
         // 1. Query 理解(复用与推荐同一实现;query 理解单一来源在 rec-engine)
@@ -64,9 +66,13 @@ public class SearchAdsOrchestrator {
 
         // 3. 委托广告在线服务(in-process AdPipeline 或 gRPC recsys-ad-serving)执行整条广告管线
         SearchAdsResponse resp = gateway.searchAds(userId, sq, slots, scene, adBucket, reserve);
+        // supplier(AdPipeline / ad-serving)侧生成的 traceId 仅其内部使用;对外统一用本进程 OTel traceId
+        // (in-process 同一 span、gRPC 时同一分布式 trace),与日志 %X{traceId} / Tempo 完全一致,便于前端钻取。
+        SearchAdsResponse aligned = new SearchAdsResponse(
+                resp.userId(), resp.query(), resp.requestId(), resp.ads(), traceIds.current());
         log.debug("搜索广告 user={} q=[{}] adBucket={} 竞得={} trace={}",
-                userId, sq.normalized(), adBucket, resp.ads().size(), resp.traceId());
-        return resp;
+                userId, sq.normalized(), adBucket, aligned.ads().size(), aligned.traceId());
+        return aligned;
     }
 
     /** 点击计费(委托 supplier;反作弊 + 归因校验在 supplier 侧)。 */

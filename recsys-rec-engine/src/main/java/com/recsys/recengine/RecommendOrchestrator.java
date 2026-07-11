@@ -38,7 +38,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +74,7 @@ public class RecommendOrchestrator {
     private final DynamicTuningService tuning;
     private final MeterRegistry meterRegistry;
     private final ShadowRankRunner shadowRankRunner;
+    private final TraceIds traceIds;
 
     public RecommendOrchestrator(RecallService recallService,
                                  RankRouter rankRouter,
@@ -94,6 +94,7 @@ public class RecommendOrchestrator {
                                  FtrlScorer ftrlScorer,
                                  BanditScorer banditScorer,
                                  DynamicTuningService tuning,
+                                 TraceIds traceIds,
                                  MeterRegistry meterRegistry) {
         this.recallService = recallService;
         this.rankRouter = rankRouter;
@@ -113,6 +114,7 @@ public class RecommendOrchestrator {
         this.ftrlScorer = ftrlScorer;
         this.banditScorer = banditScorer;
         this.tuning = tuning;
+        this.traceIds = traceIds;
         this.meterRegistry = meterRegistry;
     }
 
@@ -127,7 +129,9 @@ public class RecommendOrchestrator {
      * (读写都跳过),避免 explain 载荷污染普通请求缓存。热路径(explain=false)零额外分配。
      */
     public RecommendResponse recommend(RecommendRequest req, boolean explain) {
-        String traceId = UUID.randomUUID().toString().substring(0, 8);
+        // traceId 取 OTel 当前 span 的 traceId(与结构化日志 %X{traceId} / Tempo 一致),前端可据此在 Tempo 钻取链路;
+        // 无活动 span 时回退短 UUID。见 TraceIds。
+        String traceId = traceIds.current();
         // explain 收集器:非 explain 时全为 null,后续均 if(explain) 守卫,热路径无额外开销。
         RecallExplain recallExplain = explain ? new RecallExplain() : null;
         List<RecommendExplain.Stage> explainStages = explain ? new ArrayList<>() : null;
