@@ -155,3 +155,11 @@ body {
     transition: none;
   }
 }
+
+/* —— 桶对比大盘(/bucket-board)明细表:基线行淡青底高亮(ACCENTS.rank),AA 不伤正文对比。 */
+.bb-baseline-row > td {
+  background: rgba(34, 211, 238, 0.08);
+}
+.bb-baseline-row:hover > td {
+  background: rgba(34, 211, 238, 0.14);
+}

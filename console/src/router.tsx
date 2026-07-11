@@ -12,7 +12,10 @@ import SearchConsole from './pages/online/SearchConsole';
 import SearchAdsConsole from './pages/online/SearchAdsConsole';
 import FeedConsole from './pages/online/FeedConsole';
 import QueryParseConsole from './pages/online/QueryParseConsole';
+import RecallLab from './pages/online/RecallLab';
+import StrategyLab from './pages/online/StrategyLab';
 import ExperimentConsole from './pages/online/ExperimentConsole';
+import BucketBoard from './pages/experiment/BucketBoard';
 import ColdStartInterests from './pages/online/ColdStartInterests';
 import AdvertiserList from './pages/adv/AdvertiserList';
 import AdvertiserDetail from './pages/adv/AdvertiserDetail';
@@ -55,7 +58,10 @@ export default function AppRoutes() {
         <Route path="/search-ads" element={<SearchAdsConsole />} />
         <Route path="/feed" element={<FeedConsole />} />
         <Route path="/query" element={<QueryParseConsole />} />
+        <Route path="/recall-lab" element={<RecallLab />} />
+        <Route path="/strategy-lab" element={<StrategyLab />} />
         <Route path="/experiment" element={<ExperimentConsole />} />
+        <Route path="/bucket-board" element={<BucketBoard />} />
         <Route path="/user-interests" element={<ColdStartInterests />} />
 
         {/* Phase 2 — 广告主后台 */}

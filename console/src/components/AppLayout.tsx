@@ -24,10 +24,12 @@ import {
   MedicineBoxOutlined,
   CheckOutlined,
   ClusterOutlined,
+  DiffOutlined,
   DollarOutlined,
   DownOutlined,
   ExperimentOutlined,
   HeartOutlined,
+  PartitionOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -84,7 +86,7 @@ const SHELL_CSS = `
 .shell-sider .ant-menu-inline-collapsed .ant-menu-item-group-title{display:none;}
 `;
 
-// 三分区导航:项目 / 在线调试台 / 广告主后台 / 离线报表。
+// 按角色重划的 5 大域导航:在线链路 / 实验与增长 / 广告平台 / 数据与模型 / 平台运维。
 // 目的地清单从 api/nav.ts 的 NAV_DESTINATIONS 派生 —— 与命令面板(⌘K)「同源」,只在此处补图标(视觉)。
 // label 用纯文本(非 <Link>):导航走 Menu onClick→navigate(key),这样收起成图标栏时点图标也能跳转,
 // 且收起态的悬浮 tooltip 直接用 label 文本,干净。
@@ -98,14 +100,16 @@ const NAV_ICON: Record<string, ReactNode> = {
   '/search-ads': <DollarOutlined />,
   '/feed': <AppstoreOutlined />,
   '/query': <BulbOutlined />,
+  '/recall-lab': <PartitionOutlined />,
+  '/strategy-lab': <DiffOutlined />,
   '/experiment': <ExperimentOutlined />,
   '/user-interests': <HeartOutlined />,
   '/advertiser': <ShopOutlined />,
   '/reports': <BarChartOutlined />,
 };
 
-// 分组展示顺序(= 侧边菜单分区顺序)。
-const GROUP_ORDER = ['项目', '在线调试台', '广告主后台', '离线报表'] as const;
+// 分组展示顺序(= 侧边菜单分区顺序)。必须与 nav.ts 的 group 值逐字一致。
+const GROUP_ORDER = ['在线链路', '实验与增长', '广告平台', '数据与模型', '平台运维'] as const;
 
 const menuItems = GROUP_ORDER.map((g) => ({
   key: `grp-${g}`,

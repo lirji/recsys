@@ -30,8 +30,13 @@ public class RecommendController {
             @RequestParam(required = false, defaultValue = "0") int size,
             @RequestParam(required = false) String scene,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false, defaultValue = "false") boolean explain) {
-        return orchestrator.recommend(new RecommendRequest(userId, size, scene, q), explain);
+            @RequestParam(required = false, defaultValue = "false") boolean explain,
+            // 策略对比台调试参数:强制本次走指定 rank/rerank 策略或召回路(CSV),绕过实验分桶;为空则常规链路。
+            @RequestParam(required = false) String rankStrategy,
+            @RequestParam(required = false) String rerankStrategy,
+            @RequestParam(required = false) String recallChannels) {
+        return orchestrator.recommend(new RecommendRequest(userId, size, scene, q), explain,
+                StrategyOverride.of(rankStrategy, rerankStrategy, recallChannels));
     }
 
     @GetMapping("/api/search")

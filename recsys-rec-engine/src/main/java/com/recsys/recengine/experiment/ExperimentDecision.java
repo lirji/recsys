@@ -26,6 +26,17 @@ public final class ExperimentDecision {
         byLayer.put(layer, new Chosen(variantName, params == null ? Map.of() : params));
     }
 
+    /**
+     * 覆盖某层的单个参数(保留该层已有的其它参数),变体名记为覆盖值 —— 供在线调试(策略对比台)
+     * 强制指定 rank/rerank 策略或召回路,而不动分桶的其余维度。bucketTag 会显示为如 {@code rank:din}。
+     */
+    public void overrideParam(String layer, String key, String value) {
+        Chosen c = byLayer.get(layer);
+        Map<String, String> merged = new LinkedHashMap<>(c == null ? Map.of() : c.params());
+        merged.put(key, value);
+        byLayer.put(layer, new Chosen(value, merged));
+    }
+
     private Map<String, String> params(String layer) {
         Chosen c = byLayer.get(layer);
         return c == null ? Map.of() : c.params();

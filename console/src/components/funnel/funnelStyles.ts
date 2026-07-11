@@ -4,6 +4,10 @@
 export const FUNNEL_CSS = `
 .fnl-root{
   position:relative;overflow:hidden;border-radius:16px;
+  /* 建立行内尺寸查询容器:漏斗按「自身盒宽」而非视口宽决定横/竖排。
+     修复策略对比台 A/B 漏斗在 lg={12} 半栏(或浏览器缩放使 CSS 视口变窄)时,
+     视口仍 >820px、竖排媒体查询未触发,横向流水线溢出被 overflow:hidden 裁切的问题。 */
+  container:fnl / inline-size;
   padding:26px 30px;color:#e6edf7;
   font-variant-numeric:tabular-nums;
   background-color:#080d1a;
@@ -77,8 +81,9 @@ export const FUNNEL_CSS = `
 @keyframes fnl-flow-y{0%{top:-4px;opacity:0}15%{opacity:1}85%{opacity:1}100%{top:34px;opacity:0}}
 @keyframes fnl-blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.78)}}
 
-/* 窄屏:竖排,连接器转为纵向 */
-@media (max-width:820px){
+/* 窄「容器」(非视口):竖排,连接器转为纵向。阈值 640px ≈ 3 个横向 stage(含图标/连接器/标题)的临界宽,
+   低于此横向流水线会挤出容器 → 改竖排。用 @container 使半栏/缩放场景也能正确触发(见 .fnl-root 说明)。 */
+@container fnl (max-width:640px){
   .fnl-pipe{flex-direction:column;}
   .fnl-stage{flex:1 1 auto;}
   .fnl-conn{flex-basis:auto;height:34px;width:2px;margin:5px 0 5px 21px;align-self:flex-start;}

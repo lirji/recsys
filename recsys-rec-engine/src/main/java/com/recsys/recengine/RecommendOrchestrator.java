@@ -129,6 +129,15 @@ public class RecommendOrchestrator {
      * (读写都跳过),避免 explain 载荷污染普通请求缓存。热路径(explain=false)零额外分配。
      */
     public RecommendResponse recommend(RecommendRequest req, boolean explain) {
+        return recommend(req, explain, null);
+    }
+
+    /**
+     * 带策略覆盖的编排入口(策略对比台):{@code override} 非空时,强制本次请求用指定 rank/rerank 策略或召回路,
+     * 绕过按 userId 的实验分桶,并跳过冷启动覆盖 —— 使同一用户下切换策略的对比结果确定、可复现。
+     * override 为 null 时与常规 {@link #recommend(RecommendRequest, boolean)} 完全等价。
+     */
+    public RecommendResponse recommend(RecommendRequest req, boolean explain, StrategyOverride override) {
         // traceId 取 OTel 当前 span 的 traceId(与结构化日志 %X{traceId} / Tempo 一致),前端可据此在 Tempo 钻取链路;
         // 无活动 span 时回退短 UUID。见 TraceIds。
         String traceId = traceIds.current();
@@ -160,9 +169,14 @@ public class RecommendOrchestrator {
             // 2. 冷启动判定 + 分层实验分桶
             boolean cold = coldStartDetector.isCold(req.userId());
             ExperimentDecision decision = experimentService.assign(req.userId(), req.scene());
+            // 策略对比台:强制覆盖本次的 rank/rerank/召回路,绕过分桶(applyTo 保留各层其它参数)。
+            if (override != null) {
+                override.applyTo(decision);
+            }
             // 搜索(query 驱动)场景:query 即明确意图,冷用户也不该被冷启动覆盖冲淡 —— 走 query 主导链路。
             boolean queryDriven = req.hasQuery();
-            boolean coldOverride = cold && !(queryDriven && props.getSearch().isBypassColdStart());
+            // 显式策略覆盖时也跳过冷启动覆盖:否则冷用户会被强制多样性 rerank / COLD 召回路盖掉待对比的策略,失去可比性。
+            boolean coldOverride = cold && !(queryDriven && props.getSearch().isBypassColdStart()) && override == null;
             coldTag = coldOverride;
             // 实验未指定排序策略时,编排回落全局配置,这里以 default 标记(实际策略由 RankRouter 决定)
             rankTag = decision.rankStrategy() != null ? decision.rankStrategy() : "default";

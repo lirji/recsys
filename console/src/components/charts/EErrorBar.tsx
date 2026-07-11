@@ -7,6 +7,10 @@ const WHISKER = '#3b4657'; // 误差须的深灰,压过渐变柱以保证可读
 // 带置信区间误差棒的柱状图:柱=点估计,上下须=CI(如 AB 报表逐桶 CTR 的 Wilson 95% 区间)。
 // 误差须用 custom series 的 renderItem 手绘(竖线 + 上下横帽),与柱共用同一类目轴对齐。
 // markers[i] 非空则在柱顶标注(如「★显著」),一眼分出与基线有显著差异的桶。
+//
+// 可选(向后兼容,全部 undefined 时行为与原先逐字节一致):
+//   baselineValue —— 画一条横向「基线」虚线锚点,让每根柱可读成「相对基线」。
+//   highlightIndex + highlightColor —— 把某一根柱(如基线柱)换成实心高亮 + 虚线描边。
 export default function EErrorBar({
   categories,
   values,
@@ -18,6 +22,9 @@ export default function EErrorBar({
   height = 340,
   colorIndex = 1,
   fileName = 'errorbar.png',
+  baselineValue,
+  highlightIndex,
+  highlightColor,
 }: {
   categories: string[];
   values: number[];
@@ -29,6 +36,9 @@ export default function EErrorBar({
   height?: number;
   colorIndex?: number;
   fileName?: string;
+  baselineValue?: number;
+  highlightIndex?: number;
+  highlightColor?: string;
 }) {
   const base = PALETTE[colorIndex % PALETTE.length];
   const fmt = (n: number) => (Number.isFinite(n) ? +n.toFixed(4) : 0);
@@ -56,9 +66,36 @@ export default function EErrorBar({
       {
         name: barName,
         type: 'bar' as const,
-        data: values.map(fmt),
+        // highlightIndex 未传 → 与原先逐字节一致(纯 number 数组);传入则逐项 itemStyle 只高亮该柱。
+        data:
+          highlightIndex == null
+            ? values.map(fmt)
+            : values.map((v, i) => ({
+                value: fmt(v),
+                itemStyle:
+                  i === highlightIndex
+                    ? {
+                        color: rgba(highlightColor ?? '#22d3ee', 0.85),
+                        borderColor: highlightColor ?? '#22d3ee',
+                        borderWidth: 1,
+                        borderType: 'dashed' as const,
+                        borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+                      }
+                    : { color: barGradient(base), borderRadius: [4, 4, 0, 0] as [number, number, number, number] },
+              })),
         barMaxWidth: 40,
         itemStyle: { color: barGradient(base), borderRadius: [4, 4, 0, 0] as [number, number, number, number] },
+        // baselineValue 未传 → markLine=undefined,ECharts 视作不存在,与原先渲染一致。
+        markLine:
+          baselineValue != null
+            ? {
+                silent: true,
+                symbol: 'none' as const,
+                lineStyle: { color: '#8a94a6', type: 'dashed' as const, width: 1 },
+                label: { formatter: '基线', color: '#8a94a6', fontSize: 11, position: 'insideEndTop' as const },
+                data: [{ yAxis: baselineValue }],
+              }
+            : undefined,
         label: markers
           ? {
               show: true,
