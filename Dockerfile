@@ -5,7 +5,7 @@
 # 注:recsys-streaming(Flink)需额外 --add-opens,走 run-streaming.sh,不在本镜像范围。
 
 # ---------- 构建阶段 ----------
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3-eclipse-temurin-26 AS build
 WORKDIR /build
 # 先拷贝所有 pom 以利用依赖层缓存(源码变动不必重下依赖)
 COPY pom.xml ./
