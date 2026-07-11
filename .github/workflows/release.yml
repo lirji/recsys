@@ -60,7 +60,7 @@ jobs:
       # 镜像漏洞扫描。教学默认 exit-code=0(报告不阻断,避免基础镜像常驻 CVE 卡发布);
       # 生产改 exit-code=1 + severity=CRITICAL,HIGH 即成硬门槛。
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.24.0
         with:
           image-ref: ghcr.io/${{ github.repository }}/${{ matrix.module }}:${{ github.ref_name }}
           format: table
