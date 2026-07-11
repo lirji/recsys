@@ -1,6 +1,13 @@
 # ADR-01:广告在线服务拆分(ad-serving)
 
-状态:**待决策**(设计已定稿;Phase 0 前后端分离 + Phase 1 契约/报表解耦已落地并验证)。
+状态:**已实施(部分偏离本 ADR)**。ad-serving 已作为独立 `[app]` 模块落地(`recsys-ad-serving`)。
+
+> **⚠️ as-built 与本 ADR 的偏差(以代码为准)**:
+> - 端口是 **8085 / gRPC 9095**(本 ADR 曾提议 8084)。
+> - **未**引入 `recsys-experiment` 库——广告 A/B 的 adBucket / reservePrice 作为 gRPC 请求参数传入(query 理解与实验分桶留在 rec-engine 单一事实源)。
+> - 拆分**由开关控制而非硬切**:`recsys.ad.serving.mode`(`AD_SERVING_MODE`)= `in-process`(默认)/ `grpc`;`AdPipeline` 是两侧共享内核,golden-diff 等价。
+> - 已知缺口:gRPC 服务端鉴权拦截器存在但未注册(客户端已签、服务端待验)。
+> - 完整 as-built 见 [skills/16 微服务拆分与 gRPC](skills/16-微服务拆分与gRPC.md)。
 
 ## 背景
 
