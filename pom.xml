@@ -229,6 +229,17 @@
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <version>${spring-boot.version}</version>
+                    <!-- 本项目用自定义父 pom(非 spring-boot-starter-parent),需在此显式绑定 repackage,
+                         否则声明了该插件的 [app] 模块 mvn package 只出瘦 jar(java -jar 报 no main manifest)。
+                         executions 经 pluginManagement 被各 app 模块的 <plugin> 声明继承;lib 模块不声明本插件,不受影响。 -->
+                    <executions>
+                        <execution>
+                            <id>repackage</id>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>

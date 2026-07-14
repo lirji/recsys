@@ -41,8 +41,11 @@ RUN mvn -B -q -pl ${MODULE} -am -DskipTests package \
 FROM eclipse-temurin:21-jre
 ARG PORT=8080
 WORKDIR /app
-# 非 root 运行
-RUN useradd -r -u 1001 appuser
+# 非 root 运行。-r 系统账户默认不建 home,但 Nacos 客户端 logback 会往 ${user.home}/logs/nacos/ 写日志,
+# 目录不存在会让 Spring Boot 判 logback 配置错误致命而启动失败 → 显式建可写 home + logs 目录并授权给 uid 1001。
+RUN useradd -r -u 1001 appuser \
+    && mkdir -p /home/appuser/logs \
+    && chown -R 1001 /home/appuser
 COPY --from=build /build/app.jar app.jar
 ENV JAVA_OPTS="" SERVER_PORT=${PORT}
 EXPOSE ${PORT}
