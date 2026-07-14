@@ -100,9 +100,10 @@ public class SystemOverviewService {
                         new CommandItem("用户服务", "mvn -pl recsys-user-service spring-boot:run")
                 )),
                 new CommandGroup("离线与实时", List.of(
-                        new CommandItem("启动中间件", "docker compose up -d"),
-                        new CommandItem("启动观测栈", "docker compose --profile obs up -d"),
-                        new CommandItem("启动 Kafka", "docker compose --profile full up -d kafka"),
+                        new CommandItem("一键全栈(容器化)", "scripts/dev-local.sh up"),
+                        new CommandItem("启动中间件", "docker compose -f docker/docker-compose.yml up -d"),
+                        new CommandItem("启动观测栈", "docker compose -f docker/docker-compose.yml --profile obs up -d"),
+                        new CommandItem("启动 Kafka", "docker compose -f docker/docker-compose.yml --profile full up -d kafka"),
                         new CommandItem("实时特征作业", "bash recsys-streaming/run-streaming.sh --window-min 10 --slide-sec 20")
                 ))
         );

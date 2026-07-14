@@ -6,6 +6,7 @@ import com.recsys.proto.user.v1.UpdateInterestsRequest;
 import com.recsys.proto.user.v1.UserId;
 import com.recsys.proto.user.v1.UserProfileServiceGrpc;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,8 +30,11 @@ public class GrpcUserGateway implements UserGateway {
     @GrpcClient("user")
     private UserProfileServiceGrpc.UserProfileServiceBlockingStub stub;
 
+    // getInterests 是幂等读:@Retry 对瞬时错误重试,重试耗尽/非瞬时才落 fallback(按冷启动);@CircuitBreaker 内层无 fallback。
+    // updateInterests 是非幂等写(下方),不挂 @Retry(避免重复写)。
     @Override
-    @CircuitBreaker(name = "user-grpc", fallbackMethod = "getInterestsFallback")
+    @Retry(name = "user-grpc", fallbackMethod = "getInterestsFallback")
+    @CircuitBreaker(name = "user-grpc")
     public List<String> getInterests(long userId) {
         Interests reply = stub.getInterests(UserId.newBuilder().setUserId(userId).build());
         return new ArrayList<>(reply.getCategoriesList());

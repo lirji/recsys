@@ -1,185 +1,159 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# recsys 本地整栈启动脚本(one-command 起全栈,避免每次手敲一堆 env 踩坑)。
+# recsys 本地整栈一键启动(全链路容器化)。
+#
+# 所有容器编排都归拢在 docker/ 目录下(docker/docker-compose.yml)。本脚本是它的一键封装:
+# 用 docker compose 把「基础设施 + 8 个 Java 服务 + 前端」全部以容器方式起起来,并做健康检查。
 #
 # 用法:
-#   scripts/dev-local.sh up            # 起全部后端服务(基础设施 → 8 个 app),staggered + 健康检查
-#   scripts/dev-local.sh up rec-engine console   # 只起指定服务
-#   scripts/dev-local.sh down          # 停全部(按端口杀)
-#   scripts/dev-local.sh restart [svc...]        # 重启
-#   scripts/dev-local.sh status        # 各服务健康表
-#   scripts/dev-local.sh logs <svc>    # tail 某服务日志
-#   scripts/dev-local.sh frontend      # 起 Vite(指向本机网关端口)
-#   scripts/dev-local.sh infra         # 只确保 pg/redis 在跑
+#   scripts/dev-local.sh up                 # 起全栈(pg/redis/nacos + 8 app + 前端 nginx),缺镜像自动构建
+#   scripts/dev-local.sh up rec-engine gateway   # 只起指定服务(compose 服务名)
+#   scripts/dev-local.sh rebuild advertiser # 改了代码后:重建该服务镜像并重启(容器化下改代码需重建)
+#   scripts/dev-local.sh build              # 只构建全部镜像(不启动)
+#   scripts/dev-local.sh down               # 停并删容器(保留数据卷 pgdata)
+#   scripts/dev-local.sh restart [svc...]   # 重启
+#   scripts/dev-local.sh status             # compose ps + 网关健康
+#   scripts/dev-local.sh logs <svc>         # tail 某服务日志(compose 服务名)
+#   scripts/dev-local.sh infra              # 只起基础设施(postgres/redis/nacos)
+#   scripts/dev-local.sh frontend           # 前端热开发:宿主机跑 Vite(指向容器网关端口),便于改前端
+#   scripts/dev-local.sh obs                # 追加起观测栈(prometheus/grafana/tempo/alertmanager)
 #
-# 端口/连接默认按“标准端口”(8080-8090 / pg 5432 / redis 6379);
-# 本机若与其它项目冲突,把覆盖值写进 scripts/dev-local.env(见 dev-local.env.example),脚本会自动 source。
+# 端口:默认走「标准端口」(网关 8080 / pg 5432 / redis 6379 / nacos 8848);仅这些对宿主暴露的端口
+#   本机冲突时,把覆盖值写进 scripts/dev-local.env(见 dev-local.env.example,已 gitignore),脚本会 export
+#   给 compose 的 ${VAR:-默认} 占位取用。容器**内部**互通固定用服务名+标准端口(不受宿主端口重映射影响)。
 #
-# 关键坑(本脚本已内建规避,勿再手敲):
-#   1. 必须用 bash(非 zsh):zsh 不对无引号变量分词,`env $VARSTR mvn` 会把整串塞进第一个 env。
-#   2. gateway 也要 RECSYS_SECURITY_ENABLED=false,否则 /api/advertiser、/api/search-ads 等经网关 401。
-#   3. rec-engine/advertiser/ad-serving 都要 PG_JDBC_URL/PG_DS1_JDBC_URL(ad 读侧 ShardingSphere 次数据源),
-#      否则默认连 5432、健康聚合 DOWN、搜索广告标题为空。
-#   4. staggered 启动(逐个等就绪)避免同时初始化打爆 pg 连接池 / docker 端口转发风暴。
+# 容器化 vs 宿主机 mvn:本脚本现在默认全链路容器化(改代码 → `rebuild <svc>` 重建镜像)。
+#   若想后端在宿主机 mvn 热跑、只容器化基础设施,见 docs/08-本地运行.md 的「宿主机 mvn 模式」。
+#
+# 已在 docker/docker-compose.yml 里固化、无需再手敲的坑:
+#   - 网关/各服务 RECSYS_SECURITY_ENABLED=false(否则 /api/advertiser 等经网关 401);
+#   - rec-engine/advertiser/ad-serving 的 ShardingSphere 次/主数据源 PG_JDBC_URL/PG_DS1_JDBC_URL(指向 postgres 容器);
+#   - postgres 首启自动建分库 ds_1(recsys_ds1)+ 分片骨架(recsys-offline/sql/04b_ds1_bootstrap.sql);
+#   - depends_on + healthcheck 保证 pg/redis 就绪后再起 app(取代旧的 staggered 手工等待)。
 # ---------------------------------------------------------------------------
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+COMPOSE_FILE="$REPO/docker/docker-compose.yml"
 cd "$REPO"
 
-# ---------- 默认配置(标准端口;本机覆盖见 dev-local.env)----------
-: "${PG_HOST:=127.0.0.1}"; : "${PG_PORT:=5432}"; : "${PG_DB:=recsys}"; : "${PG_DS1_DB:=recsys_ds1}"
-: "${PG_USER:=recsys}"; : "${PG_PASSWORD:=recsys}"
-: "${REDIS_HOST:=127.0.0.1}"; : "${REDIS_PORT:=6379}"
-: "${GATEWAY_PORT:=8080}"; : "${REC_ENGINE_PORT:=8081}"; : "${BEHAVIOR_PORT:=8082}"
-: "${ADVERTISER_PORT:=8083}"; : "${AD_SERVING_PORT:=8085}"; : "${CONTENT_PORT:=8086}"
-: "${USER_PORT:=8087}"; : "${CONSOLE_PORT:=8090}"
-: "${AD_SERVING_GRPC_PORT:=9095}"; : "${CONTENT_GRPC_PORT:=9096}"; : "${USER_GRPC_PORT:=9097}"
-: "${PROMETHEUS_URL:=http://localhost:9090}"
-: "${VITE_PORT:=5173}"
-: "${PG_CONTAINER:=recsys-pg}"; : "${REDIS_CONTAINER:=recsys-redis}"
+# ---------- 对宿主暴露的端口 / 连接默认(标准端口;本机覆盖见 dev-local.env)----------
+# 注:这些只影响「宿主机能从哪个端口访问容器」。容器之间用服务名+标准内部端口通信,不受影响。
+: "${GATEWAY_PORT:=8080}"          # 统一入口(前端 /api 反代到此)
+: "${PG_PORT:=5432}"               # 宿主访问容器 postgres(供离线作业 / psql)
+: "${REDIS_PORT:=6379}"
+: "${NACOS_PORT:=8848}"; : "${NACOS_GRPC_PORT:=9848}"
+: "${CONSOLE_WEB_PORT:=8095}"      # 前端 nginx 容器
+: "${PROMETHEUS_PORT:=9090}"; : "${GRAFANA_PORT:=3001}"; : "${ALERTMANAGER_PORT:=9093}"; : "${KAFKA_PORT:=9092}"
+: "${PG_DB:=recsys}"; : "${PG_DS1_DB:=recsys_ds1}"; : "${PG_USER:=recsys}"; : "${PG_PASSWORD:=recsys}"
+: "${RECSYS_SECURITY_ENABLED:=false}"   # 本地免登录直连;生产置 true 并注入密钥
+: "${VITE_PORT:=5173}"                    # frontend 子命令用(宿主机热开发)
 : "${LOG_DIR:=$REPO/.dev/logs}"
 
 # 本机覆盖(端口冲突等)。gitignore,见 dev-local.env.example。
 [ -f "$SCRIPT_DIR/dev-local.env" ] && . "$SCRIPT_DIR/dev-local.env"
 
-# 派生:ShardingSphere 次数据源整条 URL 走单占位符(sharding.yaml 的 PG_JDBC_URL/PG_DS1_JDBC_URL)。
-PG_JDBC_URL="${PG_JDBC_URL:-jdbc:postgresql://$PG_HOST:$PG_PORT/$PG_DB}"
-PG_DS1_JDBC_URL="${PG_DS1_JDBC_URL:-jdbc:postgresql://$PG_HOST:$PG_PORT/$PG_DS1_DB}"
+# 把 compose 需要的变量 export 出去,供 docker-compose.yml 里的 ${VAR:-默认} 插值。
+export GATEWAY_PORT PG_PORT REDIS_PORT NACOS_PORT NACOS_GRPC_PORT CONSOLE_WEB_PORT
+export PROMETHEUS_PORT GRAFANA_PORT ALERTMANAGER_PORT KAFKA_PORT
+export PG_DB PG_DS1_DB PG_USER PG_PASSWORD RECSYS_SECURITY_ENABLED
 
 mkdir -p "$LOG_DIR"
 
-if [ -z "${JAVA_HOME:-}" ] && command -v /usr/libexec/java_home >/dev/null 2>&1; then
-  JAVA_HOME="$(/usr/libexec/java_home -v 21 2>/dev/null)"; export JAVA_HOME
-fi
+# 默认全链路容器化:apps(8 个 Java 服务)+ console(前端 nginx)。
+PROFILES=(--profile apps --profile console)
 
-# 服务清单:name|module|httpPort|grpcPort(启动顺序;gateway 放最后,console 在其探测目标之后)
-services() {
-  cat <<EOF
-rec-engine|recsys-rec-engine|$REC_ENGINE_PORT|
-behavior|recsys-behavior|$BEHAVIOR_PORT|
-content|recsys-content-service|$CONTENT_PORT|$CONTENT_GRPC_PORT
-user|recsys-user-service|$USER_PORT|$USER_GRPC_PORT
-advertiser|recsys-advertiser|$ADVERTISER_PORT|
-ad-serving|recsys-ad-serving|$AD_SERVING_PORT|$AD_SERVING_GRPC_PORT
-console|recsys-console|$CONSOLE_PORT|
-gateway|recsys-gateway|$GATEWAY_PORT|
-EOF
-}
+# compose 封装:统一带上 -f docker/docker-compose.yml(相对路径由 compose 按文件所在目录 docker/ 解析)
+compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
 
 # ---------- 工具 ----------
-tcp_up()  { (exec 3<>"/dev/tcp/$1/$2") 2>/dev/null && exec 3>&- && return 0 || return 1; }
-port_pid() { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null; }
-health()  { curl -s -m 3 "http://localhost:$1/actuator/health" 2>/dev/null | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p' | head -1; }
+health() { curl -s -m 3 "http://localhost:$1/actuator/health" 2>/dev/null | sed -n 's/.*"status":"\([A-Z]*\)".*/\1/p' | head -1; }
 
-ensure_infra() {
-  echo "== 基础设施 =="
-  if tcp_up "$PG_HOST" "$PG_PORT"; then echo "  ✓ postgres $PG_HOST:$PG_PORT"; else
-    echo "  … postgres 未就绪,尝试 docker start $PG_CONTAINER"
-    docker start "$PG_CONTAINER" >/dev/null 2>&1 || true; sleep 3
-    tcp_up "$PG_HOST" "$PG_PORT" && echo "  ✓ postgres 已起" || { echo "  ✗ postgres $PG_HOST:$PG_PORT 连不上。请先起容器(见 docs/08-本地运行.md)"; return 1; }
-  fi
-  if tcp_up "$REDIS_HOST" "$REDIS_PORT"; then echo "  ✓ redis $REDIS_HOST:$REDIS_PORT"; else
-    echo "  … redis 未就绪,尝试 docker start $REDIS_CONTAINER"
-    docker start "$REDIS_CONTAINER" >/dev/null 2>&1 || \
-      docker run -d --name "$REDIS_CONTAINER" --restart unless-stopped -p "$REDIS_PORT:6379" \
-        -v recsys-redis-data:/data redis:7-alpine redis-server --appendonly yes >/dev/null 2>&1 || true
-    sleep 2
-    tcp_up "$REDIS_HOST" "$REDIS_PORT" && echo "  ✓ redis 已起" || echo "  ⚠ redis 连不上(Redis 相关功能会降级)"
-  fi
+require_docker() {
+  docker info >/dev/null 2>&1 && return 0
+  echo "✗ Docker 未运行。请先启动 Docker Desktop(macOS: open -a Docker),再重试。"; return 1
 }
 
-# 组装某服务的 env 数组(bash 数组,天然规避 zsh 分词坑)
-build_env() {
-  local name=$1 httpPort=$2 grpcPort=$3
-  ENVV=(
-    PG_HOST="$PG_HOST" PG_PORT="$PG_PORT" PG_DB="$PG_DB" PG_USER="$PG_USER" PG_PASSWORD="$PG_PASSWORD"
-    PG_DS1_DB="$PG_DS1_DB" PG_JDBC_URL="$PG_JDBC_URL" PG_DS1_JDBC_URL="$PG_DS1_JDBC_URL"
-    REDIS_HOST="$REDIS_HOST" REDIS_PORT="$REDIS_PORT"
-    RECSYS_SECURITY_ENABLED=false NACOS_DISCOVERY=false SPRING_CLOUD_NACOS_CONFIG_ENABLED=false
-    SERVER_PORT="$httpPort"
-  )
-  [ -n "$grpcPort" ] && ENVV+=( GRPC_SERVER_PORT="$grpcPort" )
-  case "$name" in
-    gateway)
-      ENVV+=( REC_ENGINE_PORT="$REC_ENGINE_PORT" BEHAVIOR_PORT="$BEHAVIOR_PORT"
-              ADVERTISER_PORT="$ADVERTISER_PORT" CONSOLE_PORT="$CONSOLE_PORT" ) ;;
-    console)
-      ENVV+=( RECSYS_CONSOLE_URL="http://localhost:$CONSOLE_PORT" RECSYS_GATEWAY_URL="http://localhost:$GATEWAY_PORT"
-              RECSYS_REC_ENGINE_URL="http://localhost:$REC_ENGINE_PORT" RECSYS_BEHAVIOR_URL="http://localhost:$BEHAVIOR_PORT"
-              RECSYS_ADVERTISER_URL="http://localhost:$ADVERTISER_PORT" RECSYS_AD_SERVING_URL="http://localhost:$AD_SERVING_PORT"
-              RECSYS_CONTENT_SERVICE_URL="http://localhost:$CONTENT_PORT" RECSYS_USER_SERVICE_URL="http://localhost:$USER_PORT"
-              PROMETHEUS_URL="$PROMETHEUS_URL" ) ;;
-  esac
-}
-
-start_one() {
-  local name=$1 module=$2 httpPort=$3 grpcPort=$4
-  local log="$LOG_DIR/$name.log"
-  if [ -n "$(port_pid "$httpPort")" ]; then echo "  • $name 已在 :$httpPort 运行,跳过"; return 0; fi
-  build_env "$name" "$httpPort" "$grpcPort"
-  echo "  ▸ 启动 $name ($module) :$httpPort${grpcPort:+ / gRPC :$grpcPort}"
-  env "${ENVV[@]}" nohup mvn -q -pl "$module" spring-boot:run >"$log" 2>&1 &
-  local ok=0
-  for _ in $(seq 1 90); do
-    grep -qE "Started .*Application|Netty started" "$log" 2>/dev/null && { ok=1; break; }
-    grep -qE "APPLICATION FAILED|Application run failed|BUILD FAILURE|Error starting" "$log" 2>/dev/null && break
-    sleep 2
+wait_gateway() {
+  echo -n "  等待网关就绪 (http://localhost:$GATEWAY_PORT/actuator/health) "
+  local st=""
+  for _ in $(seq 1 120); do
+    st="$(health "$GATEWAY_PORT")"
+    [ "$st" = UP ] && { echo " ✓ UP"; return 0; }
+    echo -n "."; sleep 2
   done
-  if [ "$ok" != 1 ]; then echo "    ✗ $name 启动失败/超时,见 $log:"; tail -6 "$log"; return 1; fi
-  local st=""; for _ in $(seq 1 15); do st="$(health "$httpPort")"; [ -n "$st" ] && break; sleep 1; done
-  echo "    ✓ $name 就绪 (health=${st:-?})"
+  echo " ⚠ 未在 240s 内 UP(当前=${st:-无响应});镜像首次构建或 Nacos 启动较慢,用 status/logs 继续观察。"
 }
 
-stop_one() {
-  local name=$1 httpPort=$2
-  local pid; pid="$(port_pid "$httpPort")"
-  if [ -n "$pid" ]; then echo "  ✗ 停 $name (:$httpPort pid $pid)"; kill $pid 2>/dev/null; fi
-}
-
+# ---------- 命令 ----------
 cmd_up() {
-  ensure_infra || return 1
-  echo "== 启动后端(逐个 staggered)=="
-  local want=("$@")
-  while IFS='|' read -r name module httpPort grpcPort; do
-    [ -z "$name" ] && continue
-    if [ ${#want[@]} -gt 0 ]; then case " ${want[*]} " in *" $name "*) ;; *) continue;; esac; fi
-    start_one "$name" "$module" "$httpPort" "$grpcPort"
-  done < <(services)
+  require_docker || return 1
+  echo "== 一键起全栈(容器化:基础设施 + 8 app + 前端;缺镜像自动构建)=="
+  echo "   compose: $COMPOSE_FILE  profiles: apps + console"
+  echo "   宿主暴露端口:网关 $GATEWAY_PORT / pg $PG_PORT / redis $REDIS_PORT / nacos $NACOS_PORT / 前端 $CONSOLE_WEB_PORT"
+  compose "${PROFILES[@]}" up -d --remove-orphans "$@" || { echo "✗ compose up 失败(见上)"; return 1; }
+  echo; wait_gateway
   echo; cmd_status
-  echo; echo "前端:scripts/dev-local.sh frontend  (Vite :$VITE_PORT → 网关 :$GATEWAY_PORT)"
+  echo
+  echo "前端(容器,同源经网关):http://localhost:$CONSOLE_WEB_PORT"
+  echo "前端(热开发,宿主 Vite):scripts/dev-local.sh frontend  → http://localhost:$VITE_PORT"
+  echo "改了后端代码 → scripts/dev-local.sh rebuild <svc>(如 rec-engine/advertiser),重建镜像并重启。"
+}
+
+cmd_build()   { require_docker || return 1; echo "== 构建镜像 =="; compose "${PROFILES[@]}" build "$@"; }
+cmd_rebuild() {
+  require_docker || return 1
+  [ $# -eq 0 ] && { echo "用法: dev-local.sh rebuild <svc...>(compose 服务名,如 rec-engine advertiser)"; return 1; }
+  echo "== 重建并重启: $* =="
+  compose "${PROFILES[@]}" up -d --build "$@" && { echo; wait_gateway; }
 }
 
 cmd_down() {
-  echo "== 停后端 =="
-  while IFS='|' read -r name module httpPort grpcPort; do
-    [ -z "$name" ] && continue; stop_one "$name" "$httpPort"
-  done < <(services)
-  # 兜底:清掉可能残留的 spring-boot:run 启动器
-  pkill -f "spring-boot:run" 2>/dev/null && echo "  ✗ 清理残留 spring-boot:run 启动器" || true
+  require_docker || return 1
+  echo "== 停并删容器(保留数据卷 pgdata / grafana-data)=="
+  # down 作用于整个 project(不限 profile);不加 -v,数据保留
+  compose --profile apps --profile console --profile full --profile obs down --remove-orphans
 }
 
 cmd_status() {
-  echo "== 健康 =="
-  printf "  %-12s %-6s %s\n" "服务" "端口" "状态"
-  while IFS='|' read -r name module httpPort grpcPort; do
-    [ -z "$name" ] && continue
-    local st="停"; [ -n "$(port_pid "$httpPort")" ] && st="$(health "$httpPort")"; [ -z "$st" ] && st="启动中?"
-    printf "  %-12s :%-5s %s\n" "$name" "$httpPort" "$st"
-  done < <(services)
+  require_docker || return 1
+  echo "== 容器状态 =="
+  compose ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || compose ps
+  echo "== 网关健康 =="
+  local st; st="$(health "$GATEWAY_PORT")"
+  echo "  gateway :$GATEWAY_PORT → ${st:-无响应}"
 }
 
 cmd_logs() {
-  local name=$1; [ -z "$name" ] && { echo "用法: dev-local.sh logs <svc>"; return 1; }
-  tail -f "$LOG_DIR/$name.log"
+  local name=$1; [ -z "$name" ] && { echo "用法: dev-local.sh logs <svc>(compose 服务名,如 rec-engine/advertiser/console-api)"; return 1; }
+  compose logs -f --tail=120 "$name"
 }
 
+cmd_infra() {
+  require_docker || return 1
+  echo "== 只起基础设施(postgres + redis + nacos)=="
+  compose up -d postgres redis
+  compose --profile full up -d nacos
+  cmd_status
+}
+
+cmd_obs() {
+  require_docker || return 1
+  echo "== 追加观测栈(prometheus/grafana/tempo/alertmanager)=="
+  echo "   注:monitoring/prometheus.yml 默认抓 host.docker.internal(宿主机 mvn 模式);"
+  echo "       全容器化下各 app 在容器内标准端口,如需容器抓取请调整 monitoring/prometheus.yml 目标为服务名。"
+  compose --profile obs up -d
+  echo "  Grafana → http://localhost:$GRAFANA_PORT (admin/admin)"
+}
+
+# 前端热开发:宿主机跑 Vite(改前端即时热更),/api 反代到容器网关的宿主暴露端口。
 cmd_frontend() {
   cd "$REPO/console"
   [ -d node_modules ] || npm install
-  local pid; pid="$(port_pid "$VITE_PORT")"; [ -n "$pid" ] && { echo "停旧 Vite (:$VITE_PORT)"; kill $pid 2>/dev/null; sleep 1; }
-  echo "起 Vite :$VITE_PORT,/api → http://localhost:$GATEWAY_PORT"
+  local pid; pid="$(lsof -nP -iTCP:"$VITE_PORT" -sTCP:LISTEN -t 2>/dev/null)"
+  [ -n "$pid" ] && { echo "停旧 Vite (:$VITE_PORT)"; kill $pid 2>/dev/null; sleep 1; }
+  echo "起 Vite :$VITE_PORT,/api → http://localhost:$GATEWAY_PORT(容器网关)"
   RECSYS_GATEWAY="http://localhost:$GATEWAY_PORT" nohup npm run dev >"$LOG_DIR/frontend.log" 2>&1 &
   for _ in $(seq 1 20); do grep -qE "Local:|ready in" "$LOG_DIR/frontend.log" 2>/dev/null && break; sleep 1; done
   grep -E "Local:|ready in" "$LOG_DIR/frontend.log" | head -2
@@ -187,12 +161,17 @@ cmd_frontend() {
 }
 
 case "${1:-}" in
-  up|start)   shift; cmd_up "$@" ;;
-  down|stop)  cmd_down ;;
-  restart)    shift; cmd_down; sleep 2; cmd_up "$@" ;;
-  status)     cmd_status ;;
-  logs)       cmd_logs "${2:-}" ;;
+  up|start)    shift; cmd_up "$@" ;;
+  build)       shift; cmd_build "$@" ;;
+  rebuild)     shift; cmd_rebuild "$@" ;;
+  down|stop)   cmd_down ;;
+  restart)     shift; cmd_down; sleep 2; cmd_up "$@" ;;
+  status|ps)   cmd_status ;;
+  logs)        cmd_logs "${2:-}" ;;
+  infra)       cmd_infra ;;
+  obs)         cmd_obs ;;
   frontend|fe) cmd_frontend ;;
-  infra)      ensure_infra ;;
-  *) echo "用法: $0 {up|down|restart|status|logs <svc>|frontend|infra} [服务名...]"; echo "服务名: rec-engine behavior content user advertiser ad-serving console gateway"; exit 1 ;;
+  *) echo "用法: $0 {up|down|restart|status|logs <svc>|rebuild <svc>|build|infra|obs|frontend} [服务名...]"
+     echo "服务名(compose): gateway rec-engine behavior advertiser ad-serving content user console-api console postgres redis nacos"
+     exit 1 ;;
 esac

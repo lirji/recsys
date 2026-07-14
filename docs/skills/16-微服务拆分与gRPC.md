@@ -91,8 +91,30 @@ Kafka ad-catalog-events ─► ad-serving AdCatalogEventConsumer
 3. **物理分库是能力态**:golden-diff/marker 测试证明可行,但默认 compose 未激活(`apps` 无 `*_PG_DB` env)。
 4. **ADR-01 已过时**:提议 8084 + `recsys-experiment` 库;实际 8085、无 experiment 库(adBucket/reservePrice 作 gRPC 参数)、开关而非硬切。
 
-## 9. 面试要点
+## 9. gRPC vs OpenFeign(东西向选型对照)
 
+> 常见追问:「服务间调用为什么用 gRPC,不用 OpenFeign/REST?」——先厘清**二者不在同一抽象层**:gRPC 是"协议 + 框架"(HTTP/2 + Protobuf,端到端、跨语言、自带 server/client 与代码生成);OpenFeign 只是**声明式 HTTP 客户端**(仅调用方语法糖,服务端仍是普通 Spring MVC Controller,底层还是 REST/JSON)。放一起比,只因二者都回答"服务 A 怎么调 B"。一句话:**gRPC 是协议+框架,Feign 只是客户端语法糖**。
+
+| 维度 | gRPC(本项目东西向) | OpenFeign |
+|---|---|---|
+| 定位 | 端到端 RPC 框架 | 声明式 HTTP 客户端(仅 client) |
+| 传输 | HTTP/2(二进制帧、多路复用、长连接) | 默认 HTTP/1.1(可配 H2) |
+| 序列化 | Protobuf(二进制、紧凑快) | 通常 JSON(文本、可读) |
+| 契约 | `.proto` + 代码生成,**强 schema**(见 §4) | Java 接口 + 注解,无独立 IDL |
+| 跨语言 | 一等公民(Go/Java/Python…) | 仅 JVM |
+| 流式 | 4 种(一元 / 服务端流 / 客户端流 / 双向) | 无原生流式,纯请求-响应 |
+| 性能 | 高,适合内部高频低延迟 | 一般,够多数业务 |
+| 可调试 | 二进制,需 grpcurl 等工具 | 人可读,可直接 curl / 抓包 |
+| 浏览器 | 需 gRPC-Web + 代理 | 天然可用(就是 REST) |
+| Spring Cloud 生态 | 发现 / LB / 熔断需自接 | 无缝(LoadBalancer/Sentinel 开箱) |
+
+- **本项目为什么东西向选 gRPC**:rec-engine→ad-serving 是**内部、高频(每次 feed 混排都拉广告)、延迟敏感**路径,二进制 + HTTP/2 长连接比 HTTP/JSON 省序列化与连接开销;`.proto` 强契约天然契合"query 理解 / 实验分桶留 rec-engine 单一事实源"的边界(见 §4)。
+- **什么时候 Feign/REST 更合适**:管理面 / 低频 / 要人可读的调用——如 `recsys-advertiser` 写侧、对外接口。本项目对外仍走 gateway 的 REST,只把核心钱路的内部调用切 gRPC——**混用是常态**。
+- **代价(对应 §8 缺口)**:gRPC 的服务发现 / 负载均衡 / 鉴权都要自接——本项目默认用 `static://` / 容器 DNS,`discovery://` 客户端 LB 与服务端鉴权拦截器均 opt-in / 待接线;而 Feign + Spring Cloud LoadBalancer 开箱即用。这正是"**gRPC 用生态成本换性能**"的具体体现。
+
+## 10. 面试要点
+
+- **gRPC vs Feign**:gRPC 是协议+框架、Feign 只是 HTTP 客户端;东西向高频低延迟选 gRPC(性能),管理面/对外选 REST/Feign(生态与可读),混用是常态(见 §9)。
 - **绞杀者模式**:新旧并存,`*Gateway` 缝一键切换,渐进拆分、可回滚,而非大爆炸重写。
 - **为什么 query 理解/实验留 rec-engine**:单一事实源,ad-serving 只收已解析结果,避免多处解析不一致。
 - **DB-per-service 怎么解耦读**:事件驱动读模型复制(Kafka)+ 批 sync 替身,打破跨库 JOIN。

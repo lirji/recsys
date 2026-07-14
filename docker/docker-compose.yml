@@ -1,9 +1,15 @@
-# 本地依赖中间件。一键启动:docker compose up -d
-# 核心(v1 必需):postgres、redis
-# 可选(进阶):kafka、nacos —— profile=full
-# 观测性:prometheus + grafana —— profile=obs(docker compose --profile obs up -d)
-#   Java 服务跑在宿主机,容器内 prometheus 通过 host.docker.internal 抓 /actuator/prometheus
-#   Grafana: http://localhost:3001 (admin/admin),已预置数据源 + 推荐在线看板
+# 本仓库全部容器编排的单一入口(本文件在 docker/ 目录下,故所有相对路径以 ../ 指向仓库根)。
+# 一键(推荐):从仓库根跑 `scripts/dev-local.sh up`(基础设施 + 8 个 app 全部容器化 + 健康检查),
+#             或直接 `cd docker && docker compose --profile apps --profile console up -d --build`。
+#
+# 按 profile 分层启动(cd docker 后,或加 -f docker/docker-compose.yml):
+#   (默认)             postgres + redis —— 只起基础存储
+#   --profile full      追加 kafka + nacos
+#   --profile apps      追加 8 个 Java 服务(全链路容器化;仅 gateway 对宿主暴露端口)
+#   --profile console   追加前端 nginx(SPA + 反代 /api)
+#   --profile obs       追加 prometheus + grafana + tempo + alertmanager(观测)
+# 所有对宿主暴露的端口都可用环境变量覆盖(见 docker/.env.example;本机端口冲突时 dev-local.sh 会注入)。
+#   Grafana: http://localhost:${GRAFANA_PORT:-3001} (admin/admin),已预置数据源 + 推荐在线看板
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -14,11 +20,12 @@ services:
       POSTGRES_USER: ${PG_USER:-recsys}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-recsys}
     ports:
-      - "5432:5432"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # 首次启动自动建表(schema + 索引)
-      - ./recsys-offline/sql:/docker-entrypoint-initdb.d:ro
+      # 首次启动自动建表(schema + 索引 + 分库 ds_1 引导);sql/ 在仓库根,compose 在 docker/ 故用 ../
+      # 其中 04b_ds1_bootstrap.sql 自动建 recsys_ds1 + 分片骨架(容器化必需,否则分片服务启动即挂)。
+      - ../recsys-offline/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U recsys -d recsys"]
       interval: 5s
@@ -29,7 +36,7 @@ services:
     image: redis:7-alpine
     container_name: recsys-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -55,7 +62,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
-      - "9092:9092"
+      - "${KAFKA_PORT:-9092}:9092"
 
   nacos:
     # v2.4.3 起有原生 arm64 多架构镜像(v2.3.2 仅 amd64,Apple Silicon 上模拟会卡死);standalone 内嵌 Derby。
@@ -66,8 +73,8 @@ services:
     environment:
       MODE: standalone
     ports:
-      - "8848:8848"
-      - "9848:9848"
+      - "${NACOS_PORT:-8848}:8848"
+      - "${NACOS_GRPC_PORT:-9848}:9848"
 
   # ---- 观测性:docker compose --profile obs up -d 才启动 ----
   prometheus:
@@ -81,7 +88,7 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
 
   # P2 分布式追踪后端:接收各服务 OTLP span(宿主 Java 服务 → localhost:4318),Grafana 按 traceId 钻取跨进程链路
   tempo:
@@ -103,7 +110,7 @@ services:
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
-      - "9093:9093"
+      - "${ALERTMANAGER_PORT:-9093}:9093"
 
   # P2:告警接收演示端——Alertmanager 把告警 POST 到这里,容器日志即可见(`docker logs recsys-webhook-logger`)。
   # 演示生产 Slack/钉钉/飞书 投递的等价物,不接真实外部服务。
@@ -132,22 +139,26 @@ services:
       - grafana-data:/var/lib/grafana
     ports:
       # 宿主机 3000 常被占(docker-proxy 残留),映射到 3001 规避
-      - "3001:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
 
   # ---- 控制台前端:docker compose --profile console up -d 才启动 ----
   # 前后端分离后前端独立为 console/ 工程;此服务用 nginx 同源托管构建产物 + 反代 /api 到宿主机上的网关。
   # dev 阶段无需它,直接 `cd console && npm run dev`(Vite :5173 proxy 到 :8080)即可。
   console:
-    build: ./console
+    build: ../console
     container_name: recsys-console-web
     profiles: ["console"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # 全部容器化(apps+console)时前端 nginx 与 gateway 同网络,直连容器;单独 --profile console 也会带起 gateway。
+    depends_on:
+      - gateway
     environment:
-      # 网关跑在宿主机 :8080;若把各 Java app 也容器化进同网络,改成 http://gateway:8080
-      RECSYS_GATEWAY: http://host.docker.internal:8080
+      # 默认打同网络的 gateway 容器(全链路容器化);若后端仍在宿主机 mvn,覆盖为
+      #   RECSYS_GATEWAY=http://host.docker.internal:${GATEWAY_PORT:-8080}
+      RECSYS_GATEWAY: ${RECSYS_GATEWAY:-http://gateway:8080}
     ports:
-      - "8095:80"
+      - "${CONSOLE_WEB_PORT:-8095}:80"
 
   # ---- 在线服务容器(P0 微服务化):docker compose --profile apps up -d ----
   # 参数化 Dockerfile(MODULE/PORT)构建各 fat jar,全部接入 Nacos 服务发现(NACOS_DISCOVERY=true),
@@ -156,7 +167,9 @@ services:
   # 前端 console/(--profile console)把 RECSYS_GATEWAY 指向本网关即可全链路容器化(改成 http://gateway:8080)。
   gateway:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-gateway
         PORT: 8080
@@ -168,14 +181,18 @@ services:
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
-      SPRING_PROFILES_ACTIVE: discovery   # 切 lb:// 动态路由(application-discovery.yml)
+      # 路由默认即 lb://(见 recsys-gateway application.yml);无 Nacos 才需 SPRING_PROFILES_ACTIVE=static
       SERVER_PORT: 8080
+      # 一键 dev 栈默认关安全(否则 /api/advertiser·/api/search-ads 等经网关 401);生产置 true 并注入密钥
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
     ports:
-      - "8080:8080"   # 统一入口
+      - "${GATEWAY_PORT:-8080}:8080"   # 统一入口(前端 /api 反代到此;本机 8080 被占 → dev-local.env 覆盖 GATEWAY_PORT)
 
   rec-engine:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-rec-engine
         PORT: 8081
@@ -190,23 +207,32 @@ services:
         condition: service_started
     environment:
       PG_HOST: postgres
+      PG_USER: "${PG_USER:-recsys}"
+      PG_PASSWORD: "${PG_PASSWORD:-recsys}"
+      # ad 读侧 ShardingSphere 次数据源(sharding.yaml 用单占位符传整条 URL);容器内指向 postgres 服务
+      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
       REDIS_HOST: redis
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8081
-      # 广告在线服务走 gRPC(容器 DNS);切 in-process 则退回进程内 AdPipeline(单体等价)
+      # 广告在线服务走 gRPC + Nacos 服务发现(discovery:/// 经 DiscoveryClient 解析实例 + round_robin 客户端 LB;
+      # 回滚:AD_SERVING_GRPC=static://ad-serving:9095 走容器 DNS 直连,或 AD_SERVING_MODE=in-process 退单体)
       AD_SERVING_MODE: grpc
-      AD_SERVING_GRPC: static://ad-serving:9095
+      AD_SERVING_GRPC: discovery:///recsys-ad-serving
       # 内容服务走 gRPC(展示 hydrate);切 in-process 则退回进程内 ContentService(单体等价)
       CONTENT_SERVING_MODE: grpc
-      CONTENT_GRPC: static://content:9096
+      CONTENT_GRPC: discovery:///recsys-content-service
       # 用户画像服务走 gRPC(冷启动兴趣);切 in-process 则退回进程内 UserProfileService(单体等价)
       USER_SERVING_MODE: grpc
-      USER_GRPC: static://user:9097
+      USER_GRPC: discovery:///recsys-user-service
 
   ad-serving:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-ad-serving
         PORT: 8085
@@ -221,16 +247,24 @@ services:
         condition: service_started
     environment:
       PG_HOST: postgres
+      PG_USER: "${PG_USER:-recsys}"
+      PG_PASSWORD: "${PG_PASSWORD:-recsys}"
+      # ad 读侧 ShardingSphere 次数据源(同 rec-engine);容器内指向 postgres 服务
+      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
       REDIS_HOST: redis
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8085
       # gRPC 端口(net.devh);rec-engine 经容器 DNS ad-serving:9095 连
       GRPC_SERVER_PORT: 9095
 
   behavior:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-behavior
         PORT: 8082
@@ -248,11 +282,14 @@ services:
       REDIS_HOST: redis
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8082
 
   advertiser:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-advertiser
         PORT: 8083
@@ -267,14 +304,22 @@ services:
         condition: service_started
     environment:
       PG_HOST: postgres    # 分库分表 sharding.yaml 的 $${PG_HOST::localhost} 走此环境变量
+      PG_USER: "${PG_USER:-recsys}"
+      PG_PASSWORD: "${PG_PASSWORD:-recsys}"
+      # 写侧 @Primary ShardingSphere 数据源(sharding.yaml 单占位符整条 URL);容器内指向 postgres 服务
+      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
       REDIS_HOST: redis
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8083
 
   console-api:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-console
         PORT: 8090
@@ -287,13 +332,27 @@ services:
         condition: service_started
     environment:
       PG_HOST: postgres
+      REDIS_HOST: redis
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8090
+      # 控制台 BFF 的健康探针 / 上游代理:全部走容器 DNS(全链路容器化)
+      RECSYS_CONSOLE_URL: http://console-api:8090
+      RECSYS_GATEWAY_URL: http://gateway:8080
+      RECSYS_REC_ENGINE_URL: http://rec-engine:8081
+      RECSYS_BEHAVIOR_URL: http://behavior:8082
+      RECSYS_ADVERTISER_URL: http://advertiser:8083
+      RECSYS_AD_SERVING_URL: http://ad-serving:8085
+      RECSYS_CONTENT_SERVICE_URL: http://content:8086
+      RECSYS_USER_SERVICE_URL: http://user:8087
+      PROMETHEUS_URL: "${PROMETHEUS_URL:-http://prometheus:9090}"
 
   content:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-content-service
         PORT: 8086
@@ -308,12 +367,15 @@ services:
       PG_HOST: postgres
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8086
       GRPC_SERVER_PORT: 9096   # rec-engine 经容器 DNS content:9096 连
 
   user:
     build:
-      context: .
+      # 构建上下文=仓库根(Dockerfile 需要全部 pom + 源码);compose 在 docker/ 子目录故 context 指向上级。
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         MODULE: recsys-user-service
         PORT: 8087
@@ -328,6 +390,7 @@ services:
       PG_HOST: postgres
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
+      RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8087
       GRPC_SERVER_PORT: 9097   # rec-engine 经容器 DNS user:9097 连
 

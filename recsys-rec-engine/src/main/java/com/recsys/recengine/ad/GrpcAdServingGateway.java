@@ -10,6 +10,7 @@ import com.recsys.proto.ad.v1.ClickRequest;
 import com.recsys.proto.ad.v1.ConversionRequest;
 import com.recsys.proto.ad.v1.SearchAdsRequest;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,8 +40,11 @@ public class GrpcAdServingGateway implements AdServingGateway {
         return s == null ? "" : s;
     }
 
+    // searchAds 是幂等读:@Retry(最外层)对瞬时错误(UNAVAILABLE/DEADLINE_EXCEEDED)重试,重试耗尽或非瞬时错误
+    // 才落 fallback;@CircuitBreaker(内层,无 fallback)向 Retry 抛出以驱动重试/累计失败率。计费写(下方)不重试。
     @Override
-    @CircuitBreaker(name = "ad-serving-grpc", fallbackMethod = "searchAdsFallback")
+    @Retry(name = "ad-serving-grpc", fallbackMethod = "searchAdsFallback")
+    @CircuitBreaker(name = "ad-serving-grpc")
     public SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,
                                        String scene, String adBucket, double reserve) {
         SearchAdsRequest req = SearchAdsRequest.newBuilder()

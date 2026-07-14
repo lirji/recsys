@@ -7,7 +7,7 @@
 --
 -- 幂等:CREATE INDEX IF NOT EXISTS。已存在 pgdata 卷不会重跑 01_schema.sql/11_item_local.sql,
 -- 故本文件供**已有库**手动补建:
---   docker compose exec -T postgres psql -U recsys -d recsys < recsys-offline/sql/16_item_indexes.sql
+--   docker compose -f docker/docker-compose.yml exec -T postgres psql -U recsys -d recsys < recsys-offline/sql/16_item_indexes.sql
 -- (item_local 仅在 recsys.content.item-source=replica 且已建该表时需要;未建则第二组语句忽略即可。)
 
 -- 权威 item

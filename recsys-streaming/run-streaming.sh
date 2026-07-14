@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 本地 MiniCluster 嵌入式运行实时特征 Flink 作业。
-# 前置:docker compose --profile full up -d(Kafka)+ behavior 以 BEHAVIOR_USE_KAFKA=true 起。
+# 前置:docker compose -f docker/docker-compose.yml --profile full up -d(Kafka)+ behavior 以 BEHAVIOR_USE_KAFKA=true 起。
 # 用法:bash recsys-streaming/run-streaming.sh   [-- 透传 --window-min 10 --slide-sec 20 ...]
 set -e
 cd "$(dirname "$0")"

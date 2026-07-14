@@ -55,6 +55,11 @@
         </dependency>
         <!-- P0 微服务化:Nacos 服务发现。网关作为 discovery client 解析 lb://recsys-<svc>(discovery profile);
              默认关(NACOS_DISCOVERY=false)→ 用静态 http://localhost 路由,无 Nacos 也能起。 -->
+        <!-- P4 配置中心:Nacos config,经 spring.config.import=optional:nacos:... 拉热更配置(传递引入 spring-cloud-context)。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>

@@ -19,9 +19,10 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         refresh-enabled: true            # Nacos 推送变更即自动 refresh(否则仅启动时拉一次)
       # P0 微服务化:Nacos 服务发现(注册自身,供网关 lb://recsys-rec-engine 解析)。
-      # 默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;容器化/discovery 场景设 true。
+      # 默认开(NACOS_DISCOVERY=true)→ 注册到 Nacos,供 gRPC discovery:/// 与网关 lb:// 解析;
+      # 无 Nacos 的纯本地跑显式设 NACOS_DISCOVERY=false 退回(dev-local.sh 即如此)。
       discovery:
-        enabled: ${NACOS_DISCOVERY:false}
+        enabled: ${NACOS_DISCOVERY:true}
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         namespace: ${NACOS_NAMESPACE:}
@@ -63,21 +64,28 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
-# gRPC 客户端(net.devh):仅 recsys.ad.serving.mode=grpc 时 GrpcAdServingGateway 注入 @GrpcClient("ad-serving") 才建通道。
-# 默认静态地址(无需 Nacos,契合优雅降级);接 Nacos discovery 后可改 discovery://recsys-ad-serving 做客户端负载均衡。
+# gRPC 客户端(net.devh):仅 recsys.<svc>.serving.mode=grpc 时对应 gateway 注入 @GrpcClient 才建通道。
+# 地址默认静态(static://localhost,无需 Nacos,契合优雅降级 + 本地单实例);容器/生产经 env 切
+# discovery:///recsys-<svc>-service(见 docker-compose apps profile / k8s),由 Spring Cloud DiscoveryClient
+# 从 Nacos 解析实例(服务端已发布 metadata.gRPC_port 供 net.devh 取 gRPC 端口)。
+# default-load-balancing-policy=round_robin:多实例注册后按 subchannel 轮询做客户端负载均衡;
+# 单实例(static:// 或仅一副本)时退化为直连、无副作用。deadline/熔断/重试见下方 resilience4j。
 grpc:
   client:
     ad-serving:
       address: ${AD_SERVING_GRPC:static://localhost:9095}
       negotiation-type: plaintext
+      default-load-balancing-policy: round_robin
     # P2 内容服务:仅 recsys.content.serving.mode=grpc 时 GrpcContentGateway 建通道。
     content:
       address: ${CONTENT_GRPC:static://localhost:9096}
       negotiation-type: plaintext
+      default-load-balancing-policy: round_robin
     # P3 用户画像服务:仅 recsys.user.serving.mode=grpc 时 GrpcUserGateway 建通道。
     user:
       address: ${USER_GRPC:static://localhost:9097}
       negotiation-type: plaintext
+      default-load-balancing-policy: round_robin
 
 # 推荐链路可调参数。P4 已接 Nacos:把本 recsys.* 树(尤其 recsys.ad.* / recsys.fusion.*)放到 Nacos
 # dataId=recsys-rec-engine.yml 即可热更——线上改 reserve-price/pacing/频控/ad-load 不重启(见上 spring.cloud.nacos)。
@@ -430,15 +438,31 @@ resilience4j:
         register-health-indicator: true
       content-grpc: *grpc-cb
       user-grpc: *grpc-cb
+  # P1 弹性:gRPC 幂等读(searchAds/findByIds/getInterests)瞬时错误重试。Retry 为最外层切面(包住 CircuitBreaker):
+  # 仅 UNAVAILABLE/DEADLINE_EXCEEDED 重试(GrpcRetryablePredicate),UNAUTHENTICATED/参数错/熔断快速失败不重试;
+  # 重试耗尽或不可重试才落各 gateway 的降级 fallback。非幂等写(计费/兴趣写)不挂 @Retry,避免重复副作用。
+  retry:
+    instances:
+      ad-serving-grpc: &grpc-retry
+        max-attempts: 2                # 首次 + 1 次重试(跨进程瞬断兜一手,不放大延迟)
+        wait-duration: 50ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exception-predicate: com.recsys.proto.grpc.GrpcRetryablePredicate
+      content-grpc: *grpc-retry
+      user-grpc: *grpc-retry
 
 management:
   endpoints:
     web:
       exposure:
         # 修复:原缺 exposure 层级 → include 挂在 web 下无效 → 只暴露默认 health,prometheus/metrics 端点缺失。
-        # refresh(P4):手动触发 /actuator/refresh 重绑配置(Nacos 自动推送外的兜底手段)
-        include: health,info,metrics,prometheus,refresh
+        # refresh(P4):手动触发 /actuator/refresh 重绑配置(Nacos 自动推送外的兜底手段)。
+        # env(P4):查已解析配置值(观测 Nacos 热更前后取值);生产仍受安全链保护(非 permit-paths,需内部令牌)。
+        include: health,info,metrics,prometheus,refresh,env
   endpoint:
+    env:
+      show-values: always   # P4:/actuator/env 显示配置值(Boot3 默认 ****** 脱敏);观测 Nacos 热更前后取值,dev 观测用
     health:
       # 暴露 k8s 探针端点 /actuator/health/{liveness,readiness}
       probes:

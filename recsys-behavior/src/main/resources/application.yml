@@ -4,12 +4,21 @@ server:
 spring:
   application:
     name: recsys-behavior
-  # P0 微服务化:Nacos 服务发现。默认关(NACOS_DISCOVERY=false)→ 不注册、无 Nacos 也能起;
-  # 容器化/discovery 场景 NACOS_DISCOVERY=true 注册,供网关 lb://recsys-behavior 解析。
+  # P4 配置中心:从 Nacos 拉热更配置(dataId=recsys-behavior.yml);optional: → 不可达退本地 yml,无 Nacos 也能起。
+  config:
+    import: "optional:nacos:recsys-behavior.yml"
+  # P0 微服务化:Nacos 服务发现。默认开(NACOS_DISCOVERY=true)→ 注册,供网关 lb://recsys-behavior 解析;
+  # 无 Nacos 的纯本地跑显式设 NACOS_DISCOVERY=false 退回。
   cloud:
     nacos:
+      config:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        file-extension: yaml
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        refresh-enabled: true
       discovery:
-        enabled: ${NACOS_DISCOVERY:false}
+        enabled: ${NACOS_DISCOVERY:true}
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         namespace: ${NACOS_NAMESPACE:}

@@ -13,7 +13,7 @@
 
 ```bash
 # 0) 前置:infra 起着、行为已导入(Track E)
-docker compose up -d                      # postgres + redis
+docker compose -f docker/docker-compose.yml up -d          # postgres + redis
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 export PATH="/Users/liruijun/personal/devUtils/apache-maven-3.9.12/bin:$PATH"
 mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=import-behavior   # 若未导

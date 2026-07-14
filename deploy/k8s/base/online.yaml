@@ -28,7 +28,7 @@ spec:
             - secretRef: { name: recsys-secrets }
           env:
             - { name: SERVER_PORT, value: "8080" }
-            - { name: SPRING_PROFILES_ACTIVE, value: "discovery" }
+            # 路由默认即 lb://(gateway application.yml);NACOS_DISCOVERY 由 recsys-config 提供,无需 discovery profile
           resources:
             requests: { cpu: "250m", memory: "512Mi" }
             limits: { cpu: "1", memory: "1024Mi" }

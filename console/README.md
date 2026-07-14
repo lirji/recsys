@@ -50,8 +50,8 @@ docker build -t recsys/console .
 docker run -p 8095:80 -e RECSYS_GATEWAY=http://host.docker.internal:8080 recsys/console
 # 打开 http://localhost:8095
 
-# 方式二:docker compose(可选 profile)
-docker compose --profile console up -d --build      # 前端在 :8095,反代到宿主机网关 :8080
+# 方式二:docker compose(编排在 docker/;从仓库根 -f 指向,或 cd docker 后直接跑)
+docker compose -f docker/docker-compose.yml --profile console up -d --build   # 前端 :8095,反代到网关
 ```
 
 `RECSYS_GATEWAY` 决定 nginx 把 `/api` 反代到哪:宿主机网关用 `http://host.docker.internal:8080`,同容器网络用 `http://gateway:8080`。见 nginx 模板 `default.conf.template` 与 `Dockerfile`。

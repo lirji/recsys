@@ -6,6 +6,7 @@ import com.recsys.proto.content.v1.BatchGetItemsReply;
 import com.recsys.proto.content.v1.BatchGetItemsRequest;
 import com.recsys.proto.content.v1.ContentServiceGrpc;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +32,10 @@ public class GrpcContentGateway implements ContentGateway {
     @GrpcClient("content")
     private ContentServiceGrpc.ContentServiceBlockingStub stub;
 
+    // findByIds 是幂等读:@Retry 对瞬时错误重试,重试耗尽/非瞬时才落 fallback(空 hydrate);@CircuitBreaker 内层无 fallback。
     @Override
-    @CircuitBreaker(name = "content-grpc", fallbackMethod = "findByIdsFallback")
+    @Retry(name = "content-grpc", fallbackMethod = "findByIdsFallback")
+    @CircuitBreaker(name = "content-grpc")
     public Map<Long, Item> findByIds(List<Long> itemIds) {
         if (itemIds == null || itemIds.isEmpty()) {
             return Map.of();

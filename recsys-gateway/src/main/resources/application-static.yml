@@ -1,0 +1,27 @@
+# 静态路由 fallback profile —— 无 Nacos 时用:`--spring.profiles.active=static`。
+# 把默认的 lb:// 路由整体替换回 http://localhost:<port>(routes 是 list 属性,整体覆盖而非逐条合并),
+# 并关闭服务发现(不注册)。端口用 env(dev-local 传 REC_ENGINE_PORT 等;默认标准端口 8081/8082/8083/8090)。
+# dev-local.sh 在 NACOS_DISCOVERY=false 时会自动给网关带上本 profile。
+spring:
+  cloud:
+    nacos:
+      discovery:
+        enabled: false   # static profile 下强制关:无 Nacos 也能起,不做注册
+    gateway:
+      routes:
+        - id: rec-engine
+          uri: http://localhost:${REC_ENGINE_PORT:8081}
+          predicates:
+            - Path=/api/recommend/**,/api/search/**,/api/search-ads/**,/api/feed/**,/api/query/**,/api/user/**,/api/ad/**,/api/experiment/**
+        - id: behavior
+          uri: http://localhost:${BEHAVIOR_PORT:8082}
+          predicates:
+            - Path=/api/behavior/**
+        - id: advertiser
+          uri: http://localhost:${ADVERTISER_PORT:8083}
+          predicates:
+            - Path=/api/advertiser/**
+        - id: console
+          uri: http://localhost:${CONSOLE_PORT:8090}
+          predicates:
+            - Path=/api/console/**

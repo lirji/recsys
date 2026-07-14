@@ -49,12 +49,14 @@ recsys/
 # 1. 准备环境变量
 cp .env.example .env        # 按需填写 GEMINI_API_KEY 等
 
-# 2. 启动中间件(核心:postgres + redis;schema 自动建好)
-docker compose up -d
-#   需要 kafka/nacos 时:docker compose --profile full up -d
+# 2. 启动中间件(核心:postgres + redis;schema 自动建好)。容器编排统一在 docker/ 目录。
+#   一键全栈容器化(基础设施 + 8 app + 前端,推荐):scripts/dev-local.sh up
+#   或手动用 docker compose(从仓库根 -f 指向 docker/,或 cd docker 后直接跑):
+docker compose -f docker/docker-compose.yml up -d
+#   需要 kafka/nacos 时:docker compose -f docker/docker-compose.yml --profile full up -d
 #   容器化全部后端服务(网关/编排/behavior/advertiser/console + 内部服务 ad-serving/content/user):
-#     docker compose --profile apps up -d    # 参数化 Dockerfile 逐个构建 fat jar,经 Nacos 服务发现互联
-#   观测栈(Prometheus/Grafana/Alertmanager/Tempo):docker compose --profile obs up -d
+#     docker compose -f docker/docker-compose.yml --profile apps up -d   # 参数化 docker/Dockerfile 构建 fat jar,经 Nacos 互联
+#   观测栈(Prometheus/Grafana/Alertmanager/Tempo):docker compose -f docker/docker-compose.yml --profile obs up -d
 
 # 3. 设置 JDK 21 并构建
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -98,7 +100,7 @@ mvn -pl recsys-rec-engine spring-boot:run
 
 ```bash
 # 1. 起观测栈(默认不启动,profile=obs)。Java 服务跑在宿主机,容器内经 host.docker.internal 抓取
-docker compose --profile obs up -d
+docker compose -f docker/docker-compose.yml --profile obs up -d
 # 2. 正常起 rec-engine(:8081)+ behavior(:8082)
 mvn -pl recsys-rec-engine spring-boot:run     # 另开终端
 mvn -pl recsys-behavior   spring-boot:run
@@ -126,7 +128,7 @@ open http://localhost:3001     # admin/admin,数据源+看板已预置
 
 ```bash
 # 1. 起 Kafka(profile=full)。注:用官方 apache/kafka 镜像(Bitnami 旧 tag 已下架)
-docker compose --profile full up -d kafka
+docker compose -f docker/docker-compose.yml --profile full up -d kafka
 # 2. behavior 以 Kafka 模式起(投递行为到 behavior-events,不可用时自动降级入库)
 BEHAVIOR_USE_KAFKA=true mvn -pl recsys-behavior spring-boot:run
 # 3. 跑 Flink 实时作业(脚本含 Java 21 所需 --add-opens;首次自动打 fat jar)

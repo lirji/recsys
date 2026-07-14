@@ -7,7 +7,7 @@ metadata:
   name: recsys-content-service
   labels: { app: recsys-content-service }
 spec:
-  replicas: 1
+  replicas: 2   # 多副本:HA + Service 后端负载均衡(客户端 round_robin 见 rec-engine grpc.client.*)
   selector:
     matchLabels: { app: recsys-content-service }
   template:
@@ -49,7 +49,7 @@ metadata:
   name: recsys-user-service
   labels: { app: recsys-user-service }
 spec:
-  replicas: 1
+  replicas: 2   # 多副本:HA + Service 后端负载均衡(客户端 round_robin 见 rec-engine grpc.client.*)
   selector:
     matchLabels: { app: recsys-user-service }
   template:
