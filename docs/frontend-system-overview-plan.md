@@ -1,4 +1,6 @@
-# 前端系统总览页技术方案
+# 前端系统总览页技术方案(已落地,历史存档)
+
+> **状态(2026-07)**:本方案已实施完成(commit 69af5dcb:`console/src/pages/project/ProjectOverview.tsx` + `recsys-console` system BFF,`/` 默认跳 `/overview`);后续 84af86d6 又在其上扩展了召回沙盘 `/recall-lab`、策略对比台 `/strategy-lab`、桶对比大盘 `/bucket-board` 等调试台页面(本方案未含)。菜单/路由现状以 `console/src/router.tsx` 为准,本文仅作设计存档。
 
 ## 目标
 

@@ -252,6 +252,49 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- 供奉依赖(vendored):auth-platform SDK 及其兄弟件(protocol/parent pom)未发布到任何
+                 制品仓库,jar/pom 直接提交在 libs/authz/。在 initialize 阶段 install-file 进本地仓,
+                 使干净环境(GitHub Actions mvn clean verify、docker/Dockerfile 内 mvn package、新克隆)
+                 无需预装即可解析;不走远程仓库,故对 settings.xml 的 mirrorOf:* 镜像免疫。
+                 inherited=false:只在根聚合 pom 执行一次(-pl <模块> -am 会连根一起构建,同样生效)。
+                 SDK 升级:在 auth-platform 仓库重新打包后替换 libs/authz/ 下同名文件;
+                 若日后 SDK 发布到可达制品仓库,删除本插件与 libs/authz/ 即可。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>vendored-authz-parent</id>
+                        <phase>initialize</phase>
+                        <goals><goal>install-file</goal></goals>
+                        <configuration>
+                            <file>${project.basedir}/libs/authz/auth-platform-0.1.0-SNAPSHOT.pom</file>
+                            <pomFile>${project.basedir}/libs/authz/auth-platform-0.1.0-SNAPSHOT.pom</pomFile>
+                            <packaging>pom</packaging>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>vendored-authz-protocol</id>
+                        <phase>initialize</phase>
+                        <goals><goal>install-file</goal></goals>
+                        <configuration>
+                            <file>${project.basedir}/libs/authz/auth-platform-protocol-0.1.0-SNAPSHOT.jar</file>
+                            <pomFile>${project.basedir}/libs/authz/auth-platform-protocol-0.1.0-SNAPSHOT.pom</pomFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>vendored-authz-sdk</id>
+                        <phase>initialize</phase>
+                        <goals><goal>install-file</goal></goals>
+                        <configuration>
+                            <file>${project.basedir}/libs/authz/auth-platform-sdk-0.1.0-SNAPSHOT.jar</file>
+                            <pomFile>${project.basedir}/libs/authz/auth-platform-sdk-0.1.0-SNAPSHOT.pom</pomFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- -parameters:保留构造参数名,供 Jackson 按名反序列化 record DTO -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

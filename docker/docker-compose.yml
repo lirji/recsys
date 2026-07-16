@@ -369,7 +369,15 @@ services:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
+      # 细粒度归属判权(docs/09):默认 disabled 零行为变化;设 RECSYS_AUTHZ_MODE=shadow|enforce 接通。
+      # 判权服务(auth-platform-server :8210)跑在宿主机,容器内经 host.docker.internal 访问
+      # (SpiceDB 由 --profile authz 起,但判权走的是判权服务,不直连 SpiceDB)。
+      RECSYS_AUTHZ_MODE: "${RECSYS_AUTHZ_MODE:-disabled}"
+      AUTHZ_SERVER_URL: "${AUTHZ_SERVER_URL:-http://host.docker.internal:8210}"
+      AUTHZ_CLIENT_TOKEN: "${AUTHZ_CLIENT_TOKEN:-}"
       SERVER_PORT: 8083
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   console-api:
     build:

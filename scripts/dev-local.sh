@@ -17,6 +17,7 @@
 #   scripts/dev-local.sh infra              # 只起基础设施(postgres/redis/nacos)
 #   scripts/dev-local.sh frontend           # 前端热开发:宿主机跑 Vite(指向容器网关端口),便于改前端
 #   scripts/dev-local.sh obs                # 追加起观测栈(prometheus/grafana/tempo/alertmanager)
+#   scripts/dev-local.sh authz              # 追加起判权栈(recsys 专属 SpiceDB,docs/09;判权服务在宿主机另起)
 #
 # 端口:默认走「标准端口」(网关 8080 / pg 5432 / redis 6379 / nacos 8848);仅这些对宿主暴露的端口
 #   本机冲突时,把覆盖值写进 scripts/dev-local.env(见 dev-local.env.example,已 gitignore),脚本会 export
@@ -52,7 +53,9 @@ cd "$REPO"
 : "${LOG_DIR:=$REPO/.dev/logs}"
 
 # 本机覆盖(端口冲突等)。gitignore,见 dev-local.env.example。
-[ -f "$SCRIPT_DIR/dev-local.env" ] && . "$SCRIPT_DIR/dev-local.env"
+# set -a:该文件里设的**所有**变量自动 export 给 compose 插值(否则新增变量——如 RECSYS_AUTHZ_MODE、
+# CASDOOR_*——写了也传不到 docker compose 子进程,覆盖静默失效)。
+if [ -f "$SCRIPT_DIR/dev-local.env" ]; then set -a; . "$SCRIPT_DIR/dev-local.env"; set +a; fi
 
 # 把 compose 需要的变量 export 出去,供 docker-compose.yml 里的 ${VAR:-默认} 插值。
 export GATEWAY_PORT PG_PORT REDIS_PORT NACOS_PORT NACOS_GRPC_PORT CONSOLE_WEB_PORT
@@ -112,8 +115,8 @@ cmd_rebuild() {
 cmd_down() {
   require_docker || return 1
   echo "== 停并删容器(保留数据卷 pgdata / grafana-data)=="
-  # down 作用于整个 project(不限 profile);不加 -v,数据保留
-  compose --profile apps --profile console --profile full --profile obs down --remove-orphans
+  # down 需带上全部 profile 才能覆盖各分层的容器;不加 -v,数据保留
+  compose --profile apps --profile console --profile full --profile obs --profile authz down --remove-orphans
 }
 
 cmd_status() {
@@ -147,6 +150,17 @@ cmd_obs() {
   echo "  Grafana → http://localhost:$GRAFANA_PORT (admin/admin)"
 }
 
+# 判权栈(docs/09):recsys 专属 SpiceDB(postgres datastore,先跑 migrate 再 serve)。
+# 判权服务 auth-platform-server(:8210)从 auth-platform 仓库在宿主机起,advertiser 容器经
+# host.docker.internal 访问;接通判权设 RECSYS_AUTHZ_MODE=shadow|enforce(dev-local.env)后 rebuild advertiser。
+cmd_authz() {
+  require_docker || return 1
+  echo "== 追加判权栈(spicedb-migrate → spicedb;--profile authz)=="
+  compose --profile authz up -d
+  echo "  SpiceDB → grpc localhost:\${RECSYS_SPICEDB_GRPC_PORT:-50052} / http localhost:\${RECSYS_SPICEDB_HTTP_PORT:-8544}"
+  echo "  判权服务(auth-platform-server :8210)需在宿主机另行启动,见 docs/09-权限接入auth-platform.md"
+}
+
 # 前端热开发:宿主机跑 Vite(改前端即时热更),/api 反代到容器网关的宿主暴露端口。
 cmd_frontend() {
   cd "$REPO/console"
@@ -170,8 +184,9 @@ case "${1:-}" in
   logs)        cmd_logs "${2:-}" ;;
   infra)       cmd_infra ;;
   obs)         cmd_obs ;;
+  authz)       cmd_authz ;;
   frontend|fe) cmd_frontend ;;
-  *) echo "用法: $0 {up|down|restart|status|logs <svc>|rebuild <svc>|build|infra|obs|frontend} [服务名...]"
-     echo "服务名(compose): gateway rec-engine behavior advertiser ad-serving content user console-api console postgres redis nacos"
+  *) echo "用法: $0 {up|down|restart|status|logs <svc>|rebuild <svc>|build|infra|obs|authz|frontend} [服务名...]"
+     echo "服务名(compose): gateway rec-engine behavior advertiser ad-serving content user console-api console postgres redis nacos spicedb"
      exit 1 ;;
 esac

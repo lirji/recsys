@@ -2,7 +2,7 @@
 
 基于 Java 21 + Spring Boot 3.2 的推荐系统,Maven 多模块单仓,面向生产标准但可本地一键跑通。
 
-> 设计文档见上级目录 `../docs/`(技术栈 / 架构设计 / 关键技术点),执行计划见 `../PLAN.md`。
+> 设计文档见 `docs/`(项目总览 / 技术栈 / 架构设计 / 关键技术点 / 系统能力 / 本地运行 / 权限接入,及 `docs/skills/` 19 篇技术拆解);`PLAN.md` 为初始搭建计划(历史存档),现状以 `docs/00-项目总览.md` 为准。
 
 ## 环境要求
 
@@ -18,23 +18,29 @@
 ```
 recsys/
 ├── recsys-common      # 共享契约:接口/DTO/常量(被所有模块依赖,改动需广播)
-├── recsys-gateway     # 网关(:8080)                          [app]
+├── recsys-ad-common   # 广告共享契约(BidType/AdCatalogEvent/sharding.yaml)  [lib]
+├── recsys-proto       # gRPC 契约(.proto + 防腐 mapper + 内部令牌拦截器)     [lib]
+├── recsys-platform    # 平台安全/Web(内部 HMAC token/过滤器/全局异常)       [lib]
+├── recsys-gateway     # 网关(:8080;边缘认证:自签 JWT 默认/Casdoor OIDC 可选) [app]
 ├── recsys-rec-engine  # 推荐编排,对外主入口(:8081)            [app]
-├── recsys-recall      # 多路召回                                [lib] Track B
-├── recsys-rank        # 排序(规则/ONNX)                        [lib] Track C
+├── recsys-query       # Query 理解(归一/分词/意图/IDF)          [lib]
+├── recsys-recall      # 多路召回(12 通道)                      [lib] Track B
+├── recsys-rank        # 排序(规则/ONNX,9 策略)                [lib] Track C
+├── recsys-ad          # 搜索广告在线库(召回/竞价/计费/出价)     [lib]
 ├── recsys-feature     # 特征读写                                [lib] Track C
-├── recsys-embedding   # 向量化(Gemini,可降级)                 [lib] Track A
+├── recsys-embedding   # 向量化(Gemini,可降级本地 BGE)         [lib] Track A
 ├── recsys-content     # 物品元数据                              [lib] Track A
 ├── recsys-user        # 用户画像                                [lib]
 ├── recsys-behavior    # 行为采集(:8082)                       [app] Track E
 ├── recsys-offline     # 离线作业(导入/灌向量/CF/样本/双塔)     [app] Track A/E
 │   └── sql/           # 数据库 schema(容器首启自动执行)
 ├── recsys-console     # 控制台后端 console-api(:8090)          [app] Track F
-├── recsys-advertiser      # 广告主管理服务(:8083)                        [app]
+├── recsys-advertiser      # 广告主管理服务(:8083;可选 auth-platform 判权)  [app]
 ├── recsys-ad-serving      # 广告投放内部服务(HTTP :8085 / gRPC :9095)    [app]
 ├── recsys-content-service # 内容内部服务(HTTP :8086 / gRPC :9096)        [app]
 ├── recsys-user-service    # 用户画像内部服务(HTTP :8087 / gRPC :9097)    [app]
 ├── recsys-streaming   # 实时特征 Flink 作业(本地 MiniCluster)  [app]
+├── libs/authz/        # 供奉依赖:auth-platform SDK jar(未发布制品,根 pom 自动 install-file)
 └── console/           # 控制台前端(独立 Vite 工程,nginx 同源托管)  [前端]
 ```
 
@@ -53,10 +59,14 @@ cp .env.example .env        # 按需填写 GEMINI_API_KEY 等
 #   一键全栈容器化(基础设施 + 8 app + 前端,推荐):scripts/dev-local.sh up
 #   或手动用 docker compose(从仓库根 -f 指向 docker/,或 cd docker 后直接跑):
 docker compose -f docker/docker-compose.yml up -d
-#   需要 kafka/nacos 时:docker compose -f docker/docker-compose.yml --profile full up -d
+#   需要 kafka 时(可选):docker compose -f docker/docker-compose.yml --profile full up -d
 #   容器化全部后端服务(网关/编排/behavior/advertiser/console + 内部服务 ad-serving/content/user):
 #     docker compose -f docker/docker-compose.yml --profile apps up -d   # 参数化 docker/Dockerfile 构建 fat jar,经 Nacos 互联
+#     (Nacos 默认开:apps profile 自带 nacos 容器,各服务 NACOS_DISCOVERY=true 注册;纯本地 mvn 无 Nacos 时
+#      给网关加 --spring.profiles.active=static 回退静态路由)
 #   观测栈(Prometheus/Grafana/Alertmanager/Tempo):docker compose -f docker/docker-compose.yml --profile obs up -d
+#   细粒度判权(可选):docker compose -f docker/docker-compose.yml --profile authz up -d
+#     起 recsys 专属 SpiceDB(:8544),配合 advertiser 的 RECSYS_AUTHZ_MODE=shadow|enforce,见 docs/09
 
 # 3. 设置 JDK 21 并构建
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -70,7 +80,7 @@ mvn -pl recsys-rec-engine spring-boot:run
 
 | 服务 | HTTP 端口 | gRPC 端口 | 说明 |
 |---|---|---|---|
-| gateway | 8080 | - | 统一 API 网关(南北向入口) |
+| gateway | 8080 | - | 统一 API 网关(南北向入口;边缘认证默认自签 JWT,可选 Casdoor OIDC `RECSYS_EDGE_CASDOOR=true`,docs/09) |
 | rec-engine | 8081 | - | 推荐编排,对外主入口 |
 | behavior | 8082 | - | 行为采集 |
 | advertiser | 8083 | - | 广告主管理(写侧) |
@@ -81,11 +91,12 @@ mvn -pl recsys-rec-engine spring-boot:run
 | postgres | 5432 | - | pgvector |
 | redis | 6379 | - | |
 | kafka(可选) | 9092 | - | `--profile full` |
-| nacos(可选) | 8848 | - | `--profile full` |
+| nacos | 8848 | - | `--profile full/apps`(默认开:服务注册发现 + rec-engine 配置中心) |
+| spicedb(可选) | 8544 | 50052 | `--profile authz`(细粒度判权,docs/09) |
 | prometheus(obs) | 9090 | - | `--profile obs` |
 | grafana(obs) | 3001 | - | `--profile obs` |
 
-> **内部服务化模块**(`ad-serving`/`content-service`/`user-service`):以 gRPC 对内提供能力,rec-engine 默认走 `in-process`(单体)不依赖它们;设 `AD_SERVING_MODE=grpc` / `CONTENT_SERVING_MODE=grpc` / `USER_SERVING_MODE=grpc` 才切到 gRPC 调用。三者同时暴露 HTTP `/actuator/{health,prometheus}` 供健康探测与 Prometheus 抓取(需 `scanBasePackages` 含 `com.recsys.platform` 启用平台安全链,并在 `recsys.security.permit-paths` 放行 `/actuator/prometheus`)。
+> **内部服务化模块**(`ad-serving`/`content-service`/`user-service`):以 gRPC 对内提供能力,rec-engine **代码默认**走 `in-process`(单体)不依赖它们;设 `AD_SERVING_MODE=grpc` / `CONTENT_SERVING_MODE=grpc` / `USER_SERVING_MODE=grpc` 才切到 gRPC 调用(**容器全栈 `--profile apps` 下三者默认已置 grpc**,经 Nacos `discovery:///` 发现)。三者同时暴露 HTTP `/actuator/{health,prometheus}` 供健康探测与 Prometheus 抓取(需 `scanBasePackages` 含 `com.recsys.platform` 启用平台安全链,并在 `recsys.security.permit-paths` 放行 `/actuator/prometheus`)。
 >
 > ```bash
 > # 按需单独起某个内部服务(示例:内容服务)
@@ -141,7 +152,7 @@ docker exec recsys-redis redis-cli zrevrange recall:rt_hot 0 -1 withscores
 
 ## 并行开发
 
-各 Track 的范围、依赖、验收标准见 `../PLAN.md`。原则:
+各 Track 的范围、依赖、验收标准见 `PLAN.md`(历史存档)。原则:
 1. 只改本 Track 负责的模块目录;
 2. 依赖 `recsys-common` 已定义的契约,不擅自改动(需改先广播);
 3. 跨 Track 的下游依赖先 mock,Phase 2 集成时替换。

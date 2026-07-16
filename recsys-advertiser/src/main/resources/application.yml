@@ -63,6 +63,13 @@ recsys:
   # 补 P0 角色 RBAC 无 owner 校验的缺口。disabled(默认,零行为变化)/shadow(只记 would-deny)/enforce(真拦)。
   authz:
     mode: ${RECSYS_AUTHZ_MODE:disabled}
+  ad:
+    catalog:
+      # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。
+      publish-events: ${AD_CATALOG_PUBLISH:false}
+    # #3 ad-serving 物理拆库:报表 ad_event 聚合来源。db(默认,直读 ad_event,回滚落点)| grpc(调 ad-serving GetAdEventStats)。
+    report:
+      source: ${AD_REPORT_SOURCE:db}
 
 # auth-platform 判权 SDK(RemoteAuthzEngine → 判权服务 → recsys 专属 SpiceDB 实例)。
 # dev 栈:docker compose --profile authz 起 SpiceDB(:8544),判权服务(auth-platform-server)另起在 :8210,
@@ -71,13 +78,6 @@ authz:
   client:
     server-url: ${AUTHZ_SERVER_URL:http://localhost:8210}
     token: ${AUTHZ_CLIENT_TOKEN:}
-  ad:
-    catalog:
-      # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。
-      publish-events: ${AD_CATALOG_PUBLISH:false}
-    # #3 ad-serving 物理拆库:报表 ad_event 聚合来源。db(默认,直读 ad_event,回滚落点)| grpc(调 ad-serving GetAdEventStats)。
-    report:
-      source: ${AD_REPORT_SOURCE:db}
 
 management:
   endpoints:

@@ -41,6 +41,12 @@ Casdoor `sub`，需做一次 username→sub crosswalk。
   可见——授权即时生效的流程应复用授权响应里的 ZedToken（见 auth-platform `CLAUDE.md` 一致性节）。
 - SDK：`com.lrj.authz:auth-platform-sdk`（grpc-free 纯 HTTP，与本仓库 grpc 1.64 零冲突；Spring 依赖被
   根 pom BOM 钉到 3.2.5）。判权服务地址 `authz.client.server-url`（env `AUTHZ_SERVER_URL`，默认 :8210）。
+- **SDK 获取（供奉依赖 vendored）**：SDK 及其兄弟件（父 pom / `auth-platform-protocol`）未发布到任何
+  制品仓库，jar+pom 直接提交在 **`libs/authz/`**；根 `pom.xml` 的 `maven-install-plugin` 在 `initialize`
+  阶段自动 `install-file` 进本地仓——**干净环境（CI / Dockerfile 内 mvn / 新克隆）无需预装即可构建**，
+  且不走远程仓库、对 settings.xml 镜像免疫。SDK 升级 = 在 auth-platform 仓库重打包后替换 `libs/authz/`
+  同名文件；日后 SDK 发布到可达仓库后删插件与 `libs/authz/` 即可。仅 §3 step 3 的判权服务
+  （auth-platform-server）仍需从平台仓库构建。
 
 ## 3. dev 运行手册
 
@@ -59,6 +65,13 @@ SERVER_PORT=8210 SPICEDB_HTTP=http://localhost:8544 SPICEDB_KEY=recsys_dev_key \
 # 4) advertiser 开 shadow 观察(或 enforce 真拦)
 RECSYS_AUTHZ_MODE=shadow AUTHZ_SERVER_URL=http://localhost:8210 mvn -pl recsys-advertiser spring-boot:run
 ```
+
+**容器化跑法**（advertiser 跑在 compose 容器里,判权服务仍在宿主机）：compose 已给 advertiser 服务
+内置 `RECSYS_AUTHZ_MODE`(默认 disabled)/`AUTHZ_SERVER_URL`(默认 `http://host.docker.internal:8210`,
+经 `extra_hosts: host-gateway` 解析宿主机)/`AUTHZ_CLIENT_TOKEN` 三个环境变量——上面 step 1–3 照做后,
+直接 `RECSYS_AUTHZ_MODE=shadow docker compose --profile apps up -d advertiser`(或写进
+`scripts/dev-local.env` 再 `dev-local.sh rebuild advertiser`)即可接通;SpiceDB 也可用一键封装
+`scripts/dev-local.sh authz` 起(等价 `--profile authz up -d`)。
 
 授权管理（给用户授某广告主的 owner/member）：经判权服务
 `POST :8210/v1/relationships`（TOUCH `advertiser:{id}#owner@user:{subject}`），或部署 auth-platform-admin

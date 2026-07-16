@@ -6,7 +6,7 @@
 > - 端口是 **8085 / gRPC 9095**(本 ADR 曾提议 8084)。
 > - **未**引入 `recsys-experiment` 库——广告 A/B 的 adBucket / reservePrice 作为 gRPC 请求参数传入(query 理解与实验分桶留在 rec-engine 单一事实源)。
 > - 拆分**由开关控制而非硬切**:`recsys.ad.serving.mode`(`AD_SERVING_MODE`)= `in-process`(默认)/ `grpc`;`AdPipeline` 是两侧共享内核,golden-diff 等价。
-> - 已知缺口:gRPC 服务端鉴权拦截器存在但未注册(客户端已签、服务端待验)。
+> - ~~已知缺口:gRPC 服务端鉴权拦截器存在但未注册~~ **已补齐(2026-07,gRPC 服务端硬化)**:三个 gRPC 服务(ad-serving/content/user)均经 `GlobalServerInterceptorConfigurer` 注册 `InternalAuthGrpcServerInterceptor` 校验内部 HMAC 令牌(`server-auth-required` 默认 true);幂等读另挂 Resilience4j 瞬时重试。
 > - 完整 as-built 见 [skills/16 微服务拆分与 gRPC](skills/16-微服务拆分与gRPC.md)。
 
 ## 背景

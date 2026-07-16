@@ -119,4 +119,4 @@ Kafka ad-catalog-events ─► ad-serving AdCatalogEventConsumer
 - **为什么 query 理解/实验留 rec-engine**:单一事实源,ad-serving 只收已解析结果,避免多处解析不一致。
 - **DB-per-service 怎么解耦读**:事件驱动读模型复制(Kafka)+ 批 sync 替身,打破跨库 JOIN。
 - **gRPC 韧性**:deadline + 熔断 + 降级(无广告 feed / 只记日志)。
-- **已知缺口**:gRPC 服务端鉴权未注册——面试可诚实指出这是"客户端已签、服务端待验"的半成品。
+- **gRPC 服务端鉴权已闭环**(2026-07 硬化):三个 gRPC 服务经 `GrpcServerHardeningConfig`(`GlobalServerInterceptorConfigurer`)注册 `InternalAuthGrpcServerInterceptor`,`server-auth-required` 默认 true——面试可讲"net.devh 服务端拦截器必须全局注册,只写类不注册=客户端签、服务端不验的假安全"这个坑。
