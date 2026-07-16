@@ -86,5 +86,11 @@ RECSYS_AUTHZ_MODE=shadow AUTHZ_SERVER_URL=http://localhost:8210 mvn -pl recsys-a
   跨租户 token 一律 401）；`groups`（`recsys/admins`→ADMIN、`recsys/advertisers`→ADVERTISER，可配）映射
   网关角色；内部令牌 subject 自动变 Casdoor `sub`，下游判权主体零改动跟随。租户开通：
   `TENANT=recsys bash casdoor-tenant-provision.sh`（dev 用户 radmin/Radmin@12345、rowner1/Rowner1@12345）。
-  存量广告主已 backfill `platform` 归属边（32 个）。**前端 console 的 OIDC 登录页尚未实现**（演示登录在
-  casdoor 模式下 401），按 frontend-plan 流程另行实施。
+  存量广告主已 backfill `platform` 归属边（32 个）。**前端 console 的 OIDC 登录已实现**（frontend-plan
+  计划与评审记录：`docs/plans/console-oidc-0716/FINAL_PLAN.md`）：`VITE_AUTH_MODE=oidc`（默认 legacy
+  零行为变化）时登录页切统一登录单按钮（授权码+PKCE），`/callback` 回调、refresh_token 静默续期
+  （401 单飞）、Casdoor 单点登出、角色从 access_token `groups` 解（与网关映射同源）；oidc 会话存
+  sessionStorage，legacy 残留 token 绝不误发。**前端/网关开关必须成对**：`VITE_AUTH_MODE=oidc` ⇄
+  `RECSYS_EDGE_CASDOOR=true`（compose 侧 `CONSOLE_AUTH_MODE` + `RECSYS_EDGE_CASDOOR` 同调）。
+  dev 全链路：`docker compose --profile authz up -d spicedb` → fixture → authz-server(:8210) →
+  advertiser(enforce) → casdoor 模式网关 → `VITE_AUTH_MODE=oidc npm run dev`。

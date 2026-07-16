@@ -143,7 +143,7 @@ export const DEMO_USER_META: Record<(typeof DEMO_USERS)[number], { role: Role; d
  * 放在 Header 右侧现有 userId/scene 之后,不干扰调试用户(userId 是「被推荐的用户」,这里是「登录身份」)。
  */
 function IdentitySwitcher() {
-  const { user, switching, switchUser, logout } = useAuth();
+  const { user, mode, switching, switchUser, logout } = useAuth();
   const { message } = App.useApp();
   const screens = useBreakpoint();
   const navigate = useNavigate();
@@ -152,6 +152,8 @@ function IdentitySwitcher() {
   const currentRole: Role = user?.roles?.[0] ?? 'USER';
   const meta = ROLE_META[currentRole];
   const compact = !screens.md; // 窄屏:只保留头像 + 角色 Tag
+  // oidc 统一登录下不能随意切身份(真实账号),隐藏 demo 切换区,面板只留当前身份 + 登出。
+  const showDemoSwitch = mode === 'legacy';
 
   const handleSwitch = async (username: string) => {
     if (switching) return; // 切换中禁止重复触发
@@ -167,8 +169,8 @@ function IdentitySwitcher() {
 
   const handleLogout = () => {
     setOpen(false);
-    logout(); // 清身份态 → 路由守卫会拦回登录页
-    navigate('/login', { replace: true });
+    logout(); // legacy:清身份态;oidc:整页跳 Casdoor 登出(导航由 useAuth.logout 全权负责)
+    if (mode === 'legacy') navigate('/login', { replace: true });
   };
 
   // 行 hover 反馈(避免额外 CSS):按是否当前身份给不同的静息/悬停背景。
@@ -194,10 +196,10 @@ function IdentitySwitcher() {
     >
       <div style={{ padding: '6px 10px 8px' }}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          切换调试身份 · 演示 RBAC
+          {showDemoSwitch ? '切换调试身份 · 演示 RBAC' : `统一身份 · ${user?.username ?? ''}`}
         </Typography.Text>
       </div>
-      {DEMO_USERS.map((uname) => {
+      {showDemoSwitch && DEMO_USERS.map((uname) => {
         const um = DEMO_USER_META[uname];
         const rm = ROLE_META[um.role];
         const active = user?.username === uname;
@@ -249,7 +251,7 @@ function IdentitySwitcher() {
           </div>
         );
       })}
-      <Divider style={{ margin: '6px 4px' }} />
+      {showDemoSwitch && <Divider style={{ margin: '6px 4px' }} />}
       <div
         role="button"
         tabIndex={0}

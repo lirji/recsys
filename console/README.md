@@ -38,6 +38,23 @@ RECSYS_GATEWAY=http://localhost:9080 npm run dev   # Vite :5173
 
 dev 阶段浏览器只与 :5173 通信,Vite 把 `/api` 反代到网关。某后端未起时对应页面显示错误提示(优雅降级),不影响其它页面。详见 `docs/08-本地运行.md`。
 
+## 认证模式(VITE_AUTH_MODE,构建期烘焙)
+
+| 模式 | 登录方式 | 网关侧开关(必须成对!) |
+|---|---|---|
+| `legacy`(默认) | 演示账号(admin/advertiser/user,密码=用户名) | `RECSYS_EDGE_CASDOOR=false` |
+| `oidc` | **Casdoor 统一登录**(授权码+PKCE,登录页单按钮跳转) | `RECSYS_EDGE_CASDOOR=true` |
+
+```bash
+# dev 起 oidc 模式(需 Casdoor :8000 + casdoor 模式网关;dev 账号 radmin/Radmin@12345、rowner1/Rowner1@12345)
+VITE_AUTH_MODE=oidc RECSYS_GATEWAY=http://localhost:8080 npm run dev
+```
+
+oidc 会话由 oidc-client-ts 自管(sessionStorage,关标签即清、refresh_token 静默续期);角色从
+access_token 的 `groups` 解(admins→管理员、advertisers→广告主,与网关映射同源);顶栏隐藏 demo
+身份切换、登出走 Casdoor 单点登出。相关变量见 `.env.example`;模式错配(前 oidc+网关 legacy 或反之)
+表现为一直 401,先核对两侧开关。设计与边界见 `docs/plans/console-oidc-0716/FINAL_PLAN.md`、`docs/09`。
+
 ## 构建 / 部署 (prod)
 
 构建产物输出到 `dist/`,由 **nginx 同源托管 + 反代 /api 到网关**(不再打进任何 jar)。

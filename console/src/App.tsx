@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
 import AppRoutes, { RequireAuth } from './router';
 import LoginPage from './pages/LoginPage';
+import CallbackPage from './pages/CallbackPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { setMessageApi } from './api/notify';
 import { setRedirectToLogin } from './api/nav';
@@ -25,9 +26,13 @@ export default function App() {
     });
   }, [navigate]);
 
-  // /login 独立全屏(不套 AppLayout);其余路由经守卫,未登录拦回登录页。
+  // /login 与 /callback 独立全屏(不套 AppLayout、在守卫之前处理——回调时刻还没有 user,
+  // 套 RequireAuth 会被弹回 /login 形成死循环);其余路由经守卫,未登录拦回登录页。
   if (location.pathname === '/login') {
     return <LoginPage />;
+  }
+  if (location.pathname === '/callback') {
+    return <CallbackPage />;
   }
   // 顶层兜底边界:连外壳(AppLayout)都崩时也不至于整屏白。resetKey=路径,切页可恢复。
   return (

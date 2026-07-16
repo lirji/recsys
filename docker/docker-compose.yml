@@ -165,7 +165,14 @@ services:
   # 前后端分离后前端独立为 console/ 工程;此服务用 nginx 同源托管构建产物 + 反代 /api 到宿主机上的网关。
   # dev 阶段无需它,直接 `cd console && npm run dev`(Vite :5173 proxy 到 :8080)即可。
   console:
-    build: ../console
+    build:
+      context: ../console
+      # 认证模式构建期烘焙(Vite VITE_* 编译期内联)。切 oidc:CONSOLE_AUTH_MODE=oidc 且网关同步
+      # RECSYS_EDGE_CASDOOR=true(成对开关,见 docs/09);issuer 需浏览器可达(容器化时勿用容器名)。
+      args:
+        VITE_AUTH_MODE: ${CONSOLE_AUTH_MODE:-legacy}
+        VITE_CASDOOR_ISSUER: ${CASDOOR_ISSUER:-http://localhost:8000}
+        VITE_CASDOOR_CLIENT_ID: ${CASDOOR_CONSOLE_CLIENT_ID:-ragshared0client00000001-org-recsys}
     container_name: recsys-console-web
     profiles: ["console"]
     extra_hosts:
@@ -205,6 +212,15 @@ services:
       SERVER_PORT: 8080
       # 一键 dev 栈默认关安全(否则 /api/advertiser·/api/search-ads 等经网关 401);生产置 true 并注入密钥
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
+      # 统一登录平台(Casdoor)边缘模式(docs/09,默认关=自签 HS256 演示登录)。开启须与前端
+      # CONSOLE_AUTH_MODE=oidc 成对;JWKS 由网关容器访问,Casdoor 跑宿主机时用 host.docker.internal。
+      RECSYS_EDGE_CASDOOR: "${RECSYS_EDGE_CASDOOR:-false}"
+      CASDOOR_JWKS: "${CASDOOR_JWKS:-http://host.docker.internal:8000/.well-known/jwks}"
+      CASDOOR_ISSUER: "${CASDOOR_ISSUER:-http://localhost:8000}"
+      CASDOOR_AUDIENCES: "${CASDOOR_AUDIENCES:-ragshared0client00000001}"
+      CASDOOR_ORG: "${CASDOOR_ORG:-recsys}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # 统一入口(前端 /api 反代到此;本机 8080 被占 → dev-local.env 覆盖 GATEWAY_PORT)
 

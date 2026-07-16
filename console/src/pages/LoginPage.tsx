@@ -15,6 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS } from '../api/auth';
 import { toApiError } from '../api/client';
 import { DEMO_USER_META, ROLE_META } from '../components/AppLayout';
+import { AUTH_MODE } from '../config/auth';
 
 const { useBreakpoint } = Grid;
 
@@ -257,7 +258,7 @@ const LPA_CSS = `
 `;
 
 export default function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, signInOidc } = useAuth();
   const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
@@ -265,12 +266,30 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false); // 表单登录中
   const [pending, setPending] = useState<string | null>(null); // 正在一键登录的 demo 用户
+  const [redirecting, setRedirecting] = useState(false); // oidc:正在跳 Casdoor
 
-  // 登录成功回来源页(被守卫拦截时记下的 from),否则默认 /overview。
-  const state = location.state as { from?: { pathname?: string } } | null;
-  const from = state?.from?.pathname ?? '/overview';
-  const busy = loading || pending !== null;
+  // 登录成功回来源页(被守卫拦截时记下的 from,完整 location),否则默认 /overview。
+  // 读取侧拼全 pathname+search+hash(深链带参精确恢复;oidc 下经 Casdoor state 往返)。
+  const state = location.state as {
+    from?: { pathname?: string; search?: string; hash?: string };
+  } | null;
+  const from = state?.from?.pathname
+    ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}`
+    : '/overview';
+  const busy = loading || pending !== null || redirecting;
   const compact = !screens.md; // 窄屏:收起品牌区,卡片自带紧凑品牌头
+
+  // oidc:整页跳 Casdoor 授权页;跳转前置 loading 态(随即离开本页,失败才复位)。
+  const onOidcLogin = async () => {
+    if (busy) return;
+    setRedirecting(true);
+    try {
+      await signInOidc(from);
+    } catch (e) {
+      setRedirecting(false);
+      message.error(`无法跳转统一登录:${toApiError(e).message}(请确认 Casdoor 可达)`);
+    }
+  };
 
   const doLogin = async (username: string, password: string) => {
     try {
@@ -280,7 +299,9 @@ export default function LoginPage() {
     } catch (e) {
       const info = toApiError(e);
       message.error(
-        info.status === 401 || info.status === 403 ? '用户名或密码错误' : `登录失败:${info.message}`,
+        info.status === 401 || info.status === 403
+          ? '用户名或密码错误'
+          : `登录失败:${info.message}`,
       );
       throw e; // 让调用方 finally 复位 loading
     }
@@ -333,6 +354,40 @@ export default function LoginPage() {
       </div>
       <div className="lpa-brand-foot">在线 · 离线一体 · 毫秒级链路可视化</div>
     </aside>
+  );
+
+  // oidc 单按钮态:演示表单/demo 账号全部不渲染,单一主行动按钮跳统一登录。
+  const oidcPanel = (
+    <section className="lpa-form-panel">
+      {compact && (
+        <div className="lpa-compact-head">
+          <div className="lpa-logo">🎯 recsys 控制台</div>
+          <Typography.Text type="secondary">搜索 · 推荐 · 广告 一体化在线调试台</Typography.Text>
+        </div>
+      )}
+
+      <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 2 }}>
+        统一身份登录
+      </Typography.Title>
+      <Typography.Text type="secondary">通过企业 Casdoor 账号登录 · 授权后自动跳回</Typography.Text>
+
+      <Button
+        className="lpa-btn"
+        type="primary"
+        size="large"
+        block
+        loading={redirecting}
+        icon={<LoginOutlined />}
+        onClick={onOidcLogin}
+        style={{ marginTop: 24 }}
+      >
+        {redirecting ? '正在跳转 Casdoor…' : '使用统一身份登录'}
+      </Button>
+
+      <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 14, display: 'block' }}>
+        将跳转到统一登录平台完成认证;登录状态仅保存在当前标签页。
+      </Typography.Text>
+    </section>
   );
 
   const formPanel = (
@@ -431,7 +486,10 @@ export default function LoginPage() {
                   </Typography.Text>
                 </div>
               </div>
-              <RightOutlined className="lpa-arrow" style={{ color: '#9aa4b8', fontSize: 12, flex: '0 0 auto' }} />
+              <RightOutlined
+                className="lpa-arrow"
+                style={{ color: '#9aa4b8', fontSize: 12, flex: '0 0 auto' }}
+              />
             </div>
           );
         })}
@@ -457,7 +515,7 @@ export default function LoginPage() {
       <div className="lpa-stage">
         <div className="lpa-card" style={{ maxWidth: compact ? 420 : 900 }}>
           {!compact && brand}
-          {formPanel}
+          {AUTH_MODE === 'oidc' ? oidcPanel : formPanel}
         </div>
         <div className="lpa-foot">内部调试台 · 数据仅供演示</div>
       </div>
