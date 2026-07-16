@@ -1,5 +1,8 @@
 server:
   port: 8080
+  # Casdoor access_token 常达 8-9KB(内嵌完整 user 对象),超 Netty 默认 8KB header 上限会在验签前被拒。
+  # 仅 casdoor 边缘模式需要,legacy 自签 JWT 很小,但常开无副作用。
+  max-http-request-header-size: 64KB
 
 spring:
   application:
@@ -60,6 +63,15 @@ recsys:
     internal-secret: ${RECSYS_INTERNAL_SECRET:recsys-dev-internal-secret-change-me}
     edge-secret: ${RECSYS_EDGE_SECRET:recsys-dev-edge-jwt-secret-change-me-32bytes+}
     edge-ttl-seconds: ${RECSYS_EDGE_TTL:3600}
+    # 统一登录平台(Casdoor)边缘模式,默认关=保持自签 HS256 演示登录。开启后终端 JWT 改 Casdoor JWKS 验签,
+    # 内部令牌 subject=Casdoor sub(下游判权主体自动跟随)。见 docs/09 与 auth-platform docs/统一登录平台接入手册.md。
+    casdoor:
+      enabled: ${RECSYS_EDGE_CASDOOR:false}
+      jwk-set-uri: ${CASDOOR_JWKS:http://localhost:8000/.well-known/jwks}
+      issuer: ${CASDOOR_ISSUER:http://localhost:8000}
+      organization: ${CASDOOR_ORG:recsys}   # 租户钉死:token owner 必须是本 org,跨租户一律 401
+      audiences: ${CASDOOR_AUDIENCES:ragshared0client00000001}   # 精确 client_id 或 shared base(按 <base>-org-<owner> 家族放行)
+      # group-roles 默认 admins→ADMIN、advertisers→ADVERTISER(代码默认,可覆盖)
 
 management:
   endpoints:
