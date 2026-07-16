@@ -27,6 +27,12 @@ interface AuthCtx {
   user: AuthUser | null;
   /** 当前认证模式(UI 据此分叉:登录页/身份切换器)。 */
   mode: AuthMode;
+  /**
+   * 引导完成标志:oidc 模式下从 sessionStorage 恢复会话是异步的,ready=false 期间路由守卫
+   * 必须等待(渲染 loading)而不是重定向登录——否则硬刷新首帧 user 还是 null,守卫抢跑把已
+   * 登录用户弹回 /login(掉登录态)。legacy 同步恢复,恒 true。
+   */
+  ready: boolean;
   switching: boolean;
   /** legacy 专用:演示账号登录。oidc 模式下调用是编程错误,直接抛。 */
   signIn: (username: string, password: string) => Promise<void>;
@@ -46,6 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() =>
     AUTH_MODE === 'legacy' ? getCurrentUser() : null,
   );
+  // legacy 同步恢复即就绪;oidc 等 bootstrap(异步读 sessionStorage)完成才就绪。
+  const [ready, setReady] = useState(AUTH_MODE === 'legacy');
   const [switching, setSwitching] = useState(false);
 
   // —— oidc:启动引导 + 事件同步(单一状态源 = oidc-client-ts 存储,这里只做镜像) ——
@@ -55,24 +63,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuth();
     let disposed = false;
     let cleanup: (() => void) | null = null;
-    void getUserManager().then((um) => {
-      if (disposed) return;
-      // 刷新恢复:有未过期存储会话则直接建镜像;过期/坏 token 不建会话(401 单飞续期兜底)。
-      void um.getUser().then((u) => {
-        if (!disposed && u && !u.expired) setUser(userFromCasdoorToken(u.access_token));
+    getUserManager()
+      .then((um) => {
+        if (disposed) return;
+        // 刷新恢复:有未过期存储会话则直接建镜像;过期/坏 token 不建会话(401 单飞续期兜底)。
+        // 无论恢复与否,恢复动作完成后才置 ready —— 守卫在此之前不得重定向(掉登录态 bug 的根因)。
+        um.getUser()
+          .then((u) => {
+            if (!disposed && u && !u.expired) setUser(userFromCasdoorToken(u.access_token));
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (!disposed) setReady(true);
+          });
+        const onLoaded = (u: { access_token?: string }) =>
+          setUser(userFromCasdoorToken(u.access_token));
+        const onUnloaded = () => setUser(null);
+        um.events.addUserLoaded(onLoaded);
+        um.events.addUserUnloaded(onUnloaded);
+        um.events.addSilentRenewError(onUnloaded);
+        cleanup = () => {
+          um.events.removeUserLoaded(onLoaded);
+          um.events.removeUserUnloaded(onUnloaded);
+          um.events.removeSilentRenewError(onUnloaded);
+        };
+      })
+      .catch(() => {
+        // UserManager 装载失败(如配置/网络):放行到登录页给可读错误,不能卡在 loading。
+        if (!disposed) setReady(true);
       });
-      const onLoaded = (u: { access_token?: string }) =>
-        setUser(userFromCasdoorToken(u.access_token));
-      const onUnloaded = () => setUser(null);
-      um.events.addUserLoaded(onLoaded);
-      um.events.addUserUnloaded(onUnloaded);
-      um.events.addSilentRenewError(onUnloaded);
-      cleanup = () => {
-        um.events.removeUserLoaded(onLoaded);
-        um.events.removeUserUnloaded(onUnloaded);
-        um.events.removeSilentRenewError(onUnloaded);
-      };
-    });
     return () => {
       disposed = true;
       cleanup?.();
@@ -157,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       mode: AUTH_MODE,
+      ready,
       switching,
       signIn,
       signInOidc,
@@ -164,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       switchUser,
       logout,
     }),
-    [user, switching, signIn, signInOidc, completeSignIn, switchUser, logout],
+    [user, ready, switching, signIn, signInOidc, completeSignIn, switchUser, logout],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -1,4 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
+import { Spin } from 'antd';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { ChartSkeleton } from './components/Skeletons';
@@ -29,9 +30,18 @@ const ReportViewer = lazy(() => import('./pages/reports/ReportViewer'));
 
 // 路由守卫:未登录(无当前身份)→ 重定向登录页,并记下来源页 from,登录后跳回。
 // 用 useAuth().user(响应式)而非直接读 localStorage:退出/切换时能即时触发重定向。
+// oidc 引导期(ready=false,异步恢复 sessionStorage 会话)先渲染 loading——此时重定向会把
+// 已登录用户误弹回登录页(硬刷新掉登录态)。
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
   const location = useLocation();
+  if (!ready) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   return <>{children}</>;
 }

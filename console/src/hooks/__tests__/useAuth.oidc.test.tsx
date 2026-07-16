@@ -69,12 +69,32 @@ beforeEach(() => {
 });
 
 describe('AuthProvider(oidc 模式)', () => {
-  it('bootstrap:无存储会话 → 未登录,且不触发静默续期(免无谓 Casdoor 往返)', async () => {
+  it('bootstrap:无存储会话 → 就绪后未登录,且不触发静默续期(免无谓 Casdoor 往返)', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
-    await waitFor(() => expect(mocks.um.getUser).toHaveBeenCalled());
+    // ready 门:引导完成前守卫不得重定向(掉登录态 bug 的回归断言)
+    await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.user).toBeNull();
     expect(mocks.um.signinSilent).not.toHaveBeenCalled();
     expect(result.current.mode).toBe('oidc');
+  });
+
+  it('bootstrap:硬刷新恢复——存储有未过期会话 → user 从 sessionStorage 镜像恢复,不掉登录态', async () => {
+    mocks.um.getUser.mockResolvedValue({
+      expired: false,
+      access_token: fakeJwt({ name: 'rowner1', groups: ['recsys/advertisers'] }),
+    });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.user).toEqual({ username: 'rowner1', roles: ['ADVERTISER'] });
+  });
+
+  it('bootstrap:存储会话已过期 → 就绪但不建会话(交给 401 单飞续期)', async () => {
+    mocks.um.getUser.mockResolvedValue({ expired: true, access_token: 'x' });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.user).toBeNull();
   });
 
   it('completeSignIn:兑换成功 → user 先落状态再返回消毒后的 returnTo(防守卫弹回竞态)', async () => {
