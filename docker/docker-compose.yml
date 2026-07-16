@@ -46,6 +46,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # ---- 细粒度判权(统一权限平台):docker compose --profile authz up -d 才启动 ----
+  # recsys 专属 SpiceDB 实例(§B 每项目独立,不与 auth-platform 自己的 :8543 共用)。
+  # dev 用内存 datastore(重启丢数据,fixture 可重灌:auth-platform/deploy/recsys-authz-fixture.sh);
+  # 判权服务(auth-platform-server :8210)从 auth-platform 仓库起,见 docs/09-权限接入auth-platform.md。
+  spicedb:
+    image: authzed/spicedb:latest
+    container_name: recsys-spicedb
+    profiles: ["authz"]
+    command: serve
+    environment:
+      SPICEDB_GRPC_PRESHARED_KEY: ${RECSYS_SPICEDB_KEY:-recsys_dev_key}
+      SPICEDB_DATASTORE_ENGINE: memory
+      SPICEDB_HTTP_ENABLED: "true"
+    ports:
+      - "${RECSYS_SPICEDB_HTTP_PORT:-8544}:8443"
+      - "${RECSYS_SPICEDB_GRPC_PORT:-50052}:50051"
+
   # ---- 可选组件:docker compose --profile full up -d 才启动 ----
   # 官方 Apache Kafka 镜像(KRaft 单节点;Bitnami 已下架旧 tag)。Java 服务跑宿主机经 localhost:9092 连。
   kafka:

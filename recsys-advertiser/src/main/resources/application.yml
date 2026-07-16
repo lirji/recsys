@@ -59,6 +59,18 @@ recsys:
       - /actuator/health/**
       - /actuator/info
       - /actuator/prometheus
+  # 细粒度归属判权(统一权限平台 auth-platform,模型 recsys.zed):advertiser 作用域 ReBAC,
+  # 补 P0 角色 RBAC 无 owner 校验的缺口。disabled(默认,零行为变化)/shadow(只记 would-deny)/enforce(真拦)。
+  authz:
+    mode: ${RECSYS_AUTHZ_MODE:disabled}
+
+# auth-platform 判权 SDK(RemoteAuthzEngine → 判权服务 → recsys 专属 SpiceDB 实例)。
+# dev 栈:docker compose --profile authz 起 SpiceDB(:8544),判权服务(auth-platform-server)另起在 :8210,
+# 见 docs/09-权限接入auth-platform.md。
+authz:
+  client:
+    server-url: ${AUTHZ_SERVER_URL:http://localhost:8210}
+    token: ${AUTHZ_CLIENT_TOKEN:}
   ad:
     catalog:
       # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。

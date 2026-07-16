@@ -133,6 +133,14 @@
                 <artifactId>recsys-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- 统一权限平台(auth-platform)消费方 SDK:细粒度 ReBAC 归属判权(SpiceDB 经判权服务)。
+                 grpc-free(纯 HTTP/JSON),与本仓库 grpc 1.64/protobuf 3.25 零冲突;传递的 Spring 依赖
+                 由上方 spring-boot-dependencies BOM 统一钉到 3.2.5。当前仅 recsys-advertiser 引入。 -->
+            <dependency>
+                <groupId>com.lrj.authz</groupId>
+                <artifactId>auth-platform-sdk</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
             <!-- 技术平台 starter:跨服务通用子域(安全/异常/校验,后续弹性/可观测)。
                  与领域 Shared Kernel(recsys-common)分离——只有 web 服务依赖它,纯库/离线作业不引入。 -->
             <dependency>

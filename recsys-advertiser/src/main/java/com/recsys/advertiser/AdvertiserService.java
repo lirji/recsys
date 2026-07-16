@@ -1,5 +1,6 @@
 package com.recsys.advertiser;
 
+import com.recsys.advertiser.authz.AdvertiserAuthz;
 import com.recsys.advertiser.dto.AdReportRow;
 import com.recsys.advertiser.dto.AdUpsert;
 import com.recsys.advertiser.dto.AdView;
@@ -29,6 +30,10 @@ import java.util.List;
  * <p>校验失败抛 400、找不到抛 404({@link ResponseStatusException}),由 Spring 映射 HTTP。
  * 写操作加 {@code @Transactional} 保证库内一致;Redis 同步在事务提交逻辑之后调用(失败不回滚库,
  * 但在线关键词路会回退 DB 按状态过滤,最终一致由下次 reindex 兜底)。
+ *
+ * <p>细粒度归属判权({@link AdvertiserAuthz},默认 disabled):所有公开入口<b>先判权后变更</b>——
+ * 广告/竞价词/创意的权限继承其 advertiser 作用域;判权触发的内部读走免检私有路径
+ * (已在写口判过 edit,view ⊆ edit,免重复判权与写后读窗口)。
  */
 @Service
 public class AdvertiserService {
@@ -39,17 +44,21 @@ public class AdvertiserService {
     private final AdvertiserRepository repo;
     private final AdIndexSyncService sync;
     private final StringRedisTemplate redis;
+    private final AdvertiserAuthz authz;
 
-    public AdvertiserService(AdvertiserRepository repo, AdIndexSyncService sync, StringRedisTemplate redis) {
+    public AdvertiserService(AdvertiserRepository repo, AdIndexSyncService sync, StringRedisTemplate redis,
+                             AdvertiserAuthz authz) {
         this.repo = repo;
         this.sync = sync;
         this.redis = redis;
+        this.authz = authz;
     }
 
     // ======================= 广告主 =======================
 
     @Transactional
     public AdvertiserView createAdvertiser(AdvertiserUpsert req) {
+        authz.requirePlatform("administrate");   // 开户是平台职能(enforce 下)
         if (isBlank(req.name())) {
             throw badRequest("name 必填");
         }
@@ -58,12 +67,14 @@ public class AdvertiserService {
         }
         String status = normalizeAdvertiserStatus(req.status(), "active");
         long id = repo.insertAdvertiser(req.name(), req.dailyBudget(), status);
+        authz.onAdvertiserCreated(id);   // 归属双写(owner=创建者);enforce 下失败随事务回滚建号
         log.info("新建广告主 {} ({})", id, req.name());
-        return getAdvertiser(id);
+        return viewAdvertiser(id);
     }
 
     @Transactional
     public AdvertiserView updateAdvertiser(long id, AdvertiserUpsert req) {
+        authz.requireAdvertiser("manage", id);
         AdvertiserView old = repo.findAdvertiserRaw(id);
         if (old == null) {
             throw notFound("广告主 " + id + " 不存在");
@@ -77,10 +88,16 @@ public class AdvertiserService {
         if (newStatus != null && !newStatus.equals(old.status())) {
             sync.reindexAdvertiser(id);
         }
-        return getAdvertiser(id);
+        return viewAdvertiser(id);
     }
 
     public AdvertiserView getAdvertiser(long id) {
+        authz.requireAdvertiser("view", id);
+        return viewAdvertiser(id);
+    }
+
+    /** 免检读(内部用):创建/更新等已判过权的路径回读详情。 */
+    private AdvertiserView viewAdvertiser(long id) {
         AdvertiserView raw = repo.findAdvertiserRaw(id);
         if (raw == null) {
             throw notFound("广告主 " + id + " 不存在");
@@ -89,7 +106,8 @@ public class AdvertiserService {
     }
 
     public List<AdvertiserView> listAdvertisers() {
-        return repo.listAdvertisersRaw().stream().map(this::enrichBudget).toList();
+        List<AdvertiserView> all = repo.listAdvertisersRaw().stream().map(this::enrichBudget).toList();
+        return authz.filterViewable(all, AdvertiserView::advertiserId);
     }
 
     /** 用 Redis 当日已耗预算(与在线 pacing 同源)补全 spentToday / remainingBudget。 */
@@ -112,6 +130,7 @@ public class AdvertiserService {
 
     @Transactional
     public AdView createAd(long advertiserId, AdUpsert req) {
+        authz.requireAdvertiser("edit", advertiserId);
         if (!repo.advertiserExists(advertiserId)) {
             throw notFound("广告主 " + advertiserId + " 不存在");
         }
@@ -152,7 +171,7 @@ public class AdvertiserService {
         }
         sync.reindexAd(adId); // 一次性按当前竞价词 + 可服务判定写倒排(pending/rejected → 不进倒排)
         log.info("新建广告 {} (advertiser={}, item={}) 机审 → {}", adId, advertiserId, req.itemId(), review.status());
-        return getAd(adId);
+        return viewAd(adId);
     }
 
     /**
@@ -161,6 +180,7 @@ public class AdvertiserService {
      */
     @Transactional
     public AdView reviewAd(long adId, String decision, String reason) {
+        authz.requirePlatform("review");   // 人审是平台运营/管理员职能,非广告主自审
         AdvertiserRepository.AdRow ad = repo.findAdRow(adId);
         if (ad == null) {
             throw notFound("广告 " + adId + " 不存在");
@@ -169,7 +189,7 @@ public class AdvertiserService {
         repo.setAdReview(adId, status, reason);
         sync.reindexAd(adId); // approved → 进倒排;pending/rejected → 移出倒排
         log.info("广告 {} 审核 → {}({})", adId, status, reason);
-        return getAd(adId);
+        return viewAd(adId);
     }
 
     /** 重新送审(A2):改动创意后重跑机审 → pending/rejected;approved 广告改动应先送审再复核。 */
@@ -179,10 +199,11 @@ public class AdvertiserService {
         if (ad == null) {
             throw notFound("广告 " + adId + " 不存在");
         }
+        authz.requireAdvertiser("edit", ad.advertiserId());
         CreativeReview.Decision d = CreativeReview.machineReview(ad.title(), ad.landingUrl());
         repo.setAdReview(adId, d.status(), d.reason());
         sync.reindexAd(adId);
-        return getAd(adId);
+        return viewAd(adId);
     }
 
     @Transactional
@@ -191,6 +212,7 @@ public class AdvertiserService {
         if (old == null) {
             throw notFound("广告 " + adId + " 不存在");
         }
+        authz.requireAdvertiser("edit", old.advertiserId());
         Long newItem = req.itemId();
         if (newItem != null && !repo.itemExists(newItem)) {
             throw badRequest("item " + newItem + " 不存在");
@@ -204,22 +226,28 @@ public class AdvertiserService {
             repo.copyEmbeddingFromItem(adId, newItem);
         }
         sync.reindexAd(adId); // 状态 / quality 变化都可能影响倒排
-        return getAd(adId);
+        return viewAd(adId);
     }
 
     /** 上/下线广告(便捷端点)。status ∈ active / paused。 */
     @Transactional
     public AdView setAdStatus(long adId, String status) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
         repo.setAdStatus(adId, normalizeAdStatus(status, "active"));
         sync.reindexAd(adId);
-        return getAd(adId);
+        return viewAd(adId);
     }
 
     @Transactional
     public void deleteAd(long adId) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
@@ -235,10 +263,30 @@ public class AdvertiserService {
         if (row == null) {
             throw notFound("广告 " + adId + " 不存在");
         }
+        authz.requireAdvertiser("view", row.advertiserId());
         return assembleAdView(row);
     }
 
+    /** 免检读(内部用):写口已判过 edit(view ⊆ edit)的路径回读广告详情。 */
+    private AdView viewAd(long adId) {
+        AdvertiserRepository.AdRow row = repo.findAdRow(adId);
+        if (row == null) {
+            throw notFound("广告 " + adId + " 不存在");
+        }
+        return assembleAdView(row);
+    }
+
+    /** 归属解析:广告 → 其广告主 id(仅判权启用时调用,disabled 零额外查询)。 */
+    private long advertiserIdOfAd(long adId) {
+        AdvertiserRepository.AdRow row = repo.findAdRow(adId);
+        if (row == null) {
+            throw notFound("广告 " + adId + " 不存在");
+        }
+        return row.advertiserId();
+    }
+
     public List<AdView> listAds(long advertiserId) {
+        authz.requireAdvertiser("view", advertiserId);
         if (!repo.advertiserExists(advertiserId)) {
             throw notFound("广告主 " + advertiserId + " 不存在");
         }
@@ -255,6 +303,9 @@ public class AdvertiserService {
 
     @Transactional
     public BidwordView addBidword(long adId, BidwordUpsert req) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
@@ -283,6 +334,9 @@ public class AdvertiserService {
         if (old == null) {
             throw notFound("竞价词 " + bidwordId + " 不存在");
         }
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(old.adId()));
+        }
         if (req.bid() != null && req.bid() <= 0) {
             throw badRequest("bid 为正");
         }
@@ -300,11 +354,17 @@ public class AdvertiserService {
         if (old == null) {
             throw notFound("竞价词 " + bidwordId + " 不存在");
         }
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(old.adId()));
+        }
         repo.deleteBidword(bidwordId);
         sync.removeBidword(old.adId(), old.keyword());
     }
 
     public List<BidwordView> listBidwords(long adId) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("view", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
@@ -315,6 +375,9 @@ public class AdvertiserService {
 
     @Transactional
     public CreativeView addCreative(long adId, CreativeUpsert req) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
@@ -332,6 +395,9 @@ public class AdvertiserService {
         if (adId == null) {
             throw notFound("创意 " + creativeId + " 不存在");
         }
+        if (authz.enabled()) {
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         String status = req.status() == null ? null : normalizeAdStatus(req.status(), "active");
         repo.updateCreative(creativeId, req.title(), req.landingUrl(), status);
         return repo.listCreatives(adId).stream().filter(c -> c.creativeId() == creativeId)
@@ -340,12 +406,22 @@ public class AdvertiserService {
 
     @Transactional
     public void deleteCreative(long creativeId) {
+        if (authz.enabled()) {
+            Long adId = repo.adOfCreative(creativeId);
+            if (adId == null) {
+                throw notFound("创意 " + creativeId + " 不存在");
+            }
+            authz.requireAdvertiser("edit", advertiserIdOfAd(adId));
+        }
         if (repo.deleteCreative(creativeId) == 0) {
             throw notFound("创意 " + creativeId + " 不存在");
         }
     }
 
     public List<CreativeView> listCreatives(long adId) {
+        if (authz.enabled()) {
+            authz.requireAdvertiser("view", advertiserIdOfAd(adId));
+        }
         if (!repo.adExists(adId)) {
             throw notFound("广告 " + adId + " 不存在");
         }
@@ -355,6 +431,7 @@ public class AdvertiserService {
     // ======================= 报表 =======================
 
     public List<AdReportRow> report(long advertiserId) {
+        authz.requireAdvertiser("view", advertiserId);
         if (!repo.advertiserExists(advertiserId)) {
             throw notFound("广告主 " + advertiserId + " 不存在");
         }

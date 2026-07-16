@@ -24,6 +24,12 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-platform</artifactId>
         </dependency>
+        <!-- 细粒度归属判权(统一权限平台 auth-platform):advertiser 作用域 ReBAC,补 P0 角色 RBAC
+             无 owner 校验的缺口。默认 recsys.authz.mode=disabled,零行为变化(引入即安全)。 -->
+        <dependency>
+            <groupId>com.lrj.authz</groupId>
+            <artifactId>auth-platform-sdk</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
             <artifactId>recsys-ad-common</artifactId>
