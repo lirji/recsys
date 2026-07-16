@@ -45,7 +45,8 @@ Casdoor `sub`，需做一次 username→sub crosswalk。
 ## 3. dev 运行手册
 
 ```bash
-# 1) recsys 专属 SpiceDB(§B 每项目独立实例;内存 datastore,重启后用 fixture 重灌)
+# 1) recsys 专属 SpiceDB(§B 每项目独立实例;datastore=postgres 持久化——recsys-postgres 的 spicedb 库,
+#    migrate 由 compose 一次性 spicedb-migrate 完成;存量卷需先 docker exec recsys-postgres createdb -U recsys spicedb)
 cd docker && docker compose --profile authz up -d spicedb          # :8544, key=recsys_dev_key
 
 # 2) 灌模型 + 演示租户(在 auth-platform 仓库;dry-run 去掉 APPLY)
