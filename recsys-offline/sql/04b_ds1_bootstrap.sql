@@ -33,10 +33,21 @@ CREATE TABLE IF NOT EXISTS ad (
     landing_url   TEXT,
     quality_score DOUBLE PRECISION DEFAULT 1.0,
     status        TEXT DEFAULT 'active',
+    -- A2 创意审核 / A3 智能定向:与 02_ad_schema.sql 的 ad 列对齐(分片表两库结构必须一致,
+    -- 否则路由到 ds_1 的广告 INSERT 直接报列不存在——曾在存量卷上实际踩中)。
+    review_status TEXT DEFAULT 'approved',
+    review_reason TEXT,
     optimization_type TEXT DEFAULT 'CPC',
     target_cpa    DOUBLE PRECISION,
+    audience_id   BIGINT,
     created_at    TIMESTAMP DEFAULT now()
 );
+-- 存量 ds_1 平滑升级(IF NOT EXISTS 不改既有列;口径同 02_ad_schema.sql)
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'approved';
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS review_reason TEXT;
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS optimization_type TEXT DEFAULT 'CPC';
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS target_cpa DOUBLE PRECISION;
+ALTER TABLE ad ADD COLUMN IF NOT EXISTS audience_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_ad_advertiser ON ad (advertiser_id);
 CREATE TABLE IF NOT EXISTS ad_creative (
     creative_id BIGINT PRIMARY KEY,
@@ -44,8 +55,12 @@ CREATE TABLE IF NOT EXISTS ad_creative (
     title       TEXT,
     landing_url TEXT,
     status      TEXT DEFAULT 'active',
+    review_status TEXT DEFAULT 'approved',   -- A2:与 02_ad_schema.sql 对齐
+    review_reason TEXT,
     created_at  TIMESTAMP DEFAULT now()
 );
+ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'approved';
+ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_reason TEXT;
 CREATE INDEX IF NOT EXISTS idx_ad_creative_ad ON ad_creative (ad_id);
 CREATE TABLE IF NOT EXISTS bidword (
     id         BIGINT PRIMARY KEY,
