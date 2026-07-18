@@ -47,6 +47,13 @@ Casdoor `sub`，需做一次 username→sub crosswalk。
   且不走远程仓库、对 settings.xml 镜像免疫。SDK 升级 = 在 auth-platform 仓库重打包后替换 `libs/authz/`
   同名文件；日后 SDK 发布到可达仓库后删插件与 `libs/authz/` 即可。仅 §3 step 3 的判权服务
   （auth-platform-server）仍需从平台仓库构建。
+- **判权栈 fail-closed 收紧（auth-platform 侧 2026-07-18）**：平台的 server/core 进一步收紧严格响应校验——
+  server `check-bulk` 引擎响应缺任一资源即抛（不再 `Boolean.TRUE.equals(null)` 静默降级成 deny）、core
+  `writeRelationships`/`deleteRelationships` 缺 ZedToken 即抛、`lookupResources` 缺 permissionship 即抛、流式响应含
+  `error` 即抛。**对 recsys 的影响**：列表过滤 `checkBulk(view)` 与开户归属双写遇到后端故障/畸形响应会**冒泡成判权依赖故障**
+  （enforce → 503 并随事务回滚 / shadow → 放行并 `[authz-shadow]` 告警），不再有任何静默降级路径——强化既有 fail-closed
+  姿态，**recsys 侧零改动**。**SDK/protocol 主代码未变，`libs/authz/` 供奉件无需重打**；只需把 §3 step 3 的判权服务从
+  auth-platform 仓库重建即可拾取该收紧（平台侧 20 测试类/117 `@Test` 全绿）。
 
 ## 3. dev 运行手册
 
