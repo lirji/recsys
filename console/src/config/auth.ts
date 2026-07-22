@@ -14,10 +14,11 @@ function parseMode(raw: string | undefined): AuthMode {
 
 export const AUTH_MODE: AuthMode = parseMode(import.meta.env.VITE_AUTH_MODE);
 
-// Casdoor 参数(仅 oidc 模式使用)。client_id 钉死 shared app 的 -org-recsys 派生 id:
-// 网关按 <base>-org-* 家族放行且 org 钉死 recsys(单租户前端,不做登录页输租户)。
+// Casdoor 参数(仅 oidc 模式使用)。Recsys 当前仍是单租户系统，organization 必须与网关
+// CASDOOR_ORG 以及 client_id 的 -org-<organization> 后缀一致；登录页会显式确认并 fail-closed 校验。
 export const CASDOOR = {
   issuer: import.meta.env.VITE_CASDOOR_ISSUER ?? 'http://localhost:8000',
   clientId: import.meta.env.VITE_CASDOOR_CLIENT_ID ?? 'ragshared0client00000001-org-recsys',
+  organization: import.meta.env.VITE_CASDOOR_ORGANIZATION ?? 'recsys',
   scope: import.meta.env.VITE_CASDOOR_SCOPE ?? 'openid profile offline_access',
 } as const;

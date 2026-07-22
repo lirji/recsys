@@ -1,8 +1,9 @@
-import { useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { App, Avatar, Button, Divider, Form, Grid, Input, Space, Tag, Typography } from 'antd';
 import {
   DollarOutlined,
   ExperimentOutlined,
+  ApartmentOutlined,
   LoadingOutlined,
   LockOutlined,
   LoginOutlined,
@@ -15,7 +16,9 @@ import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS } from '../api/auth';
 import { toApiError } from '../api/client';
 import { DEMO_USER_META, ROLE_META } from '../components/AppLayout';
-import { AUTH_MODE } from '../config/auth';
+import { AUTH_MODE, CASDOOR } from '../config/auth';
+import { resolvePortalLaunch, sanitizeInternalPath } from '../auth/portalLaunch';
+import { validateTenantSelection } from '../auth/tenantSelection';
 
 const { useBreakpoint } = Grid;
 
@@ -263,25 +266,43 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const screens = useBreakpoint();
+  const portalLaunch = useMemo(() => resolvePortalLaunch(location.search), [location.search]);
+  const requestedReturnTo = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.getAll('returnTo').length > 1) return null;
+    return sanitizeInternalPath(query.get('returnTo'));
+  }, [location.search]);
+  const portalAutoStarted = useRef(false);
 
   const [loading, setLoading] = useState(false); // 表单登录中
   const [pending, setPending] = useState<string | null>(null); // 正在一键登录的 demo 用户
   const [redirecting, setRedirecting] = useState(false); // oidc:正在跳 Casdoor
+  const [tenant, setTenant] = useState(CASDOOR.organization);
+  const [tenantError, setTenantError] = useState('');
 
   // 登录成功回来源页(被守卫拦截时记下的 from,完整 location),否则默认 /overview。
   // 读取侧拼全 pathname+search+hash(深链带参精确恢复;oidc 下经 Casdoor state 往返)。
   const state = location.state as {
     from?: { pathname?: string; search?: string; hash?: string };
   } | null;
-  const from = state?.from?.pathname
-    ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}`
-    : '/overview';
+  const from =
+    portalLaunch?.returnTo ??
+    requestedReturnTo ??
+    (state?.from?.pathname
+      ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}`
+      : '/overview');
   const busy = loading || pending !== null || redirecting;
   const compact = !screens.md; // 窄屏:收起品牌区,卡片自带紧凑品牌头
 
   // oidc:整页跳 Casdoor 授权页;跳转前置 loading 态(随即离开本页,失败才复位)。
   const onOidcLogin = async () => {
     if (busy) return;
+    const selection = validateTenantSelection(tenant, CASDOOR.organization, CASDOOR.clientId);
+    if (!selection.ok) {
+      setTenantError(selection.message);
+      return;
+    }
+    setTenantError('');
     setRedirecting(true);
     try {
       await signInOidc(from);
@@ -290,6 +311,18 @@ export default function LoginPage() {
       message.error(`无法跳转统一登录:${toApiError(e).message}(请确认 Casdoor 可达)`);
     }
   };
+
+  // 只有显式 portal auto + OIDC 模式才由目标站建立 PKCE 后跳 Casdoor。
+  // ref 防 React StrictMode effect 重放造成两次 signinRedirect；legacy/普通 /login 完全不触发。
+  useEffect(() => {
+    if (AUTH_MODE !== 'oidc' || !portalLaunch || portalAutoStarted.current) return;
+    portalAutoStarted.current = true;
+    setRedirecting(true);
+    void signInOidc(portalLaunch.returnTo).catch((e: unknown) => {
+      setRedirecting(false);
+      message.error(`无法跳转统一登录:${toApiError(e).message}(请确认 Casdoor 可达)`);
+    });
+  }, [message, portalLaunch, signInOidc]);
 
   const doLogin = async (username: string, password: string) => {
     try {
@@ -369,7 +402,39 @@ export default function LoginPage() {
       <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 2 }}>
         统一身份登录
       </Typography.Title>
-      <Typography.Text type="secondary">通过企业 Casdoor 账号登录 · 授权后自动跳回</Typography.Text>
+      <Typography.Text type="secondary">先确认 Casdoor 租户，再通过企业账号登录</Typography.Text>
+
+      <div style={{ marginTop: 24 }}>
+        <label htmlFor="oidc-tenant">
+          <Typography.Text strong>租户（Casdoor Organization）</Typography.Text>
+        </label>
+        <Input
+          id="oidc-tenant"
+          aria-describedby="oidc-tenant-help"
+          size="large"
+          prefix={<ApartmentOutlined style={{ color: '#9aa4b8' }} />}
+          value={tenant}
+          status={tenantError ? 'error' : undefined}
+          disabled={busy}
+          autoComplete="organization"
+          spellCheck={false}
+          placeholder="如 recsys"
+          onChange={(event) => {
+            setTenant(event.target.value);
+            if (tenantError) setTenantError('');
+          }}
+          style={{ marginTop: 8 }}
+        />
+        <Typography.Text
+          id="oidc-tenant-help"
+          type={tenantError ? 'danger' : 'secondary'}
+          role={tenantError ? 'alert' : undefined}
+          style={{ fontSize: 12, marginTop: 8, display: 'block' }}
+        >
+          {tenantError ||
+            `当前推荐系统仅开放租户 ${CASDOOR.organization}；其他租户尚未完成数据隔离。`}
+        </Typography.Text>
+      </div>
 
       <Button
         className="lpa-btn"
@@ -379,7 +444,7 @@ export default function LoginPage() {
         loading={redirecting}
         icon={<LoginOutlined />}
         onClick={onOidcLogin}
-        style={{ marginTop: 24 }}
+        style={{ marginTop: 16 }}
       >
         {redirecting ? '正在跳转 Casdoor…' : '使用统一身份登录'}
       </Button>
