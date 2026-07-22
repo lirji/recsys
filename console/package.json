@@ -23,7 +23,7 @@
     "echarts": "^5.5.1",
     "echarts-for-react": "^3.0.2",
     "oidc-client-ts": "^3.5.0",
-    "react": "^18.3.1",
+    "react": "^19.2.7",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0"
   },
@@ -33,7 +33,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.7.5",
-    "@types/react": "^18.3.11",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "eslint": "^9.39.5",
