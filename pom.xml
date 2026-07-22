@@ -32,7 +32,7 @@
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
         <!-- 结构化日志 JSON 编码器(P2,非 Spring Boot BOM 管理的第三方,集中钉版本) -->
-        <logstash-logback.version>7.4</logstash-logback.version>
+        <logstash-logback.version>9.0</logstash-logback.version>
         <!-- 覆盖率度量 + 契约类覆盖率门槛(E3):0.8.12 支持 JDK 21 -->
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 微服务化:gRPC(服务间内部通信)+ protobuf(Published Language 契约,recsys-proto)。

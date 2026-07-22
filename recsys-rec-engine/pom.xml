@@ -42,7 +42,7 @@
         <dependency>
             <groupId>net.logstash.logback</groupId>
             <artifactId>logstash-logback-encoder</artifactId>
-            <version>7.4</version>
+            <version>9.0</version>
         </dependency>
         <!-- P4 配置中心:Nacos config。经 spring.config.import=optional:nacos:... 拉取 recsys.ad.*/fusion.* 热更配置;
              传递引入 spring-cloud-context(提供 ConfigurationPropertiesRebinder + /actuator/refresh)。
