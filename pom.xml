@@ -18,8 +18,8 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <spring-boot.version>3.2.5</spring-boot.version>
-        <spring-cloud.version>2023.0.1</spring-cloud.version>
+        <spring-boot.version>4.1.0</spring-boot.version>
+        <spring-cloud.version>2025.1.2</spring-cloud.version>
         <!-- P4 配置中心:Spring Cloud Alibaba(Nacos config)。2023.0.1.x 对齐 Spring Cloud 2023.0.1 + Spring Boot 3.2.x -->
         <spring-cloud-alibaba.version>2023.0.1.3</spring-cloud-alibaba.version>
 
