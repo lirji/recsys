@@ -115,6 +115,12 @@ services:
     ports:
       - "${NACOS_PORT:-8848}:8848"
       - "${NACOS_GRPC_PORT:-9848}:9848"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
 
   # ---- 观测性:docker compose --profile obs up -d 才启动 ----
   prometheus:
@@ -205,7 +211,8 @@ services:
       #   RECSYS_GATEWAY=http://host.docker.internal:${GATEWAY_PORT:-8080}
       RECSYS_GATEWAY: ${RECSYS_GATEWAY:-http://gateway:8080}
     ports:
-      - "${CONSOLE_WEB_PORT:-8095}:80"
+      - "${CONSOLE_WEB_PORT:-9095}:80"
+    restart: unless-stopped
 
   # ---- 在线服务容器(P0 微服务化):docker compose --profile apps up -d ----
   # 参数化 Dockerfile(MODULE/PORT)构建各 fat jar,全部接入 Nacos 服务发现(NACOS_DISCOVERY=true),
@@ -224,7 +231,7 @@ services:
     profiles: ["apps"]
     depends_on:
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       NACOS_ADDR: nacos:8848
       NACOS_DISCOVERY: "true"
@@ -243,6 +250,7 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # 统一入口(前端 /api 反代到此;本机 8080 被占 → dev-local.env 覆盖 GATEWAY_PORT)
+    restart: unless-stopped
 
   rec-engine:
     build:
@@ -260,7 +268,7 @@ services:
       redis:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       PG_USER: "${PG_USER:-recsys}"
@@ -300,7 +308,7 @@ services:
       redis:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       PG_USER: "${PG_USER:-recsys}"
@@ -332,7 +340,7 @@ services:
       redis:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       REDIS_HOST: redis
@@ -357,7 +365,7 @@ services:
       redis:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres    # 分库分表 sharding.yaml 的 $${PG_HOST::localhost} 走此环境变量
       PG_USER: "${PG_USER:-recsys}"
@@ -393,7 +401,7 @@ services:
       postgres:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       REDIS_HOST: redis
@@ -426,7 +434,7 @@ services:
       postgres:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       NACOS_ADDR: nacos:8848
@@ -449,7 +457,7 @@ services:
       postgres:
         condition: service_healthy
       nacos:
-        condition: service_started
+        condition: service_healthy
     environment:
       PG_HOST: postgres
       NACOS_ADDR: nacos:8848

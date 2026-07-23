@@ -7,6 +7,21 @@ server {
     root   /usr/share/nginx/html;
     index  index.html;
 
+    # Docker DNS 在请求时解析，上游重启或晚于前端就绪时不会拖垮 nginx。
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $gateway_upstream ${RECSYS_GATEWAY};
+
+    # 门户专用健康端点：网关非 2xx 时原样返回，便于门户判定不可用。
+    location = /healthz {
+        proxy_pass $gateway_upstream/actuator/health;
+        proxy_connect_timeout 1s;
+        proxy_read_timeout 2s;
+        access_log off;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
     # SPA 深链回退:非静态资源的导航路径都回退到 index.html,交给 react-router。
     location / {
         try_files $uri $uri/ /index.html;
@@ -15,7 +30,7 @@ server {
     # 反向代理:所有 /api/** 转发到网关。默认经 host.docker.internal 打宿主机上的 gateway:8080;
     # 若网关也在容器网络里,把 RECSYS_GATEWAY 换成 http://gateway:8080。
     location /api/ {
-        proxy_pass         ${RECSYS_GATEWAY};
+        proxy_pass         $gateway_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;

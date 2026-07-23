@@ -45,7 +45,7 @@ cd "$REPO"
 : "${PG_PORT:=5432}"               # 宿主访问容器 postgres(供离线作业 / psql)
 : "${REDIS_PORT:=6379}"
 : "${NACOS_PORT:=8848}"; : "${NACOS_GRPC_PORT:=9848}"
-: "${CONSOLE_WEB_PORT:=8095}"      # 前端 nginx 容器
+: "${CONSOLE_WEB_PORT:=9095}"      # 前端 nginx 容器（避开 Drools 网关 :8095）
 : "${PROMETHEUS_PORT:=9090}"; : "${GRAFANA_PORT:=3001}"; : "${ALERTMANAGER_PORT:=9093}"; : "${KAFKA_PORT:=9092}"
 : "${PG_DB:=recsys}"; : "${PG_DS1_DB:=recsys_ds1}"; : "${PG_USER:=recsys}"; : "${PG_PASSWORD:=recsys}"
 : "${RECSYS_SECURITY_ENABLED:=false}"   # 本地免登录直连;生产置 true 并注入密钥
