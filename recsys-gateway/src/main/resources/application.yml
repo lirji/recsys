@@ -86,7 +86,7 @@ management:
   # P2 可观测:网关起 trace(链路头)+ 导出到 Tempo。
   tracing:
     sampling:
-      probability: ${TRACING_SAMPLE:1.0}
+      probability: ${TRACING_SAMPLE:0.0}
   otlp:
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

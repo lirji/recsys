@@ -86,6 +86,14 @@ class ServletSecuritySmokeTest {
                 .andExpect(jsonPath("$.fields.name").exists());
     }
 
+    @Test
+    void invalidQueryParameterType_400_withApiError() throws Exception {
+        mvc.perform(get("/api/open/user").queryParam("userId", "u1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fields.userId").exists());
+    }
+
     @SpringBootConfiguration
     @EnableAutoConfiguration
     @Import({InternalSecurityConfig.class, MethodSecurityConfig.class,
@@ -98,6 +106,11 @@ class ServletSecuritySmokeTest {
             @GetMapping("/api/open/ping")
             String open() {
                 return "ok";
+            }
+
+            @GetMapping("/api/open/user")
+            String user(long userId) {
+                return Long.toString(userId);
             }
 
             @GetMapping("/api/secure/ping")

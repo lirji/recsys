@@ -13,6 +13,7 @@ import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,6 +48,19 @@ public class GlobalExceptionHandler {
         Map<String, String> fields = new LinkedHashMap<>();
         ex.getConstraintViolations()
                 .forEach(v -> fields.putIfAbsent(v.getPropertyPath().toString(), v.getMessage()));
+        return ResponseEntity.badRequest()
+                .body(ApiError.of("VALIDATION_FAILED", "请求参数校验失败", req.getRequestURI(), fields));
+    }
+
+    /** path/query 参数无法转换到控制器声明的类型，例如 userId=u1 → long。 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                       HttpServletRequest req) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        String requiredType = ex.getRequiredType() == null
+                ? "正确类型"
+                : ex.getRequiredType().getSimpleName();
+        fields.put(ex.getName(), "类型错误，应为 " + requiredType);
         return ResponseEntity.badRequest()
                 .body(ApiError.of("VALIDATION_FAILED", "请求参数校验失败", req.getRequestURI(), fields));
     }

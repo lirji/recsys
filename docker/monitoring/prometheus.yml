@@ -1,5 +1,5 @@
-# Prometheus 抓取配置:抓宿主机上运行的 recsys 服务的 /actuator/prometheus。
-# Java 服务在宿主机直接 mvn spring-boot:run,容器内用 host.docker.internal 访问宿主机。
+# Prometheus 抓取配置:与默认全容器化部署一致，直接通过 Compose 服务名访问。
+# 宿主机映射端口只负责浏览器/调试访问，不参与容器间抓取，避免端口覆盖后 target 全部 DOWN。
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
@@ -19,21 +19,21 @@ scrape_configs:
   - job_name: recsys-gateway
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8080"]
+      - targets: ["gateway:8080"]
         labels:
           application: recsys-gateway
 
   - job_name: recsys-rec-engine
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8081"]
+      - targets: ["rec-engine:8081"]
         labels:
           application: recsys-rec-engine
 
   - job_name: recsys-behavior
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8082"]
+      - targets: ["behavior:8082"]
         labels:
           application: recsys-behavior
 
@@ -43,7 +43,7 @@ scrape_configs:
   - job_name: recsys-advertiser
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8083"]
+      - targets: ["advertiser:8083"]
         labels:
           application: recsys-advertiser
 
@@ -51,7 +51,7 @@ scrape_configs:
   - job_name: recsys-ad-serving
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8085"]
+      - targets: ["ad-serving:8085"]
         labels:
           application: recsys-ad-serving
 
@@ -59,7 +59,7 @@ scrape_configs:
   - job_name: recsys-console
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8090"]
+      - targets: ["console-api:8090"]
         labels:
           application: recsys-console
 
@@ -68,13 +68,13 @@ scrape_configs:
   - job_name: recsys-content-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8086"]
+      - targets: ["content:8086"]
         labels:
           application: recsys-content-service
 
   - job_name: recsys-user-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8087"]
+      - targets: ["user:8087"]
         labels:
           application: recsys-user-service

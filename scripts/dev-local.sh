@@ -144,9 +144,15 @@ cmd_infra() {
 cmd_obs() {
   require_docker || return 1
   echo "== 追加观测栈(prometheus/grafana/tempo/alertmanager)=="
-  echo "   注:monitoring/prometheus.yml 默认抓 host.docker.internal(宿主机 mvn 模式);"
-  echo "       全容器化下各 app 在容器内标准端口,如需容器抓取请调整 monitoring/prometheus.yml 目标为服务名。"
   compose --profile obs up -d
+  echo -n "  等待 Tempo 就绪 "
+  for _ in $(seq 1 30); do
+    curl -fsS http://localhost:3200/ready >/dev/null 2>&1 && { echo "✓"; break; }
+    echo -n "."; sleep 1
+  done
+  # 只重建带 OTLP exporter 的服务配置，不重建镜像；无 obs 时默认采样为 0，避免后台持续报连接失败。
+  TRACING_SAMPLE=1.0 OTLP_ENDPOINT=http://tempo:4318/v1/traces \
+    compose --profile apps up -d gateway rec-engine ad-serving content user
   echo "  Grafana → http://localhost:$GRAFANA_PORT (admin/admin)"
 }
 

@@ -72,6 +72,9 @@ export default function ProjectOverview() {
     queryKey: ['system-overview'],
     queryFn: getSystemOverview,
     staleTime: 5 * 60_000,
+    // 控制台比后端先就绪时会短暂失败；失败态持续探活，后端恢复后无需用户手动刷新页面。
+    refetchInterval: (query) => (query.state.status === 'error' ? 5_000 : false),
+    refetchOnReconnect: 'always',
   });
   const healthQuery = useQuery({
     queryKey: ['system-health'],

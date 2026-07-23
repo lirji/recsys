@@ -1,11 +1,16 @@
 package com.recsys.console.system;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class SystemOverviewServiceTest {
 
@@ -99,5 +104,32 @@ class SystemOverviewServiceTest {
         assertThat(health).hasSize(1);
         assertThat(health.get(0).status()).isEqualTo("DOWN");
         assertThat(health.get(0).message()).isEqualTo("health endpoint unreachable");
+    }
+
+    @Test
+    void healthDistinguishesDownEndpointFromUnreachableEndpoint() {
+        SystemHealthProperties properties = new SystemHealthProperties();
+        SystemHealthProperties.Target target = new SystemHealthProperties.Target();
+        target.setService("down-service");
+        target.setName("down-service");
+        target.setKind("app");
+        target.setUrl("http://down-service:8080");
+        properties.setTargets(List.of(target));
+
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://down-service:8080/actuator/health"))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"status\":\"DOWN\"}"));
+        SystemHealthService service = new SystemHealthService(properties, builder.build());
+
+        List<SystemOverview.ServiceHealth> health = service.health();
+
+        assertThat(health).hasSize(1);
+        assertThat(health.get(0).status()).isEqualTo("DOWN");
+        assertThat(health.get(0).message())
+                .isEqualTo("health endpoint reachable but returned HTTP 503");
+        server.verify();
     }
 }

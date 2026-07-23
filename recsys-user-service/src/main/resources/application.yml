@@ -47,8 +47,8 @@ management:
       show-details: when_authorized   # P0:避免向匿名泄漏内部状态
   tracing:
     sampling:
-      probability: 1.0
-  # P2:OTLP 导出 span 到 Tempo(默认 localhost:4318,OTLP_ENDPOINT 可覆盖)。
+      probability: ${TRACING_SAMPLE:0.0}
+  # P2:OTLP 导出 span 到 Tempo；无观测栈时默认采样 0，OTLP_ENDPOINT 可覆盖。
   otlp:
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

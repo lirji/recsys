@@ -7,6 +7,11 @@ server {
     root   /usr/share/nginx/html;
     index  index.html;
 
+    # localhost 下的 Cookie 不按端口隔离；统一登录及其他本地项目的 Cookie 会一并发到本入口。
+    # 默认单个请求头仅 8 KiB，OIDC/SSO 场景容易在到达 SPA 前被 nginx 直接拒绝为 400。
+    client_header_buffer_size 16k;
+    large_client_header_buffers 4 64k;
+
     # Docker DNS 在请求时解析，上游重启或晚于前端就绪时不会拖垮 nginx。
     resolver 127.0.0.11 valid=10s ipv6=off;
     set $gateway_upstream ${RECSYS_GATEWAY};
@@ -36,6 +41,9 @@ server {
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
+        # recsys 使用 Authorization/OIDC token，不读取 Cookie；避免把 localhost 其他端口的
+        # 大 Cookie 继续传给 Gateway/Tomcat，造成下游再次返回 400。
+        proxy_set_header   Cookie            "";
     }
 
     location /assets/ {

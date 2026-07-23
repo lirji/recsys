@@ -193,10 +193,10 @@ services:
   console:
     build:
       context: ../console
-      # 认证模式构建期烘焙(Vite VITE_* 编译期内联)。切 oidc:CONSOLE_AUTH_MODE=oidc 且网关同步
-      # RECSYS_EDGE_CASDOOR=true(成对开关,见 docs/09);issuer 需浏览器可达(容器化时勿用容器名)。
+      # Docker 栈默认与统一门户一致走 Casdoor 租户登录；回滚演示登录时须将前后端成对切到 legacy/false。
+      # 认证模式构建期烘焙(Vite VITE_* 编译期内联)，issuer 需浏览器可达(容器化时勿用容器名)。
       args:
-        VITE_AUTH_MODE: ${CONSOLE_AUTH_MODE:-legacy}
+        VITE_AUTH_MODE: ${CONSOLE_AUTH_MODE:-oidc}
         VITE_CASDOOR_ISSUER: ${CASDOOR_ISSUER:-http://localhost:8000}
         VITE_CASDOOR_CLIENT_ID: ${CASDOOR_CONSOLE_CLIENT_ID:-ragshared0client00000001-org-recsys}
     container_name: recsys-console-web
@@ -239,9 +239,11 @@ services:
       SERVER_PORT: 8080
       # 一键 dev 栈默认关安全(否则 /api/advertiser·/api/search-ads 等经网关 401);生产置 true 并注入密钥
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
-      # 统一登录平台(Casdoor)边缘模式(docs/09,默认关=自签 HS256 演示登录)。开启须与前端
-      # CONSOLE_AUTH_MODE=oidc 成对;JWKS 由网关容器访问,Casdoor 跑宿主机时用 host.docker.internal。
-      RECSYS_EDGE_CASDOOR: "${RECSYS_EDGE_CASDOOR:-false}"
+      TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      # Docker 栈默认启用 Casdoor 边缘模式，并与前端 CONSOLE_AUTH_MODE=oidc 成对。
+      # 应急回滚须同时设 RECSYS_EDGE_CASDOOR=false、CONSOLE_AUTH_MODE=legacy。
+      RECSYS_EDGE_CASDOOR: "${RECSYS_EDGE_CASDOOR:-true}"
       CASDOOR_JWKS: "${CASDOOR_JWKS:-http://host.docker.internal:8000/.well-known/jwks}"
       CASDOOR_ISSUER: "${CASDOOR_ISSUER:-http://localhost:8000}"
       CASDOOR_AUDIENCES: "${CASDOOR_AUDIENCES:-ragshared0client00000001}"
@@ -281,6 +283,10 @@ services:
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8081
+      # 本地 Docker 默认不调用外部 embedding；显式设 gemini/local 才启用对应提供方。
+      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-none}"
+      TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
       # 广告在线服务走 gRPC + Nacos 服务发现(discovery:/// 经 DiscoveryClient 解析实例 + round_robin 客户端 LB;
       # 回滚:AD_SERVING_GRPC=static://ad-serving:9095 走容器 DNS 直连,或 AD_SERVING_MODE=in-process 退单体)
       AD_SERVING_MODE: grpc
@@ -321,6 +327,8 @@ services:
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8085
+      TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
       # gRPC 端口(net.devh);rec-engine 经容器 DNS ad-serving:9095 连
       GRPC_SERVER_PORT: 9095
 
@@ -441,6 +449,8 @@ services:
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8086
+      TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
       GRPC_SERVER_PORT: 9096   # rec-engine 经容器 DNS content:9096 连
 
   user:
@@ -464,6 +474,8 @@ services:
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8087
+      TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
       GRPC_SERVER_PORT: 9097   # rec-engine 经容器 DNS user:9097 连
 
 volumes:

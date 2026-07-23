@@ -10,6 +10,7 @@ WORKDIR /build
 # 先拷贝所有 pom 以利用依赖层缓存(源码变动不必重下依赖)
 COPY pom.xml ./
 COPY recsys-common/pom.xml recsys-common/
+COPY recsys-platform/pom.xml recsys-platform/
 COPY recsys-ad-common/pom.xml recsys-ad-common/
 COPY recsys-proto/pom.xml recsys-proto/
 COPY recsys-gateway/pom.xml recsys-gateway/

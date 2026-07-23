@@ -472,12 +472,12 @@ management:
         # readiness 组纳入模型就绪探针(E4):模型策略但模型没加载 → readiness DOWN,k8s 不导流
         readiness:
           include: readinessState,modelReadiness
-  # 分布式追踪:采样率(教学全采;生产按 QPS 降到 0.01~0.1)。traceId/spanId 自动进 MDC 与结构化日志关联。
+  # 分布式追踪:无后端时默认不采样；scripts/dev-local.sh obs 自动切到全采，生产按 QPS 设为 0.01~0.1。
   # 要导出 span 到后端:加 opentelemetry-exporter-otlp 依赖 + management.otlp.tracing.endpoint 指向 Tempo/Jaeger。
   tracing:
     sampling:
-      probability: 1.0
-  # P2:OTLP 导出 span 到 Tempo(默认 localhost:4318;指向真实 Tempo 用 OTLP_ENDPOINT)。后端不可达则静默丢弃,不影响主流程。
+      probability: ${TRACING_SAMPLE:0.0}
+  # P2:OTLP 导出 span 到 Tempo；仅在 TRACING_SAMPLE>0 时产生上报，OTLP_ENDPOINT 可覆盖。
   otlp:
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}

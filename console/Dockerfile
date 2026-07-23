@@ -6,8 +6,8 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 # 认证模式(构建期烘焙,Vite 的 VITE_* 是编译期内联;改模式需重建镜像):
-#   legacy(默认)=演示登录;oidc=Casdoor 统一登录(网关须同步 RECSYS_EDGE_CASDOOR=true,成对开关)
-ARG VITE_AUTH_MODE=legacy
+#   oidc(默认)=Casdoor 租户登录;legacy=应急回滚演示登录(网关须同步切换,成对开关)
+ARG VITE_AUTH_MODE=oidc
 ARG VITE_CASDOOR_ISSUER=http://localhost:8000
 ARG VITE_CASDOOR_CLIENT_ID=ragshared0client00000001-org-recsys
 ARG VITE_CASDOOR_SCOPE="openid profile offline_access"

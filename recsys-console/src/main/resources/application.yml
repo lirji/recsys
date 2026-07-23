@@ -31,6 +31,8 @@ spring:
       # 不因启动时连不上 DB 而失败 —— console 允许无 DB 启动,报表回退读本地 CSV(优雅降级)
       initialization-fail-timeout: -1
       minimum-idle: 0
+      # 显式指定合法隔离级别,避免首次连接探测失败后 Hikari 保留 -1 并使连接池无法恢复。
+      transaction-isolation: TRANSACTION_READ_COMMITTED
       # P1 弹性:连接池超时
       connection-timeout: ${HIKARI_CONNECTION_TIMEOUT:3000}
       validation-timeout: 2000

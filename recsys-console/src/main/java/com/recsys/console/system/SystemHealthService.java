@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -71,6 +72,16 @@ public class SystemHealthService {
                     target.getUrl(),
                     status,
                     "health endpoint reachable",
+                    checkedAt
+            );
+        } catch (RestClientResponseException e) {
+            return new ServiceHealth(
+                    target.getService(),
+                    target.getName(),
+                    target.getKind(),
+                    target.getUrl(),
+                    "DOWN",
+                    "health endpoint reachable but returned HTTP " + e.getStatusCode().value(),
                     checkedAt
             );
         } catch (Exception e) {

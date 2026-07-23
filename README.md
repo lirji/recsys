@@ -80,7 +80,7 @@ mvn -pl recsys-rec-engine spring-boot:run
 
 | 服务 | HTTP 端口 | gRPC 端口 | 说明 |
 |---|---|---|---|
-| gateway | 8080 | - | 统一 API 网关(南北向入口;边缘认证默认自签 JWT,可选 Casdoor OIDC `RECSYS_EDGE_CASDOOR=true`,docs/09) |
+| gateway | 8080 | - | 统一 API 网关(Docker 默认 Casdoor OIDC 租户登录；可成对切回 legacy 演示模式，docs/09) |
 | rec-engine | 8081 | - | 推荐编排,对外主入口 |
 | behavior | 8082 | - | 行为采集 |
 | advertiser | 8083 | - | 广告主管理(写侧) |
