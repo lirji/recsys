@@ -1,5 +1,7 @@
 server:
   port: 8081
+  # Casdoor 登录令牌及网关透传头可能超过 Tomcat 默认 8KB;与入口 nginx 的单头上限保持一致。
+  max-http-request-header-size: ${MAX_HTTP_REQUEST_HEADER_SIZE:64KB}
 
 spring:
   application:

@@ -2,7 +2,6 @@ package com.recsys.gateway.security;
 
 import com.recsys.platform.security.AuthProperties;
 import com.recsys.platform.security.InternalToken;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -24,7 +23,6 @@ import java.util.stream.Collectors;
  * 实现「终端令牌不落下游、下游只信网关签发的内部令牌」的零信任传播。
  */
 @Component
-@ConditionalOnProperty(prefix = "recsys.security", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class IdentityPropagationFilter implements GlobalFilter, Ordered {
 
     private final AuthProperties props;
@@ -52,7 +50,10 @@ public class IdentityPropagationFilter implements GlobalFilter, Ordered {
                 .flatMap(chain::filter);
     }
 
-    /** token 非空 → 注入内部令牌;为空(匿名/公开路径)→ 仅剥离伪造 header。两种情况都剥离入站 Authorization。 */
+    /**
+     * token 非空 → 注入内部令牌;为空(匿名、公开路径或 nosec 本地模式)→ 仅剥离伪造 header。
+     * 两种情况都剥离入站 Authorization,避免关闭鉴权时把 Casdoor 的大令牌原样转发给下游。
+     */
     private ServerWebExchange mutate(ServerWebExchange exchange, String internalToken) {
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(h -> {
