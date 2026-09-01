@@ -142,6 +142,8 @@ recsys:
       semantic: 100
       cold: 100
       two-tower: 200
+      multi-interest: 200
+      graph: 200
       generative: 200
       generative-seed: 20
       lexical: 200
@@ -157,6 +159,15 @@ recsys:
     two-tower:
       model-path: classpath:model/user_tower.onnx
       schema-path: classpath:model/tower_schema.json
+    # R9 MIND 多兴趣 + LightGCN 图召回；schema.model_version 强制与版本化 pgvector 行一致。
+    multi-interest:
+      model-path: classpath:model/mind_user.onnx
+      schema-path: classpath:model/mind_schema.json
+      vocab-path: classpath:model/mind_item_vocab.csv
+      max-history: 50
+      per-interest-limit: 50
+    graph:
+      schema-path: classpath:model/lightgcn_schema.json
     # 标签召回:把 Flink 写的实时类目偏好(rt:user:{id})叠加进静态画像类目,实时类目按近期计数加权
     tag:
       realtime-enabled: true
@@ -315,6 +326,15 @@ recsys:
       model-path: classpath:model/model_dfm_cvr.onnx
       schema-path: classpath:model/dfm_cvr_schema.json
       vocab-path: classpath:model/dfm_cvr_category_vocab.json
+    # A7:collection 是随机末位 show/no-show 数据采集；scoring 是增量竞价，二者独立开关。
+    uplift:
+      collection-enabled: ${AD_UPLIFT_COLLECTION_ENABLED:false}
+      scoring-enabled: ${AD_UPLIFT_SCORING_ENABLED:false}
+      control-rate: ${AD_UPLIFT_CONTROL_RATE:0.05}
+      salt: ${AD_UPLIFT_SALT:a7-uplift-v1}
+      outcome-horizon-days: ${AD_UPLIFT_HORIZON_DAYS:7}
+      model-path: classpath:model/model_uplift.onnx
+      schema-path: classpath:model/uplift_schema.json
     # 混排 Ad Load(docs/05 §4.8):/api/feed 把广告按位次/密度混入自然结果
     ad-load:
       enabled: ${AD_LOAD_ENABLED:true}
@@ -361,7 +381,7 @@ recsys:
           - name: plus
             weight: 50
             params:
-              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC,TWO_TOWER,GENERATIVE,TIGER"
+              channels: "VECTOR,I2I,HOT,TAG,U2U,SWING,SEMANTIC,TWO_TOWER,MULTI_INTEREST,GRAPH,GENERATIVE,TIGER"
       rank:
         salt: rank-2026a
         variants:

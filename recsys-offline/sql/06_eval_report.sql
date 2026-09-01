@@ -12,4 +12,5 @@ CREATE TABLE IF NOT EXISTS eval_report (
     size_bytes   BIGINT       DEFAULT 0,
     created_at   TIMESTAMPTZ  DEFAULT now()
 );
+COMMENT ON TABLE eval_report IS '离线评估与分析报表的结构化存储';
 CREATE INDEX IF NOT EXISTS idx_eval_report_cat_ts ON eval_report (category, ts DESC);

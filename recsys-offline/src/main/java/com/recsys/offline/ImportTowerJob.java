@@ -110,6 +110,7 @@ public class ImportTowerJob implements OfflineJob {
         // #3:去 REFERENCES item 外键(派生库拆分后 item 在 content 库,跨库外键不成立)
         jdbc.execute("CREATE TABLE IF NOT EXISTS item_tower_embedding (" +
                 "item_id BIGINT PRIMARY KEY, embedding vector(64))");
+        jdbc.execute("COMMENT ON TABLE item_tower_embedding IS '双塔召回模型生成的物品侧向量'");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_item_tower_hnsw " +
                 "ON item_tower_embedding USING hnsw (embedding vector_cosine_ops)");
     }

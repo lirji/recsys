@@ -111,6 +111,7 @@ public class PublishReportsJob implements OfflineJob {
                 + "id BIGSERIAL PRIMARY KEY, category VARCHAR(64) NOT NULL, name VARCHAR(256) NOT NULL UNIQUE, "
                 + "ts VARCHAR(32), columns_json JSONB NOT NULL, rows_json JSONB NOT NULL, "
                 + "size_bytes BIGINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now())");
+        jdbc.execute("COMMENT ON TABLE eval_report IS '离线评估与分析报表的结构化存储'");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_eval_report_cat_ts ON eval_report (category, ts DESC)");
     }
 

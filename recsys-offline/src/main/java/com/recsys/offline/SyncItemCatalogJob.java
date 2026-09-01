@@ -127,6 +127,7 @@ public class SyncItemCatalogJob implements OfflineJob {
                     description TEXT, popularity DOUBLE PRECISION DEFAULT 0,
                     title_tsv tsvector GENERATED ALWAYS AS
                         (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED)""");
+        jdbc.execute("COMMENT ON TABLE item_local IS '供在线召回与排序热路径使用的物品目录本地读模型'");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_item_local_title_tsv ON item_local USING gin (title_tsv)");
     }
 }

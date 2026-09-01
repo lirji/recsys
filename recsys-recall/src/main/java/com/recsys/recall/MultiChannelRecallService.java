@@ -44,10 +44,13 @@ public class MultiChannelRecallService implements RecallService {
     /** 消费预取近期正反馈物品的召回路(三路 SQL 完全同口径,可共享一次查询)。 */
     private static final java.util.EnumSet<RecallChannel> SEED_CHANNELS =
             java.util.EnumSet.of(RecallChannel.I2I, RecallChannel.SWING, RecallChannel.GENERATIVE);
+    private static final java.util.EnumSet<RecallChannel> SEQUENCE_CHANNELS =
+            java.util.EnumSet.of(RecallChannel.MULTI_INTEREST);
 
     private final List<ChannelRecaller> recallers;
     private final RecallProperties props;
     private final RecentPositiveItemsSource recentItemsSource;
+    private final BehaviorSequenceSource behaviorSequenceSource;
     /** 慢通道池(pgvector ANN/ONNX/重 DB);舱壁关闭时即唯一单池。 */
     private final ExecutorService slowPool;
     /** 快通道池(HOT/TAG/I2I 等兜底);舱壁关闭时 == slowPool(退回单池)。 */
@@ -56,10 +59,12 @@ public class MultiChannelRecallService implements RecallService {
     private final java.util.EnumSet<RecallChannel> slowChannelSet;
 
     public MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props,
-                                     RecentPositiveItemsSource recentItemsSource) {
+                                     RecentPositiveItemsSource recentItemsSource,
+                                     BehaviorSequenceSource behaviorSequenceSource) {
         this.recallers = recallers;
         this.props = props;
         this.recentItemsSource = recentItemsSource;
+        this.behaviorSequenceSource = behaviorSequenceSource;
         RecallProperties.Parallel p = props.getParallel();
         this.slowChannelSet = parseSlowChannels(p.getSlowChannels());
         boolean bulkhead = p.isBulkheadEnabled();
@@ -132,6 +137,7 @@ public class MultiChannelRecallService implements RecallService {
         // 每请求取一次用户近期正反馈物品下发各通道:消除 I2I/SWING/GENERATIVE 三路对 user_behavior 的
         // 重复查询与连接扇出。仅当尚未预取且确有种子路启用时才查(纯冷启动/HOT 路不触发,零额外开销)。
         ctx = withPrefetchedSeeds(ctx, active);
+        ctx = withPrefetchedSequence(ctx, active);
         // 各路并行调用(有界线程池 + 单路超时);任一路超时/异常当空,不阻断其余路与合并。
         List<List<RecallItem>> perChannel = runRecallers(active, ctx);
 
@@ -206,6 +212,23 @@ public class MultiChannelRecallService implements RecallService {
         } catch (Exception e) {
             log.warn("预取用户近期正反馈物品失败,各路回退自查: {}", e.getMessage());
             return ctx;
+        }
+    }
+
+    private RecallContext withPrefetchedSequence(RecallContext ctx, List<ChannelRecaller> active) {
+        if (ctx.behaviorSequence() != null) {
+            return ctx;
+        }
+        boolean needed = active.stream().anyMatch(r -> SEQUENCE_CHANNELS.contains(r.channel()));
+        if (!needed) {
+            return ctx;
+        }
+        try {
+            return ctx.withBehaviorSequence(behaviorSequenceSource.sequence(
+                    ctx.userId(), props.getMultiInterest().getMaxHistory()));
+        } catch (Exception e) {
+            log.warn("预取 MIND 行为序列失败,该路将空返回: {}", e.getMessage());
+            return ctx.withBehaviorSequence(List.of());
         }
     }
 
@@ -302,14 +325,16 @@ public class MultiChannelRecallService implements RecallService {
             case SWING -> 1;
             case U2U -> 2;
             case TWO_TOWER -> 3;   // 学行为的个性化向量召回,信息量高,优先于内容向量
-            case TIGER -> 4;       // 完整生成式召回(自回归),学习型语义信号,信息量高
-            case GENERATIVE -> 5;  // 生成式语义 ID 召回(前缀检索版)
-            case VECTOR -> 6;
-            case SEMANTIC -> 7;
-            case LEXICAL -> 8;     // 词法 query 相关性(搜索),与 SEMANTIC 同属 query 内容匹配
-            case TAG -> 9;
-            case COLD -> 10;
-            case HOT -> 11;
+            case MULTI_INTEREST -> 4;
+            case GRAPH -> 5;
+            case TIGER -> 6;       // 完整生成式召回(自回归),学习型语义信号,信息量高
+            case GENERATIVE -> 7;  // 生成式语义 ID 召回(前缀检索版)
+            case VECTOR -> 8;
+            case SEMANTIC -> 9;
+            case LEXICAL -> 10;     // 词法 query 相关性(搜索),与 SEMANTIC 同属 query 内容匹配
+            case TAG -> 11;
+            case COLD -> 12;
+            case HOT -> 13;
         };
     }
 

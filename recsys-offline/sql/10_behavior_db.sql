@@ -25,7 +25,12 @@ CREATE TABLE IF NOT EXISTS user_behavior (
     scene    TEXT,
     bucket   TEXT,
     ts       TIMESTAMP DEFAULT now(),
-    position INT
+    position INT,
+    exposure_id TEXT
 );
+COMMENT ON TABLE user_behavior IS '用户曝光、点击、点赞、播放和评分等行为事件日志';
 CREATE INDEX IF NOT EXISTS idx_behavior_user ON user_behavior(user_id);
 CREATE INDEX IF NOT EXISTS idx_behavior_item ON user_behavior(item_id);
+ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS exposure_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_behavior_click_exposure
+    ON user_behavior(exposure_id) WHERE action='CLICK' AND exposure_id IS NOT NULL;

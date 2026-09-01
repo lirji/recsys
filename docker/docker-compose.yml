@@ -1,19 +1,18 @@
-# 本仓库全部容器编排的单一入口(本文件在 docker/ 目录下,故所有相对路径以 ../ 指向仓库根)。
-# 一键(推荐):从仓库根跑 `scripts/dev-local.sh up`(基础设施 + 8 个 app 全部容器化 + 健康检查),
-#             或直接 `cd docker && docker compose --profile apps --profile console up -d --build`。
+# 本文件只负责 recsys 应用与回滚用旧基础设施；日常数据库/中间件由相邻 ../dev-infra 管理。
+# 一键(推荐):从仓库根跑 `scripts/dev-local.sh up`，脚本先启动 dev-infra recsys 栈，再启动应用。
 #
 # 按 profile 分层启动(cd docker 后,或加 -f docker/docker-compose.yml):
-#   (默认)             postgres + redis —— 只起基础存储
-#   --profile full      追加 kafka + nacos
 #   --profile apps      追加 8 个 Java 服务(全链路容器化;仅 gateway 对宿主暴露端口)
 #   --profile console   追加前端 nginx(SPA + 反代 /api)
-#   --profile obs       追加 prometheus + grafana + tempo + alertmanager(观测)
+#   legacy-* profiles   仅在回滚到项目内旧基础设施时使用
 # 所有对宿主暴露的端口都可用环境变量覆盖(见 docker/.env.example;本机端口冲突时 dev-local.sh 会注入)。
 #   Grafana: http://localhost:${GRAFANA_PORT:-3001} (admin/admin),已预置数据源 + 推荐在线看板
 services:
+  # 回滚专用旧基础设施。日常开发由 ../dev-infra 的 recsys profile 提供。
   postgres:
     image: pgvector/pgvector:pg16
     container_name: recsys-postgres
+    profiles: ["legacy-infra", "legacy-authz", "legacy-apps"]
     # 全栈 8 个服务多池(主库 + ShardingSphere ds_0/ds_1 + 派生向量库)并发会打满 pg 默认
     # max_connections=100(FATAL: too many clients)→ 抬到 500 供全链路容器化下的连接需求。
     command: ["postgres", "-c", "max_connections=500"]
@@ -35,10 +34,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-postgres"]
 
   redis:
     image: redis:7-alpine
     container_name: recsys-redis
+    profiles: ["legacy-infra", "legacy-apps"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -46,8 +50,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-redis"]
 
-  # ---- 细粒度判权(统一权限平台):docker compose --profile authz up -d 才启动 ----
+  # ---- 回滚用旧判权栈；日常由 dev-infra recsys-authz profile 提供 ----
   # recsys 专属 SpiceDB 实例(§B 每项目独立,不与 auth-platform 自己的 :8543 共用)。
   # datastore=postgres(同容器 recsys-postgres 的 spicedb 库,持久化、重启不丢);
   # 判权服务(auth-platform-server :8210)从 auth-platform 仓库起,见 docs/09-权限接入auth-platform.md。
@@ -56,25 +64,28 @@ services:
   spicedb-migrate:
     image: authzed/spicedb:latest
     container_name: recsys-spicedb-migrate
-    profiles: ["authz"]
+    profiles: ["legacy-authz"]
     command: datastore migrate head
     environment:
       SPICEDB_DATASTORE_ENGINE: postgres
-      SPICEDB_DATASTORE_CONN_URI: "postgres://${PG_USER:-recsys}:${PG_PASSWORD:-recsys}@postgres:5432/spicedb?sslmode=disable"
+      SPICEDB_DATASTORE_CONN_URI: "postgres://${PG_USER:-recsys}:${PG_PASSWORD:-recsys}@recsys-postgres:5432/spicedb?sslmode=disable"
     depends_on:
       postgres:
         condition: service_healthy
     restart: on-failure
+    networks:
+      - default
+      - dev-infra
 
   spicedb:
     image: authzed/spicedb:latest
     container_name: recsys-spicedb
-    profiles: ["authz"]
+    profiles: ["legacy-authz"]
     command: serve
     environment:
       SPICEDB_GRPC_PRESHARED_KEY: ${RECSYS_SPICEDB_KEY:-recsys_dev_key}
       SPICEDB_DATASTORE_ENGINE: postgres
-      SPICEDB_DATASTORE_CONN_URI: "postgres://${PG_USER:-recsys}:${PG_PASSWORD:-recsys}@postgres:5432/spicedb?sslmode=disable"
+      SPICEDB_DATASTORE_CONN_URI: "postgres://${PG_USER:-recsys}:${PG_PASSWORD:-recsys}@recsys-postgres:5432/spicedb?sslmode=disable"
       SPICEDB_HTTP_ENABLED: "true"
     depends_on:
       spicedb-migrate:
@@ -82,13 +93,17 @@ services:
     ports:
       - "${RECSYS_SPICEDB_HTTP_PORT:-8544}:8443"
       - "${RECSYS_SPICEDB_GRPC_PORT:-50052}:50051"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-spicedb"]
 
-  # ---- 可选组件:docker compose --profile full up -d 才启动 ----
+  # ---- 回滚用旧 Kafka / Nacos ----
   # 官方 Apache Kafka 镜像(KRaft 单节点;Bitnami 已下架旧 tag)。Java 服务跑宿主机经 localhost:9092 连。
   kafka:
     image: apache/kafka:3.7.1
     container_name: recsys-kafka
-    profiles: ["full"]
+    profiles: ["legacy-full"]
     environment:
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: controller,broker
@@ -103,13 +118,17 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "${KAFKA_PORT:-9092}:9092"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-kafka"]
 
   nacos:
     # v2.4.3 起有原生 arm64 多架构镜像(v2.3.2 仅 amd64,Apple Silicon 上模拟会卡死);standalone 内嵌 Derby。
     image: nacos/nacos-server:v2.4.3
     container_name: recsys-nacos
     # apps profile 也需要 Nacos(服务注册发现 + rec-engine 配置中心),故一并纳入。
-    profiles: ["full", "apps"]
+    profiles: ["legacy-infra", "legacy-full", "legacy-apps"]
     environment:
       MODE: standalone
     ports:
@@ -121,12 +140,16 @@ services:
       timeout: 3s
       retries: 30
       start_period: 20s
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-nacos"]
 
-  # ---- 观测性:docker compose --profile obs up -d 才启动 ----
+  # ---- 回滚用旧观测栈；日常由 dev-infra recsys-obs profile 提供 ----
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: recsys-prometheus
-    profiles: ["obs"]
+    profiles: ["legacy-obs"]
     extra_hosts:
       # Linux 上需要;macOS/Windows 的 Docker Desktop 已内置 host.docker.internal
       - "host.docker.internal:host-gateway"
@@ -135,44 +158,60 @@ services:
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-prometheus"]
 
   # P2 分布式追踪后端:接收各服务 OTLP span(宿主 Java 服务 → localhost:4318),Grafana 按 traceId 钻取跨进程链路
   tempo:
     image: grafana/tempo:2.6.0
     container_name: recsys-tempo
-    profiles: ["obs"]
+    profiles: ["legacy-obs"]
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./monitoring/tempo.yaml:/etc/tempo/tempo.yaml:ro
     ports:
       - "3200:3200"   # Tempo 查询 API(Grafana 数据源用)
       - "4318:4318"   # OTLP HTTP 接收端
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-tempo"]
 
   # 告警路由(SLO 告警的通知面);教学默认不外发,UI 在 :9093
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: recsys-alertmanager
-    profiles: ["obs"]
+    profiles: ["legacy-obs"]
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - "${ALERTMANAGER_PORT:-9093}:9093"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-alertmanager"]
 
   # P2:告警接收演示端——Alertmanager 把告警 POST 到这里,容器日志即可见(`docker logs recsys-webhook-logger`)。
   # 演示生产 Slack/钉钉/飞书 投递的等价物,不接真实外部服务。
   webhook-logger:
     image: mendhak/http-https-echo:34
     container_name: recsys-webhook-logger
-    profiles: ["obs"]
+    profiles: ["legacy-obs"]
     environment:
       HTTP_PORT: "5001"
     ports:
       - "5001:5001"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-webhook-logger"]
 
   grafana:
     image: grafana/grafana:11.2.0
     container_name: recsys-grafana
-    profiles: ["obs"]
+    profiles: ["legacy-obs"]
     depends_on:
       - prometheus
     environment:
@@ -186,6 +225,10 @@ services:
     ports:
       # 宿主机 3000 常被占(docker-proxy 残留),映射到 3001 规避
       - "${GRAFANA_PORT:-3001}:3000"
+    networks:
+      default:
+      dev-infra:
+        aliases: ["recsys-grafana"]
 
   # ---- 控制台前端:docker compose --profile console up -d 才启动 ----
   # 前后端分离后前端独立为 console/ 工程;此服务用 nginx 同源托管构建产物 + 反代 /api 到宿主机上的网关。
@@ -211,8 +254,11 @@ services:
       #   RECSYS_GATEWAY=http://host.docker.internal:${GATEWAY_PORT:-8080}
       RECSYS_GATEWAY: ${RECSYS_GATEWAY:-http://gateway:8080}
     ports:
-      - "${CONSOLE_WEB_PORT:-9095}:80"
+      - "${RECSYS_UI_PORT:-9095}:80"
     restart: unless-stopped
+    networks:
+      - default
+      - dev-infra
 
   # ---- 在线服务容器(P0 微服务化):docker compose --profile apps up -d ----
   # 参数化 Dockerfile(MODULE/PORT)构建各 fat jar,全部接入 Nacos 服务发现(NACOS_DISCOVERY=true),
@@ -229,18 +275,16 @@ services:
         PORT: 8080
     container_name: recsys-gateway
     profiles: ["apps"]
-    depends_on:
-      nacos:
-        condition: service_healthy
     environment:
-      NACOS_ADDR: nacos:8848
+      NACOS_ADDR: recsys-nacos:8848
+      REDIS_HOST: recsys-redis
       NACOS_DISCOVERY: "true"
       # 路由默认即 lb://(见 recsys-gateway application.yml);无 Nacos 才需 SPRING_PROFILES_ACTIVE=static
       SERVER_PORT: 8080
       # 一键 dev 栈默认关安全(否则 /api/advertiser·/api/search-ads 等经网关 401);生产置 true 并注入密钥
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
-      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       # Docker 栈默认启用 Casdoor 边缘模式，并与前端 CONSOLE_AUTH_MODE=oidc 成对。
       # 应急回滚须同时设 RECSYS_EDGE_CASDOOR=false、CONSOLE_AUTH_MODE=legacy。
       RECSYS_EDGE_CASDOOR: "${RECSYS_EDGE_CASDOOR:-true}"
@@ -253,6 +297,9 @@ services:
     ports:
       - "${GATEWAY_PORT:-8080}:8080"   # 统一入口(前端 /api 反代到此;本机 8080 被占 → dev-local.env 覆盖 GATEWAY_PORT)
     restart: unless-stopped
+    networks:
+      - default
+      - dev-infra
 
   rec-engine:
     build:
@@ -264,29 +311,23 @@ services:
         PORT: 8081
     container_name: recsys-rec-engine
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
+      PG_HOST: recsys-postgres
       PG_USER: "${PG_USER:-recsys}"
       PG_PASSWORD: "${PG_PASSWORD:-recsys}"
       # ad 读侧 ShardingSphere 次数据源(sharding.yaml 用单占位符传整条 URL);容器内指向 postgres 服务
-      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
-      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
-      REDIS_HOST: redis
-      NACOS_ADDR: nacos:8848
+      PG_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DS1_DB:-recsys_ds1}
+      REDIS_HOST: recsys-redis
+      KAFKA_SERVERS: recsys-kafka:9092
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8081
       # 本地 Docker 默认不调用外部 embedding；显式设 gemini/local 才启用对应提供方。
       EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-none}"
       TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
-      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       # 广告在线服务走 gRPC + Nacos 服务发现(discovery:/// 经 DiscoveryClient 解析实例 + round_robin 客户端 LB;
       # 回滚:AD_SERVING_GRPC=static://ad-serving:9095 走容器 DNS 直连,或 AD_SERVING_MODE=in-process 退单体)
       AD_SERVING_MODE: grpc
@@ -297,6 +338,9 @@ services:
       # 用户画像服务走 gRPC(冷启动兴趣);切 in-process 则退回进程内 UserProfileService(单体等价)
       USER_SERVING_MODE: grpc
       USER_GRPC: discovery:///recsys-user-service
+    networks:
+      - default
+      - dev-infra
 
   ad-serving:
     build:
@@ -308,29 +352,26 @@ services:
         PORT: 8085
     container_name: recsys-ad-serving
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
+      PG_HOST: recsys-postgres
       PG_USER: "${PG_USER:-recsys}"
       PG_PASSWORD: "${PG_PASSWORD:-recsys}"
       # ad 读侧 ShardingSphere 次数据源(同 rec-engine);容器内指向 postgres 服务
-      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
-      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
-      REDIS_HOST: redis
-      NACOS_ADDR: nacos:8848
+      PG_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DS1_DB:-recsys_ds1}
+      REDIS_HOST: recsys-redis
+      KAFKA_SERVERS: recsys-kafka:9092
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8085
       TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
-      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       # gRPC 端口(net.devh);rec-engine 经容器 DNS ad-serving:9095 连
       GRPC_SERVER_PORT: 9095
+    networks:
+      - default
+      - dev-infra
 
   behavior:
     build:
@@ -342,20 +383,18 @@ services:
         PORT: 8082
     container_name: recsys-behavior
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
-      REDIS_HOST: redis
-      NACOS_ADDR: nacos:8848
+      PG_HOST: recsys-postgres
+      REDIS_HOST: recsys-redis
+      KAFKA_SERVERS: recsys-kafka:9092
+      BEHAVIOR_USE_KAFKA: "${BEHAVIOR_USE_KAFKA:-false}"
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8082
+    networks:
+      - default
+      - dev-infra
 
   advertiser:
     build:
@@ -367,33 +406,30 @@ services:
         PORT: 8083
     container_name: recsys-advertiser
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres    # 分库分表 sharding.yaml 的 $${PG_HOST::localhost} 走此环境变量
+      PG_HOST: recsys-postgres    # 分库分表 sharding.yaml 的 $${PG_HOST::localhost} 走此环境变量
       PG_USER: "${PG_USER:-recsys}"
       PG_PASSWORD: "${PG_PASSWORD:-recsys}"
       # 写侧 @Primary ShardingSphere 数据源(sharding.yaml 单占位符整条 URL);容器内指向 postgres 服务
-      PG_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DB:-recsys}
-      PG_DS1_JDBC_URL: jdbc:postgresql://postgres:5432/${PG_DS1_DB:-recsys_ds1}
-      REDIS_HOST: redis
-      NACOS_ADDR: nacos:8848
+      PG_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DB:-recsys}
+      PG_DS1_JDBC_URL: jdbc:postgresql://recsys-postgres:5432/${PG_DS1_DB:-recsys_ds1}
+      REDIS_HOST: recsys-redis
+      KAFKA_SERVERS: recsys-kafka:9092
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       # 细粒度归属判权(docs/09):默认 disabled 零行为变化;设 RECSYS_AUTHZ_MODE=shadow|enforce 接通。
       # 判权服务(auth-platform-server :8210)跑在宿主机,容器内经 host.docker.internal 访问
-      # (SpiceDB 由 --profile authz 起,但判权走的是判权服务,不直连 SpiceDB)。
+      # (SpiceDB 由 scripts/dev-local.sh authz 在 dev-infra 启动，但判权走判权服务，不直连 SpiceDB)。
       RECSYS_AUTHZ_MODE: "${RECSYS_AUTHZ_MODE:-disabled}"
       AUTHZ_SERVER_URL: "${AUTHZ_SERVER_URL:-http://host.docker.internal:8210}"
       AUTHZ_CLIENT_TOKEN: "${AUTHZ_CLIENT_TOKEN:-}"
       SERVER_PORT: 8083
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - dev-infra
 
   console-api:
     build:
@@ -405,15 +441,10 @@ services:
         PORT: 8090
     container_name: recsys-console-api
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
-      REDIS_HOST: redis
-      NACOS_ADDR: nacos:8848
+      PG_HOST: recsys-postgres
+      REDIS_HOST: recsys-redis
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8090
@@ -426,7 +457,10 @@ services:
       RECSYS_AD_SERVING_URL: http://ad-serving:8085
       RECSYS_CONTENT_SERVICE_URL: http://content:8086
       RECSYS_USER_SERVICE_URL: http://user:8087
-      PROMETHEUS_URL: "${PROMETHEUS_URL:-http://prometheus:9090}"
+      PROMETHEUS_URL: "${PROMETHEUS_URL:-http://recsys-prometheus:9090}"
+    networks:
+      - default
+      - dev-infra
 
   content:
     build:
@@ -438,20 +472,18 @@ services:
         PORT: 8086
     container_name: recsys-content-service
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
-      NACOS_ADDR: nacos:8848
+      PG_HOST: recsys-postgres
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8086
       TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
-      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       GRPC_SERVER_PORT: 9096   # rec-engine 经容器 DNS content:9096 连
+    networks:
+      - default
+      - dev-infra
 
   user:
     build:
@@ -463,21 +495,24 @@ services:
         PORT: 8087
     container_name: recsys-user-service
     profiles: ["apps"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
     environment:
-      PG_HOST: postgres
-      NACOS_ADDR: nacos:8848
+      PG_HOST: recsys-postgres
+      NACOS_ADDR: recsys-nacos:8848
       NACOS_DISCOVERY: "true"
       RECSYS_SECURITY_ENABLED: "${RECSYS_SECURITY_ENABLED:-false}"
       SERVER_PORT: 8087
       TRACING_SAMPLE: "${TRACING_SAMPLE:-0.0}"
-      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://tempo:4318/v1/traces}"
+      OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       GRPC_SERVER_PORT: 9097   # rec-engine 经容器 DNS user:9097 连
+    networks:
+      - default
+      - dev-infra
 
 volumes:
   pgdata:
   grafana-data:
+
+networks:
+  dev-infra:
+    external: true
+    name: ${DEV_INFRA_NETWORK:-dev-infra}

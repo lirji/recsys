@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS advertiser (
     daily_budget  DOUBLE PRECISION,
     status        TEXT DEFAULT 'active'
 );
+COMMENT ON TABLE advertiser IS '广告主账户、预算与投放状态';
 CREATE TABLE IF NOT EXISTS ad (
     ad_id         BIGINT PRIMARY KEY,
     advertiser_id BIGINT,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS ad (
     audience_id   BIGINT,
     created_at    TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad IS '广告投放单元及其关联物品、审核和出价配置';
 -- 存量 ds_1 平滑升级(IF NOT EXISTS 不改既有列;口径同 02_ad_schema.sql)
 ALTER TABLE ad ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'approved';
 ALTER TABLE ad ADD COLUMN IF NOT EXISTS review_reason TEXT;
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS ad_creative (
     review_reason TEXT,
     created_at  TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad_creative IS '广告动态创意及创意级审核状态';
 ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'approved';
 ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_reason TEXT;
 CREATE INDEX IF NOT EXISTS idx_ad_creative_ad ON ad_creative (ad_id);
@@ -70,5 +73,6 @@ CREATE TABLE IF NOT EXISTS bidword (
     bid        DOUBLE PRECISION,
     bid_mode   TEXT DEFAULT 'CPC'
 );
+COMMENT ON TABLE bidword IS '广告竞价关键词、匹配方式与出价';
 CREATE INDEX IF NOT EXISTS idx_bidword_keyword ON bidword (keyword);
 CREATE INDEX IF NOT EXISTS idx_bidword_ad ON bidword (ad_id);

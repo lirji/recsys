@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 /**
  * 搜索广告编排(docs/05 §5)——微服务化后瘦身为「query 理解 + 实验分配 + 委托广告在线服务」。
@@ -83,6 +84,11 @@ public class SearchAdsOrchestrator {
     /** 转化回传(委托 supplier)。 */
     public void recordConversion(String requestId, long adId, long userId) {
         gateway.recordConversion(requestId, adId, userId);
+    }
+
+    public boolean recordOutcome(String eventId, long advertiserId, long userId,
+                                 String objective, double value, Instant occurredAt) {
+        return gateway.recordOutcome(eventId, advertiserId, userId, objective, value, occurredAt);
     }
 
     private static double parseDouble(String s, double def) {

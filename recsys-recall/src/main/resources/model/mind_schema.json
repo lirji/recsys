@@ -1,0 +1,11 @@
+{
+  "contract_version": 1,
+  "algorithm": "mind",
+  "model_version": "r9-20260901",
+  "dim": 64,
+  "num_interests": 4,
+  "max_history": 50,
+  "pad_index": 0,
+  "input_name": "history_items",
+  "output_name": "interests"
+}

@@ -33,6 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_ad_event_ad_creative
 --     scene    TEXT,
 --     bucket   TEXT,
 --     position INT,
+--     exposure_id TEXT,
 --     ts       TIMESTAMP NOT NULL DEFAULT now(),
 --     PRIMARY KEY (id, ts)
 -- ) PARTITION BY RANGE (ts);
@@ -46,8 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_ad_event_ad_creative
 -- CREATE INDEX ON user_behavior (user_id, ts);
 -- CREATE INDEX ON user_behavior (item_id, ts);
 -- CREATE INDEX ON user_behavior (user_id, action, item_id);
+-- ⚠️ 分区父表不能建立不含 ts 的全局 UNIQUE(exposure_id)。启用月分区时应新建非分区
+-- click_dedupe(exposure_id PRIMARY KEY, behavior_id, created_at) 作为全局点击幂等表，并在同事务先占位。
 -- -- 5. 回灌数据(overriding 让 IDENTITY 接受旧 id)
--- INSERT INTO user_behavior OVERRIDING SYSTEM VALUE SELECT * FROM user_behavior_legacy;
+-- INSERT INTO user_behavior(id,user_id,item_id,action,value,scene,bucket,position,exposure_id,ts)
+-- OVERRIDING SYSTEM VALUE
+-- SELECT id,user_id,item_id,action,value,scene,bucket,position,exposure_id,ts FROM user_behavior_legacy;
 -- -- 6. 校验行数一致后删旧表
 -- -- SELECT (SELECT count(*) FROM user_behavior) = (SELECT count(*) FROM user_behavior_legacy);
 -- DROP TABLE user_behavior_legacy;

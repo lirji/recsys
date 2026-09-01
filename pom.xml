@@ -31,6 +31,8 @@
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
+        <!-- Testcontainers 1.19.7 内置 docker-java 默认 API 1.32；Docker Engine 29 最低接受 1.40。 -->
+        <docker.api.version>1.40</docker.api.version>
         <!-- 结构化日志 JSON 编码器(P2,非 Spring Boot BOM 管理的第三方,集中钉版本) -->
         <logstash-logback.version>7.4</logstash-logback.version>
         <!-- 覆盖率度量 + 契约类覆盖率门槛(E3):0.8.12 支持 JDK 21 -->
@@ -301,6 +303,18 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <parameters>true</parameters>
+                </configuration>
+            </plugin>
+
+            <!-- 保证 PostgreSQL Testcontainers 测试在新 Docker Engine 上实际启动，而不是因旧 API 被跳过。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 

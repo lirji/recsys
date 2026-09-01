@@ -17,6 +17,8 @@ service AdServingService {
   rpc RecordClick (ClickRequest) returns (Ack);
   // 转化回传(CPA 计费 + 延迟转化建模)。
   rpc RecordConversion (ConversionRequest) returns (Ack);
+  // A7 独立转化事实；不要求 request/ad 归因，control 与 treatment 两臂均可观测。
+  rpc RecordOutcome (OutcomeRequest) returns (Ack);
   // #3 ad-serving 物理拆库:advertiser 报表经此取 ad-serving 自有 ad_event 的按广告聚合(曝光/点击/转化/花费),
   // 不再跨库直读 ad_event。advertiser 传自有 ad 表的 ad_id 列表,supplier 侧只碰 ad_event。
   rpc GetAdEventStats (AdEventStatsRequest) returns (AdEventStatsReply);
@@ -50,6 +52,15 @@ message ConversionRequest {
   string request_id = 1;
   int64 ad_id = 2;
   int64 user_id = 3;
+}
+
+message OutcomeRequest {
+  string event_id = 1;
+  int64 advertiser_id = 2;
+  int64 user_id = 3;
+  string objective = 4;
+  double value = 5;
+  int64 occurred_at_epoch_ms = 6;
 }
 
 message Ack {

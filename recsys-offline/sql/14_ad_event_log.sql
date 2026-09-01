@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS ad_event_log (
     ts            TIMESTAMP,
     creative_id   BIGINT
 );
+COMMENT ON TABLE ad_event_log IS '供离线分析使用的广告事件读仓';
 CREATE INDEX IF NOT EXISTS idx_ad_event_log_type_ts ON ad_event_log (event_type, ts);
 CREATE INDEX IF NOT EXISTS idx_ad_event_log_ad ON ad_event_log (ad_id, event_type);
 CREATE INDEX IF NOT EXISTS idx_ad_event_log_req ON ad_event_log (request_id);

@@ -1,5 +1,7 @@
 package com.recsys.common.content;
 
+import com.recsys.common.query.TermWeight;
+
 import java.util.Collection;
 import java.util.List;
 
@@ -23,7 +25,15 @@ import java.util.List;
  */
 public interface ItemCatalogReader {
 
-    /** LEXICAL 词法/BM25 召回:{@code title_tsv} 全文检索 {@code ts_rank_cd} 打分,(itemId, score) Top-limit。 */
+    /**
+     * LEXICAL 全文检索:{@code title_tsv} 过滤,按 cover-density rank + query IDF(R8-FTS)打分。
+     * terms 为空或全部为中性权重 1 时严格退回原始等权排序。
+     */
+    default List<ScoredId> lexicalSearch(String query, List<TermWeight> terms, int limit) {
+        return lexicalSearch(query, limit);
+    }
+
+    /** 原有等权 FTS 契约；保留为抽象方法，兼容已有 ItemCatalogReader 实现。 */
     List<ScoredId> lexicalSearch(String query, int limit);
 
     /** TAG 类目召回:给定类目集内按 popularity 取 Top-limit,带 category 供在线加权。 */

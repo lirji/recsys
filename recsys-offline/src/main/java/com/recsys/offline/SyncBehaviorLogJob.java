@@ -29,7 +29,7 @@ public class SyncBehaviorLogJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SyncBehaviorLogJob.class);
 
-    private static final String COLS = "id,user_id,item_id,action,value,scene,bucket,ts,position";
+    private static final String COLS = "id,user_id,item_id,action,value,scene,bucket,ts,position,exposure_id";
 
     private final JdbcTemplate jdbc;
 
@@ -76,12 +76,13 @@ public class SyncBehaviorLogJob implements OfflineJob {
                 (rs, i) -> new Object[]{
                         rs.getLong("id"), rs.getObject("user_id"), rs.getObject("item_id"),
                         rs.getString("action"), rs.getObject("value"), rs.getString("scene"),
-                        rs.getString("bucket"), rs.getTimestamp("ts"), rs.getObject("position")});
+                        rs.getString("bucket"), rs.getTimestamp("ts"), rs.getObject("position"),
+                        rs.getString("exposure_id")});
         if (rows.isEmpty()) {
             return 0;
         }
         jdbc.batchUpdate(
-                "INSERT INTO behavior_log(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
+                "INSERT INTO behavior_log(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
                 rows, Math.min(rows.size(), 1000),
                 (ps, r) -> {
                     for (int c = 0; c < r.length; c++) {
@@ -110,7 +111,10 @@ public class SyncBehaviorLogJob implements OfflineJob {
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS behavior_log (
                     id BIGINT PRIMARY KEY, user_id BIGINT, item_id BIGINT, action TEXT,
-                    value DOUBLE PRECISION, scene TEXT, bucket TEXT, ts TIMESTAMP, position INT)""");
+                    value DOUBLE PRECISION, scene TEXT, bucket TEXT, ts TIMESTAMP, position INT,
+                    exposure_id TEXT)""");
+        jdbc.execute("COMMENT ON TABLE behavior_log IS '供离线数据平台使用的用户行为事件读仓'");
+        jdbc.execute("ALTER TABLE behavior_log ADD COLUMN IF NOT EXISTS exposure_id TEXT");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_behavior_log_user_action ON behavior_log(user_id, action)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_behavior_log_item ON behavior_log(item_id)");
     }

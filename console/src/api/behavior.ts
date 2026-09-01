@@ -12,6 +12,7 @@ export function makeEvent(
   action: ActionType,
   scene: string,
   value = 1.0,
+  exposureId?: string | null,
 ): BehaviorEvent {
-  return { userId, itemId, action, value, scene, ts: Date.now() };
+  return { userId, itemId, action, value, scene, ts: Date.now(), exposureId };
 }

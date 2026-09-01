@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS item_tower_embedding (
     item_id   BIGINT PRIMARY KEY REFERENCES item(item_id),
     embedding vector(64)
 );
+COMMENT ON TABLE item_tower_embedding IS '双塔召回模型生成的物品侧向量';
 
 -- HNSW 近似最近邻,余弦距离(双塔召回 ANN 必需);参数同 item_embedding。
 -- 在线检索(two-tower 配额 200)须 SET hnsw.ef_search ≥ 200,否则召回被静默腰斩(见 01_schema.sql 说明)。

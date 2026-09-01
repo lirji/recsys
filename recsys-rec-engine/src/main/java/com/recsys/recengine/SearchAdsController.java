@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.time.Instant;
 
 /**
  * 搜索广告入口(docs/05 §5):
@@ -64,5 +65,18 @@ public class SearchAdsController {
             @RequestParam("adId") long adId,
             @RequestParam(required = false, defaultValue = "0") long userId) {
         orchestrator.recordConversion(requestId, adId, userId);
+    }
+
+    /** A7 广告主独立转化事实；eventId 重试幂等，不依赖 requestId/adId。 */
+    @PostMapping("/api/ad/outcome")
+    public boolean outcome(
+            @RequestParam("eventId") String eventId,
+            @RequestParam("advertiserId") long advertiserId,
+            @RequestParam("userId") long userId,
+            @RequestParam(required = false, defaultValue = "purchase") String objective,
+            @RequestParam(required = false, defaultValue = "0") double value,
+            @RequestParam(required = false) Long occurredAtEpochMs) {
+        Instant occurredAt = occurredAtEpochMs == null ? Instant.now() : Instant.ofEpochMilli(occurredAtEpochMs);
+        return orchestrator.recordOutcome(eventId, advertiserId, userId, objective, value, occurredAt);
     }
 }

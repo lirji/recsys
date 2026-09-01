@@ -1,7 +1,7 @@
 # Embedding 与向量检索
 
 > **解决什么**:把"电影简介""用户兴趣""搜索 query"变成向量,才能算语义相似度、做向量召回。
-> 本项目:`recsys-embedding` 提供可降级的 `EmbeddingClient`,pgvector 做 ANN 检索,并延伸出**双塔 / RQ-VAE 语义 ID / TIGER** 三种学习型向量。
+> 本项目:`recsys-embedding` 提供可降级的 `EmbeddingClient`,pgvector 做 ANN 检索,并延伸出**双塔 / MIND 多兴趣 / LightGCN 图向量 / RQ-VAE 语义 ID / TIGER** 等学习型向量。
 
 ## 1. EmbeddingClient:第三方 + 本地降级
 
@@ -43,12 +43,22 @@ LIMIT 200;
 - 召回率/速度可调(`ef_search`),讲原理时可对比 IVFFlat。
 - **物理拆库后**:向量表(`item_embedding`/`item_tower_embedding`/`item_semantic_id`/`user_embedding`)可迁到 `recsys_vec`(`DERIVED_PG_DB`,`derivedJdbc`),见 [16 微服务](16-微服务拆分与gRPC.md)。
 
-## 4. 三种学习型向量(召回 → 学习/生成)
+## 4. 学习型向量（召回 → 多兴趣/图协同/生成）
 
 ### 双塔 DSSM(TWO_TOWER 通道)
 - `train_two_tower.py`:纯 ID 双塔,正 `(user,item)` 对,批内采样 softmax(+ logQ 校正,`--no-logq` 可关)。
 - 产物:① `item_tower.csv`(每 item 64 维,item 塔=itemId+category embedding)→ `import-tower` 灌 `item_tower_embedding`;② `user_tower.onnx`+`tower_schema.json` 放 `recsys-recall` 资源。
 - 在线 `TwoTowerRecaller`:`floorMod(userId,userBuckets)` 算 user 向量 → pgvector 余弦 ANN。item 向量离线烘焙,在线无需 item/category 词表。
+
+### MIND 多兴趣（MULTI_INTEREST 通道）
+- `train_mind.py` 从行为时序用动态路由得到 K=4 个 64 维兴趣胶囊，并用多样性正则抑制兴趣坍缩；item embedding 与模型共享同一语义空间。
+- 在线 `MultiInterestRecaller` 输入最近 50 个 oldest→newest item index，一次 ONNX 推理得到 `[1,K,64]`；每个兴趣分别查版本化 pgvector 表，同一 item 取最大余弦相似度再统一截断。
+- 单一用户向量会把“科幻 + 喜剧”等多峰兴趣平均到中间；多兴趣用多个检索 query 保住各个峰。
+
+### LightGCN 图向量（GRAPH 通道）
+- `train_lightgcn.py` 在 user-item 二部图做多层无参数传播，以 BPR 让观测边得分高于随机负边；最终 user/item 向量是各层表示的均值。
+- 在线只读取 `graph_user_embedding`，在同一 `model_version` 的 `graph_item_embedding` 上 ANN；模型版本隔离使新旧向量可以并存和回滚。
+- 与 ItemCF/Swing 的局部共现不同，图传播能吸收多跳高阶协同信号。
 
 ### RQ-VAE 语义 ID(GENERATIVE 通道,TIGER 范式可服务版)
 - `train_rqvae.py`:残差量化自编码器读 item 向量(默认双塔 64 维)→ 3 层残差量化(每层 K=256 codebook,straight-through)→ 每 item 得语义 ID `(c0,c1,c2)` → `item_semantic_id.csv` → `import-semantic-id`。
@@ -65,12 +75,14 @@ LIMIT 200;
 2. **降维不归一化**:Gemini 降到 768 后必须客户端 L2 归一化。
 3. **换 provider = 换向量空间**:Gemini 向量与本地 BGE 向量不可混用(不同语义空间)。
 4. **`LocalBgeEmbeddingClient.dimension()` 返回配置的 768 而非模型 H**——对 bge-base 安全,但换模型时会掩盖不一致。
-5. **API 限流**:灌库加限流 + 重试退避,429 优雅停止。
+5. **版本混用**：MIND/LightGCN 的 user/model/item 向量必须同版本；查询显式带 `model_version`，导入只替换目标版本。
+6. **API 限流**:灌库加限流 + 重试退避,429 优雅停止。
 
 ## 6. 面试要点
 
 - **为什么 pgvector 而非专用向量库**:数据量小(百万级),一库存业务+向量,接口已抽象,升级 Milvus/Qdrant 改动小。
 - **HNSW vs IVFFlat**:HNSW 图索引,查询快、内存大;IVFFlat 倒排,构建快、召回率依赖聚类。
 - **用户向量为什么加权平均而非训练**:简单有效、无需 GPU,半衰期衰减体现"近期兴趣"。
+- **单向量 vs 多兴趣 vs 图向量**：双塔给用户一个行为向量；MIND 保留多个兴趣峰；LightGCN 强化多跳协同，三者互补。
 - **RQ-VAE / TIGER**:把 item 量化成离散语义 ID,召回从"向量检索"走向"序列生成";前缀检索是可服务的折中。
 - **降级链**:Gemini 超额/超时 → 本地 BGE(ONNX/CPU),保证离线灌库不中断。

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS advertiser (
     daily_budget  DOUBLE PRECISION,             -- 日预算(元)
     status        TEXT DEFAULT 'active'         -- active / paused / over_budget
 );
+COMMENT ON TABLE advertiser IS '广告主账户、预算与投放状态';
 
 -- ---------- 广告(创意 + 落地页 + 关联物品) ----------
 CREATE TABLE IF NOT EXISTS ad (
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS ad (
     target_cpa    DOUBLE PRECISION,                 -- oCPC 目标转化成本(元/转化);仅 optimization_type=OCPC 生效
     created_at    TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad IS '广告投放单元及其关联物品、审核和出价配置';
 CREATE INDEX IF NOT EXISTS idx_ad_advertiser ON ad (advertiser_id);
 CREATE INDEX IF NOT EXISTS idx_ad_item ON ad (item_id);
 -- 已有库平滑升级(IF NOT EXISTS 不改既有列)
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS ad_audience_seed (
     audience_id BIGINT,
     user_id     BIGINT
 );
+COMMENT ON TABLE ad_audience_seed IS '广告定向人群包的种子用户';
 CREATE INDEX IF NOT EXISTS idx_audience_seed ON ad_audience_seed (audience_id);
 
 -- ---------- 品牌广告 / GD 保量合约(A4):按周期保证曝光量的合约广告 ----------
@@ -68,6 +71,7 @@ CREATE TABLE IF NOT EXISTS ad_contract (
     end_ts       TIMESTAMP,
     status       TEXT DEFAULT 'active'             -- active / paused / finished
 );
+COMMENT ON TABLE ad_contract IS '品牌广告的保量投放合约';
 CREATE INDEX IF NOT EXISTS idx_ad_contract_status ON ad_contract (status);
 
 -- ---------- 广告创意(DCO 动态创意优化,docs/05 §7 M7:一个广告多套创意,多臂老虎机择优) ----------
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS ad_creative (
     review_reason TEXT,
     created_at  TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad_creative IS '广告动态创意及创意级审核状态';
 CREATE INDEX IF NOT EXISTS idx_ad_creative_ad ON ad_creative (ad_id);
 ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'approved';
 ALTER TABLE ad_creative ADD COLUMN IF NOT EXISTS review_reason TEXT;
@@ -94,6 +99,7 @@ CREATE TABLE IF NOT EXISTS bidword (
     bid        DOUBLE PRECISION,                  -- 出价(CPC,可被 oCPC 覆盖)
     bid_mode   TEXT DEFAULT 'CPC'                 -- CPC / oCPC / oCPM
 );
+COMMENT ON TABLE bidword IS '广告竞价关键词、匹配方式与出价';
 CREATE INDEX IF NOT EXISTS idx_bidword_keyword ON bidword (keyword);  -- 倒排:keyword → ads
 -- 按 ad_id 访问的索引:AdvertiserRepository(列/删 WHERE ad_id=?)、AdRepository(WHERE ad_id=ANY(?)、GROUP BY ad_id)
 -- 多处按 ad_id 查/聚合,缺此索引则全表扫描。
@@ -105,6 +111,7 @@ CREATE TABLE IF NOT EXISTS ad_embedding (
     embedding vector(768),
     model     TEXT
 );
+COMMENT ON TABLE ad_embedding IS '广告语义向量，用于查询与广告的相似度检索';
 -- HNSW 参数同 item_embedding;在线检索须 SET hnsw.ef_search ≥ 最大 LIMIT(见 01_schema.sql 说明)。
 CREATE INDEX IF NOT EXISTS idx_ad_embedding_hnsw
     ON ad_embedding USING hnsw (embedding vector_cosine_ops)
@@ -128,6 +135,7 @@ CREATE TABLE IF NOT EXISTS ad_event (
     ad_bucket     TEXT,                           -- 广告分层 A/B 分桶(变体名,如 base / high-reserve)
     ts            TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad_event IS '广告曝光、点击、转化、计费与归因事件日志';
 CREATE INDEX IF NOT EXISTS idx_ad_event_req ON ad_event (request_id);
 CREATE INDEX IF NOT EXISTS idx_ad_event_type_ts ON ad_event (event_type, ts);
 -- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
@@ -135,6 +143,26 @@ ALTER TABLE ad_event ADD COLUMN IF NOT EXISTS ad_bucket TEXT;
 CREATE INDEX IF NOT EXISTS idx_ad_event_ad ON ad_event (ad_id, event_type);
 -- DCO:曝光归因到具体创意(供 ad-explore-stats 按创意聚合 CTR 喂多臂老虎机)
 ALTER TABLE ad_event ADD COLUMN IF NOT EXISTS creative_id BIGINT;
+
+-- A7 因果 opportunity/outcome（独立于 ad_event；control 不得伪装成曝光）。
+CREATE TABLE IF NOT EXISTS ad_uplift_assignment (
+    assignment_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, user_id BIGINT NOT NULL,
+    ad_id BIGINT NOT NULL, advertiser_id BIGINT NOT NULL, item_id BIGINT NOT NULL,
+    treatment BOOLEAN NOT NULL, propensity DOUBLE PRECISION NOT NULL CHECK(propensity>0 AND propensity<1),
+    pctr DOUBLE PRECISION NOT NULL, pcvr DOUBLE PRECISION NOT NULL, quality DOUBLE PRECISION NOT NULL,
+    relevance DOUBLE PRECISION NOT NULL, bid DOUBLE PRECISION NOT NULL, ad_bucket TEXT, model_version TEXT,
+    assigned_at TIMESTAMP NOT NULL DEFAULT now(), outcome_due_at TIMESTAMP NOT NULL,
+    UNIQUE(request_id,ad_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ad_uplift_assignment_outcome
+    ON ad_uplift_assignment(advertiser_id,user_id,assigned_at);
+CREATE TABLE IF NOT EXISTS ad_conversion_fact (
+    event_id TEXT PRIMARY KEY, advertiser_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+    objective TEXT NOT NULL, conversion_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+    occurred_at TIMESTAMP NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_conversion_fact_join
+    ON ad_conversion_fact(advertiser_id,user_id,occurred_at);
 
 -- ---------- 已有库平滑升级:把手动赋值的 BIGINT 主键就地改成 IDENTITY(幂等)----------
 -- 旧库 advertiser_id/ad_id 是普通 BIGINT(应用层 MAX+1 赋值);这里就地加 IDENTITY,

@@ -101,10 +101,12 @@ export default function RecommendConsole() {
   // 选中做对比的两条(entries 已按时间倒序 → [0]=较新=B,[1]=较旧=A)。
   const selectedEntries = history.entries.filter((e) => history.selected.includes(e.id));
 
-  const report = async (itemId: number, action: 'IMPRESSION' | 'CLICK') => {
+  const report = async (item: RecommendItem, action: 'IMPRESSION' | 'CLICK') => {
     try {
-      await reportBehavior(makeEvent(userId, itemId, action, scene));
-      message.success(`已上报 ${action} · item ${itemId}`);
+      const deliveredUserId = query.data?.userId ?? userId;
+      const deliveredScene = query.data?.scene ?? scene;
+      await reportBehavior(makeEvent(deliveredUserId, item.itemId, action, deliveredScene, 1.0, item.exposureId));
+      message.success(`已上报 ${action} · item ${item.itemId}`);
     } catch (e) {
       message.error('上报失败: ' + toApiError(e).message);
     }
@@ -188,10 +190,10 @@ export default function RecommendConsole() {
                 breakdown={explain?.scores?.[it.itemId]}
                 actions={
                   <>
-                    <Button size="small" onClick={() => report(it.itemId, 'IMPRESSION')}>
+                    <Button size="small" onClick={() => report(it, 'IMPRESSION')}>
                       曝光
                     </Button>
-                    <Button size="small" type="primary" ghost onClick={() => report(it.itemId, 'CLICK')}>
+                    <Button size="small" type="primary" ghost onClick={() => report(it, 'CLICK')}>
                       👍 点击
                     </Button>
                   </>

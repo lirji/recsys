@@ -116,6 +116,7 @@ public class SyncAdEventLogJob implements OfflineJob {
                     bidword_id BIGINT, position INT, event_type TEXT, pctr DOUBLE PRECISION,
                     pctr_calib DOUBLE PRECISION, ecpm DOUBLE PRECISION, charged_price DOUBLE PRECISION,
                     relevance DOUBLE PRECISION, ad_bucket TEXT, ts TIMESTAMP, creative_id BIGINT)""");
+        jdbc.execute("COMMENT ON TABLE ad_event_log IS '供离线分析使用的广告事件读仓'");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ad_event_log_type_ts ON ad_event_log(event_type, ts)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ad_event_log_ad ON ad_event_log(ad_id, event_type)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ad_event_log_req ON ad_event_log(request_id)");

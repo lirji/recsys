@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS item (
     title_tsv   tsvector GENERATED ALWAYS AS
                 (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED
 );
+COMMENT ON TABLE item IS '物品内容主数据，供内容展示、召回与排序使用';
 -- 全文检索 GIN 索引(LEXICAL 召回必需)
 CREATE INDEX IF NOT EXISTS idx_item_title_tsv ON item USING gin (title_tsv);
 -- 类目 + 热度 btree:TAG 召回 byCategories(WHERE category IN (...) ORDER BY popularity DESC LIMIT k)
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS item_embedding (
     embedding vector(768),
     model     TEXT                          -- 生成模型标识,便于换模型/灰度
 );
+COMMENT ON TABLE item_embedding IS '物品内容向量，用于语义相似度检索与向量召回';
 -- HNSW 近似最近邻索引,余弦距离(向量召回必需,否则全表扫描)。
 -- m/ef_construction 显式给值:提升召回图连通度与构建质量(默认 m=16/ef_construction=64)。
 -- ⚠️ 运行期 ef_search 决定单次检索的候选宽度,默认仅 40 —— 当召回 LIMIT(如 200)> ef_search 时,
@@ -52,12 +54,14 @@ CREATE TABLE IF NOT EXISTS app_user (
     profile    JSONB,                       -- 偏好类目、标签权重等
     updated_at TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE app_user IS '应用用户及其结构化画像信息';
 
 -- ---------- 用户向量(由历史正反馈物品向量聚合) ----------
 CREATE TABLE IF NOT EXISTS user_embedding (
     user_id   BIGINT PRIMARY KEY,
     embedding vector(768)
 );
+COMMENT ON TABLE user_embedding IS '由用户历史正反馈聚合得到的用户偏好向量';
 
 -- ---------- 行为日志(反馈闭环 + 训练样本来源) ----------
 CREATE TABLE IF NOT EXISTS user_behavior (
@@ -69,8 +73,10 @@ CREATE TABLE IF NOT EXISTS user_behavior (
     scene   TEXT,
     bucket  TEXT,                           -- AB 实验分桶
     position INT,                           -- IMPRESSION 展示位次(1 基);曝光日志闭环 + PAL 位置去偏
+    exposure_id TEXT,                       -- 推荐交付曝光 ID;CLICK 以此做并发幂等
     ts      TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE user_behavior IS '用户曝光、点击、点赞、播放和评分等行为事件日志';
 CREATE INDEX IF NOT EXISTS idx_behavior_user ON user_behavior (user_id, ts);
 CREATE INDEX IF NOT EXISTS idx_behavior_item ON user_behavior (item_id, ts);
 -- 已看过滤热点(SeenItemsFilter:每次推荐必跑 SELECT DISTINCT item_id WHERE user_id=? AND action IN(...))
@@ -78,3 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_behavior_item ON user_behavior (item_id, ts);
 CREATE INDEX IF NOT EXISTS idx_behavior_user_action_item ON user_behavior (user_id, action, item_id);
 -- 已有库平滑升级(已存在 pgdata 卷不会重跑本文件)
 ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS position INT;
+ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS exposure_id TEXT;
+-- 同一次曝光的 CLICK 最多一条；LIKE/PLAY/IMPRESSION 不受此约束，旧数据 exposure_id=null 兼容。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_behavior_click_exposure
+    ON user_behavior(exposure_id) WHERE action='CLICK' AND exposure_id IS NOT NULL;

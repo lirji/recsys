@@ -1,22 +1,23 @@
-# 执行计划 PLAN —— 从 0 搭建推荐系统(历史存档)
+# 执行计划 PLAN —— 从 0 搭建推荐系统（历史存档，完成状态已回填）
 
-> **⚠️ 历史文档(2026-06-01 快照,已完成并被大幅超越)**:本计划的全部里程碑(含未勾选项)早已落地——现状为 22 个 Maven 模块、12 路召回、9 排序策略、搜索广告全链路、DDD 微服务拆分、`recsys-web` 已演进为 `console/` 前端 + `recsys-console` BFF。**现状请以 `docs/00-项目总览.md`、`docs/06/07`(路线与执行清单)、CLAUDE.md 为准**;本文件仅保留 Track 划分与并行开发规则作历史参考,下文勾选状态不再维护。
+> **⚠️ 历史文档（2026-06-01 快照，2026-09-01 回填完成状态）**：本计划范围内的功能项均已落地并被大幅超越——现状为 22 个 Maven 模块、14 路召回、9 排序策略、搜索广告全链路、DDD 微服务拆分，`recsys-web` 已演进为 `console/` 前端 + `recsys-console` BFF。**现状请以 `docs/00-项目总览.md`、`docs/06-优化与扩展路线.md`、`docs/07-后续路线执行清单.md`、`CLAUDE.md` 为准**；本文件仅保留原始 Track 划分与实施记录。文末另列尚未完全闭环的验收项。
 
 > 本计划为**并行执行**设计。先做 Phase 0(顺序,打地基 + 定契约),之后 Phase 1 的多个 Track 可**并行**交给不同 Claude 任务,各自负责独立模块,互不冲突。
 >
 > 阅读顺序:先读 `docs/01-技术栈.md`、`docs/02-架构设计.md`(尤其第 5 节 API 契约)、`docs/03-关键技术点.md`。
 
-> **当前状态(2026-06-01)**:✅ Phase 0 完成;✅ **M1 主链路已打通并实测**(`GET /api/recommend` 跑通,向量召回语义正确、冷启动正确)。
-> Track A/B/C/F 已完成,Track D/E 未开始。详见文末「M1 实施纪要」。
+> **原始快照（2026-06-01）**：Phase 0 与 M1 已完成，当时 Track D/E 尚未开始。
+>
+> **最新状态（2026-09-01）**：Track A–F、M1–M4 的计划功能均已落地；Local BGE 已完成并全量重灌向量，网关路由、离线评估、Flink 实时特征、多模态与分层 A/B 均已有实现。仍需补强的是“规则 vs ONNX 的有效在线 CTR 对比结果”、“浏览器 → Gateway → 全服务 → console 的自动化 E2E”和“A6 DFM 真实事件→新模型→在线 pCVR 消费闭环”。
 
 ---
 
 ## 里程碑(MVP 优先,逐步加深)
 
 - ✅ **M1 跑通主链路**:能 `GET /api/recommend` 返回一批推荐(召回→规则排序→展示)。**已完成**
-- ⬜ **M2 引入模型排序**:LightGBM 训练 → ONNX → Java 打分。
-- ⬜ **M3 反馈闭环 + 评估**:行为采集 → 重训 → AUC/CTR 指标。
-- ⬜ **M4 进阶(可选)**:多模态向量、Flink 实时特征、A/B 实验。
+- ✅ **M2 引入模型排序**:LightGBM 训练 → ONNX → Java 打分。**已完成**
+- ✅ **M3 反馈闭环 + 评估**:行为采集 → 曝光回流/重训样本 → AUC/CTR/@K 指标。**能力已完成；有效的 v1 vs ONNX 在线 CTR 对比结果待补**
+- ✅ **M4 进阶(可选)**:多模态向量、Flink 实时特征、A/B 实验。**已完成（Flink 为本地 MiniCluster 教学态）**
 
 ---
 
@@ -44,10 +45,10 @@
 - [x] A1 MovieLens(`ml-latest-small`)导入作业 `import-items`:**9742 部电影 → `item` 表**(自动下载解压;popularity=评分数)。
 - [x] A2 `EmbeddingClient` 实现:
   - [x] `GeminiEmbeddingClient`:REST 调 `gemini-embedding-001`,`emb:cache` 缓存、重试退避、**L2 归一化**、429 配额优雅停止。
-  - [ ] `LocalBgeEmbeddingClient`:留 stub(`provider=local` 时启用),ONNX 接入待做。
+  - [x] `LocalBgeEmbeddingClient`:本地 BGE-base-en-v1.5 ONNX CPU 推理，Java WordPiece 分词 + 池化 + L2 归一化；`provider=local` 时启用，缺模型会标记未就绪并由在线调用方降级。
 - [x] A3 灌向量作业 `backfill-embedding`:遍历 item → embedText → 写 `item_embedding`(含 model);支持 `--skip-existing` 续跑。
 - [x] A4 `recsys-content`:`JdbcContentService` 物品 CRUD + 批量查询。
-- **验收**:✅ 文本→768 维归一化向量;⚠️ **向量只灌了 1000/9742**(Gemini 免费层每天每模型 1000 次上限),功能已验证,余量等配额续跑。
+- **验收**:✅ 文本→768 维归一化向量；✅ 已切本地 BGE 全量重灌 **9742/9742 item + 610 user + 800 ad**，统一 768 维向量空间（2026-06-18）。
 
 ### Track B · 召回服务 ✅ 已完成 〔依赖:0.4;运行期依赖 A/E 数据〕
 负责模块:`recsys-recall`
@@ -77,20 +78,20 @@
 
 ### Track E · 行为采集与离线作业 ✅ 已完成(2026-06-01)〔依赖:0.3, 0.4〕
 负责模块:`recsys-behavior`、`recsys-offline`(CF 批算 / 热度 / 用户向量)
-- [x] E1 `recsys-behavior`:`POST /api/behavior`(+ `/batch`)→ `BehaviorService` 落库 `user_behavior`(`use-kafka=true` 时投 Kafka,不可用自动降级入库)。action 一律大写入库,对齐 I2iRecaller 查询口径。
+- [x] E1 `recsys-behavior`:`POST /api/behavior`(+ `/batch`)→ `BehaviorService` 先幂等落库 `user_behavior`，再按 `use-kafka` 可选发布。推荐响应/行为事件贯通 `exposureId`，同曝光 CLICK 由 PostgreSQL 部分唯一索引去重；action 一律大写入库。
 - [x] **bootstrap** `import-behavior` 作业:ratings.csv(10 万条)→ `user_behavior`(action=RATING, value=评分, scene=ml-import, 幂等)。冷启动喂数,线上真实上报后续进同表。
 - [x] E2 `item-cf` 作业:`ItemCfJob` 经典 ItemCF + IUF 活跃用户惩罚 + 热门物品惩罚,每物品 TopK 写 Redis `i2i:{itemId}`(管道批量)。实测 5959 物品出倒排,Toy Story→Toy Story 2/狮子王/阿拉丁,质量正确。
 - [x] E3 `hot` 作业:`HotJob` 从 `user_behavior` SQL 加权聚合(CLICK1/LIKE2/PLAY1/RATING=value)→ `recall:hot` ZSet(原子替换)。实测写 1000 条,HotRecaller 走 Redis。
 - [x] E4 `user-embedding` 作业:`UserEmbeddingJob` 聚合用户正反馈物品向量(评分加权)→ L2 归一化 → `user_embedding`(默认整表重建)。实测覆盖 598 用户。
 - **验收**:✅ 行为可上报落库(单条+批量实测);Redis 有 i2i 倒排(5959)、热门(1000)、用户向量(598);真实用户 `GET /api/recommend?userId=1` 由 **VECTOR+I2I 真实召回**驱动(2571=黑客帝国来自 ItemCF),不再靠手造向量/热门兜底。
-- **已知限制**:item_embedding 仅 1000 条(Gemini 配额),user_embedding 只覆盖正反馈落在这 1000 物品内的用户;灌满向量后重跑 user-embedding 即扩大覆盖。
+- **原已知限制（已解决）**:~~item_embedding 仅 1000 条，user_embedding 覆盖受 Gemini 配额限制~~ → 已切本地 BGE 全量重灌；数据质量报告记录 item embedding 覆盖率 100%、user embedding 覆盖率 99.35%。
 
-### Track F · 编排 / 网关 / 前端 ✅ 已完成(网关待补)〔依赖:0.4;集成期依赖 B/C〕
-负责模块:`recsys-rec-engine`、`recsys-gateway`、`recsys-web`
+### Track F · 编排 / 网关 / 前端 ✅ 已完成〔依赖:0.4;集成期依赖 B/C〕
+原负责模块:`recsys-rec-engine`、`recsys-gateway`、`recsys-web`（后者现已演进为 `console/` + `recsys-console`）
 - [x] F1 `rec-engine`:`RecommendOrchestrator` 编排 召回→排序→重排,`GET /api/recommend`,`RecCache` 缓存 + 异常兜底。**含召回分/排序分融合**(M1 特征稀疏期保证排序有意义)。
-- [x] F2 重排:类目打散(`maxSameCategory`)+ 生成 reason(按召回 channel)。〔过滤已看/去重待 Track E 行为数据〕
-- [ ] F3 `gateway`:骨架在,路由已配,未联调(单体起步直接打 rec-engine :8081)。
-- [x] F4 `recsys-web`:Thymeleaf 演示页(输入 userId → 推荐卡片 + 召回来源 + 点击上报)。
+- [x] F2 重排:类目打散(`maxSameCategory`)+ 生成 reason(按召回 channel)；已接入已看过滤与多路去重。
+- [x] F3 `gateway`:统一入口已完成；推荐/搜索/广告/feed/query/用户/实验 → rec-engine，行为 → behavior，广告主管理 → advertiser，控制台 BFF → recsys-console；支持 Nacos `lb://` 与无 Nacos 的 static 路由。
+- [x] F4 `recsys-web`:原 Thymeleaf 演示页已完成，后续演进为 React `console/` + `recsys-console` BFF，覆盖推荐、搜索、广告、实验与离线报表。
 - **验收**:✅ `GET /api/recommend` 实测返回结果与理由;前端页面就绪。
 
 ---
@@ -117,21 +118,27 @@ Phase 0 (顺序) ──┬──> Track A (数据/向量化) ──┐
 
 ## Phase 2 —— 集成与联调
 
-- [ ] 按真实链路串起来:数据灌好 → 离线作业跑完 → 启动各服务 → 前端验证。
-- [ ] 用 v1 规则排序先全链路跑通(M1),再切 ONNX 模型(M2)。
-- [ ] 端到端冒烟:新用户(冷启动走热门)+ 老用户(走向量/i2i)两条 case。
+- [x] 按真实链路串起来:数据灌好 → 离线作业跑完 → 启动各服务 → 前端验证。
+- [x] 用 v1 规则排序先全链路跑通(M1),再切 ONNX 模型(M2)。
+- [x] 端到端冒烟:新用户(冷启动走热门)+ 老用户(走向量/i2i)两条 case。**两条路径已有历史手工实测；自动化测试目前覆盖 rec-engine 非空/去重/已看过滤与新用户 HOT 兜底，完整 Gateway/console E2E 仍待补**
 
 ## Phase 3 —— 评估与打磨
 
-- [ ] 离线评估:AUC、Recall@K、NDCG@K 脚本与报告。
-- [ ] 在线模拟:点击行为回流 → CTR 对比(规则 vs 模型)。
-- [ ] 文档收尾:架构图、原理讲解、踩坑记录(作品集亮点)。
+- [x] 离线评估:AUC、Precision/Recall/NDCG/MAP/MRR/HitRate/Coverage/Diversity/Novelty @K 脚本与报告；另有严格无泄漏 eval。
+- [ ] 🟡 在线模拟:点击行为回流、分层 A/B、CTR 报表与显著性检验均已实现；**现有归档 v1/ONNX 报表点击数为 0，尚缺一次有有效点击样本的规则 vs 模型 CTR 对比结果**。
+- [x] 文档收尾:项目总览、架构与能力说明、踩坑记录，以及 `docs/skills/` 19 篇技术专题。
 
 ## Phase 4 —— 进阶(可选)
 
-- [ ] 多模态:电影海报 → Gemini 多模态向量。
-- [ ] Flink 实时特征(复用你已有技能)。
-- [ ] A/B 实验分桶 + 指标对比。
+- [x] 多模态:电影海报 → Gemini 图像向量，与文本向量加权融合后回写 `item_embedding`；需自行准备 TMDB 海报数据与 API 配置。
+- [x] Flink 实时特征:Kafka 行为流 → 实时热门、实时类目偏好与实时序列；当前为本地 MiniCluster 教学态。
+- [x] A/B 实验分桶 + 指标对比:recall × rank × rerank（另含广告层）确定性分桶、曝光归因、CTR/置信区间/显著性报表与控制台均已落地。
+
+### 尚未完全闭环的验收项（不阻塞本计划功能完成）
+
+- [ ] 用有点击的模拟或测试流量跑一次 `v1` vs `onnx` 分桶实验，产出可比较的 CTR、lift、置信区间与显著性结果。
+- [ ] 增加覆盖“浏览器/console → Gateway → rec-engine/behavior → PostgreSQL/Redis”的自动化 E2E；当前 `RecommendIntegrationTest` 直接测试 rec-engine，未覆盖 Gateway 和浏览器层。
+- [ ] 完成 A6 DFM 的真实数据闭环验收：修正转化必须晚于点击的样本关联、补训练数据质量硬门禁、迁移持久化广告分片 schema，并在积累足量真实点击/转化后跑通“事件 → 样本 → 训练 → 新 ONNX → 在线 pCVR 消费”。功能代码、合成训练与 Java ONNX 契约已完成，真实链路阻塞证据见 `docs/qa/a5-r7-a6-full-flow-0901-1049/QA_REPORT.md`。
 
 ---
 
@@ -178,11 +185,13 @@ Phase 0 (顺序) ──┬──> Track A (数据/向量化) ──┐
 3. **本机无 JDK 17**,用 JDK 21;Maven 在 `/Users/liruijun/personal/devUtils/apache-maven-3.9.12`(不在 PATH)。
 4. **record DTO 经 Redis 缓存 JSON 往返**需 `-parameters` 编译参数(已在父 POM 配 maven-compiler-plugin)。
 
-### M1 已知简化(后续可优化)
-- `RecommendItem.recallFrom` 目前只存**主来源**(多路命中未合并全部 channel)。
-- i2i / tag 召回因 Track E 离线数据未生成,当前返回空,靠热门兜底。
-- 过滤"已看过 / 去重"待 Track E 行为数据落地后接入。
-- 真实用户的 `user_embedding` 待 Track E E4 生成(M1 用手造向量验证了向量召回)。
+### M1 已知简化（后续均已解决）
+- ~~`RecommendItem.recallFrom` 只存主来源~~ → 已透传同一物品命中的全部召回路，主路排首位。
+- ~~i2i / tag 缺离线数据、依赖热门兜底~~ → ItemCF、画像与实时类目偏好均已接通。
+- ~~未过滤已看 / 去重~~ → `SeenFilter` 与多路合并去重已接入，并有集成测试覆盖。
+- ~~真实用户无 `user_embedding`~~ → 已全量重建，数据质量报告记录覆盖率 99.35%。
 
-### 下一步建议顺序
-**Track E**(行为采集 + ItemCF 批算 i2i + 热门 ZSet + user_embedding 聚合)→ 让四路召回全部有真实数据 → 再 **Track D**(LightGBM→ONNX,进入 M2 模型排序)。
+### 当前下一步
+
+1. 完成上文三项验收闭环：有效的 v1/ONNX 在线 CTR 对比、Gateway/console 自动化 E2E、A6 DFM 真实数据在线闭环。
+2. ✅ R9（MIND 多兴趣 + LightGCN 图召回）与 A7（随机 show/no-show 因果采样 + TARNet/IPW Uplift + 增量竞价）已于 2026-09-01 完成；不再列为待办。

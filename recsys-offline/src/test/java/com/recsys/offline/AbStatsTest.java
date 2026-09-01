@@ -2,7 +2,10 @@ package com.recsys.offline;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -63,5 +66,85 @@ class AbStatsTest {
         long nSmall = AbStats.minSamplePerArm(0.101, 0.10, 0.05, 0.8); // 0.1pp 提升
         assertTrue(nSmall > nBig, "更小的效应需要更多样本");
         assertEquals(Long.MAX_VALUE, AbStats.minSamplePerArm(0.1, 0.1, 0.05, 0.8), "零差异 → 无穷");
+    }
+
+    @Test
+    void cuped_perfectCorrelation_recoversThetaAndRemovesVariance() {
+        List<AbStats.CupedObservation> rows = List.of(
+                new AbStats.CupedObservation(1, 10, -1.0),
+                new AbStats.CupedObservation(2, 10, 0.0),
+                new AbStats.CupedObservation(3, 10, 1.0));
+
+        AbStats.CupedModel model = AbStats.fitCuped(rows);
+        AbStats.CupedSummary summary = AbStats.summarizeCuped(rows, model);
+
+        assertTrue(model.applied());
+        assertEquals(1.0, model.theta(), 1e-12);
+        assertEquals(1.0, model.varianceReduction(), 1e-12);
+        assertEquals(0.2, summary.rawMean(), 1e-12);
+        assertEquals(summary.rawMean(), summary.adjustedMean(), 1e-12,
+                "pooled CUPED 调整不改变总体均值");
+        assertEquals(0.0, summary.standardError(), 1e-12);
+    }
+
+    @Test
+    void cuped_weightedRawMean_matchesRatioOfSums() {
+        List<AbStats.CupedObservation> rows = List.of(
+                new AbStats.CupedObservation(1, 10, 0.2),
+                new AbStats.CupedObservation(15, 30, 0.4));
+        AbStats.CupedSummary summary = AbStats.summarizeCuped(rows, AbStats.fitCuped(rows));
+        assertEquals(16.0 / 40.0, summary.rawMean(), 1e-12);
+    }
+
+    @Test
+    void cuped_constantCovariate_degradesToRawWithoutNan() {
+        List<AbStats.CupedObservation> rows = List.of(
+                new AbStats.CupedObservation(1, 5, 0.2),
+                new AbStats.CupedObservation(3, 8, 0.2));
+        AbStats.CupedModel model = AbStats.fitCuped(rows);
+        AbStats.CupedSummary summary = AbStats.summarizeCuped(rows, model);
+
+        assertFalse(model.applied());
+        assertEquals(0.0, model.theta(), 1e-12);
+        assertEquals(summary.rawMean(), summary.adjustedMean(), 1e-12);
+        assertTrue(Double.isFinite(summary.standardError()));
+    }
+
+    @Test
+    void cuped_missingPreHistory_keepsUserAndReportsCoverage() {
+        List<AbStats.CupedObservation> rows = List.of(
+                new AbStats.CupedObservation(1, 10, -1.0),
+                new AbStats.CupedObservation(3, 10, 1.0),
+                new AbStats.CupedObservation(16, 20, null));
+        AbStats.CupedModel model = AbStats.fitCuped(rows);
+        AbStats.CupedSummary summary = AbStats.summarizeCuped(rows, model);
+
+        assertEquals(3, summary.units());
+        assertEquals(2, summary.covariateUnits());
+        assertEquals(0.5, summary.covariateCoverage(), 1e-12);
+        assertEquals(0.5, summary.rawMean(), 1e-12);
+        assertTrue(Double.isFinite(summary.adjustedMean()));
+    }
+
+    @Test
+    void cupedDifferenceZ_zeroStandardError_isUnavailable() {
+        AbStats.CupedSummary treatment = new AbStats.CupedSummary(0.2, 0.2, 0, 0, 2, 2, 4, 20, 1);
+        AbStats.CupedSummary baseline = new AbStats.CupedSummary(0.1, 0.1, 0, 0, 2, 2, 2, 20, 1);
+
+        assertTrue(Double.isNaN(AbStats.cupedDifferenceZ(treatment, baseline)));
+    }
+
+    @Test
+    void cuped_ratioAdjustment_doesNotWeightPreCovariateByPostExposure() {
+        List<AbStats.CupedObservation> rows = List.of(
+                new AbStats.CupedObservation(1, 10, 1.0),
+                new AbStats.CupedObservation(15, 30, null));
+        AbStats.CupedModel fixedModel = new AbStats.CupedModel(2.0, 0.0, 0.0, 2, 40, true);
+
+        AbStats.CupedSummary summary = AbStats.summarizeCuped(rows, fixedModel);
+
+        assertEquals(0.4, summary.rawMean(), 1e-12);
+        assertEquals(14.0 / 40.0, summary.adjustedMean(), 1e-12,
+                "control correction is θ·X_pre once per randomized user, not postImpressions·θ·X_pre");
     }
 }

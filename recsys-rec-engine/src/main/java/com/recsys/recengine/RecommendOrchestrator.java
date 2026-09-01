@@ -6,6 +6,7 @@ import com.recsys.common.dto.RecommendRequest;
 import com.recsys.common.dto.RecommendResponse;
 import com.recsys.common.query.QueryUnderstandingService;
 import com.recsys.common.query.StructuredQuery;
+import com.recsys.common.query.TermWeight;
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
@@ -38,6 +39,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -157,11 +159,15 @@ public class RecommendOrchestrator {
             // 1. 结果缓存(搜索请求按 userId+scene 缓存会让不同 query 串味,故 query 驱动时跳过缓存;
             //    explain 请求也旁路缓存 —— 既不命中普通缓存、也不把 explain 载荷写回污染普通请求)
             if (!req.hasQuery() && !explain) {
-                RecommendResponse cached = recCache.get(req.userId(), req.scene());
-                if (cached != null) {
+                RecCache.CacheEntry cached = recCache.get(req.userId(), req.scene());
+                if (cached != null && cached.response() != null) {
+                    List<RecommendItem> delivered = assignExposureIds(cached.response().items());
+                    RecommendResponse response = new RecommendResponse(
+                            req.userId(), req.scene(), delivered, traceId, cached.response().explain());
+                    exposureLogger.log(req.userId(), req.scene(), cached.bucketTag(), delivered);
                     meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
                     outcome = "cache";
-                    return cached;
+                    return response;
                 }
                 meterRegistry.counter("recsys.recommend.cache", "result", "miss").increment();
             }
@@ -192,9 +198,11 @@ public class RecommendOrchestrator {
             // 2b. Query 理解:有 query 则解析,把归一化串喂 SEMANTIC、意图类目喂 TAG,
             // 并确保这两路在本次启用(即便实验把召回路限定成了别的子集)。
             Map<String, String> recallParams = Map.of();
+            List<TermWeight> queryTerms = List.of();
             if (req.hasQuery()) {
                 StructuredQuery sq = queryService.parse(req.query(), req.userId());
                 recallParams = buildRecallParams(sq);
+                queryTerms = sq.terms();
                 channels = withQueryChannels(channels);
                 log.debug("query 驱动召回 user={} q=[{}] intents={} channels={}",
                         req.userId(), sq.normalized(), sq.intents(), channels);
@@ -202,7 +210,8 @@ public class RecommendOrchestrator {
 
             // 3. 召回(按本次启用的路)。explain 时挂 sink 收去重前每路原始召回数(null 则召回热路径零改动)。
             List<RecallItem> recalled = recallService.recall(new RecallContext(
-                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, recallParams, recallExplain));
+                    req.userId(), Math.max(req.size() * 20, 200), req.scene(), channels, recallParams,
+                    queryTerms, recallExplain, null));
             if (recalled.isEmpty()) {
                 meterRegistry.counter("recsys.recommend.empty", "stage", "recall").increment();
                 outcome = "empty";
@@ -330,8 +339,8 @@ public class RecommendOrchestrator {
             }
             List<Long> fusedIds = fused.stream().map(RerankCandidate::itemId).toList();
             Map<Long, Item> itemMap = contentGateway.findByIds(fusedIds);
-            List<RecommendItem> items = rerankRouter.rerank(
-                    rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams));
+            List<RecommendItem> items = assignExposureIds(rerankRouter.rerank(
+                    rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams)));
 
             // explain:用上面本已算出的真实局部量组装逐阶段计数 / 去重前每路原始召回 / 去重后每路贡献 / 打分分解。
             RecommendExplain explainObj = explain
@@ -344,7 +353,7 @@ public class RecommendOrchestrator {
             // 7. 曝光埋点(异步,带分桶)+ 结果缓存(explain 请求旁路缓存写,避免污染普通请求)
             exposureLogger.log(req.userId(), req.scene(), bucketTag, items);
             if (!explain) {
-                recCache.put(req.userId(), req.scene(), resp);
+                recCache.put(req.userId(), req.scene(), resp, bucketTag);
             }
             log.debug("推荐完成 user={} cold={} bucket=[{}] trace={} items={}",
                     req.userId(), cold, bucketTag, traceId, items.size());
@@ -365,6 +374,16 @@ public class RecommendOrchestrator {
             org.slf4j.MDC.remove("userId");
             org.slf4j.MDC.remove("scene");
         }
+    }
+
+    /** 每次实际交付独立生成 128-bit UUID；不能复用 traceId 或缓存中的旧曝光身份。 */
+    private static List<RecommendItem> assignExposureIds(List<RecommendItem> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        return items.stream()
+                .map(item -> item.withExposureId(UUID.randomUUID().toString()))
+                .toList();
     }
 
     /**

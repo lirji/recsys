@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 /**
@@ -62,6 +63,9 @@ public class AdPipeline {
     private final AudienceTargeting audienceTargeting;
     private final GuaranteedDeliveryService guaranteedDelivery;
     private final DfmCvrService dfmCvrService;
+    private final UpliftService upliftService;
+    private final UpliftAssignmentService upliftAssignmentService;
+    private final AdOutcomeService adOutcomeService;
 
     public AdPipeline(AdRecallService adRecallService,
                       RelevanceGate relevanceGate,
@@ -77,7 +81,10 @@ public class AdPipeline {
                       CreativeSelector creativeSelector,
                       AudienceTargeting audienceTargeting,
                       GuaranteedDeliveryService guaranteedDelivery,
-                      DfmCvrService dfmCvrService) {
+                      DfmCvrService dfmCvrService,
+                      UpliftService upliftService,
+                      UpliftAssignmentService upliftAssignmentService,
+                      AdOutcomeService adOutcomeService) {
         this.adRecallService = adRecallService;
         this.relevanceGate = relevanceGate;
         this.pacingService = pacingService;
@@ -93,6 +100,9 @@ public class AdPipeline {
         this.audienceTargeting = audienceTargeting;
         this.guaranteedDelivery = guaranteedDelivery;
         this.dfmCvrService = dfmCvrService;
+        this.upliftService = upliftService;
+        this.upliftAssignmentService = upliftAssignmentService;
+        this.adOutcomeService = adOutcomeService;
     }
 
     /**
@@ -135,6 +145,8 @@ public class AdPipeline {
 
             // 5. pCTR/pCVR:复用排序模型对候选广告关联 item 打分(同推荐口径;pCVR 仅 mmoe/din 给出)
             RankScores rankScores = score(userId, candidates, scene);
+            Map<Long, UpliftEstimate> uplift = upliftService.estimate(
+                    userId, candidates, rankScores.pctr(), rankScores.pcvr());
 
             // 标题 + oCPC 参数批量加载
             Set<Long> adIds = new LinkedHashSet<>();
@@ -152,7 +164,7 @@ public class AdPipeline {
 
             // 6-8. 校准 → oCPC 出价 → eCPM 竞价(含 EE + 可选 List-wise)→ GSP 计费(reserve 由实验覆盖)
             List<SponsoredAd> ads = biddingService.auction(
-                    candidates, rankScores.pctr(), rankScores.pcvr(), ocpcByAd,
+                    candidates, rankScores.pctr(), rankScores.pcvr(), uplift, ocpcByAd,
                     titleByAd, props.getCalibModel(), wantSlots, reserve, sim);
 
             // 8.5 DCO 动态创意优化(竞价后为每条竞得广告选展示创意,不动排序/计费)
@@ -160,6 +172,11 @@ public class AdPipeline {
 
             // 8.6 GD 保量(有落后合约则置首位、竞价广告让位)
             ads = applyGuaranteedDelivery(userId, ads, wantSlots);
+
+            // A7 随机 opportunity:同步落 assignment 后才允许 control 删除末位广告。
+            // 删除发生在曝光/归因/扣费之前，故 control 不产生任何展示副作用。
+            ads = upliftAssignmentService.collect(requestId, userId, ads, candidates,
+                    rankScores.pcvr(), uplift, adBucket).ads();
 
             // 9. 曝光埋点(异步,带 ad_bucket + creative_id 归因)+ 结算分流(CPM/OCPM 曝光即扣)
             adEventLogger.logImpressions(requestId, sq.normalized(), userId, ads, adBucket);
@@ -211,11 +228,27 @@ public class AdPipeline {
         adEventLogger.logFeedback(requestId, adId, userId, "CONVERSION");
         meterRegistry.counter("recsys.ad.conversion").increment();
         AdEventLogger.ClickAttribution attr = adEventLogger.readAttribution(requestId, adId);
+        if (attr != null) {
+            // 兼容桥:既有归因转化同时写独立 fact。control/自然转化仍须走 recordOutcome API。
+            try {
+                adOutcomeService.record("attributed:" + requestId + ":" + adId,
+                        attr.advertiserId(), userId, "purchase", 0.0, Instant.now());
+            } catch (Exception e) {
+                log.warn("归因转化写独立 outcome 失败(不影响原计费链) req={} ad={}: {}",
+                        requestId, adId, e.getMessage());
+            }
+        }
         if (attr != null && com.recsys.common.ad.BidType.from(attr.bidType()).chargeOnConversion()) {
             pacingService.charge(attr.advertiserId(), attr.chargedPrice());
             meterRegistry.counter("recsys.ad.revenue.cents")
                     .increment(Math.round(attr.chargedPrice() * 100));
         }
+    }
+
+    /** 与曝光归因无关的广告主转化事实；control 用户也可回传，eventId 幂等。 */
+    public boolean recordOutcome(String eventId, long advertiserId, long userId,
+                                 String objective, double value, Instant occurredAt) {
+        return adOutcomeService.record(eventId, advertiserId, userId, objective, value, occurredAt);
     }
 
     /** DCO:为竞得广告选展示创意(多臂老虎机);开关关/无创意原样返回。 */

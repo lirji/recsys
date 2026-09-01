@@ -101,10 +101,12 @@ export default function SearchConsole() {
     setDrawerOpen(false);
   };
 
-  const report = async (itemId: number) => {
+  const report = async (item: RecommendItem) => {
     try {
-      await reportBehavior(makeEvent(userId, itemId, 'CLICK', 'search'));
-      message.success(`已上报点击 · item ${itemId}`);
+      const deliveredUserId = query.data?.userId ?? userId;
+      const deliveredScene = query.data?.scene ?? 'search';
+      await reportBehavior(makeEvent(deliveredUserId, item.itemId, 'CLICK', deliveredScene, 1.0, item.exposureId));
+      message.success(`已上报点击 · item ${item.itemId}`);
     } catch (e) {
       message.error('上报失败: ' + toApiError(e).message);
     }
@@ -184,7 +186,7 @@ export default function SearchConsole() {
                 meta={itemMeta(it.itemId)}
                 breakdown={explain?.scores?.[it.itemId]}
                 actions={
-                  <Button size="small" type="primary" ghost onClick={() => report(it.itemId)}>
+                  <Button size="small" type="primary" ghost onClick={() => report(it)}>
                     👍 点击
                   </Button>
                 }

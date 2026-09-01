@@ -1,10 +1,10 @@
-# docker/ — 全部容器编排的单一入口
+# docker/ — recsys 应用编排入口
 
-本仓库所有 Docker / Compose 编排文件都归拢在这个目录。之前散落在仓库根(`docker-compose.yml`、`Dockerfile`、`monitoring/`)的东西已统一搬到这里。
+本目录负责 recsys 应用镜像和应用 Compose。PostgreSQL、Redis、Kafka、Nacos、SpiceDB 与观测组件已迁移到相邻的 `../dev-infra`，由 `scripts/dev-local.sh` 统一联动。
 
 ```
 docker/
-  docker-compose.yml         # 单一编排入口。profiles:(默认)pg+redis / full / apps / console / obs
+  docker-compose.yml         # 应用入口。profiles:apps / console；legacy-* 仅用于基础设施回滚
   docker-compose.local.yml   # 本机观测栈覆盖(端口/抓取目标),gitignore
   Dockerfile                 # 参数化多模块镜像(build-arg MODULE/PORT),8 个 Spring Boot app 共用
   monitoring/                # prometheus / grafana / tempo / alertmanager 配置
@@ -34,16 +34,14 @@ Compose 里的相对路径按**本文件所在目录(`docker/`)** 解析,不是�
 scripts/dev-local.sh up          # 基础设施 + 8 app + 前端,全部容器化
 ```
 
-手动 docker compose(从仓库根 `-f` 指向,或 `cd docker` 后直接跑):
+推荐通过脚本启动，它会先启动 `dev-infra` 的 recsys 专用兼容栈：
 
 ```bash
-cd docker
-docker compose up -d                                   # 只起 postgres + redis
-docker compose --profile full up -d                    # + kafka + nacos
-docker compose --profile apps up -d                    # + 8 个 Java 服务(全链路容器化)
-docker compose --profile console up -d                 # + 前端 nginx
-docker compose --profile obs up -d                     # + prometheus/grafana/tempo/alertmanager
-docker compose --profile apps --profile console up -d --build   # 全栈 + 强制重建
+scripts/dev-local.sh infra       # dev-infra:pgvector/redis/kafka/nacos
+scripts/dev-local.sh up          # infra + 8 个 Java 服务 + 前端
+scripts/dev-local.sh obs         # dev-infra:观测栈
+scripts/dev-local.sh authz       # dev-infra:SpiceDB
+scripts/dev-local.sh infra-stop  # 只停 recsys 基础设施，保留数据卷
 ```
 
 ## 端口覆盖
@@ -53,14 +51,14 @@ docker compose --profile apps --profile console up -d --build   # 全栈 + 强�
 | 变量 | 默认 | 作用 |
 |---|---|---|
 | `GATEWAY_PORT` | 8080 | 统一入口(前端 /api 反代到此) |
-| `CONSOLE_WEB_PORT` | 9095 | 前端 nginx（避开 Drools 默认网关 `8095`） |
-| `PG_PORT` / `REDIS_PORT` | 5432 / 6379 | 容器 pg/redis 暴露(供离线作业 / psql) |
-| `NACOS_PORT` / `NACOS_GRPC_PORT` | 8848 / 9848 | Nacos |
-| `PROMETHEUS_PORT` / `GRAFANA_PORT` / `ALERTMANAGER_PORT` | 9090 / 3001 / 9093 | 观测 |
+| `RECSYS_UI_PORT` | 见 `auth-platform/deploy/platform-ports.env` | 前端 nginx 与 Vite 共用的统一门户入口 |
+| `PG_PORT` / `REDIS_PORT` | 55432 / 56379 | dev-infra recsys 专用 pg/redis 宿主端口 |
+| `NACOS_PORT` / `NACOS_GRPC_PORT` | 58848 / 59848 | dev-infra recsys 专用 Nacos |
+| `PROMETHEUS_PORT` / `GRAFANA_PORT` / `ALERTMANAGER_PORT` | 59090 / 53001 / 59093 | dev-infra recsys 观测栈 |
 | `PG_DB` / `PG_DS1_DB` / `PG_USER` / `PG_PASSWORD` | recsys / recsys_ds1 / recsys / recsys | 数据库 |
 | `RECSYS_SECURITY_ENABLED` | false(dev) | 本地免登录;生产置 true 并注入密钥 |
 
-`scripts/dev-local.sh` 会从 `scripts/dev-local.env`(gitignore)读取覆盖并 export 给 compose。直接手动跑 compose 时,可在 `docker/.env`(gitignore)里放同名变量,compose 会自动读取。见 [`.env.example`](.env.example)。
+`scripts/dev-local.sh` 会从 `scripts/dev-local.env`(gitignore)读取业务/基础设施覆盖，再加载同级 `auth-platform/deploy/platform-ports.env`，因此 UI 端口不能被本地 env 覆盖。直接手动跑 Compose 时应使用 auth-platform 的 `deploy/platform-compose.sh recsys ...`。
 
 ## 与 k8s 的关系
 

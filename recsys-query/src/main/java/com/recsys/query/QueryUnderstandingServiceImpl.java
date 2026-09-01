@@ -28,7 +28,8 @@ import java.util.Map;
  *
  * <ol>
  *   <li><b>归一化</b>:小写、去标点、压空格。</li>
- *   <li><b>分词 + 权重</b>:切词 → 去停用词 → 去重 → 截断 maxTerms;权重恒 1.0(IDF 留 TODO)。</li>
+ *   <li><b>分词 + 权重</b>:切词 → 去停用词 → 去重 → 截断 maxTerms;通过 {@link IdfWeighter}
+ *       读取离线物化 IDF，raw token 与 PostgreSQL {@code english} stemming 使用同一口径；不可用时退回 1.0。</li>
  *   <li><b>意图识别</b>:① 词项直接命中 genre 名(强投票)② 标题投票
  *       {@code item.title ILIKE ANY(terms)} 聚合 category;合并归一化 → 过阈值取 TopN。
  *       DB 不可用 → 意图为空,不影响其余字段。</li>
@@ -125,9 +126,10 @@ public class QueryUnderstandingServiceImpl implements QueryUnderstandingService 
             }
         }
         List<TermWeight> terms = new ArrayList<>(seen.size());
+        Map<String, Double> weights = idfWeighter.weights(seen);
         for (String t : seen) {
             // 权重 = IDF(离线物化到 Redis,稀有词更高);未启用/缺失/OOV → 中性 1.0
-            terms.add(new TermWeight(t, idfWeighter.weight(t)));
+            terms.add(new TermWeight(t, weights.getOrDefault(t, 1.0)));
         }
         return terms;
     }

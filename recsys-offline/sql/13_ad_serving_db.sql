@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS ad_event (
     ts            TIMESTAMP DEFAULT now(),
     creative_id   BIGINT
 );
+COMMENT ON TABLE ad_event IS '广告曝光、点击、转化、计费与归因事件日志';
 CREATE INDEX IF NOT EXISTS idx_ad_event_req ON ad_event (request_id);
 CREATE INDEX IF NOT EXISTS idx_ad_event_type_ts ON ad_event (event_type, ts);
 CREATE INDEX IF NOT EXISTS idx_ad_event_ad ON ad_event (ad_id, event_type);
@@ -61,6 +62,27 @@ CREATE TABLE IF NOT EXISTS ad_embedding (
     embedding vector(768),
     model     TEXT
 );
+COMMENT ON TABLE ad_embedding IS '广告语义向量，用于查询与广告的相似度检索';
 CREATE INDEX IF NOT EXISTS idx_ad_embedding_hnsw
     ON ad_embedding USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 200);
+
+-- A7 uplift 因果数据属于 ad-serving 上下文；结构与 19_ad_uplift.sql 同构。
+CREATE TABLE IF NOT EXISTS ad_uplift_assignment (
+    assignment_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, user_id BIGINT NOT NULL,
+    ad_id BIGINT NOT NULL, advertiser_id BIGINT NOT NULL, item_id BIGINT NOT NULL,
+    treatment BOOLEAN NOT NULL, propensity DOUBLE PRECISION NOT NULL CHECK(propensity>0 AND propensity<1),
+    pctr DOUBLE PRECISION NOT NULL, pcvr DOUBLE PRECISION NOT NULL, quality DOUBLE PRECISION NOT NULL,
+    relevance DOUBLE PRECISION NOT NULL, bid DOUBLE PRECISION NOT NULL, ad_bucket TEXT, model_version TEXT,
+    assigned_at TIMESTAMP NOT NULL DEFAULT now(), outcome_due_at TIMESTAMP NOT NULL,
+    UNIQUE(request_id,ad_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ad_uplift_assignment_outcome
+    ON ad_uplift_assignment(advertiser_id,user_id,assigned_at);
+CREATE TABLE IF NOT EXISTS ad_conversion_fact (
+    event_id TEXT PRIMARY KEY, advertiser_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+    objective TEXT NOT NULL, conversion_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+    occurred_at TIMESTAMP NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_conversion_fact_join
+    ON ad_conversion_fact(advertiser_id,user_id,occurred_at);

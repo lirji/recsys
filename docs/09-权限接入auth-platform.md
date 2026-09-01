@@ -59,14 +59,14 @@ Casdoor `sub`，需做一次 username→sub crosswalk。
 
 ```bash
 # 1) recsys 专属 SpiceDB(§B 每项目独立实例;datastore=postgres 持久化——recsys-postgres 的 spicedb 库,
-#    migrate 由 compose 一次性 spicedb-migrate 完成;存量卷需先 docker exec recsys-postgres createdb -U recsys spicedb)
-cd docker && docker compose --profile authz up -d spicedb          # :8544, key=recsys_dev_key
+#    migrate 由 dev-infra 一次性 recsys-spicedb-migrate 完成；接入迁移已创建存量卷缺失的 spicedb 库)
+scripts/dev-local.sh authz                                      # HTTP :58544 / gRPC :55052
 
 # 2) 灌模型 + 演示租户(在 auth-platform 仓库;dry-run 去掉 APPLY)
 APPLY=1 bash deploy/recsys-authz-fixture.sh                        # 9 条强一致自校验
 
 # 3) 起 recsys 专属判权服务(auth-platform 仓库构建产物)
-SERVER_PORT=8210 SPICEDB_HTTP=http://localhost:8544 SPICEDB_KEY=recsys_dev_key \
+SERVER_PORT=8210 SPICEDB_HTTP=http://localhost:58544 SPICEDB_KEY=recsys_dev_key \
   java -jar <auth-platform>/auth-platform-server/target/auth-platform-server-0.1.0-SNAPSHOT.jar
 
 # 4) advertiser 开 shadow 观察(或 enforce 真拦)
@@ -78,7 +78,7 @@ RECSYS_AUTHZ_MODE=shadow AUTHZ_SERVER_URL=http://localhost:8210 mvn -pl recsys-a
 经 `extra_hosts: host-gateway` 解析宿主机)/`AUTHZ_CLIENT_TOKEN` 三个环境变量——上面 step 1–3 照做后,
 直接 `RECSYS_AUTHZ_MODE=shadow docker compose --profile apps up -d advertiser`(或写进
 `scripts/dev-local.env` 再 `dev-local.sh rebuild advertiser`)即可接通;SpiceDB 也可用一键封装
-`scripts/dev-local.sh authz` 起(等价 `--profile authz up -d`)。
+`scripts/dev-local.sh authz` 起（实际由相邻 `dev-infra` 的 `recsys-authz` profile 管理）。
 
 授权管理（给用户授某广告主的 owner/member）：经判权服务
 `POST :8210/v1/relationships`（TOUCH `advertiser:{id}#owner@user:{subject}`），或部署 auth-platform-admin
@@ -113,5 +113,5 @@ RECSYS_AUTHZ_MODE=shadow AUTHZ_SERVER_URL=http://localhost:8210 mvn -pl recsys-a
   （401 单飞）、Casdoor 单点登出、角色从 access_token `groups` 解（与网关映射同源）；oidc 会话存
   sessionStorage，legacy 残留 token 绝不误发。**前端/网关开关必须成对**：`VITE_AUTH_MODE=oidc` ⇄
   `RECSYS_EDGE_CASDOOR=true`（compose 侧 `CONSOLE_AUTH_MODE` + `RECSYS_EDGE_CASDOOR` 同调）。
-  dev 全链路：`docker compose --profile authz up -d spicedb` → fixture → authz-server(:8210) →
+  dev 全链路：`scripts/dev-local.sh authz` → fixture → authz-server(:8210) →
   advertiser(enforce) → casdoor 模式网关 → `VITE_AUTH_MODE=oidc npm run dev`。

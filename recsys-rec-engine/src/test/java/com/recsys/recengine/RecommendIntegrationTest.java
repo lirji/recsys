@@ -70,6 +70,13 @@ class RecommendIntegrationTest {
         r.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         r.add("spring.datasource.username", POSTGRES::getUsername);
         r.add("spring.datasource.password", POSTGRES::getPassword);
+        // AdShardingConfig 的 ad/derived 读模型数据源也必须指向本测试容器，
+        // 否则集成测试会悄悄连接 localhost:5432，只验证到 fail-soft 而非真实存储链路。
+        r.add("PG_HOST", POSTGRES::getHost);
+        r.add("PG_PORT", () -> String.valueOf(POSTGRES.getMappedPort(5432)));
+        r.add("PG_DB", POSTGRES::getDatabaseName);
+        r.add("PG_USER", POSTGRES::getUsername);
+        r.add("PG_PASSWORD", POSTGRES::getPassword);
         r.add("spring.data.redis.host", REDIS::getHost);
         r.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         r.add("recsys.rank.strategy", () -> "v1");     // 规则排序,不依赖 ONNX
@@ -115,7 +122,21 @@ class RecommendIntegrationTest {
         assertThat(ids).as("结果都来自已灌入的 item").allMatch(id -> id >= 1 && id <= SEEDED);
         assertThat(ids).as("已看(CLICK)物品被过滤").doesNotContain(1L, 2L);
         assertThat(resp.items()).allMatch(it -> Double.isFinite(it.score()));
+        assertThat(resp.items()).allMatch(it -> it.exposureId() != null && !it.exposureId().isBlank());
+        assertThat(resp.items()).extracting(RecommendItem::exposureId).doesNotHaveDuplicates();
         assertThat(resp.traceId()).as("链路应带 traceId 供样本回流").isNotBlank();
+    }
+
+    @Test
+    void cacheHitCreatesFreshDeliveryExposureIds() throws Exception {
+        RecommendResponse first = recommend(999_998L, 5);
+        RecommendResponse cached = recommend(999_998L, 5);
+
+        assertThat(cached.items()).extracting(RecommendItem::itemId)
+                .containsExactlyElementsOf(first.items().stream().map(RecommendItem::itemId).toList());
+        assertThat(cached.items()).extracting(RecommendItem::exposureId)
+                .doesNotContainAnyElementsOf(first.items().stream().map(RecommendItem::exposureId).toList());
+        assertThat(cached.traceId()).isNotEqualTo(first.traceId());
     }
 
     @Test

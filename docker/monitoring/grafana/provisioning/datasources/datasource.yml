@@ -6,7 +6,7 @@ datasources:
     uid: prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://recsys-prometheus:9090
     isDefault: true
     editable: true
 
@@ -15,5 +15,5 @@ datasources:
     uid: tempo
     type: tempo
     access: proxy
-    url: http://tempo:3200
+    url: http://recsys-tempo:3200
     editable: true

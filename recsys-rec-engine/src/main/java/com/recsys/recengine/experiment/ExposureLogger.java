@@ -4,6 +4,7 @@ import com.recsys.common.constant.ActionType;
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.dto.RecommendItem;
 import com.recsys.common.experiment.BucketTags;
+import com.recsys.common.experiment.ExposureAttribution;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -26,12 +27,11 @@ import java.util.concurrent.Executors;
  * <ul>
  *   <li><b>实时指标</b>:按分桶给 {@code recsys.exposure}(单位=曝光物品数)计数,
  *       供 Grafana 与 {@code recsys.click} 相除得在线分桶 CTR;</li>
- *   <li><b>点击归因</b>:写短 TTL 的 Redis 键 {@code expo:{user}:{item}=bucket},
- *       行为服务收到点击时回查,把点击也打到同一分桶维度。</li>
+ *   <li><b>点击归因</b>:按 {@code exposureId} 写精确归因，同时双写最近曝光与旧 bucket 键支持滚动升级。</li>
  * </ul>
  *
- * <p>异步 fire-and-forget(单线程 executor),不阻塞推荐主链路;失败仅告警不影响返回。
- * SQL 字段口径与 {@code BehaviorService.insert} 一致(action 存大写枚举名)。
+ * <p>Redis 精确归因在返回前同步完成，消除“用户快速点击早于异步归因”的竞态；DB 曝光日志仍由
+ * 单线程 executor 异步落地，失败仅告警不影响推荐返回。
  */
 @Component
 public class ExposureLogger {
@@ -70,33 +70,36 @@ public class ExposureLogger {
                 .increment(items.size());
 
         // 拷贝出落库所需的最小数据,避免异步任务持有上层对象
-        List<Long> itemIds = items.stream().map(RecommendItem::itemId).toList();
-        executor.submit(() -> {
-            insert(userId, scene, bucket, itemIds);
-            attribute(userId, bucket, itemIds);
-        });
+        List<Delivery> deliveries = items.stream()
+                .map(i -> new Delivery(i.itemId(), i.exposureId()))
+                .toList();
+        // 必须在 log 返回前建立精确归因；否则推荐响应刚到客户端就点击，会永久落成 bucket=null。
+        attribute(userId, bucket, deliveries);
+        executor.submit(() -> insert(userId, scene, bucket, deliveries));
     }
 
-    private void insert(long userId, String scene, String bucket, List<Long> itemIds) {
+    private void insert(long userId, String scene, String bucket, List<Delivery> deliveries) {
         try {
             jdbc.batchUpdate(
-                    "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position) " +
-                    "VALUES(?,?,?,?,?,?,?)",
+                    "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position,exposure_id) " +
+                    "VALUES(?,?,?,?,?,?,?,?)",
                     new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                            Delivery delivery = deliveries.get(i);
                             ps.setLong(1, userId);
-                            ps.setLong(2, itemIds.get(i));
+                            ps.setLong(2, delivery.itemId());
                             ps.setString(3, ActionType.IMPRESSION.name());
                             ps.setDouble(4, i + 1); // 展示排名(沿用 value,向后兼容)
                             ps.setString(5, scene);
                             ps.setString(6, bucket);
                             ps.setInt(7, i + 1);    // 展示位次(1 基):曝光日志闭环 + PAL 用
+                            ps.setString(8, delivery.exposureId());
                         }
 
                         @Override
                         public int getBatchSize() {
-                            return itemIds.size();
+                            return deliveries.size();
                         }
                     });
         } catch (Exception e) {
@@ -104,12 +107,21 @@ public class ExposureLogger {
         }
     }
 
-    /** 写点击归因键:expo:{user}:{item}=bucket(短 TTL)。Redis 不可用时静默,不影响埋点。 */
-    private void attribute(long userId, String bucket, List<Long> itemIds) {
+    /** 写精确曝光、最近曝光与旧 bucket 三组短 TTL 键。Redis 不可用时静默，不影响推荐。 */
+    private void attribute(long userId, String bucket, List<Delivery> deliveries) {
         try {
-            for (Long itemId : itemIds) {
+            for (Delivery delivery : deliveries) {
+                long itemId = delivery.itemId();
+                String exposureId = delivery.exposureId();
+                // 旧服务仍按 expo:{user}:{item} 读 bucket，迁移期继续维护。
                 redis.opsForValue().set(
-                        RedisKeys.exposureBucket(userId, itemId), bucket, ATTRIBUTION_TTL);
+                        RedisKeys.exposureBucket(userId, itemId), bucket == null ? "" : bucket, ATTRIBUTION_TTL);
+                if (exposureId == null || exposureId.isBlank()) {
+                    continue;
+                }
+                redis.opsForValue().set(RedisKeys.latestExposure(userId, itemId), exposureId, ATTRIBUTION_TTL);
+                redis.opsForValue().set(RedisKeys.exposure(exposureId),
+                        new ExposureAttribution(userId, itemId, bucket).encode(), ATTRIBUTION_TTL);
             }
         } catch (Exception e) {
             log.debug("写曝光归因键失败(忽略) user={}: {}", userId, e.getMessage());
@@ -119,5 +131,8 @@ public class ExposureLogger {
     @PreDestroy
     void shutdown() {
         executor.shutdown();
+    }
+
+    private record Delivery(long itemId, String exposureId) {
     }
 }

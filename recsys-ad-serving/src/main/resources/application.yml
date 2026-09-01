@@ -135,6 +135,14 @@ recsys:
       model-path: classpath:model/model_dfm_cvr.onnx
       schema-path: classpath:model/dfm_cvr_schema.json
       vocab-path: classpath:model/dfm_cvr_category_vocab.json
+    uplift:
+      collection-enabled: ${AD_UPLIFT_COLLECTION_ENABLED:false}
+      scoring-enabled: ${AD_UPLIFT_SCORING_ENABLED:false}
+      control-rate: ${AD_UPLIFT_CONTROL_RATE:0.05}
+      salt: ${AD_UPLIFT_SALT:a7-uplift-v1}
+      outcome-horizon-days: ${AD_UPLIFT_HORIZON_DAYS:7}
+      model-path: classpath:model/model_uplift.onnx
+      schema-path: classpath:model/uplift_schema.json
     ad-load:
       enabled: ${AD_LOAD_ENABLED:true}
       slots: [2, 6, 10]

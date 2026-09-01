@@ -12,6 +12,8 @@ public class RecallProperties {
     private final TwoTower twoTower = new TwoTower();
     private final Tag tag = new Tag();
     private final Tiger tiger = new Tiger();
+    private final MultiInterest multiInterest = new MultiInterest();
+    private final Graph graph = new Graph();
     private final Parallel parallel = new Parallel();
     private final ColdBandit coldBandit = new ColdBandit();
     /** RRF(Reciprocal Rank Fusion)平滑常数 k:贡献 = 1/(k+rank)。业界常用 60。 */
@@ -76,7 +78,7 @@ public class RecallProperties {
         /** 快通道线程池大小(舱壁开启时生效)。 */
         private int fastPoolSize = 6;
         /** 归入慢池的通道(逗号分隔,大小写不敏感;未列出的通道走快池)。 */
-        private String slowChannels = "VECTOR,SEMANTIC,TWO_TOWER,GENERATIVE,TIGER,U2U,LEXICAL";
+        private String slowChannels = "VECTOR,SEMANTIC,TWO_TOWER,MULTI_INTEREST,GRAPH,GENERATIVE,TIGER,U2U,LEXICAL";
 
         public boolean isEnabled() {
             return enabled;
@@ -145,6 +147,42 @@ public class RecallProperties {
 
     public Tiger getTiger() {
         return tiger;
+    }
+
+    public MultiInterest getMultiInterest() {
+        return multiInterest;
+    }
+
+    public Graph getGraph() {
+        return graph;
+    }
+
+    /** MIND 用户编码器与版本化 item 向量契约。 */
+    public static class MultiInterest {
+        private String modelPath = "classpath:model/mind_user.onnx";
+        private String schemaPath = "classpath:model/mind_schema.json";
+        private String vocabPath = "classpath:model/mind_item_vocab.csv";
+        private int perInterestLimit = 50;
+        private int maxHistory = 50;
+
+        public String getModelPath() { return modelPath; }
+        public void setModelPath(String modelPath) { this.modelPath = modelPath; }
+        public String getSchemaPath() { return schemaPath; }
+        public void setSchemaPath(String schemaPath) { this.schemaPath = schemaPath; }
+        public String getVocabPath() { return vocabPath; }
+        public void setVocabPath(String vocabPath) { this.vocabPath = vocabPath; }
+        public int getPerInterestLimit() { return perInterestLimit; }
+        public void setPerInterestLimit(int perInterestLimit) { this.perInterestLimit = perInterestLimit; }
+        public int getMaxHistory() { return maxHistory; }
+        public void setMaxHistory(int maxHistory) { this.maxHistory = maxHistory; }
+    }
+
+    /** LightGCN 版本化 user/item 向量查询契约。 */
+    public static class Graph {
+        private String schemaPath = "classpath:model/lightgcn_schema.json";
+
+        public String getSchemaPath() { return schemaPath; }
+        public void setSchemaPath(String schemaPath) { this.schemaPath = schemaPath; }
     }
 
     /** 完整 TIGER 生成式召回:decoder-only Transformer ONNX + schema(token 契约)+ beam 宽度。 */
@@ -251,6 +289,8 @@ public class RecallProperties {
         private int semantic = 100;
         private int cold = 100;
         private int twoTower = 200;
+        private int multiInterest = 200;
+        private int graph = 200;
         private int generative = 200;
         private int lexical = 200;
         private int tiger = 200;
@@ -332,6 +372,11 @@ public class RecallProperties {
         public void setTwoTower(int twoTower) {
             this.twoTower = twoTower;
         }
+
+        public int getMultiInterest() { return multiInterest; }
+        public void setMultiInterest(int multiInterest) { this.multiInterest = multiInterest; }
+        public int getGraph() { return graph; }
+        public void setGraph(int graph) { this.graph = graph; }
 
         public int getGenerative() {
             return generative;

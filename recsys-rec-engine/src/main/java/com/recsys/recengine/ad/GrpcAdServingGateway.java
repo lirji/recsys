@@ -9,6 +9,7 @@ import com.recsys.proto.ad.v1.AdsReply;
 import com.recsys.proto.ad.v1.ClickRequest;
 import com.recsys.proto.ad.v1.ConversionRequest;
 import com.recsys.proto.ad.v1.SearchAdsRequest;
+import com.recsys.proto.ad.v1.OutcomeRequest;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import net.devh.boot.grpc.client.inject.GrpcClient;
@@ -18,6 +19,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.time.Instant;
 
 /**
  * 微服务实现:经 gRPC 调 {@code recsys-ad-serving}(广告在线服务独立进程)。
@@ -80,6 +82,18 @@ public class GrpcAdServingGateway implements AdServingGateway {
                 .setRequestId(nz(requestId)).setAdId(adId).setUserId(userId).build());
     }
 
+    @Override
+    @CircuitBreaker(name = "ad-serving-grpc", fallbackMethod = "recordOutcomeFallback")
+    public boolean recordOutcome(String eventId, long advertiserId, long userId,
+                                 String objective, double value, Instant occurredAt) {
+        Ack ack = stub.recordOutcome(OutcomeRequest.newBuilder()
+                .setEventId(nz(eventId)).setAdvertiserId(advertiserId).setUserId(userId)
+                .setObjective(nz(objective)).setValue(value)
+                .setOccurredAtEpochMs((occurredAt == null ? Instant.now() : occurredAt).toEpochMilli())
+                .build());
+        return ack.getOk();
+    }
+
     // ---- 降级(P1):ad-serving 不可达/超时/熔断开启时的兜底,保证推荐主链路不因广告失败而 5xx ----
 
     /** 搜索广告降级:返回无广告(no-ad feed),自然结果照常返回。 */
@@ -99,5 +113,12 @@ public class GrpcAdServingGateway implements AdServingGateway {
     void recordConversionFallback(String requestId, long adId, long userId, Throwable t) {
         log.warn("ad-serving gRPC recordConversion 降级(转化未落库): requestId={} adId={} userId={} err={}",
                 requestId, adId, userId, t.toString());
+    }
+
+    boolean recordOutcomeFallback(String eventId, long advertiserId, long userId,
+                                  String objective, double value, Instant occurredAt, Throwable t) {
+        log.warn("ad-serving gRPC recordOutcome 降级(独立 outcome 未落库): eventId={} err={}",
+                eventId, t.toString());
+        return false;
     }
 }

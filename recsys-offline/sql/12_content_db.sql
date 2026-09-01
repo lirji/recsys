@@ -45,4 +45,5 @@ CREATE TABLE IF NOT EXISTS item (
     title_tsv   tsvector GENERATED ALWAYS AS
                 (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED
 );
+COMMENT ON TABLE item IS '物品内容主数据，供内容展示、召回与排序使用';
 CREATE INDEX IF NOT EXISTS idx_item_title_tsv ON item USING gin (title_tsv);

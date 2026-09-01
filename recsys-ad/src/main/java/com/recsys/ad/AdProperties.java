@@ -20,6 +20,35 @@ public class AdProperties {
     private final Dco dco = new Dco();
     private final Gd gd = new Gd();
     private final Cvr cvr = new Cvr();
+    private final Uplift uplift = new Uplift();
+
+    public Uplift getUplift() { return uplift; }
+
+    /** A7 因果增量建模：采样与在线竞价独立开关，模型失败逐候选回退旧竞价。 */
+    public static class Uplift {
+        private boolean collectionEnabled = false;
+        private boolean scoringEnabled = false;
+        private double controlRate = 0.05;
+        private String salt = "a7-uplift-v1";
+        private int outcomeHorizonDays = 7;
+        private String modelPath = "classpath:model/model_uplift.onnx";
+        private String schemaPath = "classpath:model/uplift_schema.json";
+
+        public boolean isCollectionEnabled() { return collectionEnabled; }
+        public void setCollectionEnabled(boolean collectionEnabled) { this.collectionEnabled = collectionEnabled; }
+        public boolean isScoringEnabled() { return scoringEnabled; }
+        public void setScoringEnabled(boolean scoringEnabled) { this.scoringEnabled = scoringEnabled; }
+        public double getControlRate() { return controlRate; }
+        public void setControlRate(double controlRate) { this.controlRate = controlRate; }
+        public String getSalt() { return salt; }
+        public void setSalt(String salt) { this.salt = salt; }
+        public int getOutcomeHorizonDays() { return outcomeHorizonDays; }
+        public void setOutcomeHorizonDays(int outcomeHorizonDays) { this.outcomeHorizonDays = outcomeHorizonDays; }
+        public String getModelPath() { return modelPath; }
+        public void setModelPath(String modelPath) { this.modelPath = modelPath; }
+        public String getSchemaPath() { return schemaPath; }
+        public void setSchemaPath(String schemaPath) { this.schemaPath = schemaPath; }
+    }
 
     public Cvr getCvr() {
         return cvr;

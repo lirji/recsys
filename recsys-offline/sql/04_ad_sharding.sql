@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS advertiser (
     daily_budget  DOUBLE PRECISION,
     status        TEXT DEFAULT 'active'
 );
+COMMENT ON TABLE advertiser IS '广告主账户、预算与投放状态';
 CREATE TABLE IF NOT EXISTS ad (
     ad_id         BIGINT PRIMARY KEY,
     advertiser_id BIGINT,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS ad (
     target_cpa    DOUBLE PRECISION,
     created_at    TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad IS '广告投放单元及其关联物品、审核和出价配置';
 CREATE INDEX IF NOT EXISTS idx_ad_advertiser ON ad (advertiser_id);
 CREATE TABLE IF NOT EXISTS ad_creative (
     creative_id BIGINT PRIMARY KEY,
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS ad_creative (
     status      TEXT DEFAULT 'active',
     created_at  TIMESTAMP DEFAULT now()
 );
+COMMENT ON TABLE ad_creative IS '广告动态创意及创意级审核状态';
 CREATE INDEX IF NOT EXISTS idx_ad_creative_ad ON ad_creative (ad_id);
 CREATE TABLE IF NOT EXISTS bidword (
     id         BIGINT PRIMARY KEY,
@@ -65,5 +68,6 @@ CREATE TABLE IF NOT EXISTS bidword (
     bid        DOUBLE PRECISION,
     bid_mode   TEXT DEFAULT 'CPC'
 );
+COMMENT ON TABLE bidword IS '广告竞价关键词、匹配方式与出价';
 CREATE INDEX IF NOT EXISTS idx_bidword_keyword ON bidword (keyword);
 CREATE INDEX IF NOT EXISTS idx_bidword_ad ON bidword (ad_id);  -- 与 ds_0 一致:按 ad_id 查/聚合走索引

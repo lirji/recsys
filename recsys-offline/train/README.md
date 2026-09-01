@@ -74,6 +74,56 @@ mvn -pl recsys-rec-engine spring-boot:run      # plus 桶的 recall 变体已含
 - ONNX 导出同 DeepFM 两坑:IR9 + 单文件自包含。重训后必须 `mvn -pl recsys-recall clean install`。
 - **质量**:`eval --recall-only` 里 TWO_TOWER 单路在 Prec/NDCG/HitRate/Coverage 全面领先 VECTOR/I2I/SWING(⚠️ 同 CF/向量路,item 向量用全量含测试期数据训,绝对值偏乐观)。
 
+## R9 多兴趣 + 图召回（MIND / LightGCN）
+
+两路共用 `samples_mt.csv` 的历史正反馈，但学习目标与服务方式不同：MIND 在线按用户序列实时生成多个兴趣，LightGCN 离线烘焙 user/item 图向量。
+
+```bash
+cd recsys-offline/train
+.venv/bin/pip install -r requirements-r9.txt
+
+# 必须使用相同版本，三个向量 CSV 才能原子发布
+.venv/bin/python train_mind.py --epochs=5 --model-version=r9-20260901
+.venv/bin/python train_lightgcn.py --epochs=15 --model-version=r9-20260901
+
+cd ../..
+mvn -pl recsys-offline spring-boot:run \
+  -Dspring-boot.run.arguments="--job=import-r9-embeddings"
+mvn -pl recsys-recall clean install
+```
+
+- MIND 产物：`mind_user.onnx`、`mind_schema.json`、`mind_item_vocab.csv`、`mind_item_embedding.csv`。在线输入 `[N,50]`，输出 `[N,4,64]`，每兴趣查一次 ANN 后按 item 取最大相似度。
+- LightGCN 产物：`lightgcn_schema.json`、`graph_user_embedding.csv`、`graph_item_embedding.csv`。在线从 `graph_user_embedding` 取当前版本用户向量，查询同版本 item。
+- `import-r9-embeddings` 会先全文件校验 64 维、有限值、近似 L2、重复 ID 和共同版本，再在单事务里只替换该版本；旧版本保留可回滚。
+- ONNX/CSV 训练产物走 gitignore；纯净检出没有模型或向量时两个通道都返回空，不影响其他召回路。
+
+## A7 Uplift / 增量竞价（TARNet + IPW）
+
+```bash
+# 1) 先应用 19_ad_uplift.sql，再只开随机采样，暂不开增量打分
+AD_UPLIFT_COLLECTION_ENABLED=true AD_UPLIFT_SCORING_ENABLED=false \
+  mvn -pl recsys-rec-engine spring-boot:run
+
+# 2) outcome horizon 成熟后生成因果样本（默认 objective=purchase）
+mvn -pl recsys-offline spring-boot:run \
+  -Dspring-boot.run.arguments="--job=gen-ad-uplift-samples --as-of=2026-09-01T00:00:00Z"
+
+# 本地 QA 可先造已知异质效应数据
+mvn -pl recsys-offline spring-boot:run \
+  -Dspring-boot.run.arguments="--job=sim-ad-uplift-data --users=6000 --run-id=a7-qa"
+
+# 3) 训练双头潜在结果模型并导出自包含 ONNX
+cd recsys-offline/train
+.venv/bin/python train_uplift.py --epochs=40 --model-version=a7-20260901
+cd ../.. && mvn -pl recsys-ad clean install
+
+# 4) 验 AUUC/Qini、分桶平衡和业务护栏后再灰度打分
+AD_UPLIFT_COLLECTION_ENABLED=true AD_UPLIFT_SCORING_ENABLED=true \
+  mvn -pl recsys-rec-engine spring-boot:run
+```
+
+因果红线：样本必须来自随机 treatment/control 且 propensity 有 overlap；两臂都要有正 outcome；control 的 outcome 通过独立 `/api/ad/outcome` 回传而非曝光 request 归因。训练脚本不满足任一条件会拒绝产模。CPC/CPM 永远不走增量公式，模型缺失或单候选无估计时保留既有 pCVR 竞价。
+
 ## 特征(`FeatureAssembler.FEATURE_ORDER`)
 
 | 顺序 | 名称 | 含义 |

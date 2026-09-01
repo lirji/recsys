@@ -15,6 +15,8 @@ import com.recsys.proto.ad.v1.AdsReply;
 import com.recsys.proto.ad.v1.ClickRequest;
 import com.recsys.proto.ad.v1.ConversionRequest;
 import com.recsys.proto.ad.v1.SearchAdsRequest;
+import com.recsys.proto.ad.v1.OutcomeRequest;
+import java.time.Instant;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.slf4j.Logger;
@@ -67,6 +69,17 @@ public class AdServingGrpcService extends AdServingServiceGrpc.AdServingServiceI
     public void recordConversion(ConversionRequest req, StreamObserver<Ack> obs) {
         pipeline.recordConversion(req.getRequestId(), req.getAdId(), req.getUserId());
         obs.onNext(Ack.newBuilder().setOk(true).build());
+        obs.onCompleted();
+    }
+
+    @Override
+    public void recordOutcome(OutcomeRequest req, StreamObserver<Ack> obs) {
+        Instant occurredAt = req.getOccurredAtEpochMs() > 0
+                ? Instant.ofEpochMilli(req.getOccurredAtEpochMs()) : Instant.now();
+        String objective = req.getObjective().isBlank() ? "purchase" : req.getObjective();
+        boolean inserted = pipeline.recordOutcome(req.getEventId(), req.getAdvertiserId(), req.getUserId(),
+                objective, req.getValue(), occurredAt);
+        obs.onNext(Ack.newBuilder().setOk(inserted).build());
         obs.onCompleted();
     }
 

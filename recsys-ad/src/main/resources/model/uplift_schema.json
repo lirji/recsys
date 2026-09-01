@@ -1,0 +1,28 @@
+{
+  "contract_version": 1,
+  "algorithm": "tarnet_ipw",
+  "model_version": "a7-20260901",
+  "dense_order": [
+    "pctr",
+    "pcvr",
+    "quality",
+    "relevance",
+    "log_bid"
+  ],
+  "sparse_order": [
+    "user_id",
+    "item_id",
+    "ad_id",
+    "advertiser_id"
+  ],
+  "user_buckets": 5000,
+  "item_buckets": 20000,
+  "ad_buckets": 10000,
+  "advertiser_buckets": 5000,
+  "metrics": {
+    "auuc": 51.46333312988281,
+    "qini": 32.46333312988281,
+    "top_decile_ipw_value": 0.20000000298023224,
+    "mean_uplift": 0.03440655395388603
+  }
+}

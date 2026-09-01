@@ -20,3 +20,4 @@ CREATE TABLE IF NOT EXISTS ad_servable (
     creatives_json    TEXT,      -- [{creativeId,title,landingUrl,status}, ...]
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+COMMENT ON TABLE ad_servable IS '广告在线服务消费目录事件后生成的可服务广告副本';

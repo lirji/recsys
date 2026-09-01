@@ -43,7 +43,7 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
   data:
-    # 回查曝光分桶归因键(expo:{user}:{item}),算在线分桶 CTR
+    # 按 exposureId 回查精确曝光归因；兼容旧 expo:{user}:{item} bucket 键
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
@@ -61,10 +61,10 @@ recsys:
       - /actuator/info
       - /actuator/prometheus
   behavior:
-    # true=写 Kafka, false=直接入库(v1 可先 false,不依赖 Kafka)
+    # PostgreSQL 始终先幂等入库；true=首次入库后再 best-effort 写 Kafka
     use-kafka: ${BEHAVIOR_USE_KAFKA:false}
     topic: behavior-events
-    # P4:入库之外额外发 behavior-events(供 rec-engine 已看读模型等消费)。默认关,不改 use-kafka 语义。
+    # P4:use-kafka=false 时，入库之外额外发 behavior-events(供 rec-engine 已看读模型等消费)。
     publish-events: ${BEHAVIOR_PUBLISH_EVENTS:false}
 
 management:

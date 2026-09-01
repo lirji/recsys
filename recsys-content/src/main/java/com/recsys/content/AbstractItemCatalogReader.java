@@ -1,6 +1,7 @@
 package com.recsys.content;
 
 import com.recsys.common.content.ItemCatalogReader;
+import com.recsys.common.query.TermWeight;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
@@ -27,12 +28,57 @@ public abstract class AbstractItemCatalogReader implements ItemCatalogReader {
     protected abstract String itemTable();
 
     @Override
+    public List<ScoredId> lexicalSearch(String query, List<TermWeight> terms, int limit) {
+        List<TermWeight> boosted = terms == null ? List.of() : terms.stream()
+                .filter(t -> t != null && t.term() != null && !t.term().isBlank())
+                .filter(t -> Double.isFinite(t.weight()) && t.weight() > 1.0)
+                .toList();
+        if (boosted.isEmpty()) {
+            return lexicalSearch(query, limit);
+        }
+
+        // R8-FTS:静态 tsvector 的 A/B/C/D 只能表示文档字段权重,不能表达“本次 query 的 IDF”。
+        // 候选仍由组合 OR tsquery + GIN 过滤;在候选内逐词算 cover-density rank,
+        // 以 (IDF-1) 加权后叠加到原始 rank。全部 IDF=1 时走旧 SQL,保持等权评分语义。
+        String[] termArray = boosted.stream().map(TermWeight::term).toArray(String[]::new);
+        Double[] boostArray = boosted.stream().map(t -> t.weight() - 1.0).toArray(Double[]::new);
+        return jdbc.query(
+                "WITH base_q AS (SELECT to_tsquery('english', " +
+                "    NULLIF(replace(plainto_tsquery('english', ?)::text, '&', '|'), '')) AS tsq), " +
+                "weighted_terms AS (" +
+                "    SELECT term, boost, plainto_tsquery('english', term) AS tsq " +
+                "    FROM unnest(?::text[], ?::float8[]) AS t(term, boost) " +
+                "    WHERE boost > 0 AND numnode(plainto_tsquery('english', term)) > 0" +
+                "), boost_total AS (" +
+                "    SELECT SUM(boost) AS total FROM weighted_terms" +
+                "), candidates AS (" +
+                "    SELECT i.item_id, i.title_tsv, ts_rank_cd(i.title_tsv, b.tsq) AS base_score " +
+                "    FROM " + itemTable() + " i CROSS JOIN base_q b WHERE i.title_tsv @@ b.tsq" +
+                "), idf_score AS (" +
+                "    SELECT c.item_id, SUM(w.boost * ts_rank_cd(c.title_tsv, w.tsq)) " +
+                "        / NULLIF(t.total, 0) AS boost_score " +
+                "    FROM candidates c JOIN weighted_terms w ON c.title_tsv @@ w.tsq " +
+                "    CROSS JOIN boost_total t GROUP BY c.item_id, t.total" +
+                ") SELECT c.item_id, c.base_score + COALESCE(s.boost_score, 0) AS score " +
+                "FROM candidates c LEFT JOIN idf_score s ON s.item_id=c.item_id " +
+                "ORDER BY score DESC, c.item_id ASC LIMIT ?",
+                ps -> {
+                    ps.setString(1, query);
+                    ps.setArray(2, ps.getConnection().createArrayOf("text", termArray));
+                    ps.setArray(3, ps.getConnection().createArrayOf("float8", boostArray));
+                    ps.setInt(4, limit);
+                },
+                (rs, n) -> new ScoredId(rs.getLong("item_id"), rs.getDouble("score")));
+    }
+
+    @Override
     public List<ScoredId> lexicalSearch(String query, int limit) {
         return jdbc.query(
                 "WITH q AS (SELECT to_tsquery('english', " +
                 "    NULLIF(replace(plainto_tsquery('english', ?)::text, '&', '|'), '')) AS tsq) " +
                 "SELECT item_id, ts_rank_cd(title_tsv, q.tsq) AS score " +
-                "FROM " + itemTable() + ", q WHERE title_tsv @@ q.tsq ORDER BY score DESC LIMIT ?",
+                "FROM " + itemTable() + ", q WHERE title_tsv @@ q.tsq " +
+                "ORDER BY score DESC, item_id ASC LIMIT ?",
                 ps -> {
                     ps.setString(1, query);
                     ps.setInt(2, limit);

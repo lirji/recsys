@@ -50,6 +50,7 @@ public class AdServableRepository {
                         audience_id BIGINT, max_bid DOUBLE PRECISION DEFAULT 0,
                         servable BOOLEAN NOT NULL DEFAULT TRUE, bidwords_json TEXT, creatives_json TEXT,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""");
+            jdbc.execute("COMMENT ON TABLE ad_servable IS '广告在线服务消费目录事件后生成的可服务广告副本'");
             // 兼容旧表(schema 演进):CREATE TABLE IF NOT EXISTS 不给已存在的表加列,故显式补 P1b 收尾新增的列。
             jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS audience_id BIGINT");
             jdbc.execute("ALTER TABLE ad_servable ADD COLUMN IF NOT EXISTS max_bid DOUBLE PRECISION DEFAULT 0");
@@ -57,6 +58,7 @@ public class AdServableRepository {
             jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
             jdbc.execute("CREATE TABLE IF NOT EXISTS ad_embedding "
                     + "(ad_id BIGINT PRIMARY KEY, embedding vector(768), model TEXT)");
+            jdbc.execute("COMMENT ON TABLE ad_embedding IS '广告语义向量，用于查询与广告的相似度检索'");
             jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ad_embedding_hnsw ON ad_embedding "
                     + "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200)");
         } catch (Exception e) {

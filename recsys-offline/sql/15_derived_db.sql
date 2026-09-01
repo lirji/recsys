@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS item_embedding (
     embedding vector(768),
     model     TEXT
 );
+COMMENT ON TABLE item_embedding IS '物品内容向量，用于语义相似度检索与向量召回';
 CREATE INDEX IF NOT EXISTS idx_item_embedding_hnsw
     ON item_embedding USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
 
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS item_tower_embedding (
     item_id   BIGINT PRIMARY KEY,
     embedding vector(64)
 );
+COMMENT ON TABLE item_tower_embedding IS '双塔召回模型生成的物品侧向量';
 CREATE INDEX IF NOT EXISTS idx_item_tower_hnsw
     ON item_tower_embedding USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
 
@@ -53,9 +55,32 @@ CREATE TABLE IF NOT EXISTS item_semantic_id (
     c0 INT NOT NULL, c1 INT NOT NULL, c2 INT NOT NULL,
     model TEXT
 );
+COMMENT ON TABLE item_semantic_id IS '生成式召回模型生成的物品分层语义编码';
 CREATE INDEX IF NOT EXISTS idx_semid_prefix ON item_semantic_id (c0, c1, c2);
 
 CREATE TABLE IF NOT EXISTS user_embedding (
     user_id   BIGINT PRIMARY KEY,
     embedding vector(768)
 );
+COMMENT ON TABLE user_embedding IS '由用户历史正反馈聚合得到的用户偏好向量';
+
+-- R9 学习型召回读模型。model_version 是在线 schema 的查询条件，新旧版本可并存滚动发布。
+CREATE TABLE IF NOT EXISTS multi_interest_item_embedding (
+    model_version TEXT NOT NULL, item_id BIGINT NOT NULL, embedding vector(64) NOT NULL,
+    PRIMARY KEY (model_version, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_multi_interest_item_hnsw
+    ON multi_interest_item_embedding USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 200);
+
+CREATE TABLE IF NOT EXISTS graph_user_embedding (
+    model_version TEXT NOT NULL, user_id BIGINT NOT NULL, embedding vector(64) NOT NULL,
+    PRIMARY KEY (model_version, user_id)
+);
+CREATE TABLE IF NOT EXISTS graph_item_embedding (
+    model_version TEXT NOT NULL, item_id BIGINT NOT NULL, embedding vector(64) NOT NULL,
+    PRIMARY KEY (model_version, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_graph_item_hnsw
+    ON graph_item_embedding USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 200);

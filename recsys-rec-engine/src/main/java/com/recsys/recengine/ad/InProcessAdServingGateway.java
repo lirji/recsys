@@ -5,6 +5,7 @@ import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import java.time.Instant;
 
 /**
  * 默认(单体回退)实现:进程内直调 {@link AdPipeline}(recsys-ad lib,与广告在线服务共用同一份管线代码)。
@@ -37,5 +38,11 @@ public class InProcessAdServingGateway implements AdServingGateway {
     @Override
     public void recordConversion(String requestId, long adId, long userId) {
         pipeline.recordConversion(requestId, adId, userId);
+    }
+
+    @Override
+    public boolean recordOutcome(String eventId, long advertiserId, long userId,
+                                 String objective, double value, Instant occurredAt) {
+        return pipeline.recordOutcome(eventId, advertiserId, userId, objective, value, occurredAt);
     }
 }

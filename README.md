@@ -24,7 +24,7 @@ recsys/
 ├── recsys-gateway     # 网关(:8080;边缘认证:自签 JWT 默认/Casdoor OIDC 可选) [app]
 ├── recsys-rec-engine  # 推荐编排,对外主入口(:8081)            [app]
 ├── recsys-query       # Query 理解(归一/分词/意图/IDF)          [lib]
-├── recsys-recall      # 多路召回(12 通道)                      [lib] Track B
+├── recsys-recall      # 多路召回(14 通道)                      [lib] Track B
 ├── recsys-rank        # 排序(规则/ONNX,9 策略)                [lib] Track C
 ├── recsys-ad          # 搜索广告在线库(召回/竞价/计费/出价)     [lib]
 ├── recsys-feature     # 特征读写                                [lib] Track C
@@ -55,18 +55,16 @@ recsys/
 # 1. 准备环境变量
 cp .env.example .env        # 按需填写 GEMINI_API_KEY 等
 
-# 2. 启动中间件(核心:postgres + redis;schema 自动建好)。容器编排统一在 docker/ 目录。
-#   一键全栈容器化(基础设施 + 8 app + 前端,推荐):scripts/dev-local.sh up
-#   或手动用 docker compose(从仓库根 -f 指向 docker/,或 cd docker 后直接跑):
-docker compose -f docker/docker-compose.yml up -d
-#   需要 kafka 时(可选):docker compose -f docker/docker-compose.yml --profile full up -d
+# 2. 启动中间件。数据库/中间件由相邻 dev-infra 管理，脚本负责联动。
+scripts/dev-local.sh infra
+#   一键全栈容器化(dev-infra 基础设施 + 8 app + 前端,推荐):scripts/dev-local.sh up
 #   容器化全部后端服务(网关/编排/behavior/advertiser/console + 内部服务 ad-serving/content/user):
 #     docker compose -f docker/docker-compose.yml --profile apps up -d   # 参数化 docker/Dockerfile 构建 fat jar,经 Nacos 互联
-#     (Nacos 默认开:apps profile 自带 nacos 容器,各服务 NACOS_DISCOVERY=true 注册;纯本地 mvn 无 Nacos 时
+#     (Nacos 由 dev-infra 提供,各服务 NACOS_DISCOVERY=true 注册;纯本地 mvn 无 Nacos 时
 #      给网关加 --spring.profiles.active=static 回退静态路由)
-#   观测栈(Prometheus/Grafana/Alertmanager/Tempo):docker compose -f docker/docker-compose.yml --profile obs up -d
-#   细粒度判权(可选):docker compose -f docker/docker-compose.yml --profile authz up -d
-#     起 recsys 专属 SpiceDB(:8544),配合 advertiser 的 RECSYS_AUTHZ_MODE=shadow|enforce,见 docs/09
+#   观测栈:scripts/dev-local.sh obs
+#   细粒度判权(可选):scripts/dev-local.sh authz
+#     起 recsys 专属 SpiceDB(:58544),配合 advertiser 的 RECSYS_AUTHZ_MODE=shadow|enforce,见 docs/09
 
 # 3. 设置 JDK 21 并构建
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -88,13 +86,13 @@ mvn -pl recsys-rec-engine spring-boot:run
 | content-service | 8086 | 9096 | 内容内部服务(gRPC,HTTP 仅 actuator) |
 | user-service | 8087 | 9097 | 用户画像内部服务(gRPC,HTTP 仅 actuator) |
 | console-api | 8090 | - | 控制台 BFF(离线报表 + 系统总览) |
-| postgres | 5432 | - | pgvector |
-| redis | 6379 | - | |
-| kafka(可选) | 9092 | - | `--profile full` |
-| nacos | 8848 | - | `--profile full/apps`(默认开:服务注册发现 + rec-engine 配置中心) |
-| spicedb(可选) | 8544 | 50052 | `--profile authz`(细粒度判权,docs/09) |
-| prometheus(obs) | 9090 | - | `--profile obs` |
-| grafana(obs) | 3001 | - | `--profile obs` |
+| postgres | 55432 | - | dev-infra recsys 专用 pgvector |
+| redis | 56379 | - | dev-infra recsys 专用实例 |
+| kafka(可选) | 59092 | - | `scripts/dev-local.sh infra` |
+| nacos | 58848 | - | dev-infra,服务注册发现 + rec-engine 配置中心 |
+| spicedb(可选) | 58544 | 55052 | `scripts/dev-local.sh authz` |
+| prometheus(obs) | 59090 | - | `scripts/dev-local.sh obs` |
+| grafana(obs) | 53001 | - | `scripts/dev-local.sh obs` |
 
 > **内部服务化模块**(`ad-serving`/`content-service`/`user-service`):以 gRPC 对内提供能力,rec-engine **代码默认**走 `in-process`(单体)不依赖它们;设 `AD_SERVING_MODE=grpc` / `CONTENT_SERVING_MODE=grpc` / `USER_SERVING_MODE=grpc` 才切到 gRPC 调用(**容器全栈 `--profile apps` 下三者默认已置 grpc**,经 Nacos `discovery:///` 发现)。三者同时暴露 HTTP `/actuator/{health,prometheus}` 供健康探测与 Prometheus 抓取(需 `scanBasePackages` 含 `com.recsys.platform` 启用平台安全链,并在 `recsys.security.permit-paths` 放行 `/actuator/prometheus`)。
 >
@@ -110,13 +108,13 @@ mvn -pl recsys-rec-engine spring-boot:run
 推荐链路的在线指标经 Micrometer 暴露在各服务的 `/actuator/prometheus`,由 Prometheus 抓取、Grafana 看板呈现。
 
 ```bash
-# 1. 起观测栈(默认不启动,profile=obs)。Java 服务跑在宿主机,容器内经 host.docker.internal 抓取
-docker compose -f docker/docker-compose.yml --profile obs up -d
+# 1. 在 dev-infra 起观测栈。Java 服务跑在宿主机时由 Prometheus 经 host.docker.internal 抓取
+scripts/dev-local.sh obs
 # 2. 正常起 rec-engine(:8081)+ behavior(:8082)
 mvn -pl recsys-rec-engine spring-boot:run     # 另开终端
 mvn -pl recsys-behavior   spring-boot:run
 # 3. 打开 Grafana → 看板 "Recsys 在线观测"
-open http://localhost:3001     # admin/admin,数据源+看板已预置
+open http://localhost:53001    # 默认端口；本开发机覆盖为 3002
 ```
 
 **核心指标**(`recsys.*`,Prometheus 中下划线命名):
@@ -130,7 +128,7 @@ open http://localhost:3001     # admin/admin,数据源+看板已预置
 | `recsys_click_total{recall,rank,rerank,...}` | 分桶点击数(CTR 分子) |
 | `recsys_rank_total{requested,served,reason}` | 排序策略命中/回退;**模型回退率** = `served=rule` 占 `requested=onnx\|deepfm` 的比例,`reason` 区分 `not_ready`(模型没加载)/`empty`(返回空) |
 
-**在线分桶 CTR** = `recsys_click_total / recsys_exposure_total`(按 `rank`/`recall` 聚合),与离线 `ab-report` 作业互补——一个实时、一个 T+1 精算。点击的分桶归因:曝光时编排层把 `expo:{user}:{item}=bucket` 写入 Redis(短 TTL),行为服务收到点击时回查回填,因此**客户端不传 bucket 也能正确归因**(服务端为准)。
+**在线分桶 CTR** = `recsys_click_total / recsys_exposure_total`(按 `rank`/`recall` 聚合),与离线 `ab-report` 作业互补——一个实时、一个 T+1 精算。每次交付返回 `exposureId`，Redis `expo:id:{exposureId}` 保存精确 user/item/bucket 归因；旧客户端可由 `expo:latest:{user}:{item}` 补齐。CLICK 由 PostgreSQL 部分唯一索引幂等，客户端 bucket 不作为真值。
 
 ## 实时特征(Flink,本地 MiniCluster)
 
@@ -138,16 +136,16 @@ open http://localhost:3001     # admin/admin,数据源+看板已预置
 实时热度 ZSet `recall:rt_hot`(在线 `HotRecaller` 优先读它,缺失回落离线 `recall:hot`)、用户实时类目偏好 `rt:user:{id}`。
 
 ```bash
-# 1. 起 Kafka(profile=full)。注:用官方 apache/kafka 镜像(Bitnami 旧 tag 已下架)
-docker compose -f docker/docker-compose.yml --profile full up -d kafka
-# 2. behavior 以 Kafka 模式起(投递行为到 behavior-events,不可用时自动降级入库)
+# 1. 在 dev-infra 起 recsys 专用 Kafka 3.7.1
+scripts/dev-local.sh infra
+# 2. behavior 以 Kafka 模式起(先幂等入库，再投递 behavior-events)
 BEHAVIOR_USE_KAFKA=true mvn -pl recsys-behavior spring-boot:run
 # 3. 跑 Flink 实时作业(脚本含 Java 21 所需 --add-opens;首次自动打 fat jar)
 bash recsys-streaming/run-streaming.sh --window-min 10 --slide-sec 20
 # 4. 打点行为 → 观察实时热度
 curl -XPOST localhost:8082/api/behavior -H 'Content-Type: application/json' \
   -d '{"userId":1,"itemId":2959,"action":"CLICK","scene":"feed"}'
-docker exec recsys-redis redis-cli zrevrange recall:rt_hot 0 -1 withscores
+docker exec dev-infra-recsys-redis-1 redis-cli zrevrange recall:rt_hot 0 -1 withscores
 ```
 
 ## 并行开发

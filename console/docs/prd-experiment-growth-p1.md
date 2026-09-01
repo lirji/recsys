@@ -1,10 +1,12 @@
 # PRD: 桶对比大盘 (Bucket Comparison Dashboard) — 实验与增长 P1 旗舰模块
 
-**Status**: Approved (ready for design + build)
-**Author**: Alex (PM)  **Last Updated**: 2026-07-11  **Version**: 1.0
-**Domain**: 实验与增长  **Route(建议)**: `/bucket-board`  **标签**: 桶对比大盘
+**Status**: Implemented
+**Author**: Alex (PM)  **Last Updated**: 2026-09-01  **Version**: 1.1
+**Domain**: 实验与增长  **Route**: `/bucket-board`  **标签**: 桶对比大盘
 **Stakeholders**: UI Designer, Frontend Dev
 **Constraint**: 纯前端,只消费现有 API,**零后端改动**。沿用 console 既有约定(react-query + ECharts + AntD5,全中文标签,逐页优雅降级)。
+
+> **实现回填**：`console/src/pages/experiment/BucketBoard.tsx` 已交付，`/bucket-board` 已注册到 router 和“实验与增长”导航组；以下验收项均已在实现中回填。这不替代 `PLAN.md` 中尚未完成的“浏览器 → Gateway → 存储”全链路自动 E2E。
 
 ---
 
@@ -14,7 +16,7 @@
 
 三个候选里,桶对比大盘是「用户价值 × 复用度 × Demo 冲击力」三项同时最高的一个:
 1. **它回答增长 PM 的核心问题** —「哪个变体赢了?显著吗?样本够吗?」——而现有 `/experiment` 页把这块能力(`AbSignificancePanel`)埋在放量控件下方,是一个**控制台**而非**结论台**;做一个独立的结论大盘,正好给 实验与增长 域补上「控制 ↔ 结论」两页纵深。
-2. **复用度最高、当天可交付**:`abReport.ts` 已产出经实战验证的 `AbBucketRow` 数据模型 + `useAbReport()` 取数 + `variantOnlineStat()`(按层×变体的边际 CTR 汇总,目前只在 `ExperimentConsole` 里当一个表格单元格用,**价值被严重低估**)+ `significantBuckets()`;`AbSignificancePanel` / `EErrorBar` / AA 校验文案全部现成。前端把现有件重新编排成一屏即可,不造新契约。
+2. **复用度最高、当天可交付**:`abReport.ts` 已产出经实战验证的 `AbBucketRow` 数据模型 + `useAbReport()` 取数 + `variantOnlineStat()`(在实现前只在 `ExperimentConsole` 里当一个表格单元格使用)+ `significantBuckets()`;`AbSignificancePanel` / `EErrorBar` / AA 校验文案全部现成。最终实现复用了这些能力并重新编排成一屏，未新增后端契约。
 3. **Demo 是天然中心**:一屏搞定 baseline 高亮 + 可排序 + 显著性筛选 + AA 提示 + 「谁赢了」结论条,这是演示 实验与增长 时最该打开的那一屏。
 
 另外两个候选(分层矩阵、数据质量趋势)判为 fast-follow,理由见 §9。
@@ -23,16 +25,16 @@
 
 ## 1. Problem Statement
 
-增长 PM 与算法工程师跑完分层 A/B(recall×rank×rerank 确定性分桶)后,当前只能:
+在本页实现前，增长 PM 与算法工程师跑完分层 A/B(recall×rank×rerank 确定性分桶)后只能:
 - 在 `/experiment` 页看到一个内嵌的 `AbSignificancePanel`(最新一份 ab-report 的逐桶 CTR + Wilson CI),但它**和放量控件挤在同一页**,信息密度低、不能排序/筛选、也没有「结论」;
 - 或者去 `/reports/ab-report` 看原始 CSV 可视化(`AbViz`),那是**面向报表的**、不是面向决策的。
 
-缺一个**面向决策的对比大盘**:一屏之内把每个分桶的 CTR / lift / 显著性 / 最小样本量横向铺开,标出基线、可排序、可按显著性筛选、并给出「是否有桶显著赢过基线 / 是否疑似 AA 有偏 / 样本是否不足」的直接结论。
+当时缺少一个**面向决策的对比大盘**:一屏之内把每个分桶的 CTR / lift / 显著性 / 最小样本量横向铺开,标出基线、可排序、可按显著性筛选、并给出「是否有桶显著赢过基线 / 是否疑似 AA 有偏 / 样本是否不足」的直接结论；该缺口现已由 `/bucket-board` 闭环。
 
 **Evidence(均来自代码,非臆测)**:
-- `console/src/components/experiment/abReport.ts` 已定义 `AbBucketRow`(bucket / impressions / clicks / ctr / ciLow / ciHigh / lift / pValue / significant / minSample / minSampleInf / isBaseline)与 `useAbReport()`,证明后端 ab-report 契约完备、数据齐全,只是没有一个「大盘」视图去消费它。
-- `variantOnlineStat(rows, layer, variant)` 已实现「按 `层:变体` token 跨完整分桶聚合边际 CTR」,但目前仅在 `ExperimentConsole.tsx` 第 139 行当一个表格单元格渲染 —— **能力已建好、几乎没被使用**。
-- `nav.ts` 中 实验与增长 域**只有 `/experiment` 一个页面**(第 46 行),域纵深明显不足。
+- `console/src/components/experiment/abReport.ts` 定义 `AbBucketRow`(bucket / impressions / clicks / ctr / ciLow / ciHigh / lift / pValue / significant / minSample / minSampleInf / isBaseline)与 `useAbReport()`；现已被 `/bucket-board` 作为主数据源消费。
+- `variantOnlineStat(rows, layer, variant)` 实现「按 `层:变体` token 跨完整分桶聚合边际 CTR」；现已在 `BucketBoard.tsx` 的「层×变体汇总」视图中完整使用。
+- `nav.ts` 的“实验与增长”域在 `/experiment` 之后已新增 `/bucket-board`，并在 `router.tsx` 注册。
 
 ---
 
@@ -66,27 +68,27 @@
 用户故事(带验收标准):
 
 **Story 1(林)**:作为增长 PM,我想在一屏看到所有分桶的 CTR + lift + 显著性并**默认高亮基线桶**,以便一眼看出谁赢了。
-- [ ] Given 最新 ab-report 有多个桶,when 打开大盘,then 以 `EErrorBar`(CTR% + Wilson CI 须)+ 明细表并置呈现,基线桶(`row.isBaseline`)带「基线」标签且视觉高亮。
-- [ ] Given 存在 `significant === true` 的桶,then 该桶在图上打 `★ 显著` marker、表格「显著」列显示绿色「是」。
+- [x] Given 最新 ab-report 有多个桶,when 打开大盘,then 以 `EErrorBar`(CTR% + Wilson CI 须)+ 明细表并置呈现,基线桶(`row.isBaseline`)带「基线」标签且视觉高亮。
+- [x] Given 存在 `significant === true` 的桶,then 该桶在图上打 `★ 显著` marker、表格「显著」列显示绿色「是」。
 
 **Story 2(林)**:作为增长 PM,我想看到一条**结论条(verdict)**,直接告诉我「有 N 个桶显著赢过基线 / 未发现显著差异 / 疑似 AA 有偏」,不用自己读 p 值。
-- [ ] Given `significantBuckets(rows).length > 0`,then 顶部结论条列出这些桶名,并复用现有 AA 提示文案(见 `AbSignificancePanel` 第 116–138 行的 warning/success 双态)提醒「若含与基线同策略的桶即分流/埋点有偏」。
-- [ ] Given 无显著桶,then 结论条显示 success 态「未发现显著差异(可能效果为零或样本不足,见最小样本/臂)」。
+- [x] Given `significantBuckets(rows).length > 0`,then 顶部结论条列出这些桶名,并复用现有 AA 提示文案(见 `AbSignificancePanel` 第 116–138 行的 warning/success 双态)提醒「若含与基线同策略的桶即分流/埋点有偏」。
+- [x] Given 无显著桶,then 结论条显示 success 态「未发现显著差异(可能效果为零或样本不足,见最小样本/臂)」。
 
 **Story 3(林)**:作为增长 PM,我想**按 CTR / lift / p 值 / 曝光排序**,并能**只看显著桶**,以便聚焦有结论的桶。
-- [ ] Given 明细表,when 点列头,then 按该列排序(CTR / lift / pValue / impressions / minSample 均可排;NaN/基线值排末尾)。
-- [ ] Given 顶部「仅显著」筛选开关,when 打开,then 表格与图只保留 `significant === true` 的桶(基线始终保留作参照)。
+- [x] Given 明细表,when 点列头,then 按该列排序(CTR / lift / pValue / impressions / minSample 均可排;NaN/基线值排末尾)。
+- [x] Given 顶部「仅显著」筛选开关,when 打开,then 表格与图只保留 `significant === true` 的桶(基线始终保留作参照)。
 
 **Story 4(陈)**:作为算法工程师,我想把视角从「完整分桶」切到「按层×变体的边际汇总」,看我这层某变体的合并 CTR 与是否含显著桶。
-- [ ] Given `getExperiment().staticLayers` 枚举出所有 `(层, 变体)`,when 切到「层×变体汇总」视图,then 对每个 `(层,变体)` 调 `variantOnlineStat(rows, 层, 变体)` 渲染 { 合并 CTR, 命中桶数, 合计曝光, 含显著桶? };命名对不上(返回 null)显示「无匹配曝光」。
-- [ ] Given 某层未开实验(config 缺失),then 该层不渲染,不报错。
+- [x] Given `getExperiment().staticLayers` 枚举出所有 `(层, 变体)`,when 切到「层×变体汇总」视图,then 对每个 `(层,变体)` 调 `variantOnlineStat(rows, 层, 变体)` 渲染 { 合并 CTR, 命中桶数, 合计曝光, 含显著桶? };命名对不上(返回 null)显示「无匹配曝光」。
+- [x] Given 某层未开实验(config 缺失),then 该层不渲染,不报错。
 
 **Story 5(林)**:作为增长 PM,我想看到每个桶的**最小样本/臂**并对「样本不足」给出显式提示,避免用不足的样本下结论。
-- [ ] Given `row.minSampleInf === true`,then 显示 `∞` 橙标(lift 太小、不可检出);Given `minSample` 有限且 `impressions < minSample`,then 该桶标「样本不足」提示。
+- [x] Given `row.minSampleInf === true`,then 显示 `∞` 橙标(lift 太小、不可检出);Given `minSample` 有限且 `impressions < minSample`,then 该桶标「样本不足」提示。
 
 **Story 6(林/陈)**:作为使用者,当后端离线报表未跑 / 接口不可用时,我想看到清晰的降级说明与「怎么生成」的命令,而不是白屏。
-- [ ] Given `useAbReport()` 返回 `file === null`,then 展示「暂无 ab-report」+ 生成命令(复用 `AbSignificancePanel` 第 43–64 行文案:`mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=ab-report`)。
-- [ ] Given `isError`,then warning 提示「读取 ab-report 失败」不崩页。
+- [x] Given `useAbReport()` 返回 `file === null`,then 展示「暂无 ab-report」+ 生成命令(复用 `AbSignificancePanel` 第 43–64 行文案:`mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=ab-report`)。
+- [x] Given `isError`,then warning 提示「读取 ab-report 失败」不崩页。
 
 ---
 

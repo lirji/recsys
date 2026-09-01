@@ -9,7 +9,7 @@
 前端用相对路径 `/api` 调后端,页面/静态资源/接口全部同源,**零 CORS**。
 
 ```
-浏览器 → nginx(prod) 或 Vite:5173(dev)
+浏览器 → nginx(prod) 或 Vite(dev)，两者都使用中央注册的 `RECSYS_UI_PORT`
   ├─ / , /assets/*                → 本工程静态资源
   └─ /api/**  ──反代──▶ 网关 :8080 (recsys-gateway)
         ├─ /api/recommend|search|search-ads|feed|query|user|ad|experiment/** → rec-engine:8081
@@ -24,19 +24,19 @@
 
 ```bash
 scripts/dev-local.sh up          # 起后端(仓库根执行;端口/连接见 scripts/dev-local.env)
-scripts/dev-local.sh frontend    # 起 Vite:5173,/api → 本机网关端口(默认 8080,本机 9080)
-# 打开 http://localhost:5173,用演示身份(admin)登录
+scripts/dev-local.sh frontend    # 起 Vite:RECSYS_UI_PORT,/api → 本机网关端口
+# 当前注册表默认打开 http://localhost:9095
 ```
 
 只跑前端(后端已在别处起好):
 
 ```bash
-cd console && npm install
-# RECSYS_GATEWAY 指向你的网关地址;本机网关重映射到 9080 时务必带上,否则默认代理 8080(可能是别的进程 → 页面 500)
-RECSYS_GATEWAY=http://localhost:9080 npm run dev   # Vite :5173
+cd console && npm install && cd ..
+# RECSYS_GATEWAY 指向你的网关地址；统一脚本会固定 Vite 入口端口。
+RECSYS_GATEWAY=http://localhost:9080 scripts/dev-local.sh frontend
 ```
 
-dev 阶段浏览器只与 :5173 通信,Vite 把 `/api` 反代到网关。某后端未起时对应页面显示错误提示(优雅降级),不影响其它页面。详见 `docs/08-本地运行.md`。
+dev 阶段浏览器只与中央注册端口通信，Vite 把 `/api` 反代到网关。某后端未起时对应页面显示错误提示(优雅降级),不影响其它页面。详见 `docs/08-本地运行.md`。
 
 ## 认证模式(VITE_AUTH_MODE,构建期烘焙)
 

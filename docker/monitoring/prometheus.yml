@@ -12,7 +12,7 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ["alertmanager:9093"]
+        - targets: ["recsys-alertmanager:9093"]
 
 scrape_configs:
   # P2:网关(南北向入口,QPS/限流/延迟)

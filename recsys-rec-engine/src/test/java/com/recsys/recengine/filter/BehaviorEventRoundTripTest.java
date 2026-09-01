@@ -19,12 +19,14 @@ class BehaviorEventRoundTripTest {
     @Test
     void behaviorEvent_roundTrips_withEnumAction() throws Exception {
         BehaviorEvent ev = new BehaviorEvent(
-                42L, 1001L, ActionType.CLICK, 4.5, "search", "recall:plus|rank:onnx", 1_700_000_000_000L);
+                42L, 1001L, ActionType.CLICK, 4.5, "search", "recall:plus|rank:onnx",
+                1_700_000_000_000L, "exp-123");
 
         BehaviorEvent back = mapper.readValue(mapper.writeValueAsString(ev), BehaviorEvent.class);
 
         assertEquals(ev, back);                       // record 值相等 ⇒ 全字段无损
         assertEquals(ActionType.CLICK, back.action());
+        assertEquals("exp-123", back.exposureId());
         assertEquals("CLICK", back.action().name());  // SeenItemsConsumer 的正反馈判定口径
     }
 

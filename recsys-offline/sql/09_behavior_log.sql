@@ -11,7 +11,10 @@ CREATE TABLE IF NOT EXISTS behavior_log (
     scene    TEXT,
     bucket   TEXT,
     ts       TIMESTAMP,
-    position INT
+    position INT,
+    exposure_id TEXT
 );
+COMMENT ON TABLE behavior_log IS '供离线数据平台使用的用户行为事件读仓';
+ALTER TABLE behavior_log ADD COLUMN IF NOT EXISTS exposure_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_behavior_log_user_action ON behavior_log(user_id, action);
 CREATE INDEX IF NOT EXISTS idx_behavior_log_item ON behavior_log(item_id);

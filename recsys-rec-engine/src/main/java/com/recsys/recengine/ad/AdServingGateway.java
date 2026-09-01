@@ -2,6 +2,7 @@ package com.recsys.recengine.ad;
 
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
+import java.time.Instant;
 
 /**
  * 广告在线服务网关(rec-engine 侧的调用抽象)。屏蔽"进程内直调 vs 跨进程 gRPC"两种实现,
@@ -24,4 +25,8 @@ public interface AdServingGateway {
 
     /** 转化回传(CPA 计费 + 延迟转化建模)。 */
     void recordConversion(String requestId, long adId, long userId);
+
+    /** A7 独立 outcome，eventId 幂等且不依赖曝光 requestId。 */
+    boolean recordOutcome(String eventId, long advertiserId, long userId,
+                          String objective, double value, Instant occurredAt);
 }

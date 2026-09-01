@@ -107,6 +107,7 @@ public class ImportSemanticIdJob implements OfflineJob {
         jdbc.execute("CREATE TABLE IF NOT EXISTS item_semantic_id (" +
                 "item_id BIGINT PRIMARY KEY, " +
                 "c0 INT NOT NULL, c1 INT NOT NULL, c2 INT NOT NULL, model TEXT)");
+        jdbc.execute("COMMENT ON TABLE item_semantic_id IS '生成式召回模型生成的物品分层语义编码'");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_semid_prefix ON item_semantic_id (c0, c1, c2)");
     }
 

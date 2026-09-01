@@ -50,9 +50,9 @@ public class LexicalRecaller implements ChannelRecaller {
         }
         try {
             int limit = props.getQuota().getLexical();
-            // 词法/BM25 SQL(OR 语义 + NULLIF 兜底)已下沉到 ItemCatalogReader,item 表名按 seam 切换。
+            // R8-FTS:把 Query 理解产出的 TermWeight(IDF)带到排序侧;空/全 1 权重严格退回旧等权 FTS。
             List<RecallItem> out = new ArrayList<>();
-            for (ItemCatalogReader.ScoredId s : itemCatalog.lexicalSearch(query, limit)) {
+            for (ItemCatalogReader.ScoredId s : itemCatalog.lexicalSearch(query, ctx.queryTerms(), limit)) {
                 out.add(new RecallItem(s.itemId(), s.score(), RecallChannel.LEXICAL));
             }
             return out;

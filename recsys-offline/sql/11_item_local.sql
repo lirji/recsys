@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS item_local (
     title_tsv   tsvector GENERATED ALWAYS AS
                 (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED
 );
+COMMENT ON TABLE item_local IS '供在线召回与排序热路径使用的物品目录本地读模型';
 -- 全文检索 GIN 索引(LEXICAL/BM25 召回必需,否则全表扫描)。
 CREATE INDEX IF NOT EXISTS idx_item_local_title_tsv ON item_local USING gin (title_tsv);
 -- 类目 + 热度 / 纯热度 btree(与权威 item 同,TAG/HOT 热路径必需,否则全表扫 + Top-N 排序)。

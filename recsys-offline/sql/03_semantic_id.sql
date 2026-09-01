@@ -9,5 +9,6 @@ CREATE TABLE IF NOT EXISTS item_semantic_id (
     c2      INT NOT NULL,   -- 第 3 层 codeword(最细)
     model   TEXT            -- 量化模型来源(便于追溯/换模型重灌)
 );
+COMMENT ON TABLE item_semantic_id IS '生成式召回模型生成的物品分层语义编码';
 -- 前缀检索索引:按 c0(粗簇)过滤候选,再按 c0c1c2 算最长公共前缀深度
 CREATE INDEX IF NOT EXISTS idx_semid_prefix ON item_semantic_id (c0, c1, c2);

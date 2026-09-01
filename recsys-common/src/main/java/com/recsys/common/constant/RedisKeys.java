@@ -71,12 +71,19 @@ public final class RedisKeys {
         return "swing:" + itemId;
     }
 
-    /**
-     * 曝光分桶归因 String(短 TTL):expo:{userId}:{itemId} = bucketTag。
-     * 由编排层曝光埋点写入,行为服务收到点击时回查,用于在线分桶 CTR 指标。
-     */
+    /** 曝光分桶旧兼容键 String(短 TTL):expo:{userId}:{itemId} = bucketTag。 */
     public static String exposureBucket(long userId, long itemId) {
         return "expo:" + userId + ":" + itemId;
+    }
+
+    /** 最近一次曝光 String(短 TTL):expo:latest:{userId}:{itemId} = exposureId。 */
+    public static String latestExposure(long userId, long itemId) {
+        return "expo:latest:" + userId + ":" + itemId;
+    }
+
+    /** 精确曝光归因 String(短 TTL):expo:id:{exposureId} = 编码后的 user/item/bucket。 */
+    public static String exposure(String exposureId) {
+        return "expo:id:" + exposureId;
     }
 
     // ---------- 搜索广告(docs/05 §3) ----------
@@ -174,12 +181,13 @@ public final class RedisKeys {
     public static final String EXP_OVERRIDE = "recsys:exp";
 
     /**
-     * 词项 IDF Hash:idf:terms,field=归一化词项、value=IDF。
-     * 离线 IdfJob 从 item 标题/类目按<b>与在线 query 理解相同的分词</b>({@code QueryTokens})统计
-     * document frequency,拟合 IDF=ln((N+1)/(df+1))+1(稀有词更高、≥1)。在线 query 理解据此给
-     * {@code TermWeight} 赋权(替代恒 1.0);缺失/OOV 词退中性 1.0(保守,不放大生僻/拼写噪声)。
+     * raw-token IDF 兼容 Hash:idf:terms,field=QueryTokens token、value=其 PostgreSQL English lexeme IDF。
+     * 同一词干的 movie/movies 等 alias 写相同值，供旧实例与在线热路径直接查。
      */
     public static final String IDF_TERMS = "idf:terms";
+
+    /** canonical English lexeme IDF Hash:idf:lexemes；df 直接由 item.title_tsv 统计。 */
+    public static final String IDF_LEXEMES = "idf:lexemes";
 
     /** IDF 语料文档总数 String:idf:doc-count(= 参与统计的 item 数,口径核对用)。 */
     public static final String IDF_DOC_COUNT = "idf:doc-count";

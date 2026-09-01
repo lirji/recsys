@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 
@@ -29,6 +30,12 @@ import javax.sql.DataSource;
  */
 @Configuration
 public class AdShardingConfig {
+
+    private final Environment environment;
+
+    public AdShardingConfig(Environment environment) {
+        this.environment = environment;
+    }
 
     /** 主库连接参数(沿用 spring.datasource.*;url→jdbcUrl 的差异由 DataSourceProperties 处理)。 */
     @Bean
@@ -120,7 +127,7 @@ public class AdShardingConfig {
      * <p>这是"彻底回收"的关键:PG 网络挂起时 socket 读默认无限阻塞,{@code cancel(true)} 对阻塞的 socket 读无效,
      * 召回工作线程被永久占住;设 socketTimeout 后读超时即抛 SQLException → 连接被 Hikari 弃用、线程被真正回收。
      */
-    private static String pgUrl(String host, String port, String db) {
+    private String pgUrl(String host, String port, String db) {
         return "jdbc:postgresql://" + host + ":" + port + "/" + db
                 + "?socketTimeout=" + env("PG_SOCKET_TIMEOUT", "30")
                 + "&connectTimeout=" + env("PG_CONNECT_TIMEOUT", "5");
@@ -131,7 +138,7 @@ public class AdShardingConfig {
      * <p>statement_timeout 让慢查询在服务端按 ms 粒度中止(比秒级 socketTimeout 更快回收慢池线程),
      * 仅用于 derived/adDb 这类<b>快查</b>数据源(向量 ANN 单查亚秒级);较重的主库不设此紧界(见 application.yml)。
      */
-    private static String annInitSql() {
+    private String annInitSql() {
         return "SET hnsw.ef_search = 200; SET statement_timeout = " + env("PG_ANN_STATEMENT_TIMEOUT_MS", "2000");
     }
 
@@ -140,8 +147,10 @@ public class AdShardingConfig {
         return new JdbcTemplate(ds);
     }
 
-    private static String env(String k, String def) {
-        String v = System.getenv(k);
+    private String env(String k, String def) {
+        // Spring Environment 同时覆盖 OS env、JVM/property source 与测试 DynamicPropertySource；
+        // 生产环境变量口径不变，集成测试无需再被硬编码 localhost:5432 绕开。
+        String v = environment.getProperty(k);
         return v == null || v.isBlank() ? def : v;
     }
 }

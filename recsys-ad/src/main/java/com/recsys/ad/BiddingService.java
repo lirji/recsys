@@ -75,6 +75,21 @@ public class BiddingService {
                                      int slots,
                                      double reserve,
                                      ListwiseExternality.Sim sim) {
+        return auction(candidates, pctrRawByItem, pcvrByItem, Map.of(), ocpcByAd, titleByAd,
+                calibModel, slots, reserve, sim);
+    }
+
+    /** A7 主入口：upliftByAd 有有效估计时，仅对 CPA/OCPC/OCPM 使用增量转化价值；缺失逐条回退旧公式。 */
+    public List<SponsoredAd> auction(List<AdCandidate> candidates,
+                                     Map<Long, Double> pctrRawByItem,
+                                     Map<Long, Double> pcvrByItem,
+                                     Map<Long, UpliftEstimate> upliftByAd,
+                                     Map<Long, AdRepository.OcpcParams> ocpcByAd,
+                                     Map<Long, String> titleByAd,
+                                     String calibModel,
+                                     int slots,
+                                     double reserve,
+                                     ListwiseExternality.Sim sim) {
         AdProperties.Auction cfg = props.getAuction();
 
         // 0. 批量预取每候选/每广告主的 Redis 参数(各一次 MGET),避免竞价循环里逐候选 N 次串行往返。
@@ -99,12 +114,21 @@ public class BiddingService {
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
             BidType type = BidType.from(ocpc.optimizationType());
             double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
-            double effBid = effectiveBid(type, ocpc, c, pcvr, ocpcCoefByAdv.getOrDefault(c.advertiserId(), 1.0));
+            UpliftEstimate uplift = upliftByAd == null ? null : upliftByAd.get(c.adId());
+            boolean incremental = props.getUplift().isScoringEnabled() && uplift != null
+                    && isConversionOptimized(type);
+            double delta = incremental ? Math.max(0.0, uplift.delta()) : 0.0;
+            double coef = ocpcCoefByAdv.getOrDefault(c.advertiserId(), 1.0);
+            double effBid = incremental && type == BidType.OCPC
+                    ? incrementalOcpcBid(ocpc, c, delta, pctrCalib, coef)
+                    : effectiveBid(type, ocpc, c, pcvr, coef);
             double pacedBid = effBid * pacingByAdv.getOrDefault(c.advertiserId(), 1.0);
             double relevance = gate.relevance(c);
             // 精细化质量度(M7):有数据的广告用 ad-quality 算好的数据驱动分,缺失退广告自带 quality_score
             double quality = qualityByAd.getOrDefault(c.adId(), c.quality());
-            double billFactor = billFactor(type, pctrCalib, pcvr, quality, relevance);
+            double billFactor = incremental
+                    ? incrementalBillFactor(type, pctrCalib, delta, quality, relevance)
+                    : billFactor(type, pctrCalib, pcvr, quality, relevance);
             double ecpm = pacedBid * billFactor;
             // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 billFactor(守红线)
             double rankEcpm = ecpm * boostByAd.getOrDefault(c.adId(), 1.0);
@@ -222,6 +246,35 @@ public class BiddingService {
             case CPM -> base;
             case CPA, OCPM -> pctrCalib * pcvr * base;
         };
+    }
+
+    /** uplift.delta 已是每次 opportunity 的增量转化概率，不能再次乘 pCTR。 */
+    static double incrementalBillFactor(BidType type, double pctrCalib, double uplift,
+                                        double quality, double relevance) {
+        double base = quality * relevance;
+        return switch (type) {
+            case CPA, OCPM -> Math.max(0.0, uplift) * base;
+            case OCPC -> pctrCalib * base; // uplift 通过 targetCPA×uplift/pCTR 进入每点击出价
+            case CPC -> pctrCalib * base;
+            case CPM -> base;
+        };
+    }
+
+    private double incrementalOcpcBid(AdRepository.OcpcParams ocpc, AdCandidate c,
+                                      double uplift, double pctrCalib, double coefficient) {
+        if (!props.getOcpc().isEnabled() || ocpc.targetCpa() <= 0) {
+            return c.bid();
+        }
+        if (uplift <= 0.0) {
+            return 0.0;
+        }
+        double bid = ocpc.targetCpa() * uplift / Math.max(1e-6, pctrCalib) * coefficient;
+        double cap = props.getOcpc().getMaxBid();
+        return cap > 0 ? Math.min(bid, cap) : bid;
+    }
+
+    private static boolean isConversionOptimized(BidType type) {
+        return type == BidType.CPA || type == BidType.OCPC || type == BidType.OCPM;
     }
 
     private static double clampProb(double p) {

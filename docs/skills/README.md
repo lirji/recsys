@@ -16,17 +16,17 @@
 ### 推荐主链路
 | # | 文档 | 一句话 |
 |---|---|---|
-| 01 | [多路召回全家桶](01-召回-多路召回全家桶.md) | 12 路召回 + 归一化融合 + RRF 混合检索 + 并行超时降级 |
+| 01 | [多路召回全家桶](01-召回-多路召回全家桶.md) | 14 路召回（含 MIND/LightGCN）+ 归一化融合 + RRF 混合检索 + 并行超时降级 |
 | 02 | [排序模型全家桶](02-排序-CTR与多任务模型全家桶.md) | 9 策略:rule→LGBM→DeepFM→DCN→MMoE/PLE→DIN/DIEN→SIM + ESMM + PAL |
 | 03 | [Embedding 与向量检索](03-Embedding与向量检索.md) | Gemini/本地 BGE + pgvector HNSW + RQ-VAE 语义 ID + 双塔 + TIGER |
 | 04 | [特征体系与在线/离线一致性](04-特征体系与在线离线一致性.md) | FeatureAssembler/SparseEncoder/SequenceEncoder 三大契约 + as-of 无泄漏 |
 | 05 | [重排:多样性与 DPP](05-重排-多样性与DPP.md) | diversity / MMR / DPP / none 四策略 |
 | 06 | [冷启动](06-冷启动.md) | 检测器 + 兴趣引导 + COLD 通道 UCB bandit + 强多样性 |
 | 07 | [融合与近线学习](07-融合与近线学习.md) | 融合公式全展开 + FTRL + LinUCB/Thompson bandit + 校准 + 热度去偏 |
-| 08 | [A/B 实验与分层](08-AB实验与分层.md) | recall×rank×rerank×ad 四层正交 + 确定性分桶 + 显著性检验 |
+| 08 | [A/B 实验与分层](08-AB实验与分层.md) | recall×rank×rerank×ad 四层正交 + 确定性分桶 + 显著性/CUPED |
 | 09 | [离线评估与严格无泄漏](09-离线评估与严格无泄漏.md) | @K 全指标 + BehaviorQuery/AsOf 消除穿越 + 严格 eval |
 | 10 | [实时特征与流式](10-实时特征与流式.md) | Flink 滑窗 → 实时热门 + 实时类目 + 实时序列 |
-| 11 | [搜索与 Query 理解](11-搜索与Query理解.md) | 归一/纠错/意图/IDF 加权/向量化 + 搜索场景融合覆盖 |
+| 11 | [搜索与 Query 理解](11-搜索与Query理解.md) | 归一/纠错/意图/IDF→FTS 加权/向量化 + 搜索场景融合覆盖 |
 
 ### 搜索广告
 | # | 文档 | 一句话 |

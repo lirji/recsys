@@ -6,6 +6,7 @@ export interface RecommendItem {
   score: number;
   recallFrom: string[];
   reason: string;
+  exposureId?: string | null;
 }
 export interface RecommendResponse {
   userId: number;
@@ -130,6 +131,7 @@ export interface BehaviorEvent {
   scene: string;
   bucket?: string | null;
   ts: number;
+  exposureId?: string | null;
 }
 
 // ===== 实验管理 =====

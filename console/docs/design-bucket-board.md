@@ -1,11 +1,12 @@
 # 设计规格:桶对比大盘 (Bucket Comparison Dashboard) — `/bucket-board`
 
-**Status**: Ready for build  **Author**: UI Designer  **For**: Frontend Dev
+**Status**: Implemented  **Author**: UI Designer  **For**: Frontend Dev  **Verified**: 2026-09-01
 **Domain**: 实验与增长  **Route**: `/bucket-board`  **PRD**: `console/docs/prd-experiment-growth-p1.md`
 **Constraint**: 纯前端 · 零后端改动 · AntD5 + ECharts only · 全中文 · 复用既有件/主题/色板。
 
 > 本规格的目标:前端**零设计决策**。每个尺寸/颜色/图标/文案/降级分支都已定死。
 > 一切颜色、间距、字号引用既有 token(`src/theme/tokens.ts`)与既有件,不新增设计资产。
+> **交付回填**：实现位于 `src/pages/experiment/BucketBoard.tsx`，图表扩展位于 `src/components/charts/EErrorBar.tsx`，router/nav/CSS 均已接入。本文末自查项反映代码交付状态；跨 Gateway/后端/存储的浏览器自动 E2E 仍由项目 `PLAN.md` 单独跟踪。
 
 ---
 
@@ -379,7 +380,7 @@ import BucketBoard from './pages/experiment/BucketBoard';
 <Route path="/experiment"    element={<ExperimentConsole />} />
 <Route path="/bucket-board"  element={<BucketBoard />} />
 ```
-**页面文件位置**:`console/src/pages/experiment/BucketBoard.tsx`(新建 `pages/experiment/` 目录 —— 域已独立,不塞进 `pages/online/`)。ECharts 已在多页用,是否 `lazy` 由既有约定决定(本页含图,建议 `lazy` 与 `ReportViewer` 一致,但非强制)。
+**页面文件位置**:`console/src/pages/experiment/BucketBoard.tsx`（已交付在独立的 `pages/experiment/` 目录，未塞入 `pages/online/`）。当前页面按现有 ECharts/`ChartFrame` 约定直接渲染，未额外引入专用后端契约。
 
 ---
 
@@ -403,15 +404,15 @@ import BucketBoard from './pages/experiment/BucketBoard';
 
 ## 11. 前端自查清单(交付即验收,对齐 PRD §8)
 
-- [ ] 进页 0 点击即从结论条读出:显著桶数 / 是否需复核(AA) / 最大正向 lift。
-- [ ] 结论条三态 WIN(success)/ FLAT(info)/ REVIEW(warning)+ 旧格式旁支,各自图标/文案正确。
-- [ ] 4 KPI 砖:分桶数 / 基线 CTR / 显著桶数(绿当 >0)/ 最大正向 lift(绿当 >0),格式如 §3。
-- [ ] 图:CTR% + Wilson 须 + ★显著 + 基线柱换色 + 基线横虚线,`EErrorBar` 三新 prop 生效且旧调用不受影响。
-- [ ] 表:9 列照抄 + lift 绿/红 + p 值 `<1e-4` + `∞`/样本不足橙标 + 基线行青底高亮。
-- [ ] 排序(≥3 列)+ 仅显著筛选(基线恒留)+ 完整分桶/层×变体切换,四项可用且图表同源。
-- [ ] 层×变体:每层一卡(accent=#8b5cf6),变体合并 CTR/命中桶数/合计曝光/含显著桶,null→无匹配。
-- [ ] 4 态降级:加载(骨架)/ 暂无报表(EmptyState+命令)/ 报错(warning)/ 旧格式(列降级)—— 均不白屏。
-- [ ] 视图 A 与视图 B 取数解耦:`getExperiment()` 失败不影响完整分桶段。
-- [ ] `nav.ts` + `router.tsx` 注册,菜单落在「实验与增长」组、位于「实验管理」之后。
-- [ ] 表 `scroll-x` 于溢出、页面 body 无横向滚;窄屏 KPI 1/2 列 reflow。
+- [x] 进页 0 点击即从结论条读出:显著桶数 / 是否需复核(AA) / 最大正向 lift。
+- [x] 结论条三态 WIN(success)/ FLAT(info)/ REVIEW(warning)+ 旧格式旁支,各自图标/文案正确。
+- [x] 4 KPI 砖:分桶数 / 基线 CTR / 显著桶数(绿当 >0)/ 最大正向 lift(绿当 >0),格式如 §3。
+- [x] 图:CTR% + Wilson 须 + ★显著 + 基线柱换色 + 基线横虚线,`EErrorBar` 三新 prop 生效且旧调用不受影响。
+- [x] 表:9 列照抄 + lift 绿/红 + p 值 `<1e-4` + `∞`/样本不足橙标 + 基线行青底高亮。
+- [x] 排序(≥3 列)+ 仅显著筛选(基线恒留)+ 完整分桶/层×变体切换,四项可用且图表同源。
+- [x] 层×变体:每层一卡(accent=#8b5cf6),变体合并 CTR/命中桶数/合计曝光/含显著桶,null→无匹配。
+- [x] 4 态降级:加载(骨架)/ 暂无报表(EmptyState+命令)/ 报错(warning)/ 旧格式(列降级)—— 均不白屏。
+- [x] 视图 A 与视图 B 取数解耦:`getExperiment()` 失败不影响完整分桶段。
+- [x] `nav.ts` + `router.tsx` 注册,菜单落在「实验与增长」组、位于「实验管理」之后。
+- [x] 表 `scroll-x` 于溢出、页面 body 无横向滚;窄屏 KPI 1/2 列 reflow。
 ```

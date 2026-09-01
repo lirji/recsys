@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import java.util.List;
+
 /**
  * A/B 显著性统计纯函数(P2)——把"桶间 CTR 差异"从点估计升级为可判定的推断:
  * Wilson 置信区间、两比例 z 检验 + 双侧 p 值、检测既定提升所需的最小样本量。
@@ -7,6 +9,8 @@ package com.recsys.offline;
  * <p>全部无副作用、无依赖,便于单测(见 AbStatsTest);被 {@link AbReportJob} 调用。
  */
 final class AbStats {
+
+    private static final double EPS = 1e-12;
 
     private AbStats() {
     }
@@ -66,6 +70,129 @@ final class AbStats {
         double zB = inverseNormalCdf(power);
         double num = Math.pow(zA + zB, 2) * (p1 * (1 - p1) + p2 * (1 - p2));
         return (long) Math.ceil(num / (diff * diff));
+    }
+
+    /** 一个随机化单位(user)的 ratio-metric CUPED 输入。covariate 只能来自实验前。 */
+    record CupedObservation(double numerator, double denominator, Double covariate) {
+    }
+
+    /** 全实验 pooled 拟合的 CUPED 模型。缺历史/协变量零方差时 applied=false、theta=0。 */
+    record CupedModel(double theta, double covariateMean, double varianceReduction,
+                      int pairedUnits, double pairedDenominator, boolean applied) {
+    }
+
+    /** 桶级 CUPED 摘要；raw/adjusted standard error 均按 user 聚类的加权均值计算。 */
+    record CupedSummary(double rawMean, double adjustedMean, double rawStandardError,
+                        double standardError, int units, int covariateUnits,
+                        double totalNumerator, double totalDenominator, double covariateCoverage) {
+    }
+
+    /**
+     * ratio-metric 线性化 CUPED：先以 pooled raw ratio 构造 user 级 outcome influence
+     * {@code Y_i=numerator_i-ratio*denominator_i}，再拟合 {@code θ=Cov(X,Y)/Var(X)}。
+     * 调整项只使用实验前 X，不用 post 曝光作权重，避免 treatment 改变活跃度时引入 post-treatment bias。
+     * 模型在全部实验桶 pooled 拟合；缺历史 user 仍保留，汇总时调整项为 0。
+     */
+    static CupedModel fitCuped(List<CupedObservation> observations) {
+        List<CupedObservation> paired = valid(observations).stream()
+                .filter(o -> o.covariate() != null && Double.isFinite(o.covariate()))
+                .toList();
+        double totalDenominator = paired.stream().mapToDouble(CupedObservation::denominator).sum();
+        if (paired.size() < 2 || totalDenominator <= 0) {
+            return new CupedModel(0.0, 0.0, 0.0, paired.size(), totalDenominator, false);
+        }
+        double rawRatio = paired.stream().mapToDouble(CupedObservation::numerator).sum() / totalDenominator;
+        double meanX = paired.stream().mapToDouble(o -> o.covariate()).average().orElse(0.0);
+        double meanY = paired.stream()
+                .mapToDouble(o -> o.numerator() - rawRatio * o.denominator()).average().orElse(0.0);
+        double cov = 0.0;
+        double varX = 0.0;
+        for (CupedObservation o : paired) {
+            double dx = o.covariate() - meanX;
+            double dy = o.numerator() - rawRatio * o.denominator() - meanY;
+            cov += dx * dy;
+            varX += dx * dx;
+        }
+        if (varX <= EPS || !Double.isFinite(varX)) {
+            return new CupedModel(0.0, meanX, 0.0, paired.size(), totalDenominator, false);
+        }
+        double theta = cov / varX;
+        if (!Double.isFinite(theta)) {
+            return new CupedModel(0.0, meanX, 0.0, paired.size(), totalDenominator, false);
+        }
+        double rawMeat = 0.0;
+        double adjustedMeat = 0.0;
+        for (CupedObservation o : paired) {
+            double rawInfluence = o.numerator() - rawRatio * o.denominator() - meanY;
+            double adjustedInfluence = rawInfluence - theta * (o.covariate() - meanX);
+            rawMeat += rawInfluence * rawInfluence;
+            adjustedMeat += adjustedInfluence * adjustedInfluence;
+        }
+        double reduction = rawMeat <= EPS || !Double.isFinite(rawMeat) || !Double.isFinite(adjustedMeat)
+                ? 0.0 : 1.0 - adjustedMeat / rawMeat;
+        // estimator 预先固定：不根据 post outcome 的“是否看起来降方差”切换 applied，避免选择偏差。
+        return new CupedModel(theta, meanX, reduction, paired.size(), totalDenominator, true);
+    }
+
+    /** 汇总某一实验桶；rawMean 严格保持 ratio-of-sums CTR 口径。 */
+    static CupedSummary summarizeCuped(List<CupedObservation> observations, CupedModel model) {
+        List<CupedObservation> rows = valid(observations);
+        double totalDenominator = rows.stream().mapToDouble(CupedObservation::denominator).sum();
+        double totalNumerator = rows.stream().mapToDouble(CupedObservation::numerator).sum();
+        if (rows.isEmpty() || totalDenominator <= 0) {
+            return new CupedSummary(0.0, 0.0, 0.0, 0.0, 0, 0, 0.0, 0.0, 0.0);
+        }
+        double raw = totalNumerator / totalDenominator;
+        double adjustment = rows.stream()
+                .filter(o -> model.applied() && o.covariate() != null && Double.isFinite(o.covariate()))
+                .mapToDouble(o -> model.theta() * (o.covariate() - model.covariateMean()))
+                .sum();
+        double adjusted = (totalNumerator - adjustment) / totalDenominator;
+        double coveredDenominator = rows.stream()
+                .filter(o -> o.covariate() != null && Double.isFinite(o.covariate()))
+                .mapToDouble(CupedObservation::denominator).sum();
+        int coveredUnits = (int) rows.stream()
+                .filter(o -> o.covariate() != null && Double.isFinite(o.covariate()))
+                .count();
+        double rawSe = 0.0;
+        double se = 0.0;
+        if (rows.size() > 1) {
+            double rawMeat = 0.0;
+            double meat = 0.0;
+            for (CupedObservation o : rows) {
+                double rawResidual = o.numerator() - raw * o.denominator();
+                double control = model.applied() && o.covariate() != null && Double.isFinite(o.covariate())
+                        ? model.theta() * (o.covariate() - model.covariateMean()) : 0.0;
+                double residual = o.numerator() - adjusted * o.denominator() - control;
+                rawMeat += rawResidual * rawResidual;
+                meat += residual * residual;
+            }
+            double correction = (double) rows.size() / (rows.size() - 1)
+                    / (totalDenominator * totalDenominator);
+            rawSe = Math.sqrt(correction * rawMeat);
+            se = Math.sqrt(correction * meat);
+        }
+        return new CupedSummary(raw, adjusted, rawSe, se, rows.size(), coveredUnits,
+                totalNumerator, totalDenominator, coveredDenominator / totalDenominator);
+    }
+
+    /** 两桶 CUPED 调整均值差的 user-cluster 正态近似 z；无可用标准误时返回 NaN。 */
+    static double cupedDifferenceZ(CupedSummary treatment, CupedSummary baseline) {
+        double se = Math.hypot(treatment.standardError(), baseline.standardError());
+        if (se <= EPS || !Double.isFinite(se)) {
+            return Double.NaN;
+        }
+        return (treatment.adjustedMean() - baseline.adjustedMean()) / se;
+    }
+
+    private static List<CupedObservation> valid(List<CupedObservation> observations) {
+        if (observations == null) {
+            return List.of();
+        }
+        return observations.stream()
+                .filter(o -> o != null && Double.isFinite(o.numerator())
+                        && Double.isFinite(o.denominator()) && o.denominator() > 0)
+                .toList();
     }
 
     /** 标准正态 CDF Φ(x)(Abramowitz-Stegun 7.1.26 erf 近似,|误差|<1.5e-7)。 */
