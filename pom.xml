@@ -26,7 +26,7 @@
         <pgvector.version>0.1.6</pgvector.version>
         <onnxruntime.version>1.17.1</onnxruntime.version>
         <lombok.version>1.18.30</lombok.version>
-        <postgresql.version>42.7.3</postgresql.version>
+        <postgresql.version>42.7.13</postgresql.version>
         <!-- 实时特征流作业(recsys-streaming):Flink 1.20 支持 Java 21 -->
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
