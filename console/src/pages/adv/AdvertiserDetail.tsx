@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Spin } from 'antd';
+import { App, Alert, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import { getAdvertiser, updateAdvertiser } from '../../api/advertiser';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
 import type { AdvertiserUpsert } from '../../api/types';
 import { StatusTag } from '../../components/adv/statusTags';
+import PageHeader from '../../components/PageHeader';
+import { ResultRowsSkeleton } from '../../components/Skeletons';
+import { ACCENTS } from '../../theme/tokens';
 
 export default function AdvertiserDetail() {
   const { id } = useParams();
   const advertiserId = Number(id);
   const { message } = App.useApp();
-  const query = useQuery({ queryKey: ['advertiser', advertiserId], queryFn: () => getAdvertiser(advertiserId) });
+  const query = useQuery({ queryKey: queryKeys.advertiser(advertiserId), queryFn: () => getAdvertiser(advertiserId) });
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<AdvertiserUpsert>();
@@ -35,11 +39,13 @@ export default function AdvertiserDetail() {
     }
   };
 
-  if (query.isLoading) return <Spin />;
+  if (query.isLoading) return <ResultRowsSkeleton rows={3} />;
   if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
   const a = query.data!;
 
   return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <PageHeader title={`广告主 #${a.advertiserId}`} accent={ACCENTS.ad} description={a.name} />
     <Card
       title={`广告主 #${a.advertiserId}`}
       extra={
@@ -80,5 +86,6 @@ export default function AdvertiserDetail() {
         </Form>
       </Modal>
     </Card>
+    </Space>
   );
 }

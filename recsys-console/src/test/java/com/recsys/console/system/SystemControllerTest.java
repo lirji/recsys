@@ -22,7 +22,8 @@ class SystemControllerTest {
         SystemHealthService healthService = new SystemHealthService(properties);
         SystemMetricsProperties metricsProperties = new SystemMetricsProperties();
         SystemMetricsService metricsService = new SystemMetricsService(metricsProperties);
-        SystemController controller = new SystemController(overviewService, healthService, metricsService);
+        SystemController controller = new SystemController(overviewService, healthService, metricsService,
+                new SystemOpsService(null));
 
         assertThat(controller.overview().projectName()).isEqualTo("recsys");
         assertThat(controller.modules()).isNotEmpty();
@@ -41,7 +42,8 @@ class SystemControllerTest {
         SystemController controller = new SystemController(
                 new SystemOverviewService(),
                 new SystemHealthService(new SystemHealthProperties()),
-                new SystemMetricsService(props));
+                new SystemMetricsService(props),
+                new SystemOpsService(null));
 
         SystemMetrics metrics = controller.metrics();
         assertThat(metrics.available()).isFalse();

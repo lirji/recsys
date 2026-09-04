@@ -2,7 +2,8 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { getSearchAds, postAdClick, postAdConversion } from '../../api/ads';
+import { getSearchAds, postAdClick, postAdConversion, postAdOutcome } from '../../api/ads';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import { useRequestHistory, type HistoryEntry } from '../../hooks/useRequestHistory';
@@ -15,12 +16,14 @@ import { ChartSkeleton } from '../../components/Skeletons';
 import EmptyState from '../../components/EmptyState';
 import PageHeader from '../../components/PageHeader';
 import HistoryDrawer from '../../components/debug/HistoryDrawer';
+import DebugField from '../../components/debug/DebugField';
 import ResultDiff from '../../components/debug/ResultDiff';
 import BiddingReplay from '../../components/debug/BiddingReplay';
 import CollapsibleCard from '../../components/CollapsibleCard';
 import { deriveAdStages } from '../../components/funnel/derive';
 import { ACCENTS, BRAND, STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
+import { formatId } from '../../utils/formatId';
 
 type AdParams = {
   userId: number;
@@ -63,7 +66,7 @@ export default function SearchAdsConsole() {
   };
 
   const query = useQuery({
-    queryKey: ['search-ads', applied],
+    queryKey: queryKeys.searchAds(applied),
     queryFn: () => getSearchAds(applied),
     enabled: !!applied.q.trim(),
   });
@@ -123,22 +126,43 @@ export default function SearchAdsConsole() {
       message.error('转化回传失败: ' + toApiError(e).message);
     }
   };
+  const outcome = async (ad: SponsoredAd) => {
+    try {
+      const eventId = `${requestId}:${ad.adId}:outcome:${Date.now()}`;
+      await postAdOutcome({ eventId, advertiserId: ad.advertiserId, userId, objective: 'purchase', value: 1 });
+      message.success(`独立 outcome 已回传 · ad ${ad.adId}`);
+    } catch (e) {
+      message.error('outcome 回传失败: ' + toApiError(e).message);
+    }
+  };
 
   const columns: ColumnsType<SponsoredAd> = [
     { title: '位次', dataIndex: 'position', width: 56, render: (p: number) => <b>{p}</b> },
     {
       title: '广告',
       key: 'ad',
-      render: (_, r) => (
-        <div>
+      render: (_, r) => {
+        const ids = [
+          formatId(r.adId) && `ad ${formatId(r.adId)}`,
+          formatId(r.advertiserId) && `广告主 ${formatId(r.advertiserId)}`,
+          formatId(r.creativeId) && `创意 ${formatId(r.creativeId)}`,
+        ].filter(Boolean);
+        return (
           <div>
-            <Typography.Text strong>{r.title || `#${r.itemId}`}</Typography.Text>
+            <Space size={6} wrap>
+              <Typography.Text strong>{r.title || `#${r.itemId}`}</Typography.Text>
+              {r.bidType ? <Tag>{r.bidType}</Tag> : null}
+            </Space>
+            {ids.length ? (
+              <div>
+                <Typography.Text type="secondary" className="mono" style={{ fontSize: 12 }}>
+                  {ids.join(' · ')}
+                </Typography.Text>
+              </div>
+            ) : null}
           </div>
-          <Typography.Text type="secondary" className="mono" style={{ fontSize: 12 }}>
-            adId={r.adId} · adv={r.advertiserId} · bidword={r.bidwordId}
-          </Typography.Text>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: '通道',
@@ -146,60 +170,34 @@ export default function SearchAdsConsole() {
       width: 110,
       render: (c: string) => <Tag color={channelColor(c)}>{c}</Tag>,
     },
-    { title: '计费', dataIndex: 'bidType', width: 72, render: (b: string) => <Tag>{b}</Tag> },
     {
-      title: <Tooltip title="出价 bid / 质量度 quality / 相关性 relevance">bid·q·rel</Tooltip>,
-      key: 'bqr',
-      width: 140,
+      title: <Tooltip title="eCPM=排序依据;实收=GSP 次价">eCPM / 实收</Tooltip>,
+      key: 'money',
+      width: 130,
       render: (_, r) => (
-        <span className="mono" style={{ fontSize: 12 }}>
-          {fmt(r.bid, 3)} · {fmt(r.quality, 2)} · {fmt(r.relevance, 2)}
-        </span>
+        <div>
+          <span className="mono">{fmt(r.ecpm)}</span>
+          <div>
+            <Typography.Text strong style={{ color: BRAND }} className="mono">
+              {fmt(r.chargedPrice)}
+              {r.chargedPrice < r.ecpm ? (
+                <Tooltip title="次价 < eCPM,广告主省下价差">
+                  <Typography.Text type="success" style={{ fontSize: 11 }}>
+                    {' '}
+                    ↓
+                  </Typography.Text>
+                </Tooltip>
+              ) : null}
+            </Typography.Text>
+          </div>
+        </div>
       ),
-    },
-    {
-      title: <Tooltip title="原始 pCTR → 保序回归校准后">pCTR → 校准</Tooltip>,
-      key: 'pctr',
-      width: 150,
-      render: (_, r) => {
-        const down = r.pctrCalibrated < r.pctr;
-        return (
-          <span className="mono" style={{ fontSize: 12 }}>
-            {fmt(r.pctr)}{' '}
-            <span style={{ color: down ? '#cf1322' : '#389e0d' }}>→ {fmt(r.pctrCalibrated)}</span>
-          </span>
-        );
-      },
-    },
-    {
-      title: <Tooltip title="eCPM=排序依据(pacedBid·billFactor)">eCPM</Tooltip>,
-      dataIndex: 'ecpm',
-      width: 96,
-      render: (v: number) => <span className="mono">{fmt(v)}</span>,
       sorter: (a, b) => b.ecpm - a.ecpm,
-    },
-    {
-      title: <Tooltip title="GSP 次价:实际计费,通常 ≤ 自己的 eCPM">实收(GSP)</Tooltip>,
-      dataIndex: 'chargedPrice',
-      width: 110,
-      render: (v: number, r) => (
-        <Typography.Text strong style={{ color: BRAND }} className="mono">
-          {fmt(v)}
-          {r.chargedPrice < r.ecpm ? (
-            <Tooltip title="次价 < eCPM,广告主省下价差">
-              <Typography.Text type="success" style={{ fontSize: 11 }}>
-                {' '}
-                ↓
-              </Typography.Text>
-            </Tooltip>
-          ) : null}
-        </Typography.Text>
-      ),
     },
     {
       title: '模拟',
       key: 'act',
-      width: 140,
+      width: 200,
       render: (_, r) => (
         <Space size={4}>
           <Button size="small" disabled={!requestId} onClick={() => click(r.adId)}>
@@ -208,6 +206,11 @@ export default function SearchAdsConsole() {
           <Button size="small" disabled={!requestId} onClick={() => convert(r.adId)}>
             转化
           </Button>
+          <Tooltip title="A7 独立转化事实,不依赖 requestId 计费链">
+            <Button size="small" disabled={!requestId} onClick={() => outcome(r)}>
+              outcome
+            </Button>
+          </Tooltip>
         </Space>
       ),
     },
@@ -216,9 +219,9 @@ export default function SearchAdsConsole() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
-        title="搜索广告调试台"
+        title="搜索广告"
         accent={ACCENTS.ad}
-        description="query 理解 → 广告召回 → 相关性门槛 → pCTR/pCVR → 校准 → oCPC 出价 → eCPM 竞价 → GSP 次价计费。"
+        description="召回 → 门槛 → 出价 → GSP。"
         extra={
           <Space>
             <Button icon={<ShareAltOutlined />} onClick={shareLink}>
@@ -232,36 +235,17 @@ export default function SearchAdsConsole() {
       />
       <Card size="small" bordered={false}>
         <Space wrap>
-          <span>q</span>
-          <Input value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} onPressEnter={run} />
-          <span>slots</span>
-          <InputNumber min={1} max={10} value={slots} onChange={(v) => v && setSlots(v)} />
+          <DebugField label="查询词">
+            <Input value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} onPressEnter={run} />
+          </DebugField>
+          <DebugField label="广告位数">
+            <InputNumber min={1} max={10} value={slots} onChange={(v) => v && setSlots(v)} />
+          </DebugField>
           <Button type="primary" loading={query.isFetching} onClick={run}>
             检索广告
           </Button>
-          <Typography.Text type="secondary">userId={userId} · scene={scene}</Typography.Text>
         </Space>
       </Card>
-
-      <FunnelBand
-        dense
-        stages={stages}
-        flowing={flowing}
-        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
-      />
-
-      {ads.length > 0 ? (
-        <>
-          <Card size="small" title="竞价链路 · bid → eCPM → 实收(GSP)">
-            <Suspense fallback={<ChartSkeleton height={340} />}>
-              <AdBiddingChart ads={ads} />
-            </Suspense>
-          </Card>
-          <CollapsibleCard title="竞价链路逐步重放" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
-            <BiddingReplay ads={ads} />
-          </CollapsibleCard>
-        </>
-      ) : null}
 
       <Card
         title={`赞助广告 (${ads.length})`}
@@ -277,7 +261,7 @@ export default function SearchAdsConsole() {
             dataSource={ads}
             loading={query.isFetching}
             pagination={false}
-            scroll={{ x: 960 }}
+            scroll={{ x: 720 }}
             locale={{
               emptyText: (
                 <EmptyState
@@ -291,6 +275,28 @@ export default function SearchAdsConsole() {
           />
         )}
       </Card>
+
+      <FunnelBand
+        dense
+        collapsible
+        defaultOpen={false}
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
+
+      {ads.length > 0 ? (
+        <>
+          <CollapsibleCard title="竞价图 · bid → eCPM → 实收" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
+            <Suspense fallback={<ChartSkeleton height={340} />}>
+              <AdBiddingChart ads={ads} />
+            </Suspense>
+          </CollapsibleCard>
+          <CollapsibleCard title="竞价链路逐步重放" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
+            <BiddingReplay ads={ads} />
+          </CollapsibleCard>
+        </>
+      ) : null}
 
       <HistoryDrawer<AdParams, SearchAdsResponse>
         open={drawerOpen}

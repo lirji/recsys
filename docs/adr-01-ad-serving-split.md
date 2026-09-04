@@ -1,76 +1,78 @@
-# ADR-01:广告在线服务拆分(ad-serving)
+# ADR-01：拆分广告在线服务（ad-serving）
 
-状态:**已实施(部分偏离本 ADR)**。ad-serving 已作为独立 `[app]` 模块落地(`recsys-ad-serving`)。
+状态：**已接受并实施（渐进式）**
 
-> **⚠️ as-built 与本 ADR 的偏差(以代码为准)**:
-> - 端口是 **8085 / gRPC 9095**(本 ADR 曾提议 8084)。
-> - **未**引入 `recsys-experiment` 库——广告 A/B 的 adBucket / reservePrice 作为 gRPC 请求参数传入(query 理解与实验分桶留在 rec-engine 单一事实源)。
-> - 拆分**由开关控制而非硬切**:`recsys.ad.serving.mode`(`AD_SERVING_MODE`)= `in-process`(默认)/ `grpc`;`AdPipeline` 是两侧共享内核,golden-diff 等价。
-> - ~~已知缺口:gRPC 服务端鉴权拦截器存在但未注册~~ **已补齐(2026-07,gRPC 服务端硬化)**:三个 gRPC 服务(ad-serving/content/user)均经 `GlobalServerInterceptorConfigurer` 注册 `InternalAuthGrpcServerInterceptor` 校验内部 HMAC 令牌(`server-auth-required` 默认 true);幂等读另挂 Resilience4j 瞬时重试。
-> - 完整 as-built 见 [skills/16 微服务拆分与 gRPC](skills/16-微服务拆分与gRPC.md)。
+最后核验：**2026-09-01**
 
 ## 背景
 
-架构评审(见对话记录)结论:自然推荐主链路维持模块化单体(保护在线/离线一致性);真正该动的是把
-**广告"钱链路"从 rec-engine 进程剥离**——它有独立数据源(ShardingSphere)、独立可靠性诉求(计费/审计)、
-独立变更节奏。这是 Phase 2。
+自然推荐主链路适合继续保持模块化单体，但广告「钱链路」具有独立的数据、可靠性、审计与发布节奏。原实现将 query 理解、实验分桶、广告召回、竞价、计费和事件写入全部放在 rec-engine 进程，难以独立扩缩容和做故障隔离。
 
-## 落地时发现的真实耦合(比预想深)
+同时，直接把 `SearchAdsOrchestrator` 整体搬走会复制 query/rank/feature/experiment 等半个 serving 栈，并打破 query 理解与实验分配的单一事实源。因此采用绞杀者模式，拆分 supplier 而不迁移对外编排入口。
 
-读 `SearchAdsOrchestrator` 后确认:广告在线编排**深度复用 rec-engine 的整套 serving 栈**,不是一个自包含的 `recsys-ad` lib:
+## 决策
 
-- pCTR/pCVR 来自 `RankRouter`(`recsys-rank`)——`recsys-ad` 自身**不算 pCTR**,分数由编排层注入。
-- query 理解来自 `QueryUnderstandingService`(`recsys-query` 实现)。
-- 排序需要 `recsys-feature` / `recsys-embedding`(以及 content/user 特征)。
-- **广告分层 A/B**:`adVariant`/reserve-price 覆盖来自 rec-engine 自己的
-  `com.recsys.recengine.experiment.ExperimentService`——这是 rec-engine 内部类,ad-serving 不能反向依赖 rec-engine。
-- 广告纯逻辑(召回/相关性门槛/竞价/GSP/oCPC/校准/反作弊/DCO/pacing/GD/定向)在 `recsys-ad` [lib]。
+### 1. 对外入口与编排归属
 
-**结论**:把 `SearchAdsOrchestrator` 搬进独立 ad-serving,等于把 query+rank+feature+embedding(+content/user)
-这套 lib 一并搬进 ad-serving,并且必须先把 rec-engine 的 experiment 层下沉为共享 lib。这是"克隆半个 serving 栈 + 重构实验层",
-而非"抽一个薄服务"。
+- `GET /api/search-ads`、`GET /api/feed`、`POST /api/ad/click`、`POST /api/ad/conversion`、`POST /api/ad/outcome` 继续由 `recsys-rec-engine` 对外提供，网关路由仍指向 rec-engine。
+- rec-engine 保留 `QueryUnderstandingService` 与 `ExperimentService`，生成已解析的 `StructuredQuery`、`adBucket` 与 `reservePrice`。
+- `SearchAdsOrchestrator` 之后只通过 `AdServingGateway` 调用广告 supplier，不再感知广告召回/竞价/计费细节。
 
-## 目标设计(若执行)
+### 2. 共享内核与可回滚边界
 
-**新模块 `recsys-ad-serving` [app :8084]**,依赖:`recsys-ad` + `recsys-ad-common` + `recsys-common` +
-`recsys-query` + `recsys-rank` + `recsys-feature` + `recsys-embedding` + `recsys-content` + `recsys-user` +
-新的 `recsys-experiment`(见下)。`AdShardingConfig` 随 `recsys-ad` 进入本进程(第二数据源从 rec-engine 移走)。
-对外/对内接口:
-- `GET  /api/search-ads`(整条搬迁自 rec-engine `SearchAdsController` + `SearchAdsOrchestrator`)
-- `POST /api/ad/click`、`POST /api/ad/conversion`(计费归因随迁,`ad_event` 写读都在本进程内闭合)
-- `POST /internal/ads/select`(供 rec-engine 混排 feed 取"已定价广告",入参 query/userId/slots/scene)
+- `recsys-ad` 中的 `AdPipeline` 是唯一广告在线内核，包含召回、相关性、定向、出价、拍卖、DCO/GD、曝光与计费。
+- `recsys.ad.serving.mode=in-process` 时，`InProcessAdServingGateway` 在 rec-engine 内直调同一 `AdPipeline`；这是源码默认与应急回滚点。
+- `recsys.ad.serving.mode=grpc` 时，`GrpcAdServingGateway` 调用独立 `recsys-ad-serving`；容器全栈默认选择该模式。
+- 两种模式使用同一份领域内核，变更时不维护两套竞价/计费实现。
 
-**共享实验层**:把 `com.recsys.recengine.experiment` 的 `ExperimentService`/`ExperimentDecision` 等下沉为新 lib
-`recsys-experiment`(rec-engine 与 ad-serving 共用),或退而求其次:rec-engine 把算好的 `adBucket`+`reservePrice`
-作为参数传进 `/internal/ads/select`(避免下沉,但 `/api/search-ads` 若也在 ad-serving 则仍需实验层)。
+### 3. gRPC 契约
 
-**rec-engine 改动**:
-- 去掉 `recsys-ad` 依赖 → `AdShardingConfig` 不再装配 → **回归单数据源**(瘦身,坏味道 A 消除)。
-- 删 `SearchAdsController` + `SearchAdsOrchestrator`(迁往 ad-serving)。
-- `FeedOrchestrator`:改用 HTTP(RestClient)调 ad-serving `/internal/ads/select` 取广告;混排(`AdMixer`,纯函数)
-  下沉到 `recsys-ad-common` 供 rec-engine 复用(rec-engine 有自然结果 + 拿到广告后本地混)。ad-serving 宕机/超时 → 走"无广告" feed 降级(复用现有 resilience4j 模式)。
-- **experiment 层**若下沉为 `recsys-experiment`,rec-engine 改依赖它。
+`recsys-proto/src/main/proto/ad_serving.proto` 发布版本化契约 `recsys.ad.v1.AdServingService`：
 
-**网关**:`/api/ad/**`、`/api/search-ads/**` 从 rec-engine 路由移到 ad-serving:8084。
+| RPC | 用途 | 重试/降级策略 |
+|---|---|---|
+| `SearchAds` | 执行广告管线并返回已定价广告 | 幂等读，瞬时错误可重试；失败返回空广告 |
+| `RecordClick` | 反作弊、归因与点击计费 | 写路不自动重试；失败记告警 |
+| `RecordConversion` | 转化回传与 CPA 相关处理 | 写路不自动重试；失败记告警 |
+| `RecordOutcome` | A7 独立广告主 outcome，`eventId` 幂等 | 失败返回 `false` |
+| `GetAdEventStats` | advertiser 按 adId 读 ad-serving 事件聚合 | 用于物理拆库后的报表边界 |
 
-## 迁移步骤(每步可独立编译验收)
+领域 record 与 proto 经 `AdProtoMapper` 转换，计费字段完整性由 `AdBillingProtoParityTest` 作为 money-chain gate。客户端统一加 deadline、瞬时读重试和熔断；服务端默认要求经 HMAC 签名的服务身份令牌。
 
-1. 下沉 experiment 层为 `recsys-experiment` lib(rec-engine 改依赖,行为不变)。
-2. `AdMixer` 下沉到 `recsys-ad-common`。
-3. 建 `recsys-ad-serving` 模块 + `AdServingApplication`,搬 `SearchAdsController`/`SearchAdsOrchestrator`,加 `/internal/ads/select`。
-4. rec-engine 去 `recsys-ad` 依赖,`FeedOrchestrator` 改 HTTP 调 + 降级。
-5. 网关路由改指向 ad-serving。
-6. 全 reactor 编译 + **全栈运行时联调**(见风险)。
+### 4. 端口与服务发现
 
-## 风险与为何建议缓做
+- `recsys-ad-serving` HTTP `:8085` 只承载 Actuator 健康/指标端点，不承载公开广告 REST API。
+- 业务 gRPC 端口为 `:9095`。
+- 容器全栈经 Nacos `discovery:///recsys-ad-serving` 发现；纯本地可使用 static target。
 
-- **触及钱链路且不可本地验证**:竞价/GSP/oCPC/校准/计费迁进程 + 加 HTTP 边界,`compile 通过 ≠ 计费正确`。
-  本环境端口 8080–8083 被其它项目占用,无法起全栈联调,**Phase 2 只能编译验收**——对计费代码这是不可接受的验收标准。
-- **净增运维复杂度**:多一个重服务(带自己的分片数据源),多一次热路径网络跳 + 部分失败组合。
-- **架构评审本身建议**:"等广告有真实流量/独立团队再做"。当前是教学/脚手架阶段,广告无真实流量,拆分的收益(独立扩缩/故障隔离)尚未兑现。
+### 5. 数据所有权的渐进迁移
 
-## 建议
+- 兼容默认 `recsys.ad.catalog.source=sharded`：ad-serving 仍可直读广告主分片目录，便于回滚。
+- 能力态 `catalog.source=replica` + `catalog.consume=true`：advertiser 发布 `ad-catalog-events`，ad-serving 幂等维护自有 `ad_servable`/`ad_embedding` 副本，只保留可服务广告。
+- `ad_event` 可由 ad-serving 自有数据源承载；advertiser 设 `recsys.ad.report.source=grpc` 后经 `GetAdEventStats` 读聚合，不再跨库直查。
 
-**缓做 Phase 2**,保留本 ADR 为可执行设计;等具备"全栈可运行时验证的环境 + 真实广告流量"再落地。Phase 0/1 已消除
-"前端寄生 + 报表文件耦合 + 上帝契约模块"三处问题,并把 ad-serving 的拆分缝画硬(`recsys-ad`/`recsys-ad-common`
-已是干净的广告 lib/契约边界),真正物理拆分时改动集中、风险可控。
+这意味着「进程拆分」已是容器默认，而「目录/DB-per-service 完全切换」仍是可回滚的配置能力，不应误写为所有环境都已强制启用。
+
+## 后果与取舍
+
+### 收益
+
+- 广告在线管线可独立发布、扩缩容和做健康探测。
+- query 理解与实验分桶仍是 rec-engine 单一事实源，避免新建 `recsys-experiment` 和重复 serving 栈。
+- in-process/gRPC 共用 `AdPipeline`，一个开关即可回滚，迁移期风险可控。
+- 目录事件副本与 gRPC 报表契约为最终 DB-per-service 提供明确路径。
+
+### 代价与剩余风险
+
+- gRPC 模式新增一次热路网络跳转、服务发现和部分失败组合。
+- `RecordClick`/`RecordConversion` 失败当前只记告警，不自动重试；真实计费环境仍需 outbox/重放/对账机制，不能把「HTTP 返回成功」等同于计费必然落库。
+- 目录 replica 模式引入最终一致性，需监控 consumer lag、幂等失败与副本数量。
+- 当前安全令牌证明调用服务，不传播终端用户主体；用户级 ReBAC 不得从 gRPC `CALLER_SUBJECT` 推断。
+
+## 验证与回滚
+
+- 契约：`AdProtoMapperTest`、`AdBillingProtoParityTest`、`ContentProtoMapperTest`。
+- 安全/弹性：`InternalAuthGrpcServerInterceptorTest`、`GrpcRetryablePredicateTest`、`GrpcAdServingGatewayFallbackTest`。
+- 目录副本：`AdCatalogEventRoundTripTest`。
+- 业务内核：`recsys-ad` 的竞价、拍卖、DCO、DFM、Uplift 定向测试。
+- 运行时回滚：将 `AD_SERVING_MODE` 切回 `in-process`；如 replica/独立报表源异常，分别切回 `AD_CATALOG_SOURCE=sharded` 与数据库报表源。

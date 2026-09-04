@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Divider, InputNumber, Popconfirm, Space, Spin, Switch, Table, Tag, Tooltip, Typography } from 'antd';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { App, Alert, Button, Card, Divider, InputNumber, Popconfirm, Space, Switch, Tag, Tooltip, Typography } from 'antd';
 import {
   clearOverride,
   getExperiment,
@@ -8,20 +8,30 @@ import {
   setLayerEnabled,
   setVariantWeight,
 } from '../../api/experiment';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
+import type { ExperimentWriteResult } from '../../api/types';
 import AbSignificancePanel from '../../components/experiment/AbSignificancePanel';
 import { useAbReport, variantOnlineStat } from '../../components/experiment/abReport';
+import PageHeader from '../../components/PageHeader';
+import { ResultRowsSkeleton } from '../../components/Skeletons';
+import { ACCENTS } from '../../theme/tokens';
+
+const LAYER_META: Record<string, { label: string; hint: string }> = {
+  recall: { label: '召回', hint: '通道组合,进推荐 bucketTag' },
+  rank: { label: '排序', hint: '打分策略' },
+  rerank: { label: '重排', hint: '多样性 / MMR / DPP' },
+  ad: { label: '广告', hint: 'reserve-price 等;单独分桶,不混入推荐 bucketTag' },
+};
 
 export default function ExperimentConsole() {
   const { message } = App.useApp();
-  const query = useQuery({ queryKey: ['experiment'], queryFn: getExperiment });
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: queryKeys.experiment(), queryFn: getExperiment });
   const snap = query.data;
-
-  // 在线 A/B 结果(最新 ab-report):独立取数,任何态都不阻塞放量控件。
   const abQuery = useAbReport();
   const abRows = abQuery.data?.rows ?? [];
 
-  // 可编辑权重副本,键 `${layer}/${variant}`。
   const [weights, setWeights] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!snap) return;
@@ -32,36 +42,130 @@ export default function ExperimentConsole() {
     setWeights(next);
   }, [snap]);
 
-  const guard = async (fn: () => Promise<unknown>, ok: string) => {
-    try {
-      const r = (await fn()) as Record<string, unknown>;
-      if (r && r.ok === false) message.warning(`未生效: ${String(r.reason ?? '')}`);
-      else message.success(ok);
-      query.refetch();
-    } catch (e) {
-      message.error(toApiError(e).message);
+  const applyWrite = async (fn: () => Promise<ExperimentWriteResult>, ok: string) => {
+    const r = await fn();
+    if (r && r.ok === false) {
+      message.warning(`未生效: ${r.reason ?? ''}`);
+    } else {
+      message.success(ok);
     }
+    await queryClient.invalidateQueries({ queryKey: queryKeys.experiment() });
+    return r;
   };
 
-  if (query.isLoading) return <Spin />;
+  const globalMut = useMutation({
+    mutationFn: (v: boolean) => applyWrite(() => setGlobalEnabled(v), `全局实验 ${v ? '开启' : '关闭'}`),
+    onError: (e) => message.error(toApiError(e).message),
+  });
+  const layerMut = useMutation({
+    mutationFn: ({ layer, value }: { layer: string; value: boolean }) =>
+      applyWrite(() => setLayerEnabled(layer, value), `层 ${layer} ${value ? '开启' : '关闭'}`),
+    onError: (e) => message.error(toApiError(e).message),
+  });
+  const saveLayerMut = useMutation({
+    mutationFn: async ({ layer, variants }: { layer: string; variants: string[] }) => {
+      for (const variant of variants) {
+        const r = await setVariantWeight(layer, variant, weights[`${layer}/${variant}`] ?? 0);
+        if (r && r.ok === false) throw new Error(r.reason ?? '未生效');
+      }
+    },
+    onSuccess: async (_, { layer }) => {
+      message.success(`已保存 ${layer} 层权重`);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.experiment() });
+    },
+    onError: (e) => message.error(toApiError(e).message),
+  });
+  const clearMut = useMutation({
+    mutationFn: () => applyWrite(clearOverride, '已清空 override'),
+    onError: (e) => message.error(toApiError(e).message),
+  });
+
+  if (query.isLoading) return <ResultRowsSkeleton rows={4} />;
   if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
   if (!snap) return null;
 
+  const globalOn = snap.enabled ?? snap.staticEnabled;
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <PageHeader
+        title="实验管理"
+        accent={ACCENTS.rank}
+        description="分层 A/B,改权重写 Redis,不用重启。"
+      />
       <Card>
         <Space align="center" size={16} wrap>
           <Typography.Text strong>全局实验开关</Typography.Text>
           <Switch
-            checked={snap.staticEnabled}
-            onChange={(v) => guard(() => setGlobalEnabled(v), `全局实验 ${v ? '开启' : '关闭'}`)}
+            checked={globalOn}
+            loading={globalMut.isPending}
+            onChange={(v) => globalMut.mutate(v)}
           />
-          <Typography.Text type="secondary">
-            开关/放量写 Redis 覆盖层,改实验不重启;下方权重滑块调完立即对后续请求生效。
-          </Typography.Text>
-          <Popconfirm title="清空所有 Redis 覆盖,回落到 yml 静态配置?" onConfirm={() => guard(clearOverride, '已清空 override')}>
-            <Button danger>清除 override</Button>
+          <Typography.Text type="secondary">写 Redis 覆盖层,点保存后对后续请求生效。</Typography.Text>
+          <Popconfirm title="清空所有 Redis 覆盖,回落到 yml 静态配置?" onConfirm={() => clearMut.mutate()}>
+            <Button danger loading={clearMut.isPending}>
+              清除 override
+            </Button>
           </Popconfirm>
+        </Space>
+      </Card>
+
+      <Card size="small" title="分层放量">
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          {Object.entries(snap.staticLayers).map(([layer, cfg]) => {
+            const meta = LAYER_META[layer];
+            const variants = Object.keys(cfg.variants);
+            return (
+              <div key={layer} className={`exp-layer${layer === 'ad' ? ' exp-layer-ad' : ''}`}>
+                <Space align="center" wrap size={8} style={{ minWidth: 220 }}>
+                  <Switch
+                    checked={cfg.enabled !== false}
+                    loading={layerMut.isPending}
+                    onChange={(v) => layerMut.mutate({ layer, value: v })}
+                  />
+                  <Tooltip title={meta?.hint}>
+                    <Typography.Text strong>{meta?.label ?? layer}</Typography.Text>
+                  </Tooltip>
+                  <Tag>{layer}</Tag>
+                  {layer === 'ad' ? <Tag color="gold">广告专用分桶</Tag> : null}
+                </Space>
+                <Space align="center" wrap size={10} style={{ flex: 1, justifyContent: 'flex-end' }}>
+                  {variants.map((variant) => {
+                    const key = `${layer}/${variant}`;
+                    const st = abRows.length ? variantOnlineStat(abRows, layer, variant) : null;
+                    return (
+                      <Space key={variant} size={6}>
+                        <Typography.Text className="mono" style={{ fontSize: 12 }}>
+                          {variant}
+                        </Typography.Text>
+                        <InputNumber
+                          min={0}
+                          max={100}
+                          size="small"
+                          value={weights[key] ?? 0}
+                          onChange={(v) => setWeights((w) => ({ ...w, [key]: v ?? 0 }))}
+                        />
+                        {st ? (
+                          <Typography.Text type="secondary" className="mono" style={{ fontSize: 12 }}>
+                            {(st.ctr * 100).toFixed(2)}%
+                            {st.anySignificant ? <Tag color="green" style={{ marginInlineStart: 4 }}>显著</Tag> : null}
+                          </Typography.Text>
+                        ) : null}
+                      </Space>
+                    );
+                  })}
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={saveLayerMut.isPending}
+                    onClick={() => saveLayerMut.mutate({ layer, variants })}
+                  >
+                    保存
+                  </Button>
+                </Space>
+              </div>
+            );
+          })}
         </Space>
       </Card>
 
@@ -71,90 +175,6 @@ export default function ExperimentConsole() {
         isError={abQuery.isError}
         error={abQuery.error}
       />
-
-      {Object.entries(snap.staticLayers).map(([layer, cfg]) => (
-        <Card
-          key={layer}
-          size="small"
-          title={
-            <Space>
-              <Typography.Text strong>层:{layer}</Typography.Text>
-              {cfg.salt ? <Typography.Text type="secondary" className="mono">salt={cfg.salt}</Typography.Text> : null}
-            </Space>
-          }
-          extra={
-            <Space>
-              <Typography.Text type="secondary">本层开关</Typography.Text>
-              <Switch
-                defaultChecked
-                onChange={(v) => guard(() => setLayerEnabled(layer, v), `层 ${layer} ${v ? '开启' : '关闭'}`)}
-              />
-            </Space>
-          }
-        >
-          <Table
-            size="small"
-            rowKey="variant"
-            pagination={false}
-            dataSource={Object.keys(cfg.variants).map((variant) => ({ variant }))}
-            columns={[
-              { title: '变体', dataIndex: 'variant', width: 200 },
-              {
-                title: '流量权重(0=停止)',
-                key: 'weight',
-                render: (_, row) => {
-                  const key = `${layer}/${row.variant}`;
-                  return (
-                    <Space>
-                      <InputNumber
-                        min={0}
-                        max={100}
-                        value={weights[key] ?? 0}
-                        onChange={(v) => setWeights((w) => ({ ...w, [key]: v ?? 0 }))}
-                      />
-                      <Button
-                        size="small"
-                        type="primary"
-                        onClick={() =>
-                          guard(() => setVariantWeight(layer, row.variant, weights[key] ?? 0), `已设 ${key}=${weights[key] ?? 0}`)
-                        }
-                      >
-                        保存
-                      </Button>
-                    </Space>
-                  );
-                },
-              },
-              {
-                title: (
-                  <Tooltip title="按变体名匹配 ab-report 分桶(bucket 内的「层:变体」token),跨桶聚合曝光/点击得该变体的边际在线 CTR;命名对不上则显示无匹配。">
-                    <span>在线 CTR / 显著?</span>
-                  </Tooltip>
-                ),
-                key: 'online',
-                width: 240,
-                render: (_, row) => {
-                  if (abQuery.isLoading) return <Typography.Text type="secondary">加载中…</Typography.Text>;
-                  if (abRows.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
-                  const st = variantOnlineStat(abRows, layer, row.variant);
-                  if (!st) return <Typography.Text type="secondary">无匹配曝光</Typography.Text>;
-                  return (
-                    <Space size={6}>
-                      <Typography.Text className="mono">
-                        {Number.isFinite(st.ctr) ? (st.ctr * 100).toFixed(2) + '%' : 'n/a'}
-                      </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        · {st.buckets}桶/{st.impressions}曝光
-                      </Typography.Text>
-                      {st.anySignificant ? <Tag color="green">含显著桶</Tag> : null}
-                    </Space>
-                  );
-                },
-              },
-            ]}
-          />
-        </Card>
-      ))}
 
       <Card size="small" title="当前 Redis 覆盖 (overrides)">
         <Divider style={{ margin: '4px 0 12px' }} />

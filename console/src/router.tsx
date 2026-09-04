@@ -4,34 +4,33 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { ChartSkeleton } from './components/Skeletons';
 import ErrorBoundary from './components/ErrorBoundary';
-import ProjectOverview from './pages/project/ProjectOverview';
-import User360 from './pages/project/User360';
-import Diagnosis from './pages/project/Diagnosis';
-import AlertsPanel from './pages/project/Alerts';
-import RecommendConsole from './pages/online/RecommendConsole';
-import SearchConsole from './pages/online/SearchConsole';
-import SearchAdsConsole from './pages/online/SearchAdsConsole';
-import FeedConsole from './pages/online/FeedConsole';
-import QueryParseConsole from './pages/online/QueryParseConsole';
-import RecallLab from './pages/online/RecallLab';
-import StrategyLab from './pages/online/StrategyLab';
-import ExperimentConsole from './pages/online/ExperimentConsole';
-import BucketBoard from './pages/experiment/BucketBoard';
-import ColdStartInterests from './pages/online/ColdStartInterests';
-import AdvertiserList from './pages/adv/AdvertiserList';
-import AdvertiserDetail from './pages/adv/AdvertiserDetail';
-import AdList from './pages/adv/AdList';
-import AdDetail from './pages/adv/AdDetail';
-import ReportsIndex from './pages/reports/ReportsIndex';
+import EmptyState from './components/EmptyState';
+import { hasAnyRole } from './api/access';
+import type { Role } from './api/auth';
 
-// ECharts 较重的页面按需加载,避免进入首屏包(初次访问推荐台无需下载 echarts)。
+const ProjectOverview = lazy(() => import('./pages/project/ProjectOverview'));
+const User360 = lazy(() => import('./pages/project/User360'));
+const Diagnosis = lazy(() => import('./pages/project/Diagnosis'));
+const AlertsPanel = lazy(() => import('./pages/project/Alerts'));
+const OpsConsole = lazy(() => import('./pages/project/OpsConsole'));
+const RecommendConsole = lazy(() => import('./pages/online/RecommendConsole'));
+const SearchConsole = lazy(() => import('./pages/online/SearchConsole'));
+const SearchAdsConsole = lazy(() => import('./pages/online/SearchAdsConsole'));
+const FeedConsole = lazy(() => import('./pages/online/FeedConsole'));
+const QueryParseConsole = lazy(() => import('./pages/online/QueryParseConsole'));
+const RecallLab = lazy(() => import('./pages/online/RecallLab'));
+const StrategyLab = lazy(() => import('./pages/online/StrategyLab'));
+const ExperimentConsole = lazy(() => import('./pages/online/ExperimentConsole'));
+const BucketBoard = lazy(() => import('./pages/experiment/BucketBoard'));
+const ColdStartInterests = lazy(() => import('./pages/online/ColdStartInterests'));
+const AdvertiserList = lazy(() => import('./pages/adv/AdvertiserList'));
+const AdvertiserDetail = lazy(() => import('./pages/adv/AdvertiserDetail'));
+const AdList = lazy(() => import('./pages/adv/AdList'));
+const AdDetail = lazy(() => import('./pages/adv/AdDetail'));
 const AdvertiserReport = lazy(() => import('./pages/adv/AdvertiserReport'));
+const ReportsIndex = lazy(() => import('./pages/reports/ReportsIndex'));
 const ReportViewer = lazy(() => import('./pages/reports/ReportViewer'));
 
-// 路由守卫:未登录(无当前身份)→ 重定向登录页,并记下来源页 from,登录后跳回。
-// 用 useAuth().user(响应式)而非直接读 localStorage:退出/切换时能即时触发重定向。
-// oidc 引导期(ready=false,异步恢复 sessionStorage 会话)先渲染 loading——此时重定向会把
-// 已登录用户误弹回登录页(硬刷新掉登录态)。
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, ready } = useAuth();
   const location = useLocation();
@@ -46,9 +45,20 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }) {
+  const { user } = useAuth();
+  if (!hasAnyRole(user?.roles, roles)) {
+    return (
+      <EmptyState
+        title="没有访问权限"
+        description="当前身份看不到该页。可切换演示账号,或联系管理员开通对应角色。"
+      />
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function AppRoutes() {
-  // 单页崩溃只毁自身:ErrorBoundary 包在 <Routes> 外(侧栏外壳仍在);resetKey=当前路径,
-  // 导航到别的页 → 边界自动清错恢复。
   const location = useLocation();
   return (
     <ErrorBoundary resetKey={location.pathname}>
@@ -56,13 +66,12 @@ export default function AppRoutes() {
         <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
 
-        {/* 项目总览 + 用户360 / 诊断 / 告警 */}
         <Route path="/overview" element={<ProjectOverview />} />
         <Route path="/user360" element={<User360 />} />
-        <Route path="/diagnosis" element={<Diagnosis />} />
-        <Route path="/alerts" element={<AlertsPanel />} />
+        <Route path="/diagnosis" element={<RequireRole roles={['ADMIN']}><Diagnosis /></RequireRole>} />
+        <Route path="/alerts" element={<RequireRole roles={['ADMIN']}><AlertsPanel /></RequireRole>} />
+        <Route path="/ops" element={<RequireRole roles={['ADMIN']}><OpsConsole /></RequireRole>} />
 
-        {/* Phase 1 — 在线调试台 */}
         <Route path="/recommend" element={<RecommendConsole />} />
         <Route path="/search" element={<SearchConsole />} />
         <Route path="/search-ads" element={<SearchAdsConsole />} />
@@ -70,20 +79,18 @@ export default function AppRoutes() {
         <Route path="/query" element={<QueryParseConsole />} />
         <Route path="/recall-lab" element={<RecallLab />} />
         <Route path="/strategy-lab" element={<StrategyLab />} />
-        <Route path="/experiment" element={<ExperimentConsole />} />
-        <Route path="/bucket-board" element={<BucketBoard />} />
-        <Route path="/user-interests" element={<ColdStartInterests />} />
+        <Route path="/experiment" element={<RequireRole roles={['ADMIN']}><ExperimentConsole /></RequireRole>} />
+        <Route path="/bucket-board" element={<RequireRole roles={['ADMIN']}><BucketBoard /></RequireRole>} />
+        <Route path="/user-interests" element={<RequireRole roles={['ADMIN']}><ColdStartInterests /></RequireRole>} />
 
-        {/* Phase 2 — 广告主后台 */}
-        <Route path="/advertiser" element={<AdvertiserList />} />
-        <Route path="/advertiser/ad/:adId" element={<AdDetail />} />
-        <Route path="/advertiser/:id" element={<AdvertiserDetail />} />
-        <Route path="/advertiser/:id/report" element={<AdvertiserReport />} />
-        <Route path="/advertiser/:advId/ads" element={<AdList />} />
+        <Route path="/advertiser" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><AdvertiserList /></RequireRole>} />
+        <Route path="/advertiser/ad/:adId" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><AdDetail /></RequireRole>} />
+        <Route path="/advertiser/:id" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><AdvertiserDetail /></RequireRole>} />
+        <Route path="/advertiser/:id/report" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><AdvertiserReport /></RequireRole>} />
+        <Route path="/advertiser/:advId/ads" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><AdList /></RequireRole>} />
 
-        {/* Phase 3 — 离线报表 */}
-        <Route path="/reports" element={<ReportsIndex />} />
-        <Route path="/reports/:category" element={<ReportViewer />} />
+        <Route path="/reports" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><ReportsIndex /></RequireRole>} />
+        <Route path="/reports/:category" element={<RequireRole roles={['ADMIN', 'ADVERTISER']}><ReportViewer /></RequireRole>} />
 
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>

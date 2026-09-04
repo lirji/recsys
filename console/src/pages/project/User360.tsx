@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Descriptions, Empty, InputNumber, Space, Table, Tag, Typography } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
 import { getUserProfile } from '../../api/user360';
 import { getInterests } from '../../api/user';
 import { toApiError } from '../../api/client';
@@ -16,9 +17,17 @@ import type { UserBehaviorRow } from '../../api/types';
 const fmtTs = (ms: number) => (ms ? new Date(ms).toLocaleString() : '—');
 
 export default function User360() {
-  const { userId } = useGlobalUser();
-  const [uid, setUid] = useState(userId);
-  const [applied, setApplied] = useState(userId);
+  const { userId, setUserId } = useGlobalUser();
+  const [search] = useSearchParams();
+  const fromUrl = Number(search.get('userId'));
+  const seed = Number.isFinite(fromUrl) && fromUrl > 0 ? fromUrl : userId;
+  const [uid, setUid] = useState(seed);
+  const [applied, setApplied] = useState(seed);
+
+  useEffect(() => {
+    if (seed !== userId) setUserId(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const query = useQuery({
     queryKey: ['user360', applied],
@@ -167,6 +176,7 @@ export default function User360() {
               dataSource={view.recentBehavior}
               columns={columns}
               pagination={{ pageSize: 10, size: 'small' }}
+              scroll={{ x: 720 }}
             />
           </Card>
         </>

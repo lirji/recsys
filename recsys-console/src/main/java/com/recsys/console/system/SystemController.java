@@ -18,12 +18,14 @@ public class SystemController {
     private final SystemOverviewService service;
     private final SystemHealthService healthService;
     private final SystemMetricsService metricsService;
+    private final SystemOpsService opsService;
 
     public SystemController(SystemOverviewService service, SystemHealthService healthService,
-                            SystemMetricsService metricsService) {
+                            SystemMetricsService metricsService, SystemOpsService opsService) {
         this.service = service;
         this.healthService = healthService;
         this.metricsService = metricsService;
+        this.opsService = opsService;
     }
 
     @GetMapping("/overview")
@@ -54,5 +56,10 @@ public class SystemController {
     @GetMapping("/commands")
     public List<CommandGroup> commands() {
         return service.commands();
+    }
+
+    @GetMapping("/ops")
+    public SystemOps ops() {
+        return opsService.snapshot();
     }
 }

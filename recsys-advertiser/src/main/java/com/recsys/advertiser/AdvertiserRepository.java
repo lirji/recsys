@@ -102,12 +102,12 @@ public class AdvertiserRepository {
     /** 插入广告,ad_id 由 ShardingSphere Snowflake 生成、getGeneratedKeys 回传(分库键=ad_id)。 */
     public long insertAd(long advertiserId, long itemId, String title, String landingUrl,
                          double qualityScore, String status, String reviewStatus,
-                         String optimizationType, Double targetCpa) {
+                         String optimizationType, Double targetCpa, Long audienceId) {
         return insertReturningKey("ad_id",
                 "INSERT INTO ad(advertiser_id,item_id,title,landing_url,quality_score,status," +
-                        "review_status,optimization_type,target_cpa) VALUES(?,?,?,?,?,?,?,?,?)",
+                        "review_status,optimization_type,target_cpa,audience_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 advertiserId, itemId, title, landingUrl, qualityScore, status, reviewStatus,
-                optimizationType, targetCpa);
+                optimizationType, targetCpa, audienceId);
     }
 
     public void setAdLandingUrl(long adId, String url) {
@@ -116,13 +116,13 @@ public class AdvertiserRepository {
 
     /** 部分更新。targetCpa 单独处理(null 也可能是"清空目标 CPA"的合法值,这里 COALESCE 表示不改)。 */
     public int updateAd(long adId, Long itemId, String title, String landingUrl, Double qualityScore,
-                        String status, String optimizationType, Double targetCpa) {
+                        String status, String optimizationType, Double targetCpa, Long audienceId) {
         return jdbc.update(
                 "UPDATE ad SET item_id=COALESCE(?,item_id), title=COALESCE(?,title), " +
                 "landing_url=COALESCE(?,landing_url), quality_score=COALESCE(?,quality_score), " +
                 "status=COALESCE(?,status), optimization_type=COALESCE(?,optimization_type), " +
-                "target_cpa=COALESCE(?,target_cpa) WHERE ad_id=?",
-                itemId, title, landingUrl, qualityScore, status, optimizationType, targetCpa, adId);
+                "target_cpa=COALESCE(?,target_cpa), audience_id=? WHERE ad_id=?",
+                itemId, title, landingUrl, qualityScore, status, optimizationType, targetCpa, audienceId, adId);
     }
 
     public int setAdStatus(long adId, String status) {

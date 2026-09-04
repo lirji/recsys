@@ -3,17 +3,17 @@
 > **解决什么**:把"电影简介""用户兴趣""搜索 query"变成向量,才能算语义相似度、做向量召回。
 > 本项目:`recsys-embedding` 提供可降级的 `EmbeddingClient`,pgvector 做 ANN 检索,并延伸出**双塔 / MIND 多兴趣 / LightGCN 图向量 / RQ-VAE 语义 ID / TIGER** 等学习型向量。
 
-## 1. EmbeddingClient:第三方 + 本地降级
+## 1. EmbeddingClient:第三方 / 本地二选一
 
 契约 `EmbeddingClient`(`recsys-common`),**维度固定 768**(`recsys.embedding.dimension`)。两个互斥实现(`@ConditionalOnProperty recsys.embedding.provider`):
 
 ### GeminiEmbeddingClient(默认,联网)
 - 调 Gemini `embedContent`,模型 `gemini-embedding-001` **默认 3072 维**,请求参数 `outputDimensionality:768` 降到 768。
 - **降维后未归一化,客户端必须做 L2 归一化**再入库,否则 pgvector 余弦失准(已封装)。
-- Redis 缓存 `emb:cache:{sha256}`(图片 `img:` 前缀)、重试退避、429 → `QuotaExhaustedException`(免费层 1000 次/天,次日 `--skip-existing` 续跑)。
+- Redis 缓存 `emb:cache:{sha256}`(图片 `img:` 前缀)、重试退避、429 → `QuotaExhaustedException`；配额随模型与账户层级变化，批量灌库中断后可用 `--skip-existing` 续跑。
 - **熔断** `@CircuitBreaker(gemini-embedding)` → 快速失败,调用方降级到词法。
 
-### LocalBgeEmbeddingClient(降级,`provider=local`,纯 Java CPU)
+### LocalBgeEmbeddingClient(本地模式,`provider=local`,纯 Java CPU)
 - `BgeTokenizer`(BERT WordPiece,纯 Java)+ onnxruntime 跑 `bge-base-en-v1.5`(768 维)→ CLS/mean 池化 → L2。
 - 模型/vocab 在文件系统(`~/.recsys/models/...`,大不入 git,`BGE_MODEL_PATH`/`BGE_VOCAB_PATH` 可覆盖),由 `export_bge_onnx.py` 导出。
 - 缺文件 → `ready=false` + 抛异常(query 理解 catch 后降级 null)。无熔断(本地)。
@@ -22,7 +22,7 @@
 > **BgeTokenizer 是在线/离线契约**:BasicTokenizer(清洗/小写+NFD/CJK 切分/标点切分)+ WordpieceTokenizer(贪心 `##`,`[UNK]`),`[CLS]…[SEP]`,截断 256。与 HF BertTokenizer 对齐,类比 `SparseFeatureEncoder`。
 
 ### LlmClient(生成式,可选)
-`GeminiChatClient`(`recsys.llm.enabled=true`):`generateContent` 强制 JSON 输出,缓存 `llm:cache:{sha256}`,重试退避。被 `recsys-query` 做 LLM query 理解(纠错/意图/改写)。**只有重试无熔断**(与 embedding 客户端的不对称)。
+`GeminiChatClient`(`recsys.llm.enabled=true`):`generateContent` 强制 JSON 输出,缓存 `llm:cache:{sha256}`,重试退避，并用 `@CircuitBreaker(gemini-llm)` 在连续失败时快速回退。被 `recsys-query` 做 LLM query 理解(纠错/意图/改写)；未就绪或熔断时走纯词法。
 
 ## 2. 向量怎么造
 
@@ -85,4 +85,4 @@ LIMIT 200;
 - **用户向量为什么加权平均而非训练**:简单有效、无需 GPU,半衰期衰减体现"近期兴趣"。
 - **单向量 vs 多兴趣 vs 图向量**：双塔给用户一个行为向量；MIND 保留多个兴趣峰；LightGCN 强化多跳协同，三者互补。
 - **RQ-VAE / TIGER**:把 item 量化成离散语义 ID,召回从"向量检索"走向"序列生成";前缀检索是可服务的折中。
-- **降级链**:Gemini 超额/超时 → 本地 BGE(ONNX/CPU),保证离线灌库不中断。
+- **provider 切换边界**:Gemini 与本地 BGE 由 `recsys.embedding.provider` 静态二选一，请求失败时**不会自动切换向量空间**；调用方降级为词法/空召回。切 provider 后必须全量重灌向量。

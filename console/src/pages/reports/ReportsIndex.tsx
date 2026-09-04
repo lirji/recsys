@@ -6,6 +6,8 @@ import { getReportIndex, vizCategoryOf } from '../../api/report';
 import { toApiError } from '../../api/client';
 import { ChartSkeleton } from '../../components/Skeletons';
 import EmptyState from '../../components/EmptyState';
+import PageHeader from '../../components/PageHeader';
+import { queryKeys } from '../../api/queryKeys';
 import { ACCENTS } from '../../theme/tokens';
 import type { ReportFileInfo } from '../../api/types';
 
@@ -24,7 +26,7 @@ const CATS: { key: string; label: string; job: string }[] = [
 const kb = (n: number) => (n < 1024 ? `${n}B` : `${(n / 1024).toFixed(1)}KB`);
 
 export default function ReportsIndex() {
-  const query = useQuery({ queryKey: ['report-index'], queryFn: getReportIndex });
+  const query = useQuery({ queryKey: queryKeys.reportIndex(), queryFn: getReportIndex });
   const files = query.data ?? [];
   // 用前端派生分类分组,与 ReportViewer 的 dispatch 口径一致(隐藏类型也各自成组)。
   const byCat = (c: string) => files.filter((f) => vizCategoryOf(f.fileName) === c);
@@ -34,8 +36,13 @@ export default function ReportsIndex() {
 
   return (
     <>
+      <PageHeader
+        title="评测 / 报表"
+        accent={ACCENTS.rank}
+        description="读取 recsys-offline/eval/*.csv。若为空,先运行对应离线作业生成 CSV。"
+      />
       <Typography.Paragraph type="secondary">
-        读取 <span className="mono">recsys-offline/eval/*.csv</span>(离线评测/报表作业产物)。若为空,先运行对应离线作业生成 CSV。
+        读取 <span className="mono">recsys-offline/eval/*.csv</span>(离线评测/报表作业产物)。
       </Typography.Paragraph>
       {files.length === 0 ? (
         <EmptyState

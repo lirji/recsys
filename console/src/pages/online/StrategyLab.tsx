@@ -8,6 +8,7 @@ import { useGlobalUser } from '../../hooks/useGlobalUser';
 import { useUrlParams } from '../../hooks/useUrlParams';
 import { useItemMeta } from '../../hooks/useItemMeta';
 import PageHeader from '../../components/PageHeader';
+import DebugField from '../../components/debug/DebugField';
 import EmptyState from '../../components/EmptyState';
 import { ResultRowsSkeleton } from '../../components/Skeletons';
 import FunnelBand from '../../components/funnel/FunnelBand';
@@ -183,6 +184,8 @@ export default function StrategyLab() {
           </div>
           <FunnelBand
             dense
+            collapsible
+            defaultOpen={false}
             stages={stages}
             flowing={online}
             status={online ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
@@ -197,32 +200,27 @@ export default function StrategyLab() {
       <PageHeader
         title="策略对比台"
         accent={ACCENTS.rank}
-        description="同一 (userId,size,q) 下切换 A/B 两套 排序×重排 策略并排对比:漏斗、名次升降、新增/掉出、top-K 重合。绕过实验分桶,结果确定可复现。"
+        description="同一用户与查询下,并排对比两套排序×重排。"
       />
 
       <Card size="small" bordered={false}>
         <Space wrap size={[16, 8]}>
-          <Space size={8}>
-            <Typography.Text type="secondary">size</Typography.Text>
+          <DebugField label="条数">
             <InputNumber min={1} max={100} value={size} onChange={(v) => v && setSize(v)} />
-          </Space>
-          <Space size={8}>
-            <Typography.Text type="secondary">q(可选)</Typography.Text>
+          </DebugField>
+          <DebugField label="查询词">
             <Input
               allowClear
-              placeholder="留空=纯个性化推荐"
+              placeholder="可选"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               style={{ width: 220 }}
               onPressEnter={run}
             />
-          </Space>
+          </DebugField>
           <Button type="primary" icon={<DiffOutlined />} loading={fetching} onClick={run}>
             对比
           </Button>
-          <Typography.Text type="secondary" className="mono">
-            userId={userId} · scene={scene}
-          </Typography.Text>
         </Space>
       </Card>
 

@@ -16,6 +16,7 @@ public record AdView(
         String status,
         String optimizationType,
         Double targetCpa,
+        Long audienceId,
         boolean hasEmbedding,
         List<BidwordView> bidwords,
         List<CreativeView> creatives) {

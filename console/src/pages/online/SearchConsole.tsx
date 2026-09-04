@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import { getSearch } from '../../api/recommend';
+import { queryKeys } from '../../api/queryKeys';
 import { makeEvent, reportBehavior } from '../../api/behavior';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
@@ -14,6 +15,7 @@ import { ResultRowsSkeleton } from '../../components/Skeletons';
 import EmptyState from '../../components/EmptyState';
 import PageHeader from '../../components/PageHeader';
 import HistoryDrawer from '../../components/debug/HistoryDrawer';
+import DebugField from '../../components/debug/DebugField';
 import ResultDiff from '../../components/debug/ResultDiff';
 import FunnelBand from '../../components/funnel/FunnelBand';
 import { deriveRecStages } from '../../components/funnel/derive';
@@ -55,7 +57,7 @@ export default function SearchConsole() {
   };
 
   const query = useQuery({
-    queryKey: ['search', applied],
+    queryKey: queryKeys.search(applied),
     // 调试台默认带 explain=true:真实逐阶段计数 + 打分分解(explain 请求后端旁路缓存)。
     queryFn: () => getSearch({ ...applied, explain: true }),
     enabled: !!applied.q.trim(),
@@ -115,9 +117,9 @@ export default function SearchConsole() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
-        title="搜索调试台"
+        title="搜索"
         accent={ACCENTS.rank}
-        description="query 驱动:混合检索(词法 + 向量 RRF)→ 相关性主导排序,冷用户带 query 也走此链路。"
+        description="词法 + 向量混合检索,相关性主导。"
         extra={
           <Space>
             <Button icon={<ShareAltOutlined />} onClick={shareLink}>
@@ -131,29 +133,23 @@ export default function SearchConsole() {
       />
       <Card size="small" bordered={false}>
         <Space wrap>
-          <span>q</span>
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ width: 260 }}
-            placeholder="搜索词"
-            onPressEnter={run}
-          />
-          <span>size</span>
-          <InputNumber min={1} max={200} value={size} onChange={(v) => v && setSize(v)} />
+          <DebugField label="查询词">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: 260 }}
+              placeholder="搜索词"
+              onPressEnter={run}
+            />
+          </DebugField>
+          <DebugField label="条数">
+            <InputNumber min={1} max={200} value={size} onChange={(v) => v && setSize(v)} />
+          </DebugField>
           <Button type="primary" loading={query.isFetching} onClick={run}>
             搜索
           </Button>
-          <Typography.Text type="secondary">userId={userId}(query 驱动:相关性主导,冷用户也走此链路)</Typography.Text>
         </Space>
       </Card>
-
-      <FunnelBand
-        dense
-        stages={stages}
-        flowing={flowing}
-        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
-      />
 
       <Card
         title={`搜索结果 (${items.length})`}
@@ -195,6 +191,15 @@ export default function SearchConsole() {
           </Space>
         )}
       </Card>
+
+      <FunnelBand
+        dense
+        collapsible
+        defaultOpen={false}
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
 
       <HistoryDrawer<SearchParams, RecommendResponse>
         open={drawerOpen}

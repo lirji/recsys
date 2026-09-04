@@ -3,36 +3,69 @@ import { Empty, Input, Modal, Typography, type InputRef } from 'antd';
 import { EnterOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { NAV_DESTINATIONS } from '../api/nav';
+import { canAccess } from '../api/access';
+import { useAuth } from '../hooks/useAuth';
+import { useGlobalUser } from '../hooks/useGlobalUser';
 import { useCommandPalette } from '../hooks/useCommandPalette';
 import { BRAND, rgba } from '../theme/tokens';
 
 const LISTBOX_ID = 'cmdk-listbox';
 const optionId = (i: number) => `cmdk-option-${i}`;
 
-/**
- * 命令面板 ⌘K:AntD Modal 手搓,无新依赖。
- * - 目的地清单复用 api/nav.ts 的 NAV_DESTINATIONS(与侧边菜单同源)。
- * - 键盘:↑/↓ 移动高亮、Enter 跳转、Esc 关闭(Modal 内置)、⌘K 开合(hook 全局监听)。
- * - a11y:combobox + listbox 模式,aria-activedescendant 指向当前高亮项;Modal 自带 role=dialog/aria-modal/焦点陷阱。
- * 在 AppLayout 内挂载一次即可。
- */
+interface PaletteItem {
+  path: string;
+  label: string;
+  group: string;
+  keywords?: string;
+}
+
 export default function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
+  const { user } = useAuth();
+  const { userId } = useGlobalUser();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<InputRef>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const destinations = useMemo<PaletteItem[]>(() => {
+    const roles = user?.roles ?? [];
+    const nav = NAV_DESTINATIONS.filter((d) => canAccess(d, roles));
+    const extras: PaletteItem[] = [
+      {
+        path: `/user360?userId=${userId}`,
+        label: `用户 360 · 当前 userId=${userId}`,
+        group: '深链',
+        keywords: 'user360 current yonghu',
+      },
+    ];
+    if (canAccess({ roles: ['ADMIN'] }, roles)) {
+      extras.push({
+        path: '/experiment',
+        label: '打开实验管理',
+        group: '深链',
+        keywords: 'experiment ab',
+      });
+    }
+    if (canAccess({ roles: ['ADMIN', 'ADVERTISER'] }, roles)) {
+      extras.push({
+        path: '/reports/ab-report',
+        label: '最新 A/B 报表',
+        group: '深链',
+        keywords: 'ab-report latest baobiao',
+      });
+    }
+    return [...nav, ...extras];
+  }, [user?.roles, userId]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return NAV_DESTINATIONS;
-    return NAV_DESTINATIONS.filter((d) =>
+    if (!q) return destinations;
+    return destinations.filter((d) =>
       [d.label, d.path, d.group, d.keywords ?? ''].some((f) => f.toLowerCase().includes(q)),
     );
-  }, [query]);
+  }, [destinations, query]);
 
-  // 打开时:清查询 / 复位高亮,并在 Modal 挂载后聚焦输入框。
   useEffect(() => {
     if (!open) return;
     setQuery('');
@@ -41,12 +74,10 @@ export default function CommandPalette() {
     return () => window.clearTimeout(t);
   }, [open]);
 
-  // 结果集变化(输入过滤)→ 高亮回到首项,避免越界。
   useEffect(() => {
     setActive(0);
   }, [query]);
 
-  // 高亮项滚动进视口(键盘上下移动时)。
   useEffect(() => {
     listRef.current?.querySelector(`[data-idx="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [active]);
@@ -89,7 +120,7 @@ export default function CommandPalette() {
           allowClear
           variant="borderless"
           prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
-          placeholder="跳转到页面…(输入名称 / 路径,↑↓ 选择,Enter 打开)"
+          placeholder="跳转页面 / 深链…(↑↓ 选择,Enter 打开)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
@@ -117,7 +148,7 @@ export default function CommandPalette() {
             const isActive = i === active;
             return (
               <div
-                key={d.path}
+                key={`${d.group}-${d.path}-${d.label}`}
                 id={optionId(i)}
                 data-idx={i}
                 role="option"

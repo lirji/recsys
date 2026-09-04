@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { DownOutlined } from '@ant-design/icons';
 import { rgba } from '../../theme/tokens';
 import { FUNNEL_CSS } from './funnelStyles';
 
@@ -24,6 +25,9 @@ export interface FunnelBandProps {
   kicker?: ReactNode; // 顶部状态行(hero 传入自带状态点的完整节点)
   chips?: ReactNode; // 右侧指标 chips(hero 复用)
   status?: { color: string; label: string; pulse?: boolean }; // 每个 stage 标题旁的小状态点
+  /** 调试台默认收起,把结果表顶上折页;系统总览 hero 不传。 */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }
 
 // 监听 prefers-reduced-motion —— 流点在 JS 侧也关掉(CSS 已隐藏,这里进一步免去无谓 DOM)。
@@ -54,9 +58,13 @@ export default function FunnelBand({
   kicker,
   chips,
   status,
+  collapsible = false,
+  defaultOpen = true,
 }: FunnelBandProps) {
   const reduceMotion = usePrefersReducedMotion();
   const doFlow = flowing && !reduceMotion;
+  const [open, setOpen] = useState(collapsible ? defaultOpen : true);
+  const collapsed = collapsible && !open;
 
   const stageDot = (extra?: CSSProperties) => {
     if (!status) return null;
@@ -70,11 +78,46 @@ export default function FunnelBand({
   };
 
   const showHead = Boolean(kicker || title || subtitle || chips);
+  const summary = (
+    <span className="fnl-summary fnl-mono">
+      {stages.map((s, i) => (
+        <Fragment key={s.key}>
+          {i > 0 ? <span className="fnl-summary-sep">→</span> : null}
+          <span className="fnl-summary-step">
+            <span className="fnl-summary-label">{s.label}</span>
+            {s.count != null ? (
+              <span className="fnl-summary-count" style={{ color: s.accent }}>
+                {fmtCount(s.count)}
+              </span>
+            ) : s.metric ? (
+              <span className="fnl-summary-count" style={{ color: s.accent }}>
+                {s.metric.value}
+              </span>
+            ) : null}
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
 
   return (
-    <div className={`fnl-root${dense ? ' fnl-root--dense' : ''}`}>
+    <div className={`fnl-root${dense ? ' fnl-root--dense' : ''}${collapsed ? ' fnl-root--collapsed' : ''}`}>
       <style>{FUNNEL_CSS}</style>
 
+      {collapsible ? (
+        <button
+          type="button"
+          className="fnl-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {summary}
+          <DownOutlined className="fnl-chevron" aria-hidden />
+        </button>
+      ) : null}
+
+      {collapsed ? null : (
+        <>
       {showHead && (
         <div className="fnl-head">
           <div>
@@ -152,6 +195,8 @@ export default function FunnelBand({
           );
         })}
       </div>
+        </>
+      )}
     </div>
   );
 }

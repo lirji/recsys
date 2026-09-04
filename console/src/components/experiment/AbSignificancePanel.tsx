@@ -1,4 +1,5 @@
 import { Alert, Card, Space, Spin, Table, Tag, Tooltip, Typography } from 'antd';
+import CollapsibleCard from '../CollapsibleCard';
 import EErrorBar from '../charts/EErrorBar';
 import type { AbBucketRow, AbReportData } from './abReport';
 import { significantBuckets } from './abReport';
@@ -42,24 +43,14 @@ export default function AbSignificancePanel({
 
   if (!data || data.file === null || data.rows.length === 0) {
     return (
-      <Card size="small" title={title}>
+      <CollapsibleCard title="在线 A/B 结果(显著性)" defaultOpen={false}>
         <Alert
           type="info"
           showIcon
           message="暂无 ab-report"
-          description={
-            <span>
-              还没有在线分桶 CTR 报表。先跑离线作业生成:
-              <br />
-              <code className="mono">
-                mvn -pl recsys-offline spring-boot:run -Dspring-boot.run.arguments=--job=ab-report
-              </code>
-              <br />
-              需要线上已有带 bucket 标记的 IMPRESSION 曝光埋点(经 rec-engine 推荐后由 ExposureLogger 写入)。
-            </span>
-          }
+          description="还没有在线分桶 CTR 报表。跑 ab-report 作业后会出现。"
         />
-      </Card>
+      </CollapsibleCard>
     );
   }
 

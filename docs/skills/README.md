@@ -3,6 +3,8 @@
 > 这不是"操作手册",而是一套**按技术主题**组织的深度知识文档。每一篇讲清一个能力:
 > **它解决什么 → 原理 → 本项目怎么实现(类/文件/Redis key/SQL)→ 在线/离线契约 → 踩坑 → 面试要点**。
 > 事实来源 = 代码 + [顶层文档](../00-项目总览.md)。与专题文档冲突时以代码为准。
+>
+> **同步基线**:2026-09-01，`main` / `aee5d28a`。已对照当前工作树的 Java/TypeScript/Python、YAML、SQL、Compose、CI 与测试逐篇复核；历史实测数字不作为未来环境的保证。
 
 ## 为什么单独建这套文档
 
@@ -16,7 +18,7 @@
 ### 推荐主链路
 | # | 文档 | 一句话 |
 |---|---|---|
-| 01 | [多路召回全家桶](01-召回-多路召回全家桶.md) | 14 路召回（含 MIND/LightGCN）+ 归一化融合 + RRF 混合检索 + 并行超时降级 |
+| 01 | [多路召回全家桶](01-召回-多路召回全家桶.md) | 14 路召回（含 MIND/LightGCN）+ 归一化/RRF + 慢快路舱壁 + 超时降级 |
 | 02 | [排序模型全家桶](02-排序-CTR与多任务模型全家桶.md) | 9 策略:rule→LGBM→DeepFM→DCN→MMoE/PLE→DIN/DIEN→SIM + ESMM + PAL |
 | 03 | [Embedding 与向量检索](03-Embedding与向量检索.md) | Gemini/本地 BGE + pgvector HNSW + RQ-VAE 语义 ID + 双塔 + TIGER |
 | 04 | [特征体系与在线/离线一致性](04-特征体系与在线离线一致性.md) | FeatureAssembler/SparseEncoder/SequenceEncoder 三大契约 + as-of 无泄漏 |
@@ -25,24 +27,24 @@
 | 07 | [融合与近线学习](07-融合与近线学习.md) | 融合公式全展开 + FTRL + LinUCB/Thompson bandit + 校准 + 热度去偏 |
 | 08 | [A/B 实验与分层](08-AB实验与分层.md) | recall×rank×rerank×ad 四层正交 + 确定性分桶 + 显著性/CUPED |
 | 09 | [离线评估与严格无泄漏](09-离线评估与严格无泄漏.md) | @K 全指标 + BehaviorQuery/AsOf 消除穿越 + 严格 eval |
-| 10 | [实时特征与流式](10-实时特征与流式.md) | Flink 滑窗 → 实时热门 + 实时类目 + 实时序列 |
+| 10 | [实时特征与流式](10-实时特征与流式.md) | Flink 滑窗产实时热门/类目；序列当前为 DB→Redis cache-aside |
 | 11 | [搜索与 Query 理解](11-搜索与Query理解.md) | 归一/纠错/意图/IDF→FTS 加权/向量化 + 搜索场景融合覆盖 |
 
 ### 搜索广告
 | # | 文档 | 一句话 |
 |---|---|---|
 | 12 | [广告召回·相关性·定向](12-广告-召回相关性与定向.md) | 关键词倒排/SEMANTIC_AD/U2A + 相关性门槛 + Look-alike 人群包 |
-| 13 | [广告竞价与计费机制](13-广告-竞价与计费机制.md) | 多计费 A1 + eCPM + GSP/VCG/List-wise + 博弈分析 |
-| 14 | [智能出价与转化建模](14-广告-智能出价与转化建模.md) | oCPC 反馈控制 + 延迟反馈 DFM/λ + Horvitz-Thompson + 多触点归因 |
+| 13 | [广告竞价与计费机制](13-广告-竞价与计费机制.md) | 多计费/eCPM + GSP/VCG/List-wise + uplift 增量竞价 + 博弈分析 |
+| 14 | [智能出价与转化建模](14-广告-智能出价与转化建模.md) | oCPC/DFM/HT + 多触点归因 + TARNet uplift 的采样与打分边界 |
 | 15 | [广告机制大全](15-广告-预算频控反作弊EE质量度DCO.md) | pacing/频控/反作弊/EE 探索/质量度/DCO/保量 GD |
 
 ### 平台工程
 | # | 文档 | 一句话 |
 |---|---|---|
 | 16 | [微服务拆分与 gRPC](16-微服务拆分与gRPC.md) | 绞杀者模式 + *Gateway 可回滚缝 + 事件驱动 catalog + DB-per-service |
-| 17 | [平台安全与网关](17-平台安全与网关.md) | 两级零信任(边缘 JWT/Casdoor + 内部 HMAC)+ 网关限流 + gRPC 服务端验签 |
+| 17 | [平台安全与网关](17-平台安全与网关.md) | legacy/Casdoor 边缘 JWT + 内部 HMAC + gRPC 验签 + auth-platform 归属判权 |
 | 18 | [分库分表](18-分库分表.md) | ShardingSphere 双库 + 4 数据源 + Snowflake + pgvector 不分片 |
-| 19 | [工程化:容器编排与可观测](19-工程化-容器编排与可观测.md) | docker profiles / k8s readiness / Prometheus+Grafana+Tempo / dev-local |
+| 19 | [工程化:容器编排与可观测](19-工程化-容器编排与可观测.md) | 应用 Compose + dev-infra / k8s readiness / Prometheus+Grafana+Tempo / dev-local |
 
 ## 阅读顺序建议
 

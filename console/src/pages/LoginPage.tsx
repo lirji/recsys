@@ -15,7 +15,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS } from '../api/auth';
 import { toApiError } from '../api/client';
-import { DEMO_USER_META, ROLE_META } from '../components/AppLayout';
+import { DEMO_USER_META, ROLE_META } from '../auth/roleMeta';
 import { AUTH_MODE, CASDOOR } from '../config/auth';
 import { resolvePortalLaunch, sanitizeInternalPath } from '../auth/portalLaunch';
 import { validateTenantSelection } from '../auth/tenantSelection';
@@ -285,12 +285,11 @@ export default function LoginPage() {
   const state = location.state as {
     from?: { pathname?: string; search?: string; hash?: string };
   } | null;
+  const rawFrom = state?.from?.pathname
+    ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}`
+    : null;
   const from =
-    portalLaunch?.returnTo ??
-    requestedReturnTo ??
-    (state?.from?.pathname
-      ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}`
-      : '/overview');
+    portalLaunch?.returnTo ?? requestedReturnTo ?? sanitizeInternalPath(rawFrom) ?? '/overview';
   const busy = loading || pending !== null || redirecting;
   const compact = !screens.md; // 窄屏:收起品牌区,卡片自带紧凑品牌头
 

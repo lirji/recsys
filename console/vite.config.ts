@@ -19,7 +19,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        // 拆分厂商包改善缓存;echarts 只被 lazy 页面引用,自动进按需 chunk。
+        // 拆分厂商包改善缓存;ECharts 页面(桶对比/报表/竞价图)均走路由 lazy,不进首屏。
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           antd: ['antd', '@ant-design/icons'],

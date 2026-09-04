@@ -1,33 +1,35 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Progress, Select, Space, Table } from 'antd';
 import { Link } from 'react-router-dom';
 import { createAdvertiser, listAdvertisers } from '../../api/advertiser';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
 import type { AdvertiserUpsert, AdvertiserView } from '../../api/types';
 import { StatusTag } from '../../components/adv/statusTags';
+import PageHeader from '../../components/PageHeader';
+import { ACCENTS } from '../../theme/tokens';
 
 export default function AdvertiserList() {
   const { message } = App.useApp();
-  const query = useQuery({ queryKey: ['advertisers'], queryFn: listAdvertisers });
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: queryKeys.advertisers(), queryFn: listAdvertisers });
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<AdvertiserUpsert>();
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    const values = await form.validateFields();
-    setSaving(true);
-    try {
-      await createAdvertiser(values);
+  const createMut = useMutation({
+    mutationFn: createAdvertiser,
+    onSuccess: async () => {
       message.success('已创建广告主');
       setOpen(false);
       form.resetFields();
-      query.refetch();
-    } catch (e) {
-      message.error(toApiError(e).message);
-    } finally {
-      setSaving(false);
-    }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.advertisers() });
+    },
+    onError: (e) => message.error(toApiError(e).message),
+  });
+
+  const submit = async () => {
+    const values = await form.validateFields();
+    createMut.mutate(values);
   };
 
   const columns = [
@@ -70,14 +72,18 @@ export default function AdvertiserList() {
   ];
 
   return (
-    <Card
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <PageHeader
       title="广告主"
+      accent={ACCENTS.ad}
+      description="广告主账户、日预算与投放入口。"
       extra={
         <Button type="primary" onClick={() => setOpen(true)}>
           新建广告主
         </Button>
       }
-    >
+    />
+    <Card>
       {query.isError ? (
         <Alert type="error" showIcon message={toApiError(query.error).message} />
       ) : (
@@ -88,10 +94,11 @@ export default function AdvertiserList() {
           columns={columns}
           dataSource={query.data ?? []}
           pagination={false}
+          scroll={{ x: 800 }}
         />
       )}
 
-      <Modal title="新建广告主" open={open} onOk={submit} confirmLoading={saving} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal title="新建广告主" open={open} onOk={submit} confirmLoading={createMut.isPending} onCancel={() => setOpen(false)} destroyOnClose>
         <Form form={form} layout="vertical" initialValues={{ status: 'active', dailyBudget: 1000 }}>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '必填' }]}>
             <Input placeholder="广告主名称" />
@@ -105,5 +112,6 @@ export default function AdvertiserList() {
         </Form>
       </Modal>
     </Card>
+    </Space>
   );
 }

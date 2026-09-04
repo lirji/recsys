@@ -79,6 +79,8 @@ describe('sanitizeReturnTo(开放重定向防护)', () => {
     expect(sanitizeReturnTo('javascript:alert(1)')).toBeNull();
     expect(sanitizeReturnTo(undefined)).toBeNull();
     expect(sanitizeReturnTo(42)).toBeNull();
+    expect(sanitizeReturnTo('/ok\\evil')).toBeNull();
+    expect(sanitizeReturnTo('/ok\u0000x')).toBeNull();
   });
 });
 

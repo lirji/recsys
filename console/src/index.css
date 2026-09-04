@@ -163,3 +163,32 @@ body {
 .bb-baseline-row:hover > td {
   background: rgba(34, 211, 238, 0.14);
 }
+
+/* 调试台控制条:中文短标签 + 控件横排 */
+.dbg-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dbg-field-label {
+  font-size: 13px;
+  color: #5b6b86;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 实验台一层一行 */
+.exp-layer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(120, 150, 210, 0.16);
+}
+.exp-layer-ad {
+  border-left: 3px solid #f59e0b;
+}

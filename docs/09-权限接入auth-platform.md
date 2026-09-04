@@ -5,6 +5,7 @@
 > 归属校验留给领域层，而领域层没有做）。现接入**统一权限平台 auth-platform**（SpiceDB/ReBAC），按
 > `advertiser:{id}` 作用域做归属判权。平台侧文档：auth-platform 仓库
 > `docs/新项目接入指南.md`（本次接入即按它执行）与 `docs/平台能力总览.md`。
+> **最后核验：2026-09-01**。Docker 编排的前端/网关默认为 Casdoor OIDC 组合，但粗粒度安全与细粒度 ReBAC 是独立开关；`RECSYS_AUTHZ_MODE` 仍默认 `disabled`。
 
 ## 1. 模型（auth-platform 仓库 `schemas/recsys.zed`）
 
@@ -22,8 +23,7 @@ advertiser:{id}
 
 **最小元组设计**：广告/竞价词/创意**不进 SpiceDB**——权限纯继承自 advertiser 作用域，服务端从
 adId/bidwordId/creativeId 反查 `advertiser_id` 再判（广告 CRUD 高频，逐条双写放大且无独立授权语义）。
-主体 = 内部令牌 subject（`X-Internal-Auth`，网关验终端 JWT 后下传）；未来接 Casdoor SSO 后主体切
-Casdoor `sub`，需做一次 username→sub crosswalk。
+主体 = 内部令牌 subject（`X-Internal-Auth`，网关验终端 JWT 后重签）。OIDC 模式为 Casdoor `sub`，legacy 模式为 username；切换到 OIDC 前必须把存量 username 归属元组迁移/回填到 `sub`，不能把两种主体混用。
 
 ## 2. 接入点（`recsys-advertiser`）
 
@@ -98,9 +98,7 @@ RECSYS_AUTHZ_MODE=shadow AUTHZ_SERVER_URL=http://localhost:8210 mvn -pl recsys-a
 
 - **默认全关**（`disabled`），生产灰度顺序：shadow 观察 deny 样本 → 清理归属数据 → enforce。
 - 网关粗粒度 RBAC（ADVERTISER/ADMIN 角色）保留为第一道闸，本判权是第二道（纵深防御）。
-- 其余待接面：`/api/experiment/**`（仅角色 ADMIN，可提升为 platform.administrate）、console BFF 的
-  用户 360/报表匿名 GET（网关层 permitAll，独立问题）、gRPC 内部服务（`CALLER_SUBJECT` 已传播，可在
-  money path 复用同一守卫）。
+- 其余待接面：`/api/experiment/**`（仅角色 ADMIN，可提升为 platform.administrate）与 console BFF 的用户 360/报表读权限。gRPC 边界当前由客户端拦截器重签 `subject=<serviceName>, roles=SERVICE`，`CALLER_SUBJECT` 表示可信服务身份，**不是终端用户 subject**；若 money path 需用户级 ReBAC，必须在 proto 中显式传递已验证的业务主体并定义审计契约。
 - ~~身份侧后续~~ **网关侧已接 Casdoor（2026-07-16）**：`recsys.security.casdoor.enabled`（env
   `RECSYS_EDGE_CASDOOR`；Docker 编排默认开启，源码仍支持关闭回滚）开启后，边缘认证换 Casdoor JWKS(RS256) + iss 校验 +
   aud 家族校验（方案C `<base>-org-<owner>` 绑定）+ **org 钉死**（owner 必须 = `casdoor.organization`，

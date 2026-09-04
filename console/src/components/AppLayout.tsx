@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   App,
   Avatar,
@@ -18,12 +18,15 @@ import {
 } from 'antd';
 import {
   AlertOutlined,
+  ApiOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   BulbOutlined,
+  CloudServerOutlined,
+  ControlOutlined,
+  DashboardOutlined,
   MedicineBoxOutlined,
   CheckOutlined,
-  ClusterOutlined,
   DiffOutlined,
   DollarOutlined,
   DownOutlined,
@@ -33,7 +36,6 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SafetyCertificateOutlined,
   SearchOutlined,
   ShopOutlined,
   ThunderboltOutlined,
@@ -44,7 +46,9 @@ import { useGlobalUser } from '../hooks/useGlobalUser';
 import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS, getCurrentUser, type Role } from '../api/auth';
 import { toApiError } from '../api/client';
-import { NAV_DESTINATIONS } from '../api/nav';
+import { NAV_DESTINATIONS, showsDebugContext } from '../api/nav';
+import { canAccess } from '../api/access';
+import { DEMO_USER_META, ROLE_META } from '../auth/roleMeta';
 import CommandPalette from './CommandPalette';
 import { openCommandPalette } from '../hooks/useCommandPalette';
 import { BRAND, SURFACE, rgba } from '../theme/tokens';
@@ -91,10 +95,11 @@ const SHELL_CSS = `
 // label 用纯文本(非 <Link>):导航走 Menu onClick→navigate(key),这样收起成图标栏时点图标也能跳转,
 // 且收起态的悬浮 tooltip 直接用 label 文本,干净。
 const NAV_ICON: Record<string, ReactNode> = {
-  '/overview': <ClusterOutlined />,
+  '/overview': <DashboardOutlined />,
   '/user360': <UserOutlined />,
   '/diagnosis': <MedicineBoxOutlined />,
   '/alerts': <AlertOutlined />,
+  '/ops': <ControlOutlined />,
   '/recommend': <ThunderboltOutlined />,
   '/search': <SearchOutlined />,
   '/search-ads': <DollarOutlined />,
@@ -103,6 +108,7 @@ const NAV_ICON: Record<string, ReactNode> = {
   '/recall-lab': <PartitionOutlined />,
   '/strategy-lab': <DiffOutlined />,
   '/experiment': <ExperimentOutlined />,
+  '/bucket-board': <BarChartOutlined />,
   '/user-interests': <HeartOutlined />,
   '/advertiser': <ShopOutlined />,
   '/reports': <BarChartOutlined />,
@@ -111,32 +117,28 @@ const NAV_ICON: Record<string, ReactNode> = {
 // 分组展示顺序(= 侧边菜单分区顺序)。必须与 nav.ts 的 group 值逐字一致。
 const GROUP_ORDER = ['在线链路', '实验与增长', '广告平台', '数据与模型', '平台运维'] as const;
 
-const menuItems = GROUP_ORDER.map((g) => ({
-  key: `grp-${g}`,
-  label: g,
-  type: 'group' as const,
-  children: NAV_DESTINATIONS.filter((d) => d.group === g).map((d) => ({
-    key: d.path,
-    icon: NAV_ICON[d.path],
-    label: d.label,
-  })),
-}));
+const GROUP_ICON: Record<(typeof GROUP_ORDER)[number], ReactNode> = {
+  在线链路: <ApiOutlined />,
+  实验与增长: <ExperimentOutlined />,
+  广告平台: <ShopOutlined />,
+  数据与模型: <BarChartOutlined />,
+  平台运维: <CloudServerOutlined />,
+};
+
+function buildMenuItems(roles: Role[]) {
+  return GROUP_ORDER.map((g) => ({
+    key: `grp-${g}`,
+    label: g,
+    icon: GROUP_ICON[g],
+    children: NAV_DESTINATIONS.filter((d) => d.group === g && canAccess(d, roles)).map((d) => ({
+      key: d.path,
+      icon: NAV_ICON[d.path],
+      label: d.label,
+    })),
+  })).filter((g) => g.children.length > 0);
+}
 
 const SCENES = ['feed', 'search', 'detail', 'related'];
-
-// 角色视觉:头像图标 + 头像底色 + Tag 语义色 + 中文标签。与全站语义色基调一致。登录页复用同一套配色。
-export const ROLE_META: Record<Role, { icon: ReactNode; avatarBg: string; tagColor: string; label: string }> = {
-  ADMIN: { icon: <SafetyCertificateOutlined />, avatarBg: '#2f54eb', tagColor: 'geekblue', label: '管理员' },
-  ADVERTISER: { icon: <ShopOutlined />, avatarBg: '#fa8c16', tagColor: 'orange', label: '广告主' },
-  USER: { icon: <UserOutlined />, avatarBg: '#13c2c2', tagColor: 'cyan', label: '用户' },
-};
-
-// 演示用户 → 主角色 + 一行权限说明(下拉 / 登录页里展示)。
-export const DEMO_USER_META: Record<(typeof DEMO_USERS)[number], { role: Role; desc: string }> = {
-  admin: { role: 'ADMIN', desc: '全部权限(实验 / 广告主 / 只读)' },
-  advertiser: { role: 'ADVERTISER', desc: '广告主后台 + 只读推荐 / 搜索' },
-  user: { role: 'USER', desc: '仅在线只读(打管理页会 403)' },
-};
 
 /**
  * 身份切换器:头像 chip 触发 + Dropdown 自定义面板。切 admin/advertiser/user 演示 RBAC。
@@ -352,8 +354,10 @@ function IdentitySwitcher() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { userId, scene, setUserId, setScene } = useGlobalUser();
   const screens = useBreakpoint();
+  const menuItems = useMemo(() => buildMenuItems(user?.roles ?? []), [user?.roles]);
   // 侧边栏收起状态,持久化到 localStorage,刷新后保持。
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sider-collapsed') === '1');
   const toggleCollapsed = () => {
@@ -373,7 +377,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       .filter((k) => p === k || p.startsWith(k + '/'))
       .sort((a, b) => b.length - a.length)[0];
     return match ?? '/recommend';
-  }, [location.pathname]);
+  }, [location.pathname, menuItems]);
+
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
+  useEffect(() => {
+    const g = menuItems.find((item) => item.children.some((c) => c.key === selectedKey));
+    if (g) setOpenKeys([g.key]);
+  }, [selectedKey, menuItems]);
+
+  const debugContext = showsDebugContext(location.pathname);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -416,7 +428,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems}
-            onClick={({ key }) => navigate(key)}
+            onClick={({ key }) => {
+              if (String(key).startsWith('/')) navigate(key);
+            }}
+            {...(collapsed
+              ? {}
+              : {
+                  openKeys,
+                  onOpenChange: (keys: string[]) => {
+                    const next = keys.filter((k) => String(k).startsWith('grp-'));
+                    const added = next.find((k) => !openKeys.includes(k));
+                    setOpenKeys(added ? [added] : next.slice(-1));
+                  },
+                })}
             style={{ borderInlineEnd: 0, background: 'transparent' }}
           />
         </nav>
@@ -442,33 +466,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             onClick={toggleCollapsed}
           />
           <Space size="middle" align="center">
-            {screens.md && (
-              <Tooltip title="命令面板 · ⌘K / Ctrl+K">
-                <Button
-                  type="text"
-                  aria-label="打开命令面板,快捷键 Command 或 Ctrl 加 K"
-                  onClick={() => openCommandPalette()}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6b86' }}
-                >
-                  <SearchOutlined />
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>⌘K</span>
-                </Button>
-              </Tooltip>
-            )}
-            <Space size={6}>
-              <Typography.Text type="secondary">userId</Typography.Text>
-              <InputNumber min={1} value={userId} onChange={(v) => v && setUserId(v)} style={{ width: 110 }} />
-            </Space>
-            <Space size={6}>
-              <Typography.Text type="secondary">scene</Typography.Text>
-              <Select
-                value={scene}
-                onChange={setScene}
-                style={{ width: 120 }}
-                options={SCENES.map((s) => ({ value: s, label: s }))}
-              />
-            </Space>
-            <Divider type="vertical" style={{ height: 24, marginInline: 0 }} />
+            <Tooltip title="命令面板 · ⌘K / Ctrl+K">
+              <Button
+                type="text"
+                aria-label="打开命令面板,快捷键 Command 或 Ctrl 加 K"
+                onClick={() => openCommandPalette()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6b86' }}
+              >
+                <SearchOutlined />
+                {screens.md ? <span style={{ fontSize: 12, fontWeight: 600 }}>⌘K</span> : null}
+              </Button>
+            </Tooltip>
+            {debugContext ? (
+              <>
+                <Space size={6}>
+                  <Typography.Text type="secondary">userId</Typography.Text>
+                  <InputNumber min={1} value={userId} onChange={(v) => v && setUserId(v)} style={{ width: 110 }} />
+                </Space>
+                <Space size={6}>
+                  <Typography.Text type="secondary">场景</Typography.Text>
+                  <Select
+                    value={scene}
+                    onChange={setScene}
+                    style={{ width: 120 }}
+                    options={SCENES.map((s) => ({ value: s, label: s }))}
+                  />
+                </Space>
+                <Divider type="vertical" style={{ height: 24, marginInline: 0 }} />
+              </>
+            ) : null}
             <IdentitySwitcher />
           </Space>
         </Header>

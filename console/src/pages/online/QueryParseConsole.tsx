@@ -2,22 +2,26 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Descriptions, Input, Space, Table, Tag, Typography } from 'antd';
 import { parseQuery } from '../../api/query';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
-import { useGlobalUser } from '../../hooks/useGlobalUser';
+import { useDebugParams } from '../../hooks/useDebugParams';
 import FunnelBand from '../../components/funnel/FunnelBand';
 import PageHeader from '../../components/PageHeader';
+import DebugField from '../../components/debug/DebugField';
 import { deriveQueryStages } from '../../components/funnel/derive';
 import { ACCENTS, STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
+type QueryParams = { userId: number; q: string };
+
 export default function QueryParseConsole() {
-  const { userId } = useGlobalUser();
-  const [q, setQ] = useState('action comedy');
+  const { applied, setApplied, userId } = useDebugParams<QueryParams>({ userId: 1, q: 'action comedy' });
+  const [q, setQ] = useState(applied.q);
 
   const query = useQuery({
-    queryKey: ['query-parse'],
-    queryFn: () => parseQuery({ q, userId }),
-    enabled: false,
+    queryKey: queryKeys.queryParse(applied),
+    queryFn: () => parseQuery(applied),
+    enabled: !!applied.q.trim(),
   });
   const sq = query.data;
   const embDim = sq?.embedding?.length ?? 0;
@@ -29,30 +33,23 @@ export default function QueryParseConsole() {
       <PageHeader
         title="Query 理解"
         accent={ACCENTS.gsp}
-        description="分词 / 意图 / 改写 / 向量化 —— 搜索与搜索广告的共同入口。"
+        description="分词、意图、改写、向量化。"
       />
       <Card size="small" bordered={false}>
         <Space wrap>
-          <span>q</span>
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ width: 320 }}
-            onPressEnter={() => q.trim() && query.refetch()}
-          />
-          <Button type="primary" loading={query.isFetching} onClick={() => q.trim() && query.refetch()}>
+          <DebugField label="查询词">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: 320 }}
+              onPressEnter={() => q.trim() && setApplied({ userId, q })}
+            />
+          </DebugField>
+          <Button type="primary" loading={query.isFetching} onClick={() => q.trim() && setApplied({ userId, q })}>
             解析
           </Button>
-          <Typography.Text type="secondary">userId={userId}</Typography.Text>
         </Space>
       </Card>
-
-      <FunnelBand
-        dense
-        stages={stages}
-        flowing={flowing}
-        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
-      />
 
       {query.isError ? <Alert type="error" message={toApiError(query.error).message} showIcon /> : null}
 
@@ -103,6 +100,15 @@ export default function QueryParseConsole() {
           </Space>
         </Card>
       ) : null}
+
+      <FunnelBand
+        dense
+        collapsible
+        defaultOpen={false}
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
     </Space>
   );
 }

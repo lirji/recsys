@@ -87,9 +87,15 @@ docker compose -f docker/docker-compose.yml --profile console up -d --build   # 
 
 ## 页面
 
-- **在线调试台**:`/recommend` `/search` `/search-ads` `/feed` `/query` `/experiment` `/user-interests`
-- **广告主后台**:`/advertiser`(列表/建)→ 广告主详情 / 广告列表 / 广告详情(审核状态机 + 创意 + 竞价词)/ 投放报表
-- **离线报表**:`/reports` 总览 → `/reports/:category` 按分类可视化(eval / ab-report / ad-report / data-quality / ad-quality)
+- **平台运维**:`/overview` 系统总览 · `/user360` 用户 360 · `/diagnosis` 一键诊断 · `/alerts` 告警 · `/ops` 热配置/作业状态
+- **在线调试台**:`/recommend` `/search` `/search-ads` `/feed` `/query` `/recall-lab` `/strategy-lab` `/user-interests`
+- **实验与增长**:`/experiment` 分层 A/B(含广告层) · `/bucket-board` 桶对比大盘
+- **广告主后台**:`/advertiser`(列表/建)→ 广告主详情 / 广告列表 / 广告详情(审核 + 计费/定向 + 创意 + 竞价词)/ 投放报表
+- **离线报表**:`/reports` 总览 → `/reports/:category`(eval / ab-report / ad-report / data-quality / ad-quality / attribution / delay / bandit)
+
+菜单与 ⌘K 按角色过滤:USER 只看在线调试与总览;ADVERTISER 另见广告主/报表;ADMIN 全开。深链命令含「当前 userId 的用户 360」「最新 A/B 报表」。
+
+前端 DTO 与 Java record 手工对齐,见 `src/api/types.ts`(实验/广告枚举以服务端为准)。E2E 烟雾:`npm run test:e2e`(Playwright,登录页可独立于后端)。
 
 ## 目录
 
@@ -100,7 +106,7 @@ console/
 ├── src/
 │   ├── api/            # 后端接口封装 + DTO 的 TS 镜像(types.ts)
 │   ├── components/     # explain(可解释性)/ adv(广告主)/ charts(ECharts)/ reports
-│   ├── hooks/          # 全局 userId/scene
-│   ├── pages/          # online / adv / reports 三组页面
+│   ├── hooks/          # 全局 userId/scene、调试台 applied 参数
+│   ├── pages/          # online / adv / reports / project
 │   ├── App.tsx / router.tsx / main.tsx
 ```

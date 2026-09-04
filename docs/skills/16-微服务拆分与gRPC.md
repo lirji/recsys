@@ -1,12 +1,12 @@
 # 微服务拆分与 gRPC
 
-> **这是本项目最新、docs 02-06 尚未覆盖的部分**。系统从"单体优先"演进出真正的**微服务拆分**——但用绞杀者(strangler-fig)模式,**默认仍是单体,每处拆分可一键回滚**。
+> 系统从"单体优先"演进出可独立部署的**微服务边界**，采用绞杀者(strangler-fig)模式保留 in-process 回滚缝。应用默认配置仍是 in-process，但 `docker compose --profile apps` 已显式将 ad/content/user 三条缝切到 gRPC。
 
 ## 1. 演进策略:绞杀者 + 一键回滚
 
 - **DDD 按界限上下文拆**(~8 服务),不是"16 模块拆 16 服务"。
 - 内部 **gRPC**(net.devh)、可选 **Nacos** 发现、**DB-per-service** 物理分库、**事件驱动读模型复制**(Kafka)。
-- **rec-engine 默认在进程内托管一切**,通过 `*Gateway` 缝(in-process 默认 / grpc 可选)委托;编译通过即等价单体,任何拆分翻一个属性即回滚。
+- **配置默认在进程内托管**,通过 `*Gateway` 缝(in-process 默认 / grpc 可选)委托。`apps` 容器 profile 是已切流的另一种部署基线：`AD/CONTENT/USER_SERVING_MODE=grpc` + Nacos `discovery:///...`；单缝改回 `in-process` 即回滚。
 
 ## 2. 服务与端口
 
@@ -36,12 +36,12 @@
 
 - **`AdPipeline`(recsys-ad)是共享内核**——in-process 和 ad-serving 远程跑的是同一份代码,行为 golden-diff 等价。
 - `GrpcAdServingGateway` 每个 RPC 包 `@CircuitBreaker`:searchAds→**无广告 feed**,click/conv→**只记日志**(计费幂等)。
-- `apps` compose profile 设 `AD_SERVING_MODE=grpc` + `static://ad-serving:9095` → 容器化 profile **真正走 gRPC**。
+- `apps` compose profile 设 `AD_SERVING_MODE=grpc` + `discovery:///recsys-ad-serving` → 容器化 profile **真正通过 Nacos 服务发现走 gRPC**；`static://ad-serving:9095` 是静态地址回退。
 
 ## 4. gRPC 契约(`recsys-proto`)
 
 3 个版本化 `.proto`(`package *.v1`,`java_multiple_files`):
-- **`ad_serving.proto AdServingService`**:`SearchAds`(请求带**已解析的** `StructuredQuery`+`ad_bucket`+`reserve_price`——**query 理解和实验分桶留在 rec-engine 单一事实源**)、`RecordClick`/`RecordConversion`、`GetAdEventStats`。`SponsoredAd` 16 字段 1:1。
+- **`ad_serving.proto AdServingService`**:`SearchAds`(请求带**已解析的** `StructuredQuery`+`ad_bucket`+`reserve_price`——**query 理解和实验分桶留在 rec-engine 单一事实源**)、`RecordClick`/`RecordConversion`、A7 独立转化事实 `RecordOutcome`、`GetAdEventStats`。`SponsoredAd` 16 字段 1:1。
 - **`content.proto ContentService.BatchGetItems`**:展示时批量 hydrate(O(1)/请求);逐候选读仍在进程内。
 - **`user.proto UserProfileService.GetInterests/UpdateInterests`**:仅冷启动。
 
@@ -84,12 +84,12 @@ Kafka ad-catalog-events ─► ad-serving AdCatalogEventConsumer
 ```
 **ad-serving 刻意不经网关路由**——广告计费仍走 rec-engine→gRPC,把开关留在一处。
 
-## 8. 现状与缺口(诚实清单)
+## 8. 现状与边界
 
-1. **默认仍是单体**:所有 `*Gateway` in-process,所有 `*_PG_DB` 默认指向共享 `recsys`,静态路由,Nacos/ratelimit/discovery 皆 opt-in。
-2. **gRPC 服务端鉴权未接线(真缺口)**:`InternalAuthGrpcServerInterceptor` 存在但**没有** `GlobalServerInterceptorConfigurer` 注册它——客户端签 token,服务端从不验 → 东西向 gRPC 目前靠网络信任。仅 HTTP/servlet 路径强制 token。
-3. **物理分库是能力态**:golden-diff/marker 测试证明可行,但默认 compose 未激活(`apps` 无 `*_PG_DB` env)。
-4. **ADR-01 已过时**:提议 8084 + `recsys-experiment` 库;实际 8085、无 experiment 库(adBucket/reservePrice 作 gRPC 参数)、开关而非硬切。
+1. **两种运行基线并存**:应用 yml 缺省为 in-process；`docker/docker-compose.yml` 的 `apps` profile 已将 ad/content/user 设为 gRPC，Nacos 发现默认开启。k8s 基线则保守地保留 `AD_SERVING_MODE=in-process`，content/user 走 gRPC。
+2. **gRPC 鉴权已闭环**:三个服务均用 `GrpcServerHardeningConfig`/`GlobalServerInterceptorConfigurer` 注册 `InternalAuthGrpcServerInterceptor`，`server-auth-required` 默认 true；幂等读另有瞬时重试与熔断。
+3. **物理 DB-per-service 仍是能力态**:`AD_PG_DB`/`DERIVED_PG_DB`/`CONTENT_PG_DB`/`USER_PG_DB`/`BEHAVIOR_PG_DB` 未设时都回落共享 `recsys`；当前 `apps` profile 没有强制设置这些库名。
+4. **事件驱动 catalog 是 opt-in**:advertiser publisher、ad-serving consumer 与 `catalog.source=replica` 默认不开；未激活时 ad-serving 仍通过共享/分片数据源读广告目录。
 
 ## 9. gRPC vs OpenFeign(东西向选型对照)
 
@@ -110,7 +110,7 @@ Kafka ad-catalog-events ─► ad-serving AdCatalogEventConsumer
 
 - **本项目为什么东西向选 gRPC**:rec-engine→ad-serving 是**内部、高频(每次 feed 混排都拉广告)、延迟敏感**路径,二进制 + HTTP/2 长连接比 HTTP/JSON 省序列化与连接开销;`.proto` 强契约天然契合"query 理解 / 实验分桶留 rec-engine 单一事实源"的边界(见 §4)。
 - **什么时候 Feign/REST 更合适**:管理面 / 低频 / 要人可读的调用——如 `recsys-advertiser` 写侧、对外接口。本项目对外仍走 gateway 的 REST,只把核心钱路的内部调用切 gRPC——**混用是常态**。
-- **代价(对应 §8 缺口)**:gRPC 的服务发现 / 负载均衡 / 鉴权都要自接——本项目默认用 `static://` / 容器 DNS,`discovery://` 客户端 LB 与服务端鉴权拦截器均 opt-in / 待接线;而 Feign + Spring Cloud LoadBalancer 开箱即用。这正是"**gRPC 用生态成本换性能**"的具体体现。
+- **代价**:gRPC 的服务发现 / 负载均衡 / 鉴权需要显式接入。本项目已接 `static://`/`discovery:///` 目标、Nacos 客户端 LB、deadline、HMAC 客户端/服务端拦截器和熔断；运维复杂度仍高于 Feign + Spring Cloud LoadBalancer。这正是"**gRPC 用生态成本换性能**"的具体体现。
 
 ## 10. 面试要点
 

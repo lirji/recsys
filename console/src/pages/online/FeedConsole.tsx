@@ -1,30 +1,37 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Input, InputNumber, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Input, InputNumber, Space, Statistic, Tag, Typography } from 'antd';
 import { getFeed } from '../../api/feed';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
-import { useGlobalUser } from '../../hooks/useGlobalUser';
+import { useDebugParams } from '../../hooks/useDebugParams';
 import { useItemMeta } from '../../hooks/useItemMeta';
 import { AppstoreOutlined } from '@ant-design/icons';
 import RecallTags from '../../components/explain/RecallTags';
 import FunnelBand from '../../components/funnel/FunnelBand';
 import EmptyState from '../../components/EmptyState';
 import PageHeader from '../../components/PageHeader';
+import DebugField from '../../components/debug/DebugField';
 import { deriveFeedStages } from '../../components/funnel/derive';
 import { channelColor } from '../../components/explain/channelColors';
 import { ACCENTS, BRAND, STATUS, hexOfPreset } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
+type FeedParams = { userId: number; size: number; scene: string; q: string };
+
 export default function FeedConsole() {
-  const { userId, scene } = useGlobalUser();
-  const { message } = App.useApp();
-  const [size, setSize] = useState(12);
-  const [q, setQ] = useState('');
+  const { applied, setApplied, userId, scene } = useDebugParams<FeedParams>({
+    userId: 1,
+    size: 12,
+    scene: 'feed',
+    q: '',
+  });
+  const [size, setSize] = useState(applied.size);
+  const [q, setQ] = useState(applied.q);
 
   const query = useQuery({
-    queryKey: ['feed'],
-    queryFn: () => getFeed({ q, userId, size, scene }),
-    enabled: false,
+    queryKey: queryKeys.feed(applied),
+    queryFn: () => getFeed(applied),
   });
 
   const entries = query.data?.entries ?? [];
@@ -35,28 +42,27 @@ export default function FeedConsole() {
   const flowing = !!query.data && !query.isFetching;
 
   const run = () => {
-    query.refetch().then((r) => {
-      if (r.data && r.data.entries.length === 0) message.info('feed 为空');
-    });
+    setApplied({ userId, size, scene, q });
   };
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
-        title="混排 Feed 调试台"
+        title="混排 Feed"
         accent={ACCENTS.rerank}
-        description="自然推荐 + 广告竞价按 Ad Load 位次/密度混排,带频控与「赞助」标记。"
+        description="自然结果与广告按位次混排。"
       />
       <Card size="small" bordered={false}>
         <Space wrap>
-          <span>size</span>
-          <InputNumber min={1} max={100} value={size} onChange={(v) => v && setSize(v)} />
-          <span>q(可选)</span>
-          <Input allowClear value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} onPressEnter={run} />
+          <DebugField label="条数">
+            <InputNumber min={1} max={100} value={size} onChange={(v) => v && setSize(v)} />
+          </DebugField>
+          <DebugField label="查询词">
+            <Input allowClear placeholder="可选" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} onPressEnter={run} />
+          </DebugField>
           <Button type="primary" loading={query.isFetching} onClick={run}>
             拉取混排 Feed
           </Button>
-          <Typography.Text type="secondary">userId={userId} · scene={scene}</Typography.Text>
         </Space>
       </Card>
 
@@ -71,19 +77,14 @@ export default function FeedConsole() {
         />
       </Space>
 
-      <FunnelBand
-        dense
-        stages={stages}
-        flowing={flowing}
-        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
-      />
-
       <Card
         title={`Feed (${entries.length})`}
         extra={query.data ? <TracePanel traceId={query.data.traceId} requestId={query.data.requestId} raw={query.data} /> : null}
       >
         {query.isError ? (
           <Alert type="error" message={toApiError(query.error).message} showIcon />
+        ) : query.isFetching && !query.data ? (
+          <Typography.Text type="secondary">加载中…</Typography.Text>
         ) : entries.length === 0 ? (
           <EmptyState
             icon={<AppstoreOutlined />}
@@ -139,6 +140,15 @@ export default function FeedConsole() {
           </Space>
         )}
       </Card>
+
+      <FunnelBand
+        dense
+        collapsible
+        defaultOpen={false}
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
     </Space>
   );
 }

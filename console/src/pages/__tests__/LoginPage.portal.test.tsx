@@ -108,6 +108,21 @@ describe('LoginPage portal auto-login', () => {
     expect(mocks.signInOidc).toHaveBeenCalledWith('/advertiser/5');
   });
 
+  it('router state.from 外链被清洗,登录跳回 /overview', async () => {
+    render(
+      <AntdApp>
+        <MemoryRouter
+          initialEntries={[{ pathname: '/login', state: { from: { pathname: '//evil.com', search: '', hash: '' } } }]}
+        >
+          <LoginPage />
+        </MemoryRouter>
+      </AntdApp>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /使用统一身份登录/ }));
+    await waitFor(() => expect(mocks.signInOidc).toHaveBeenCalledTimes(1));
+    expect(mocks.signInOidc).toHaveBeenCalledWith('/overview');
+  });
+
   it('legacy 模式即使带合法 portal 参数也不自动发起 OIDC', async () => {
     mocks.authMode = 'legacy';
     render(

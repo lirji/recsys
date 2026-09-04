@@ -31,7 +31,7 @@ P(子集) ∝ det(L_子集)
 
 ## 4. 已看过滤
 
-重排前有 `SeenFilter`(`recsys.filter.seen-enabled`):过滤用户已曝光/交互物品。种子来自 Redis `seen:{user}`(Kafka `behavior-events` → `SeenItemsConsumer` 物化)。**若过滤后候选为空,放弃过滤而非返回空**(可用性优先)。
+重排前有 `SeenItemsFilter`(`recsys.filter.seen-enabled`):过滤用户已真实交互物品(CLICK/LIKE/PLAY/RATING，不含 IMPRESSION)。`SeenItemsSource` 默认为 `db`(直读 `user_behavior` 全部历史真实交互)；切到 `replica` 时才读 Redis `seen:{user}`(Kafka `behavior-events` → `SeenItemsConsumer` 物化)。**若过滤后候选为空,放弃过滤而非返回空**(可用性优先)。
 
 ## 5. 踩坑
 

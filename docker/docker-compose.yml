@@ -369,6 +369,8 @@ services:
       OTLP_ENDPOINT: "${OTLP_ENDPOINT:-http://recsys-tempo:4318/v1/traces}"
       # gRPC 端口(net.devh);rec-engine 经容器 DNS ad-serving:9095 连
       GRPC_SERVER_PORT: 9095
+      # DCO 开了才会在搜索广告结果里填 creativeId(默认关则 creativeId=0,前端不展示)
+      AD_DCO_ENABLED: "${AD_DCO_ENABLED:-false}"
     networks:
       - default
       - dev-infra

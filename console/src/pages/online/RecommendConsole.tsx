@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Typography } from 'antd';
 import { getRecommend } from '../../api/recommend';
+import { queryKeys } from '../../api/queryKeys';
 import { makeEvent, reportBehavior } from '../../api/behavior';
 import { toApiError } from '../../api/client';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
@@ -14,6 +15,7 @@ import { ResultRowsSkeleton } from '../../components/Skeletons';
 import EmptyState from '../../components/EmptyState';
 import PageHeader from '../../components/PageHeader';
 import HistoryDrawer from '../../components/debug/HistoryDrawer';
+import DebugField from '../../components/debug/DebugField';
 import ResultDiff from '../../components/debug/ResultDiff';
 import FunnelBand from '../../components/funnel/FunnelBand';
 import { deriveRecStages } from '../../components/funnel/derive';
@@ -59,7 +61,7 @@ export default function RecommendConsole() {
   };
 
   const query = useQuery({
-    queryKey: ['recommend', applied],
+    queryKey: queryKeys.recommend(applied),
     // 调试台默认带 explain=true:拿真实逐阶段计数 + 打分分解(explain 请求后端旁路缓存)。
     queryFn: () => getRecommend({ ...applied, explain: true }),
   });
@@ -115,9 +117,9 @@ export default function RecommendConsole() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
-        title="推荐调试台"
+        title="推荐"
         accent={ACCENTS.recall}
-        description="个性化推荐链路:多通道召回 → 排序 → 融合 → 重排 → 截断。带 q 走 query 驱动。"
+        description="召回 → 排序 → 重排。带查询词则走 query 驱动。"
         extra={
           <Space>
             <Button icon={<ShareAltOutlined />} onClick={shareLink}>
@@ -131,32 +133,24 @@ export default function RecommendConsole() {
       />
       <Card size="small" bordered={false}>
         <Space wrap>
-          <span>size</span>
-          <InputNumber min={1} max={200} value={size} onChange={(v) => v && setSize(v)} />
-          <span>q(可选,带 q 走 query 驱动)</span>
-          <Input
-            allowClear
-            placeholder="留空=纯个性化推荐"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ width: 240 }}
-            onPressEnter={run}
-          />
+          <DebugField label="条数">
+            <InputNumber min={1} max={200} value={size} onChange={(v) => v && setSize(v)} />
+          </DebugField>
+          <DebugField label="查询词">
+            <Input
+              allowClear
+              placeholder="可选,带词则走搜索式推荐"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: 240 }}
+              onPressEnter={run}
+            />
+          </DebugField>
           <Button type="primary" loading={query.isFetching} onClick={run}>
             获取推荐
           </Button>
-          <Typography.Text type="secondary">
-            userId={userId} · scene={scene}
-          </Typography.Text>
         </Space>
       </Card>
-
-      <FunnelBand
-        dense
-        stages={stages}
-        flowing={flowing}
-        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
-      />
 
       <Card
         title={`推荐结果 (${items.length})`}
@@ -203,6 +197,15 @@ export default function RecommendConsole() {
           </Space>
         )}
       </Card>
+
+      <FunnelBand
+        dense
+        collapsible
+        defaultOpen={false}
+        stages={stages}
+        flowing={flowing}
+        status={flowing ? { color: STATUS.online, label: '在线', pulse: true } : undefined}
+      />
 
       <HistoryDrawer<RecParams, RecommendResponse>
         open={drawerOpen}

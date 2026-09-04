@@ -30,7 +30,7 @@ v1 规则  →  LightGBM(GBDT)  →  DeepFM(FM+DNN)  →  DCN v2(显式高阶交
 | `sim` | `SimRankService` | `model_sim.onnx`+schema | 4-input(逐候选 GSU 子序列) | `ctr`+`cvr` | GSU 类目硬检索 + ESU,长序列(500) |
 | 粗排 | `PreRankService`(常驻) | `TowerScorer`(可选) | recallScore+pop+aff(+tower) | 截断列表 | 精排前轻量过滤,可叠双塔学习分 |
 
-> **PLE 是本项目新增的第 9 个策略**(CLAUDE.md 尚未收录):`PleRankService` + `train_ple.py`,是 MMoE 的镜像,把专家分成"共享专家 + 每任务专属专家",缓解多任务负迁移(跷跷板效应)。
+> **PLE 是第 9 个策略**:`PleRankService` + `train_ple.py`,是 MMoE 的镜像,把专家分成"共享专家 + 每任务专属专家",缓解多任务负迁移(跷跷板效应)。
 
 ## 3. 三大在线/离线契约(重中之重)
 
@@ -52,7 +52,7 @@ v1 规则  →  LightGBM(GBDT)  →  DeepFM(FM+DNN)  →  DCN v2(显式高阶交
 ### 3.3 `SequenceEncoder` —— 行为序列(DIN/DIEN/SIM)
 - 固定 `seq_len`,右侧 padding(oldest→newest),`bucket=floorMod(itemId,itemBuckets)`。
 - 返回 `(seq, len)`,padding 位置由 `seq_len` 掩码(空序列 → pooled 向量强制 0,冷用户不出垃圾值)。
-- **在线序列来源**(R2):Redis `rt:user:seq:{id}`(实时序列)→ DB 回退 + cache-aside(TTL 3600)。离线由 `gen-samples-mt` 输出 as-of 序列(当前事件前快照,无泄漏)。
+- **在线序列来源**(R2):Redis `rt:user:seq:{id}` 优先→ DB 回退 + cache-aside(TTL 3600)。当前 Flink 作业不写该 key；缓存未命中时由 DIN/DIEN 从 DB 按事件时间重建并回填。离线由 `gen-samples-mt` 输出 as-of 序列(当前事件前快照,无泄漏)。
 
 契约由 golden test 守护:`RankEncoderContractGoldenTest`、`SparseFeatureEncoderTest`、`SequenceEncoderTest`。
 

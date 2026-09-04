@@ -141,9 +141,7 @@ public class AdvertiserService {
             throw badRequest("item " + req.itemId() + " 不存在");
         }
         String optType = normalizeOptType(req.optimizationType());
-        if ("OCPC".equals(optType) && (req.targetCpa() == null || req.targetCpa() <= 0)) {
-            throw badRequest("optimizationType=OCPC 时 targetCpa 必填且为正");
-        }
+        requireTargetCpa(optType, req.targetCpa());
         String title = req.title() == null ? "" : req.title();
         double quality = req.qualityScore() == null ? 1.0 : req.qualityScore();
         String status = normalizeAdStatus(req.status(), "active");
@@ -152,7 +150,7 @@ public class AdvertiserService {
         CreativeReview.Decision review = CreativeReview.machineReview(title, req.landingUrl());
         // 主键由 DB IDENTITY 生成回传;落地页未提供时,用生成后的 adId 拼默认值
         long adId = repo.insertAd(advertiserId, req.itemId(), title, req.landingUrl(), quality, status,
-                review.status(), optType, req.targetCpa());
+                review.status(), optType, req.targetCpa(), normalizeAudienceId(req.audienceId()));
         repo.setAdReview(adId, review.status(), review.reason());
         if (req.landingUrl() == null) {
             repo.setAdLandingUrl(adId, "https://example.com/ad/" + adId);
@@ -219,8 +217,12 @@ public class AdvertiserService {
         }
         String optType = req.optimizationType() == null ? null : normalizeOptType(req.optimizationType());
         String status = req.status() == null ? null : normalizeAdStatus(req.status(), old.status());
+        String effectiveOpt = optType != null ? optType : old.optimizationType();
+        Double effectiveCpa = req.targetCpa() != null ? req.targetCpa() : old.targetCpa();
+        requireTargetCpa(effectiveOpt, effectiveCpa);
+        Long audience = req.audienceId() == null ? old.audienceId() : normalizeAudienceId(req.audienceId());
         repo.updateAd(adId, newItem, req.title(), req.landingUrl(), req.qualityScore(), status,
-                optType, req.targetCpa());
+                optType, req.targetCpa(), audience);
         // 换关联 item → 重拷向量
         if (newItem != null && newItem != old.itemId()) {
             repo.copyEmbeddingFromItem(adId, newItem);
@@ -295,7 +297,7 @@ public class AdvertiserService {
 
     private AdView assembleAdView(AdvertiserRepository.AdRow r) {
         return new AdView(r.adId(), r.advertiserId(), r.itemId(), r.title(), r.landingUrl(), r.qualityScore(),
-                r.status(), r.optimizationType(), r.targetCpa(), r.hasEmbedding(),
+                r.status(), r.optimizationType(), r.targetCpa(), r.audienceId(), r.hasEmbedding(),
                 repo.listBidwords(r.adId()), repo.listCreatives(r.adId()));
     }
 
@@ -476,10 +478,22 @@ public class AdvertiserService {
             return "CPC";
         }
         String v = s.trim().toUpperCase();
-        if (!v.equals("CPC") && !v.equals("OCPC")) {
-            throw badRequest("optimizationType 仅支持 CPC / OCPC");
+        if (!v.equals("CPC") && !v.equals("OCPC") && !v.equals("CPM") && !v.equals("OCPM") && !v.equals("CPA")) {
+            throw badRequest("optimizationType 仅支持 CPC / OCPC / CPM / OCPM / CPA");
         }
         return v;
+    }
+
+    private static void requireTargetCpa(String optType, Double targetCpa) {
+        if (("OCPC".equals(optType) || "OCPM".equals(optType) || "CPA".equals(optType))
+                && (targetCpa == null || targetCpa <= 0)) {
+            throw badRequest("optimizationType=" + optType + " 时 targetCpa 必填且为正");
+        }
+    }
+
+    /** 空/非正 → 不定向;正数才写入 audience_id。 */
+    private static Long normalizeAudienceId(Long audienceId) {
+        return audienceId == null || audienceId <= 0 ? null : audienceId;
     }
 
     private static String normalizeMatchType(String s) {

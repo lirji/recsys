@@ -7,7 +7,7 @@
 `QueryUnderstandingServiceImpl.parse` → `StructuredQuery`:
 ```
 归一化(QueryTokens,与离线 idf 作业同源分词)
-  → 可选 LLM 增强(拼写纠错 / 意图 / 改写扩展,默认关 llm.enabled=false)
+  → 可选 LLM 增强(拼写纠错 / 意图 / 改写扩展)
   → 分词 + IDF 加权(TermWeight)
   → 意图识别(genre 命中 3.0·w + 标题投票)
   → 向量化(可选,失败降级 null)
@@ -15,6 +15,7 @@
 ```
 - `GET /api/query/parse` 调试端点。
 - `QueryProperties`:maxTerms 16,intentMinScore 0.1,maxIntents 3。
+- 实际有两层门:`recsys.query.llm.enabled` 默认 true，但只有 `recsys.llm.enabled=true` 且 API key 就绪时才会装配 `GeminiChatClient`；因此默认整体仍走纯词法。
 
 ## 2. IDF 词项加权(R8,`IdfWeighter`)
 
@@ -26,7 +27,7 @@
 
 ## 3. LLM Query 理解(可选)
 
-`recsys.llm.enabled=true` + key 时,`recsys-query` 经 `ObjectProvider<LlmClient>` 可选注入 `GeminiChatClient` 做纠错/意图/改写(强制 JSON 输出,Redis 缓存)。未就绪则纯词法兜底。生成式增强锦上添花,不是硬依赖。
+`recsys.llm.enabled=true` + key 时,`recsys-query` 经 `ObjectProvider<LlmClient>` 可选注入 `GeminiChatClient` 做纠错/意图/改写(强制 JSON 输出,Redis 缓存)。调用带重试与 `gemini-llm` 熔断；未就绪、失败或熔断都回退纯词法。生成式增强锦上添花,不是硬依赖。
 
 ## 4. 搜索场景的融合覆盖
 
@@ -52,7 +53,7 @@
 3. **搜索仍走个性化热度**——不覆盖融合权重的话,query 相关性会被 HOT/CF 压过,搜索体验差。
 4. **冷用户带 query 被强多样性覆盖**——要 `bypass-cold-start`,否则搜索结果被打散。
 5. **把 query IDF 当成 tsvector 字段权重**——静态 A/B/C/D 权重无法表达每次查询不同的 IDF；应在候选评分阶段使用 `TermWeight`。
-6. ~~**忽略 FTS 词干口径**~~——已修：df 按 `title_tsv` lexeme，raw alias 和未知词形都映射到 PostgreSQL `english` canonical lexeme。
+6. **FTS 词干口径只能有一个真源**——df 按 `title_tsv` lexeme，raw alias 和未知词形都映射到 PostgreSQL `english` canonical lexeme，不要再用 Java stemmer 近似。
 
 ## 7. 面试要点
 

@@ -48,14 +48,22 @@ public class ExperimentAdminController {
     @GetMapping
     public Map<String, Object> current() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("staticEnabled", props.isEnabled());
+        boolean staticEnabled = props.isEnabled();
+        Boolean globalOv = override.globalEnabled();
+        out.put("staticEnabled", staticEnabled);
+        out.put("enabled", globalOv != null ? globalOv : staticEnabled);
         Map<String, Object> layers = new LinkedHashMap<>();
         props.getLayers().forEach((name, cfg) -> {
             Map<String, Object> l = new LinkedHashMap<>();
             l.put("salt", cfg.getSalt());
+            Boolean layerOv = override.layerEnabled(name);
+            l.put("enabled", layerOv != null ? layerOv : Boolean.TRUE);
             Map<String, Integer> vs = new LinkedHashMap<>();
             if (cfg.getVariants() != null) {
-                cfg.getVariants().forEach(v -> vs.put(v.getName(), v.getWeight()));
+                cfg.getVariants().forEach(v -> {
+                    Integer wOv = override.variantWeight(name, v.getName());
+                    vs.put(v.getName(), wOv != null ? wOv : v.getWeight());
+                });
             }
             l.put("variants", vs);
             layers.put(name, l);

@@ -1,6 +1,6 @@
 # 前端系统总览页技术方案(已落地,历史存档)
 
-> **状态(2026-07)**:本方案已实施完成(commit 69af5dcb:`console/src/pages/project/ProjectOverview.tsx` + `recsys-console` system BFF,`/` 默认跳 `/overview`);后续 84af86d6 又在其上扩展了召回沙盘 `/recall-lab`、策略对比台 `/strategy-lab`、桶对比大盘 `/bucket-board` 等调试台页面(本方案未含)。菜单/路由现状以 `console/src/router.tsx` 为准,本文仅作设计存档。
+> **状态（2026-09-01 复核）**:本方案已实施完成（`console/src/pages/project/ProjectOverview.tsx` + `recsys-console` system BFF，`/` 默认跳 `/overview`）。此后新增了 Prometheus 实时指标 `/api/console/system/metrics`、用户 360/诊断/告警页、召回沙盘、策略对比台、桶对比大盘与 OIDC/legacy 统一登录守卫。本文保留首版决策背景，并在下文标注 as-built 差异；菜单/路由最终以 `console/src/router.tsx` 为准。
 
 ## 目标
 
@@ -9,7 +9,7 @@
 ## 非目标
 
 - 不新建第二个前端工程。
-- 不引入登录、权限、租户、审计等生产运营后台能力。
+- 首版不在总览页内实现登录、租户或审计业务；**as-built** 已在应用外层接入 OIDC/legacy 登录与 `RequireAuth`，总览页本身仍无权限写操作。
 - 不在总览页提供启动、停止、删除、训练、数据清空等高风险写操作。
 - 不让浏览器直连 `8081/8082/8083/...` 等内部服务端口。
 - 不运行时解析 `pom.xml` 或 YAML 作为首版核心逻辑。
@@ -37,15 +37,24 @@
 /              -> /overview
 /*             -> /overview
 /overview      -> 系统总览
+/user360       -> 用户 360
+/diagnosis     -> 系统诊断
+/alerts        -> 告警
 /recommend     -> 推荐调试
 /search        -> 搜索调试
 /search-ads    -> 搜索广告调试
 /feed          -> 混排 Feed
 /query         -> Query 理解
+/recall-lab    -> 召回沙盘
+/strategy-lab  -> 策略对比台
 /experiment    -> 实验管理
+/bucket-board  -> 桶对比大盘
 /user-interests -> 冷启动兴趣
 /advertiser    -> 广告主后台
+/advertiser/:id -> 广告主详情（含广告/报表子路由）
 /reports       -> 离线报表
+/login         -> 登录（全屏，不经 AppLayout）
+/callback      -> OIDC 回调（在路由守卫之前处理）
 ```
 
 菜单结构：
@@ -105,6 +114,7 @@ ProjectOverview
 GET /api/console/system/overview
 GET /api/console/system/modules
 GET /api/console/system/health
+GET /api/console/system/metrics
 GET /api/console/system/apis
 GET /api/console/system/commands
 ```
@@ -114,6 +124,7 @@ GET /api/console/system/commands
 - `overview` 只返回静态 manifest，不触发健康探测。
 - `modules/apis/commands` 返回静态 manifest。
 - `health` 独立动态探测，前端 15 秒刷新。
+- `metrics` 经 `SystemMetricsService` 查 Prometheus；观测栈不可用时返回 `available=false` 与空指标，不应拖垮总览页。
 - `checkedAt` 为毫秒时间戳。
 - `url` 可为空，job 类服务不提供 URL。
 - `message` 只返回脱敏说明，不返回 Actuator details。
@@ -164,6 +175,7 @@ GET /api/console/system/commands
 - `recsys-console/src/main/java/com/recsys/console/system/SystemOverviewService.java`：静态 manifest。
 - `recsys-console/src/main/java/com/recsys/console/system/SystemHealthProperties.java`：健康探测配置。
 - `recsys-console/src/main/java/com/recsys/console/system/SystemHealthService.java`：并行健康探测。
+- `recsys-console/src/main/java/com/recsys/console/system/SystemMetricsService.java`：Prometheus 实时指标读取与降级。
 - `recsys-console/src/main/java/com/recsys/console/system/SystemController.java`：BFF 控制器。
 - `recsys-console/src/main/resources/application.yml`：默认健康探测目标。
 - `recsys-console/src/test/...`：后端契约和健康探测测试。
@@ -220,8 +232,8 @@ GET /api/console/system/commands
 - 若健康探测导致性能问题，可临时保留静态 manifest，只关闭 `/health` 动态探测。
 - 不回滚或覆盖广告、广告投放、离线作业等非本任务改动。
 
-## 开放问题
+## 开放问题与已决议项
 
-- 是否需要纳入 Redis、Postgres、Kafka、Nacos 的健康状态。
-- 是否需要支持 local/dev/staging 环境切换。
-- 是否需要后续加入权限、登录和操作审计。
+- Redis/Postgres/Kafka/Nacos 仍未作为独立健康行纳入总览；当前以应用健康 + Prometheus 指标间接观测。
+- 环境差异通过 `SystemHealthProperties`、`PROMETHEUS_URL` 与 Compose/env 覆盖处理，还没有前端 local/dev/staging 环境切换器。
+- 登录与租户校验已在应用外层落地；操作审计与 console BFF 更细粒度读权限仍是后续项。

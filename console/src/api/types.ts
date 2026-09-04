@@ -1,4 +1,5 @@
-// 后端 DTO 的 TS 镜像。字段名/顺序严格对齐 recsys-common 与 recsys-advertiser 的 record 定义。
+// 后端 DTO 的 TS 镜像(无 OpenAPI codegen:网关/多模块 record 未出统一 spec)。
+// 字段名对齐 Java record;改契约时同步 recsys-common / recsys-advertiser / recsys-ad-common。
 
 // ===== 在线推荐 / 搜索 =====
 export interface RecommendItem {
@@ -137,12 +138,23 @@ export interface BehaviorEvent {
 // ===== 实验管理 =====
 export interface ExperimentLayer {
   salt?: string;
+  /** 生效开关:Redis 覆盖优先,缺省 true */
+  enabled?: boolean;
   variants: Record<string, number>;
 }
 export interface ExperimentSnapshot {
   staticEnabled: boolean;
+  /** 生效全局开关:覆盖优先,否则等于 staticEnabled */
+  enabled?: boolean;
   staticLayers: Record<string, ExperimentLayer>;
   overrides: Record<string, unknown>;
+}
+export interface ExperimentWriteResult {
+  ok: boolean;
+  reason?: string;
+  field?: string;
+  value?: string;
+  cleared?: boolean;
 }
 
 // ===== 广告主后台 =====
@@ -198,18 +210,21 @@ export interface AdView {
   status: string;
   optimizationType: string;
   targetCpa?: number | null;
+  audienceId?: number | null;
   hasEmbedding: boolean;
   bidwords: BidwordView[];
   creatives: CreativeView[];
 }
+export type BillingType = 'CPC' | 'OCPC' | 'CPM' | 'OCPM' | 'CPA';
 export interface AdUpsert {
   itemId?: number | null;
   title: string;
   landingUrl?: string;
   qualityScore?: number | null;
   status?: string;
-  optimizationType?: string; // CPC/OCPC
+  optimizationType?: BillingType | string;
   targetCpa?: number | null;
+  audienceId?: number | null;
   bidwords?: BidwordUpsert[];
 }
 
@@ -315,6 +330,20 @@ export interface SystemMetrics {
   recommendQps: number | null;
   adP99Ms: number | null;
   checkedAt: number;
+}
+
+export interface SystemJobStatus {
+  name: string;
+  status: string;
+  updatedAt: string | null;
+  detail: string | null;
+  raw: string | null;
+}
+export interface SystemOps {
+  redisAvailable: boolean;
+  message: string | null;
+  tuning: Record<string, string>;
+  jobs: SystemJobStatus[];
 }
 
 // ===== 用户360(/api/console/user/{id}) =====

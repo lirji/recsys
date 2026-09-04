@@ -24,3 +24,14 @@ export async function postAdConversion(p: {
 }): Promise<void> {
   await http.post('/api/ad/conversion', null, { params: p });
 }
+
+export async function postAdOutcome(p: {
+  eventId: string;
+  advertiserId: number;
+  userId: number;
+  objective?: string;
+  value?: number;
+}): Promise<boolean> {
+  const { data } = await http.post<boolean>('/api/ad/outcome', null, { params: p });
+  return data;
+}

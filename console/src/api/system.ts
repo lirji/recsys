@@ -5,6 +5,7 @@ import type {
   SystemCommandGroup,
   SystemMetrics,
   SystemModule,
+  SystemOps,
   SystemOverview,
 } from './types';
 
@@ -35,5 +36,10 @@ export async function getSystemApis(): Promise<SystemApiEndpoint[]> {
 
 export async function getSystemCommands(): Promise<SystemCommandGroup[]> {
   const { data } = await http.get<SystemCommandGroup[]>('/api/console/system/commands');
+  return data;
+}
+
+export async function getSystemOps(): Promise<SystemOps> {
+  const { data } = await http.get<SystemOps>('/api/console/system/ops');
   return data;
 }

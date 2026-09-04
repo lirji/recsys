@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, Col, Input, InputNumber, Row, Space, Typography } from 'antd';
+import { Alert, Button, Card, Col, Input, InputNumber, Row, Select, Space } from 'antd';
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
@@ -9,11 +9,13 @@ import {
   PartitionOutlined,
 } from '@ant-design/icons';
 import { getRecommend } from '../../api/recommend';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
-import { useGlobalUser } from '../../hooks/useGlobalUser';
-import { useUrlParams } from '../../hooks/useUrlParams';
+import { useDebugParams } from '../../hooks/useDebugParams';
 import { useItemMeta } from '../../hooks/useItemMeta';
+import { RECALL_CHANNELS, decodeRecallChannels, encodeRecallChannels } from '../../recall/channels';
 import PageHeader from '../../components/PageHeader';
+import DebugField from '../../components/debug/DebugField';
 import EmptyState from '../../components/EmptyState';
 import StatCard from '../../components/StatCard';
 import { ResultRowsSkeleton } from '../../components/Skeletons';
@@ -23,37 +25,40 @@ import ChannelBreakdown, { deriveChannelStats } from '../../components/explain/C
 import ChannelFilterBar from '../../components/explain/ChannelFilterBar';
 import { ACCENTS } from '../../theme/tokens';
 
-type Params = { userId: number; size: number; scene: string; q: string };
+type Params = { userId: number; size: number; scene: string; q: string; recallChannels: string };
 
 // 召回通道沙盘:把推荐链路的召回阶段拆成 12 路逐通道可观测 —— 每路召回多少、去重贡献多少、
 // 最终存活多少、哪些 item 被多路协同命中。复用 ?explain=true 的 channelRecall/channelContribution + recallFrom。
+// recallChannels 非空时走后端调试覆盖,只跑指定通道(对齐 eval --recall-only)。
 export default function RecallLab() {
-  const { userId, scene, setUserId, setScene } = useGlobalUser();
-  const { initial, write } = useUrlParams<Params>({ userId, size: 30, scene, q: '' });
+  const { initial, applied, setApplied, userId, scene } = useDebugParams<Params>({
+    userId: 1,
+    size: 30,
+    scene: 'feed',
+    q: '',
+    recallChannels: '',
+  });
   const [size, setSize] = useState(initial.size);
   const [q, setQ] = useState(initial.q);
-  const [applied, setApplied] = useState<Params>(initial);
+  const [channels, setChannels] = useState<string[]>(decodeRecallChannels(initial.recallChannels));
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
 
-  // URL 带参进入时同步全局 userId/scene(一次);applied 变化写回 URL → 可分享。
-  useEffect(() => {
-    if (initial.userId !== userId) setUserId(initial.userId);
-    if (initial.scene !== scene) setScene(initial.scene);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    write(applied);
-  }, [applied, write]);
-
   const query = useQuery({
-    queryKey: ['recall-lab', applied],
+    queryKey: queryKeys.recallLab(applied),
     queryFn: () =>
-      getRecommend({ userId: applied.userId, size: applied.size, scene: applied.scene, q: applied.q, explain: true }),
+      getRecommend({
+        userId: applied.userId,
+        size: applied.size,
+        scene: applied.scene,
+        q: applied.q,
+        explain: true,
+        recallChannels: applied.recallChannels || undefined,
+      }),
   });
 
   const run = () => {
     setSelectedChannel(null);
-    setApplied({ userId, size, scene, q });
+    setApplied({ userId, size, scene, q, recallChannels: encodeRecallChannels(channels) });
   };
 
   const items = query.data?.items ?? [];
@@ -73,33 +78,39 @@ export default function RecallLab() {
       <PageHeader
         title="召回通道沙盘"
         accent={ACCENTS.recall}
-        description="拆解多通道召回:逐路原始召回 → 去重贡献 → 最终存活,以及 item 被哪几路协同命中。点通道可过滤结果。"
+        description="指定通道召回,或全量后再按通道过滤。"
         extra={query.data ? <TracePanel traceId={query.data.traceId} raw={query.data} /> : null}
       />
 
       <Card size="small" bordered={false}>
         <Space wrap size={[16, 8]}>
-          <Space size={8}>
-            <Typography.Text type="secondary">size</Typography.Text>
+          <DebugField label="条数">
             <InputNumber min={1} max={200} value={size} onChange={(v) => v && setSize(v)} />
-          </Space>
-          <Space size={8}>
-            <Typography.Text type="secondary">q(可选,带 q 走 query 驱动)</Typography.Text>
+          </DebugField>
+          <DebugField label="查询词">
             <Input
               allowClear
-              placeholder="留空=纯个性化推荐"
+              placeholder="可选"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               style={{ width: 240 }}
               onPressEnter={run}
             />
-          </Space>
+          </DebugField>
+          <DebugField label="召回通道">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="空=实验分桶全量"
+              value={channels}
+              onChange={setChannels}
+              style={{ minWidth: 280 }}
+              options={RECALL_CHANNELS.map((c) => ({ value: c, label: c }))}
+            />
+          </DebugField>
           <Button type="primary" icon={<PartitionOutlined />} loading={query.isFetching} onClick={run}>
             分解召回
           </Button>
-          <Typography.Text type="secondary" className="mono">
-            userId={userId} · scene={scene}
-          </Typography.Text>
         </Space>
       </Card>
 

@@ -11,9 +11,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Select,
   Space,
-  Spin,
   Steps,
   Tag,
 } from 'antd';
@@ -27,12 +25,16 @@ import {
   submitReview,
   updateAd,
 } from '../../api/advertiser';
+import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
 import type { AdUpsert, AdView } from '../../api/types';
 import { StatusTag } from '../../components/adv/statusTags';
+import AdBillingFields from '../../components/adv/AdBillingFields';
 import CreativePanel from '../../components/adv/CreativePanel';
 import BidwordPanel from '../../components/adv/BidwordPanel';
 import CollapsibleCard from '../../components/CollapsibleCard';
+import PageHeader from '../../components/PageHeader';
+import { ResultRowsSkeleton } from '../../components/Skeletons';
 import { ACCENTS } from '../../theme/tokens';
 
 export default function AdDetail() {
@@ -40,7 +42,7 @@ export default function AdDetail() {
   const id = Number(adId);
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const query = useQuery({ queryKey: ['ad', id], queryFn: () => getAd(id) });
+  const query = useQuery({ queryKey: queryKeys.ad(id), queryFn: () => getAd(id) });
 
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -56,6 +58,7 @@ export default function AdDetail() {
         status: query.data.status,
         optimizationType: query.data.optimizationType,
         targetCpa: query.data.targetCpa ?? undefined,
+        audienceId: query.data.audienceId ?? undefined,
       });
   }, [query.data, form]);
 
@@ -71,17 +74,18 @@ export default function AdDetail() {
 
   const submitEdit = async () => {
     const values = await form.validateFields();
-    await act(() => updateAd(id, values), '已更新广告');
+    await act(() => updateAd(id, { ...values, audienceId: values.audienceId ?? 0 }), '已更新广告');
     setEditOpen(false);
   };
 
-  if (query.isLoading) return <Spin />;
+  if (query.isLoading) return <ResultRowsSkeleton rows={5} />;
   if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
   const ad: AdView = query.data!;
   const paused = (ad.status ?? '').toLowerCase() === 'paused';
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <PageHeader title={`广告 #${ad.adId}`} accent={ACCENTS.ad} description={ad.title || '广告详情 / 审核 / 创意 / 竞价词'} />
       <Card
         title={`广告 #${ad.adId}`}
         style={{ borderLeft: `3px solid ${ACCENTS.recall}` }}
@@ -108,6 +112,7 @@ export default function AdDetail() {
             <Tag>{ad.optimizationType}</Tag>
           </Descriptions.Item>
           <Descriptions.Item label="目标 CPA">{ad.targetCpa ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="定向人群">{ad.audienceId ?? '不定向'}</Descriptions.Item>
           <Descriptions.Item label="质量度">{ad.qualityScore?.toFixed(3)}</Descriptions.Item>
           <Descriptions.Item label="向量">{ad.hasEmbedding ? <Tag color="green">有</Tag> : <Tag>无</Tag>}</Descriptions.Item>
           <Descriptions.Item label="落地页" span={2}>
@@ -167,13 +172,8 @@ export default function AdDetail() {
           <Form.Item name="landingUrl" label="落地页 URL">
             <Input />
           </Form.Item>
-          <Space size={12} style={{ display: 'flex' }}>
-            <Form.Item name="optimizationType" label="计费" style={{ flex: 1 }}>
-              <Select options={[{ value: 'CPC', label: 'CPC' }, { value: 'OCPC', label: 'OCPC' }]} />
-            </Form.Item>
-            <Form.Item name="targetCpa" label="目标 CPA" style={{ flex: 1 }}>
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
+          <Space size={12} style={{ display: 'flex' }} wrap>
+            <AdBillingFields />
             <Form.Item name="qualityScore" label="质量度" style={{ flex: 1 }}>
               <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
             </Form.Item>

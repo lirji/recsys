@@ -60,7 +60,8 @@ public class SystemOverviewService {
                 new SystemLink("混排 Feed 链路", "自然推荐和广告结果统一混排。", List.of("console /feed", "gateway", "rec-engine", "recommend", "ads", "blend"), "/feed"),
                 new SystemLink("行为采集链路", "前端行为上报到 behavior，支持在线指标和实时特征。", List.of("console actions", "gateway", "behavior", "database / kafka", "streaming"), "/recommend"),
                 new SystemLink("离线报表链路", "离线作业产出 CSV 或写库，console BFF 读取后由前端可视化。", List.of("offline jobs", "eval_report / csv", "recsys-console", "console /reports"), "/reports"),
-                new SystemLink("实时特征链路", "Flink 作业消费 Kafka 行为流，产出实时热度和用户实时偏好。", List.of("behavior", "kafka behavior-events", "recsys-streaming", "redis", "rec-engine"), null)
+                new SystemLink("实时特征链路", "Flink 作业消费 Kafka 行为流，产出实时热度和用户实时偏好。", List.of("behavior", "kafka behavior-events", "recsys-streaming", "redis", "rec-engine"), null),
+                new SystemLink("运维只读面", "热配置 recsys:tuning 与离线作业 job:status 快照。", List.of("console /ops", "recsys-console", "redis"), "/ops")
         );
     }
 

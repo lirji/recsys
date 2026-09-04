@@ -1,6 +1,7 @@
 import type { User, UserManager } from 'oidc-client-ts';
 import { AUTH_MODE, CASDOOR } from '../config/auth';
 import { getToken, type AuthUser, type Role } from '../api/auth';
+import { sanitizeInternalPath } from './portalLaunch';
 
 // Casdoor OIDC(授权码 + PKCE)薄封装:UserManager 惰性单例 + 身份派生纯函数 + 模式感知取 token。
 // oidc-client-ts 经动态 import 引入 —— legacy 默认构建首包完全不含该库(引入即安全)。
@@ -73,10 +74,9 @@ export function userFromCasdoorToken(accessToken: string | null | undefined): Au
   return { username, roles };
 }
 
-/** returnTo 消毒:仅允许站内绝对路径(防经 Casdoor state 往返的开放重定向);其余 → null。 */
+/** returnTo 消毒:与 portal 入口同一套站内路径规则(拒 //、反斜杠、控制字符)。 */
 export function sanitizeReturnTo(value: unknown): string | null {
-  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return null;
-  return value;
+  return sanitizeInternalPath(value);
 }
 
 /**

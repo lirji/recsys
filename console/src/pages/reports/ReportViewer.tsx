@@ -17,8 +17,11 @@ import DataQualityViz from '../../components/reports/viz/DataQualityViz';
 import AdQualityViz from '../../components/reports/viz/AdQualityViz';
 import AttributionViz from '../../components/reports/viz/AttributionViz';
 import DelayViz from '../../components/reports/viz/DelayViz';
+import BanditViz from '../../components/reports/viz/BanditViz';
 import ReportCompare from '../../components/reports/ReportCompare';
 import CsvTable from '../../components/reports/CsvTable';
+import PageHeader from '../../components/PageHeader';
+import { queryKeys } from '../../api/queryKeys';
 
 function renderViz(category: string, table: ReportTable) {
   switch (category) {
@@ -36,6 +39,8 @@ function renderViz(category: string, table: ReportTable) {
       return <AttributionViz table={table} />;
     case 'ad-delay':
       return <DelayViz table={table} />;
+    case 'bandit':
+      return <BanditViz table={table} />;
     default:
       return (
         <Card size="small" title="明细">
@@ -51,17 +56,17 @@ export default function ReportViewer() {
   const fileParam = search.get('file') ?? '';
   const [compareFiles, setCompareFiles] = useState<string[]>([]);
 
-  const index = useQuery({ queryKey: ['report-index'], queryFn: getReportIndex });
+  const index = useQuery({ queryKey: queryKeys.reportIndex(), queryFn: getReportIndex });
   // 按「文件名前缀派生的分类」过滤,而非后端 category —— 这样 ad-attribution 等隐藏类型也能各自成组、dispatch 到专属 viz。
   const filesOfCat = useMemo(
     () => (index.data ?? []).filter((f) => vizCategoryOf(f.fileName) === category),
     [index.data, category],
   );
-  // 未指定 file 时默认取该分类最新一份。
-  const selected = fileParam || filesOfCat[0]?.fileName || '';
+  const fileAllowed = !fileParam || filesOfCat.some((f) => f.fileName === fileParam);
+  const selected = fileAllowed ? fileParam || filesOfCat[0]?.fileName || '' : '';
 
   const fileQuery = useQuery({
-    queryKey: ['report-file', selected],
+    queryKey: queryKeys.reportFile(selected),
     queryFn: () => getReportFile(selected),
     enabled: !!selected,
   });
@@ -73,7 +78,11 @@ export default function ReportViewer() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <PageHeader title={`报表 · ${category}`} accent={ACCENTS.rank} />
       <Breadcrumb items={[{ title: <Link to="/reports">报表总览</Link> }, { title: category }]} />
+      {!fileAllowed ? (
+        <Alert type="warning" showIcon message="文件不在当前分类索引中,已拒绝请求(防路径穿越/错链)。" />
+      ) : null}
       <Space wrap>
         <span>选择文件</span>
         <Select
