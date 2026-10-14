@@ -113,7 +113,8 @@ export function deriveAdStages(ads: SponsoredAd[]): FunnelStage[] {
   const avgPctr = ads.reduce((s, a) => s + a.pctr, 0) / n;
   const avgCalib = ads.reduce((s, a) => s + a.pctrCalibrated, 0) / n;
   const maxEcpm = ads.reduce((m, a) => Math.max(m, a.ecpm), 0);
-  const sumCharged = ads.reduce((s, a) => s + a.chargedPrice, 0);
+  // 不同计费单位的报价不能相加成收入；只统计返回的有效报价条目。
+  const pricedCount = ads.filter((a) => a.chargedPrice != null && Number.isFinite(a.chargedPrice)).length;
   return [
     {
       key: 'ad-recall',
@@ -153,12 +154,12 @@ export function deriveAdStages(ads: SponsoredAd[]): FunnelStage[] {
     },
     {
       key: 'gsp',
-      label: 'GSP 计费',
-      sub: '次价拍卖 · 实收 ≤ eCPM',
+      label: '竞价定价',
+      sub: '按各自计费单位报价 · 非账本消费',
       accent: ACCENTS.gsp,
       icon: <DollarOutlined />,
       count: has ? ads.length : null,
-      metric: has ? { label: 'Σ 实收', value: fx(sumCharged, 2) } : null,
+      metric: has ? { label: '有效报价', value: pricedCount } : null,
     },
   ];
 }

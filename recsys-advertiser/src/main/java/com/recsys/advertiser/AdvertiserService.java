@@ -21,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -110,20 +111,25 @@ public class AdvertiserService {
         return authz.filterViewable(all, AdvertiserView::advertiserId);
     }
 
-    /** 用 Redis 当日已耗预算(与在线 pacing 同源)补全 spentToday / remainingBudget。 */
+    /** 旧 pacing 计数以分存储；缺失或不可读时保留未知，避免把丢失计数当作完整可用预算。 */
     private AdvertiserView enrichBudget(AdvertiserView raw) {
-        double spent = 0;
+        Double spent = null;
         try {
             String v = redis.opsForValue().get(RedisKeys.adBudget(raw.advertiserId(), LocalDate.now().format(DAY)));
             if (v != null) {
-                spent = Double.parseDouble(v);
+                long cents = Long.parseLong(v);
+                if (cents >= 0) {
+                    spent = BigDecimal.valueOf(cents, 2).doubleValue();
+                } else {
+                    log.warn("当日预算计数为负，展示未知 adv={}", raw.advertiserId());
+                }
             }
         } catch (Exception e) {
             log.debug("读当日已耗预算失败 adv={}: {}", raw.advertiserId(), e.getMessage());
         }
-        double remaining = Math.max(0, raw.dailyBudget() - spent);
+        Double remaining = spent == null ? null : round2(Math.max(0, raw.dailyBudget() - spent));
         return new AdvertiserView(raw.advertiserId(), raw.name(), raw.dailyBudget(), raw.status(),
-                round2(spent), round2(remaining));
+                spent, remaining);
     }
 
     // ======================= 广告 =======================

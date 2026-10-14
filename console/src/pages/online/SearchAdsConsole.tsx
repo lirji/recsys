@@ -24,6 +24,7 @@ import { deriveAdStages } from '../../components/funnel/derive';
 import { ACCENTS, BRAND, STATUS } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 import { formatId } from '../../utils/formatId';
+import { adPriceUnit } from '../../utils/adPricing';
 
 type AdParams = {
   userId: number;
@@ -171,7 +172,7 @@ export default function SearchAdsConsole() {
       render: (c: string) => <Tag color={channelColor(c)}>{c}</Tag>,
     },
     {
-      title: <Tooltip title="eCPM=排序依据;实收=GSP 次价">eCPM / 实收</Tooltip>,
+      title: <Tooltip title="eCPM 是排序分；计价单价是竞价报价，实际消费需查询账本">排序分 / 计价单价</Tooltip>,
       key: 'money',
       width: 130,
       render: (_, r) => (
@@ -180,15 +181,8 @@ export default function SearchAdsConsole() {
           <div>
             <Typography.Text strong style={{ color: BRAND }} className="mono">
               {fmt(r.chargedPrice)}
-              {r.chargedPrice < r.ecpm ? (
-                <Tooltip title="次价 < eCPM,广告主省下价差">
-                  <Typography.Text type="success" style={{ fontSize: 11 }}>
-                    {' '}
-                    ↓
-                  </Typography.Text>
-                </Tooltip>
-              ) : null}
             </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}> {adPriceUnit(r.bidType)}</Typography.Text>
           </div>
         </div>
       ),
@@ -287,7 +281,7 @@ export default function SearchAdsConsole() {
 
       {ads.length > 0 ? (
         <>
-          <CollapsibleCard title="竞价图 · bid → eCPM → 实收" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
+          <CollapsibleCard title="竞价报价 · 按各广告计费单位" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
             <Suspense fallback={<ChartSkeleton height={340} />}>
               <AdBiddingChart ads={ads} />
             </Suspense>
@@ -335,7 +329,7 @@ export default function SearchAdsConsole() {
             )}
             columns={[
               { label: 'eCPM', get: (t) => t.ecpm, fmt: (n) => n.toFixed(4) },
-              { label: '实收(GSP)', get: (t) => t.chargedPrice, fmt: (n) => n.toFixed(4) },
+              { label: '计价单价（各自单位）', get: (t) => t.chargedPrice, fmt: (n) => fmt(n) },
             ]}
           />
         ) : (

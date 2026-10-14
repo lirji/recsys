@@ -9,6 +9,7 @@ import type { AdvertiserUpsert, AdvertiserView } from '../../api/types';
 import { StatusTag } from '../../components/adv/statusTags';
 import PageHeader from '../../components/PageHeader';
 import { ACCENTS } from '../../theme/tokens';
+import { formatBudgetEstimate } from '../../utils/adPricing';
 
 export default function AdvertiserList() {
   const { message } = App.useApp();
@@ -43,16 +44,18 @@ export default function AdvertiserList() {
     { title: '状态', dataIndex: 'status', width: 100, render: (s: string) => <StatusTag status={s} /> },
     { title: '日预算', dataIndex: 'dailyBudget', width: 110, render: (v: number) => v?.toFixed(2) },
     {
-      title: '今日已花 / 剩余',
+      title: '今日消费 / 剩余（计数估计·元）',
       key: 'budget',
       width: 220,
       render: (_: unknown, r: AdvertiserView) => {
-        const pct = r.dailyBudget > 0 ? Math.min(100, (r.spentToday / r.dailyBudget) * 100) : 0;
+        const known = r.spentToday != null && Number.isFinite(r.spentToday)
+          && r.remainingBudget != null && Number.isFinite(r.remainingBudget);
+        const pct = known && r.dailyBudget > 0 ? Math.min(100, (r.spentToday! / r.dailyBudget) * 100) : 0;
         return (
           <Space direction="vertical" size={0} style={{ width: 200 }}>
-            <Progress percent={Math.round(pct)} size="small" />
+            {known ? <Progress percent={Math.round(pct)} size="small" /> : null}
             <span className="mono" style={{ fontSize: 12, color: '#888' }}>
-              {r.spentToday?.toFixed(2)} / 剩 {r.remainingBudget?.toFixed(2)}
+              {formatBudgetEstimate(r.spentToday)} / 剩 {formatBudgetEstimate(r.remainingBudget)}
             </span>
           </Space>
         );

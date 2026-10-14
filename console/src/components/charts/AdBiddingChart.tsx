@@ -2,19 +2,18 @@ import ReactECharts from 'echarts-for-react';
 import type { SponsoredAd } from '../../api/types';
 import { ACCENTS } from '../../theme/tokens';
 import { ECHARTS_THEME, barGradient } from './echartsTheme';
+import { adPriceUnit } from '../../utils/adPricing';
 
-// 搜索广告「竞价链路」图:逐广告并列 bid / eCPM / 实收(GSP) 三根柱 + pCTR(校准) 折线(次 y 轴)。
-// 核心故事 = GSP 次价差:实收(绿柱)通常明显矮于 eCPM(青柱),一眼看出广告主省下的价差。
-// 这是 SponsoredAd 里最丰富的数据,funnel/sankey 表达不了「价值变换 + 次价差」,故用分组柱+折线。
+// 排序分和各计费单位的报价不可直接比较；图中只展示逐广告报价，明确其单位。
 
-const r4 = (n: number) => (Number.isFinite(n) ? +n.toFixed(4) : 0);
+const r4 = (n: number) => (Number.isFinite(n) ? +n.toFixed(4) : null);
 
 export default function AdBiddingChart({ ads }: { ads: SponsoredAd[] }) {
-  const cats = ads.map((a) => `位${a.position}`);
+  const cats = ads.map((a) => `位${a.position}\n${adPriceUnit(a.bidType)}`);
 
   const option = {
     grid: { left: 52, right: 52, top: 40, bottom: 40 },
-    legend: { top: 4, data: ['bid', 'eCPM', '实收(GSP)', 'pCTR(校准)'] },
+    legend: { top: 4, data: ['计价单价', 'pCTR(校准)'] },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -23,7 +22,7 @@ export default function AdBiddingChart({ ads }: { ads: SponsoredAd[] }) {
         if (!params?.length) return '';
         const a = ads[params[0].dataIndex];
         const head = `<b>位${a.position} · ${a.title || '#' + a.itemId}</b><br/>通道 ${a.channel} · 计费 ${a.bidType}`;
-        const rows = params.map((p) => `${p.marker}${p.seriesName}: <b>${p.value}</b>`).join('<br/>');
+        const rows = params.map((p) => `${p.marker}${p.seriesName}: <b>${p.value ?? '—'}</b>${p.seriesName === '计价单价' ? ` ${adPriceUnit(a.bidType)}` : ''}`).join('<br/>');
         return `${head}<br/>${rows}`;
       },
     },
@@ -33,26 +32,12 @@ export default function AdBiddingChart({ ads }: { ads: SponsoredAd[] }) {
       axisLabel: { interval: 0, rotate: cats.length > 8 ? 30 : 0 },
     },
     yAxis: [
-      { type: 'value', name: '价格', splitLine: { show: true } },
+      { type: 'value', name: '报价（各自单位）', splitLine: { show: true } },
       { type: 'value', name: 'pCTR', position: 'right', splitLine: { show: false }, min: 0 },
     ],
     series: [
       {
-        name: 'bid',
-        type: 'bar',
-        data: ads.map((a) => r4(a.bid)),
-        emphasis: { focus: 'series' },
-        itemStyle: { color: barGradient(ACCENTS.ad), borderRadius: [4, 4, 0, 0] },
-      },
-      {
-        name: 'eCPM',
-        type: 'bar',
-        data: ads.map((a) => r4(a.ecpm)),
-        emphasis: { focus: 'series' },
-        itemStyle: { color: barGradient(ACCENTS.rank), borderRadius: [4, 4, 0, 0] },
-      },
-      {
-        name: '实收(GSP)',
+        name: '计价单价',
         type: 'bar',
         data: ads.map((a) => r4(a.chargedPrice)),
         emphasis: { focus: 'series' },

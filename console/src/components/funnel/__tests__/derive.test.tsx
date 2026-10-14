@@ -112,9 +112,15 @@ describe('deriveAdStages', () => {
         bidType: 'CPC',
       },
     ];
-    const [recall] = deriveAdStages(ads);
+    const stages = deriveAdStages(ads);
+    const [recall] = stages;
     expect(recall.count).toBe(2);
     expect(recall.metric?.value).toBe(2); // distinct channels: KW_EXACT + SEMANTIC_AD
+    // 点击和曝光的单价不能相加成实收；缺报价也不补零。
+    ads[1].bidType = 'CPM';
+    expect(deriveAdStages(ads).at(-1)?.metric).toEqual({ label: '有效报价', value: 2 });
+    ads[1].chargedPrice = NaN;
+    expect(deriveAdStages(ads).at(-1)?.metric?.value).toBe(1);
   });
 
   it('returns a null first-stage count for an empty auction', () => {

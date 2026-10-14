@@ -12,9 +12,10 @@ import {
 import type { SponsoredAd } from '../../api/types';
 import { channelColor } from '../explain/channelColors';
 import { ACCENTS, rgba } from '../../theme/tokens';
+import { adPriceUnit } from '../../utils/adPricing';
 
-// 竞价链路「逐步重放」:把 召回→相关性门槛→pCTR校准→eCPM竞价→GSP计费 拆成步骤,逐步高亮该阶段每条广告的数值变化。
-// 数据全在 SponsoredAd(纯前端),核心是把 GSP 次价差、校准纠偏讲清楚。自动播放尊重 prefers-reduced-motion。
+// 使用响应快照解释召回、校准、排序和报价；不从报价推断已经发生资金效果。
+// 自动播放尊重 prefers-reduced-motion，历史重放不会产生投放事件。
 
 const f = (n: number, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : '—');
 
@@ -63,16 +64,14 @@ const STAGES: Stage[] = [
     cell: (a) => `eCPM ${f(a.ecpm)}`,
   },
   {
-    title: 'GSP 计费',
+    title: '竞价定价',
     accent: ACCENTS.gsp,
     icon: <DollarOutlined />,
-    desc: '次价拍卖:实际计费(实收)≤ 自己的 eCPM,广告主省下价差。',
+    desc: '竞价输出按计费事件给出的报价；排序分和报价单位不同，不能相减推断价差或已消费金额。',
     cell: (a) => {
-      const gap = a.ecpm - a.chargedPrice;
       return (
         <span>
-          实收 {f(a.chargedPrice)}
-          {gap > 0 ? <span style={{ color: '#389e0d' }}> (↓ 省 {f(gap)})</span> : null}
+          计价单价 {f(a.chargedPrice)} {adPriceUnit(a.bidType)}
         </span>
       );
     },

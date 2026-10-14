@@ -10,6 +10,7 @@ import { StatusTag } from '../../components/adv/statusTags';
 import PageHeader from '../../components/PageHeader';
 import { ResultRowsSkeleton } from '../../components/Skeletons';
 import { ACCENTS } from '../../theme/tokens';
+import { formatBudgetEstimate } from '../../utils/adPricing';
 
 export default function AdvertiserDetail() {
   const { id } = useParams();
@@ -62,14 +63,14 @@ export default function AdvertiserDetail() {
         </Space>
       }
     >
-      <Descriptions bordered column={2} size="small">
+      <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small">
         <Descriptions.Item label="名称">{a.name}</Descriptions.Item>
         <Descriptions.Item label="状态">
           <StatusTag status={a.status} />
         </Descriptions.Item>
         <Descriptions.Item label="日预算">{a.dailyBudget?.toFixed(2)}</Descriptions.Item>
-        <Descriptions.Item label="今日已花">{a.spentToday?.toFixed(2)}</Descriptions.Item>
-        <Descriptions.Item label="剩余预算">{a.remainingBudget?.toFixed(2)}</Descriptions.Item>
+        <Descriptions.Item label="今日消费（计数估计·元）">{formatBudgetEstimate(a.spentToday)}</Descriptions.Item>
+        <Descriptions.Item label="剩余预算（计数估计·元）">{formatBudgetEstimate(a.remainingBudget)}</Descriptions.Item>
       </Descriptions>
 
       <Modal title="编辑广告主" open={open} onOk={submit} confirmLoading={saving} onCancel={() => setOpen(false)}>

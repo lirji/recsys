@@ -85,7 +85,7 @@ public class AdvertiserRepository {
         List<AdvertiserView> rows = jdbc.query(
                 "SELECT advertiser_id,name,daily_budget,status FROM advertiser WHERE advertiser_id=?",
                 (rs, n) -> new AdvertiserView(rs.getLong("advertiser_id"), rs.getString("name"),
-                        rs.getDouble("daily_budget"), rs.getString("status"), 0, 0),
+                        rs.getDouble("daily_budget"), rs.getString("status"), null, null),
                 id);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -94,7 +94,7 @@ public class AdvertiserRepository {
         return jdbc.query(
                 "SELECT advertiser_id,name,daily_budget,status FROM advertiser ORDER BY advertiser_id",
                 (rs, n) -> new AdvertiserView(rs.getLong("advertiser_id"), rs.getString("name"),
-                        rs.getDouble("daily_budget"), rs.getString("status"), 0, 0));
+                        rs.getDouble("daily_budget"), rs.getString("status"), null, null));
     }
 
     // ---------------- ad ----------------

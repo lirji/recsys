@@ -163,8 +163,8 @@ export interface AdvertiserView {
   name: string;
   dailyBudget: number;
   status: string;
-  spentToday: number;
-  remainingBudget: number;
+  spentToday: number | null;
+  remainingBudget: number | null;
 }
 export interface AdvertiserUpsert {
   name: string;
