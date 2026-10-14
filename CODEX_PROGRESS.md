@@ -12,6 +12,8 @@
 - 已创建任务分支 `feat/enterprise-reliability-plan`，原项目目录作业，无新增 worktree。
 - ER-DOC-01/02：DONE（文档范围）；独立审查 3 个 high、2 个 medium 均修订闭合，DRAFT_REVIEW_PASS；本地链接、依赖 DAG、围栏、差异及用户既有文件哈希检查通过，见 [REVIEW](docs/design/enterprise-reliability/REVIEW.md)。
 - 本轮未执行 Maven/前端构建/真实组件测试，没有业务实现、运行验收或部署完成声明。
+- 文档提交 `9bcb18e5`（评估）及 `10ecfb01`（计划）已由任务分支正常 fast-forward 合并并推送 `origin/main`；远程 `main` 已核验为 `10ecfb0147cbd92648b887c1a993ba739cadbdb0`。本记录后续仅同步交付事实，最终记录提交以 Git 历史为准。
+- 六个既有用户文件哈希保持一致，仅本轮十个 Markdown 文件进入交付。无新增 worktree；既有忽略的配置、模型、数据、构建/缓存目录均保留，未清理。
 
 ## 已修改文件
 
@@ -27,7 +29,7 @@
 
 ## 未完成
 
-- Git 交付正在进行：按授权仅提交本轮文件，正常合并并推送远程 main；完成后更新实际结果。
+- 本轮评估与计划文档交付已完成；后续业务实现仍待批准，远程 CI 结果未作为本轮业务验收声明。
 - ER-D0 与 26 个实施候选（ER-S01～ER-S25，另有 ER-S02A）均未实施，不能标 READY/DONE；尚无已批准正式 CONTRACTS/IMPLEMENTATION_SLICES。
 - 可见阈值、来源准入、预占/归因窗口、CPA 迟到、时区/跨日、币种精度、恢复/容量目标与期初账务仍按 PLAN Q-01～Q-09 待冻结。
 
@@ -39,8 +41,8 @@
 
 ## 下一步建议
 
-1. 本轮文档已通过检查；先完成显式路径 Git 交付和远程核验，记录实际结果。
-2. 本轮结束后，读取 [PLAN](docs/design/enterprise-reliability/PLAN.md)，确认首个 CPM 闭环参数并完成 ER-D0，形成正式契约及实施切片，保留候选 ID。
+1. 本轮文档交付已完成，无须重新扫描或重新编写计划；先读取 [PLAN](docs/design/enterprise-reliability/PLAN.md) 和 REVIEW。
+2. 后续确认首个 CPM 闭环参数并完成 ER-D0，形成正式契约及实施切片，保留候选 ID。
 3. 获准实施后从 ER-S01 开始，优先推进 ER-S02～ER-S07 的预算/曝光最小闭环，逐片实现、真实组件验证与记录。
 4. 继续 CPC/CPA、可靠事件、恢复及效果门禁；生产切换和部署需独立范围/环境授权。
 
