@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
@@ -31,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -104,6 +108,10 @@ public class EvalJob implements OfflineJob {
         long seed = (long) doubleArg(args, "seed", 42);
         int threads = intArg(args, "threads", Runtime.getRuntime().availableProcessors());
 
+        if (validFrac < 0 || validFrac > 1 || recallSize <= 0 || threads <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+
         // 1. 读 RATING,拆历史/测试正例(全局时间分位点切分)
         Split split = buildSplit(source, validFrac);
         // 严格 eval 用:只打印切分点 ts(epoch 秒)供 run_strict_eval.sh 作为各召回作业的 --max-ts,然后退出。
@@ -114,8 +122,7 @@ public class EvalJob implements OfflineJob {
             return;
         }
         if (split.testUsers.isEmpty()) {
-            log.warn("无测试正例;先跑 import-behavior(需有 ts>splitTs 的 RATING≥4)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_EVALUATION_USERS);
         }
         log.info("评估用户 {} 个(有测试正例),时间切分点 ts={},valid-frac={},并行线程={}",
                 split.testUsers.size(), split.splitTs, validFrac, threads);
@@ -136,6 +143,8 @@ public class EvalJob implements OfflineJob {
         String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         Path outFile = Path.of(OUT_DIR, "metrics-" + ts + ".csv");
         Files.createDirectories(outFile.getParent());
+        EvaluationFailures failures = new EvaluationFailures();
+        int evaluatedUsers = 0;
         try (BufferedWriter w = Files.newBufferedWriter(outFile, StandardCharsets.UTF_8)) {
             w.write("variant,k,users,precision,recall,ndcg,map,mrr,hitrate,coverage,diversity,novelty");
             w.newLine();
@@ -143,17 +152,21 @@ public class EvalJob implements OfflineJob {
             if (recallOnly) {
                 for (RecallChannel ch : RecallChannel.values()) {
                     Map<Integer, Acc> accs = evaluate(users, split, catalog, ks, maxK,
-                            recallSize, rankStrategy, ch, threads);
+                            recallSize, rankStrategy, ch, threads, failures);
+                    evaluatedUsers += accs.get(ks[0]).users;
                     report(w, "recall:" + ch, ks, accs, catalog.size);
                 }
             } else {
                 String variant = "pipeline:rank=" +
                         (rankStrategy == null ? "default" : rankStrategy);
                 Map<Integer, Acc> accs = evaluate(users, split, catalog, ks, maxK,
-                        recallSize, rankStrategy, null, threads);
+                        recallSize, rankStrategy, null, threads, failures);
+                evaluatedUsers += accs.get(ks[0]).users;
                 report(w, variant, ks, accs, catalog.size);
             }
         }
+        failures.throwIfAny();
+        if (evaluatedUsers == 0) throw new PublicErrorException(ErrorCode.JOB_NO_EVALUATION_OUTPUT);
         log.info("eval 完成,指标已写入 {}", outFile.toAbsolutePath());
     }
 
@@ -166,14 +179,15 @@ public class EvalJob implements OfflineJob {
      */
     private Map<Integer, Acc> evaluate(List<Long> users, Split split, Catalog catalog,
                                        int[] ks, int maxK, int recallSize,
-                                       String rankStrategy, RecallChannel channel, int threads) {
+                                       String rankStrategy, RecallChannel channel, int threads,
+                                       EvaluationFailures failures) {
         Map<Integer, Acc> accs = new LinkedHashMap<>();
         for (int k : ks) {
             accs.put(k, new Acc());
         }
 
         // 1. 并行算每个用户的 topK 推荐(无状态、可并行)
-        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, threads));
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
         List<UserRecs> results = new ArrayList<>();
         try {
             List<Future<UserRecs>> futures = new ArrayList<>(users.size());
@@ -194,12 +208,17 @@ public class EvalJob implements OfflineJob {
                     if (ur != null) {
                         results.add(ur);
                     }
-                } catch (Exception e) {
-                    log.debug("评估用户失败(忽略): {}", e.getMessage());
+                } catch (InterruptedException interrupted) {
+                    // 终止等待并保留调用线程的取消信号；已发生的模型调用不承诺撤回。
+                    Thread.currentThread().interrupt();
+                    throw new PublicErrorException(ErrorCode.JOB_INTERRUPTED, interrupted);
+                } catch (ExecutionException failed) {
+                    if (failed.getCause() instanceof Error fatal) throw fatal;
+                    failures.record(failed.getCause());
                 }
             }
         } finally {
-            pool.shutdown();
+            pool.shutdownNow();
         }
 
         // 2. 单线程 reduce 进指标累加器(顺序无关)
@@ -222,17 +241,17 @@ public class EvalJob implements OfflineJob {
                                  RecallChannel channel, Set<Long> history) {
         List<RecallChannel> enabled = channel == null ? List.of() : List.of(channel);
         RecallContext ctx = new RecallContext(userId, recallSize, "eval", enabled, Map.of());
-        List<RecallItem> recalled;
-        try {
-            recalled = recallService.recall(ctx);
-        } catch (Exception e) {
-            log.debug("召回失败 user={}: {}", userId, e.getMessage());
-            return List.of();
-        }
-        if (recalled == null || recalled.isEmpty()) {
+        List<RecallItem> recalled = recallService.recall(ctx);
+        if (recalled == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        if (recalled.isEmpty()) {
             return List.of();
         }
         if (channel != null) {
+            for (RecallItem item : recalled) {
+                if (!Double.isFinite(item.recallScore())) {
+                    throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+                }
+            }
             // 单路召回:按 recallScore 降序取 topK,无排序层
             return recalled.stream()
                     .filter(it -> !history.contains(it.itemId()))
@@ -251,6 +270,10 @@ public class EvalJob implements OfflineJob {
             return List.of();
         }
         List<RankedItem> ranked = rankRouter.rank(userId, candidates, "eval", rankStrategy);
+        if (ranked == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        for (RankedItem item : ranked) {
+            if (!Double.isFinite(item.score())) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        }
         return ranked.stream().map(RankedItem::itemId).limit(maxK).toList();
     }
 
@@ -439,26 +462,28 @@ public class EvalJob implements OfflineJob {
     // ---------- 参数解析 ----------
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.decimal(a, k, def);
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
+        return JobArguments.text(a, k, def);
     }
 
     private static int[] intListArg(ApplicationArguments a, String k, int[] def) {
-        if (!a.containsOption(k) || a.getOptionValues(k).isEmpty()) {
-            return def;
-        }
-        String[] parts = a.getOptionValues(k).get(0).split(",");
+        if (!a.containsOption(k)) return def;
+        String[] parts = JobArguments.text(a, k, null).split(",", -1);
         int[] out = new int[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            out[i] = Integer.parseInt(parts[i].trim());
+        try {
+            for (int i = 0; i < parts.length; i++) {
+                out[i] = Integer.parseInt(parts[i].trim());
+                if (out[i] <= 0) throw new NumberFormatException();
+            }
+        } catch (NumberFormatException invalid) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, invalid);
         }
         return out;
     }

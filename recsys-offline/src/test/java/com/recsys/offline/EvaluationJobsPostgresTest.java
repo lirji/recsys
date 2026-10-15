@@ -56,7 +56,7 @@ class EvaluationJobsPostgresTest {
     }
     @Test void calibrationPreservesCompleteCurveAndInsufficientSamplesKeepPreviousValue() throws Exception {
         seed();run("calibrate","--bins=2");String curve=redis.opsForValue().get(RedisKeys.recCalib("rec"));check("b07af253a5fc43cdd0114bdfdaacb58679f589306d870ba8a4710a8c45ff974e",curve);
-        run("calibrate","--bins=100");assertEquals(curve,redis.opsForValue().get(RedisKeys.recCalib("rec")));
+        fail("calibrate","JOB_CALIBRATION_SAMPLES_INSUFFICIENT","--bins=100");assertEquals(curve,redis.opsForValue().get(RedisKeys.recCalib("rec")));
     }
     @Test void bothReplicaSourcesMatchAndDoNotReadOwnedTables() throws Exception {
         seed();String metrics=report(run("eval","--threads=1","--k=3"));String tune=report(run("tune","--biases=0,0.1","--weights=0,1"));run("calibrate","--bins=2");String curve=redis.opsForValue().get(RedisKeys.recCalib("rec"));
@@ -68,7 +68,7 @@ class EvaluationJobsPostgresTest {
     @Test void emptyInputAndOnlyHistoricalRepeatedItemsProduceNoReportsAndKeepCurve() throws Exception {
         redis.opsForValue().set(RedisKeys.recCalib("rec"),"keep");
         for(int stage=0;stage<2;stage++){
-            for(String kind:List.of("eval","tune","calibrate")){var result=run(kind);assertFalse(Files.exists(result.dir.resolve("eval")));}
+            for(String kind:List.of("eval","tune","calibrate")){fail(kind,"JOB_NO_EVALUATION_USERS");}
             assertEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
             if(stage==0)db.execute("INSERT INTO user_behavior SELECT 1,1,'RATING',5,to_timestamp(n) FROM generate_series(1,100)n");
         }
@@ -85,9 +85,63 @@ class EvaluationJobsPostgresTest {
         assertEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
     }
     @Test void perUserRecallAndRankFailureKeepOriginalPartialEvaluationPolicy() throws Exception {
-        seed();check("c3d24ad25ba59c1a98a495a80a2c2ac6e6e2f585489bf5a237a6c9f1d80337bc",report(run("eval","--threads=1","--k=3","--fixture-failures")));
-        check("a3a924cf5c766353091e4b5bdb075ea5401f98308beacf9b3c3e82842939ff1c",report(run("tune","--biases=0,0.1","--weights=0,1","--fixture-failures")));
-        run("calibrate","--bins=2","--fixture-failures");check("4caf4c21901d62158aaf808f62c84b3304bc6989b74062746f92d9614b11cee7",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+        seed();check("c3d24ad25ba59c1a98a495a80a2c2ac6e6e2f585489bf5a237a6c9f1d80337bc",report(rejected("eval","JOB_EVALUATION_PARTIAL_FAILED","--threads=1","--k=3","--fixture-failures")));
+        check("a3a924cf5c766353091e4b5bdb075ea5401f98308beacf9b3c3e82842939ff1c",report(rejected("tune","JOB_EVALUATION_PARTIAL_FAILED","--biases=0,0.1","--weights=0,1","--fixture-failures")));
+        rejected("calibrate","JOB_EVALUATION_PARTIAL_FAILED","--bins=2","--fixture-failures");check("4caf4c21901d62158aaf808f62c84b3304bc6989b74062746f92d9614b11cee7",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+    }
+    @Test void invalidArgumentsNeverPublishOrReplaceExistingCurve() throws Exception {
+        seed();redis.opsForValue().set(RedisKeys.recCalib("rec"),"keep");
+        for(String kind:List.of("eval","tune","calibrate")) {
+            for(String arg:List.of("--recall-size=0","--valid-frac=NaN","--valid-frac=1.1","--max-users=bad")) {
+                fail(kind,"JOB_INVALID_ARGUMENT",arg);
+            }
+        }
+        for(String arg:List.of("--threads=0","--k=0","--k=3,","--k")) fail("eval","JOB_INVALID_ARGUMENT",arg);
+        for(String arg:List.of("--bins=0","--bins=-1","--bins")) fail("calibrate","JOB_INVALID_ARGUMENT",arg);
+        for(String arg:List.of("--biases=NaN","--weights=1,","--weights=Infinity","--k=0")) fail("tune","JOB_INVALID_ARGUMENT",arg);
+        fail("tune","JOB_TUNING_STRATEGY_UNSUPPORTED","--strategy=v1");
+        assertEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+        run("calibrate","--bins=2");assertNotEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+    }
+    @Test void legitimateEmptyCandidatesAndActualDependencyFailuresHaveDifferentResults() throws Exception {
+        seed();redis.opsForValue().set(RedisKeys.recCalib("rec"),"keep");
+        Result empty=rejected("eval","JOB_NO_EVALUATION_OUTPUT","--fixture-empty","--threads=1");
+        assertTrue(report(empty).contains(",10,0,"));
+        fail("tune","JOB_NO_EVALUATION_OUTPUT","--fixture-empty");
+        fail("calibrate","JOB_CALIBRATION_SAMPLES_INSUFFICIENT","--fixture-empty","--bins=2");
+        for(String kind:List.of("eval","tune","calibrate")) rejected(kind,"JOB_EVALUATION_PARTIAL_FAILED","--fixture-all-fail");
+        assertEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+        Result single=run("eval","--recall-only","--fixture-one-channel","--threads=1");
+        assertTrue(report(single).contains("recall:HOT"));
+        assertTrue(single.log.contains("eval 完成"));
+    }
+    @Test void allMissingHeadsFailButEveryUserHavingMixedHeadsStillProducesGrid() throws Exception {
+        seed();fail("tune","JOB_MODEL_HEADS_UNAVAILABLE","--fixture-no-heads");
+        Result mixed=run("tune","--fixture-partial-heads","--biases=0,0.1","--weights=0,1");
+        assertTrue(mixed.log.contains("JOB_MODEL_HEADS_PARTIAL"));
+        assertTrue(mixed.log.contains("建议把 recsys.rank.multi-task"));
+        assertEquals(5,report(mixed).lines().count());
+        assertFalse(report(mixed).contains("NaN"));
+    }
+    @Test void nonFiniteModelOutputsAndOverflowCannotPublishMisleadingMetrics() throws Exception {
+        seed();redis.opsForValue().set(RedisKeys.recCalib("rec"),"keep");
+        rejected("eval","JOB_EVALUATION_PARTIAL_FAILED","--fixture-nan-score","--threads=1");
+        fail("calibrate","JOB_EVALUATION_PARTIAL_FAILED","--fixture-nan-score","--bins=2");
+        fail("tune","JOB_EVALUATION_PARTIAL_FAILED","--fixture-nan-head");
+        fail("tune","JOB_EVALUATION_RESULT_INVALID","--fixture-overflow-head","--weights=3");
+        assertEquals("keep",redis.opsForValue().get(RedisKeys.recCalib("rec")));
+    }
+    @Test void interruptedEvaluationRestoresCallerFlagAndStopsWorkersWithoutSuccess() throws Exception {
+        seed();Result interrupted=rejected("eval","JOB_INTERRUPTED","--fixture-interrupt","--threads=1");
+        assertTrue(interrupted.log.contains("CALLER_INTERRUPTED=true"),interrupted.log);
+        assertTrue(interrupted.log.contains("WORKER_STOPPED"),interrupted.log);
+        assertEquals(1,report(interrupted).lines().count());
+        check("33d46a229c760e538f44871c9f949807d2eae26bf7de264032f08befff46b8ec",report(run("eval","--threads=1","--k=1,3")));
+    }
+    @Test void fatalWorkerErrorIsNeverReducedToPartialBusinessFailure() throws Exception {
+        seed();Result fatal=invoke("eval","--fixture-fatal","--threads=1");
+        assertNotEquals(0,fatal.status);assertTrue(fatal.log.contains("AssertionError: fixture fatal error"),fatal.log);
+        assertFalse(fatal.log.contains("JOB_EVALUATION_PARTIAL_FAILED"));assertFalse(fatal.log.contains("eval 完成"));
     }
     private static void seed(){
         db.execute("INSERT INTO item VALUES(1,10),(2,4),(3,NULL),(4,-1),(5,0),(6,1),(7,2),(8,3),(NULL,9),(0,2),(2,8),(9223372036854775807,1)");
@@ -98,6 +152,14 @@ class EvaluationJobsPostgresTest {
     private record Result(int status,String log,Path dir){}
     private Result run(String kind,String...options) throws Exception {Result result=invoke(kind,options);assertEquals(0,result.status,result.log);return result;}
     private void fail(String kind,String error,String...options) throws Exception {Result result=invoke(kind,options);assertNotEquals(0,result.status,result.log);assertTrue(result.log.contains(error),result.log);assertFalse(Files.exists(result.dir.resolve("eval")));}
+    private Result rejected(String kind,String code,String...options) throws Exception {
+        Result result=invoke(kind,options);assertNotEquals(0,result.status,result.log);
+        assertTrue(result.log.contains("["+code+"]"),result.log);
+        assertFalse(result.log.contains("eval 完成"),result.log);
+        assertFalse(result.log.contains("rec-calibrate 完成"),result.log);
+        assertFalse(result.log.contains("建议把 recsys.rank.multi-task"),result.log);
+        return result;
+    }
     private Result invoke(String kind,String...options) throws Exception {
         Path dir=Files.createTempDirectory(output,"evaluation-");Path log=dir.resolve("process.log");
         var cmd=new ArrayList<>(List.of(Path.of(System.getProperty("java.home"),"bin","java").toString(),"-cp",System.getProperty("java.class.path"),EvaluationFixture.class.getName(),PG.getJdbcUrl()+(PG.getJdbcUrl().contains("?")?"&":"?")+"ApplicationName=evaluation-reader",PG.getUsername(),PG.getPassword(),REDIS.getHost(),String.valueOf(REDIS.getMappedPort(6379)),kind));

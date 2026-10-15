@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallContext;
@@ -44,6 +47,8 @@ public class RecCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(RecCalibrateJob.class);
 
+    private static final long MIN_SAMPLES_PER_BIN = 5;
+
     private final EvaluationInputMapper inputs;
     private final RecallService recallService;
     private final RankRouter rankRouter;
@@ -74,10 +79,13 @@ public class RecCalibrateJob implements OfflineJob {
         int bins = intArg(args, "bins", 20);
         long seed = intArg(args, "seed", 42);
 
+        // 必须在读取/发布前校验，避免 bins=0 覆盖原有有效曲线。
+        if (validFrac < 0 || validFrac > 1 || recallSize <= 0 || bins <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         Split split = buildSplit(source, validFrac);
         if (split.testUsers.isEmpty()) {
-            log.warn("无测试正例(需有 ts>splitTs 的 RATING≥4);先跑 import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_EVALUATION_USERS);
         }
         List<Long> users = new ArrayList<>(split.testUsers);
         java.util.Collections.shuffle(users, new Random(seed));
@@ -90,19 +98,24 @@ public class RecCalibrateJob implements OfflineJob {
 
         // 收集 (rankScore, label) 对
         List<double[]> pairs = new ArrayList<>();
+        EvaluationFailures failures = new EvaluationFailures();
         int done = 0;
         for (long userId : users) {
             Set<Long> history = split.history.getOrDefault(userId, Set.of());
             Set<Long> testPos = split.test.getOrDefault(userId, Set.of());
-            collectPairs(userId, recallSize, rankStrategy, history, testPos, pairs);
+            try {
+                collectPairs(userId, recallSize, rankStrategy, history, testPos, pairs);
+            } catch (RuntimeException failure) {
+                failures.record(failure);
+            }
             if (++done % 200 == 0) {
                 log.info("  已处理 {} / {} 用户,累计样本 {}", done, users.size(), pairs.size());
             }
         }
 
-        if (pairs.size() < bins * 5L) {
-            log.warn("样本太少({} 条),放大 --max-users 或 --recall-size", pairs.size());
-            return;
+        if (pairs.size() < bins * MIN_SAMPLES_PER_BIN) {
+            failures.throwIfAny();
+            throw new PublicErrorException(ErrorCode.JOB_CALIBRATION_SAMPLES_INSUFFICIENT);
         }
 
         // 按 score 升序等频分箱 → 每箱 (均分, 经验正反馈率) → PAVA
@@ -125,8 +138,14 @@ public class RecCalibrateJob implements OfflineJob {
             w[b] = cnt;
         }
         pava(y, w);
+        for (int b = 0; b < bins; b++) {
+            if (!Double.isFinite(x[b]) || !Double.isFinite(y[b])) {
+                throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+            }
+        }
 
         redis.opsForValue().set(RedisKeys.recCalib(model), toJson(x, y));
+        failures.throwIfAny();
         log.info("rec-calibrate 完成 model={} 样本={} 分箱={};已写 {}。示例: score {}→{} … {}→{}",
                 model, n, bins, RedisKeys.recCalib(model),
                 round4(x[0]), round4(y[0]), round4(x[bins - 1]), round4(y[bins - 1]));
@@ -135,14 +154,9 @@ public class RecCalibrateJob implements OfflineJob {
     /** 一个用户:recall → 过滤历史 → rank,把每个排序候选的 (score, label) 收集起来。 */
     private void collectPairs(long userId, int recallSize, String rankStrategy,
                               Set<Long> history, Set<Long> testPos, List<double[]> out) {
-        List<RecallItem> recalled;
-        try {
-            recalled = recallService.recall(new RecallContext(userId, recallSize, "eval", List.of(), Map.of()));
-        } catch (Exception e) {
-            log.debug("召回失败 user={}: {}", userId, e.getMessage());
-            return;
-        }
-        if (recalled == null || recalled.isEmpty()) {
+        List<RecallItem> recalled = recallService.recall(new RecallContext(userId, recallSize, "eval", List.of(), Map.of()));
+        if (recalled == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        if (recalled.isEmpty()) {
             return;
         }
         List<Long> candidates = recalled.stream()
@@ -153,12 +167,11 @@ public class RecCalibrateJob implements OfflineJob {
         if (candidates.isEmpty()) {
             return;
         }
-        List<RankedItem> ranked;
-        try {
-            ranked = rankRouter.rank(userId, candidates, "eval", rankStrategy);
-        } catch (Exception e) {
-            log.debug("排序失败 user={}: {}", userId, e.getMessage());
-            return;
+        List<RankedItem> ranked = rankRouter.rank(userId, candidates, "eval", rankStrategy);
+        if (ranked == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        // 整个用户的结果先检查，避免坏数值之前的候选混入有效样本。
+        for (RankedItem ri : ranked) {
+            if (!Double.isFinite(ri.score())) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
         }
         for (RankedItem ri : ranked) {
             out.add(new double[]{ri.score(), testPos.contains(ri.itemId()) ? 1.0 : 0.0});
@@ -262,14 +275,14 @@ public class RecCalibrateJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.decimal(a, k, def);
     }
 
     private static String strArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) ? a.getOptionValues(k).get(0) : def;
+        return JobArguments.text(a, k, def);
     }
 }

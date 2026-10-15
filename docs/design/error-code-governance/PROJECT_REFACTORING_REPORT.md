@@ -39,3 +39,5 @@ EC05c DONE/PASS（本地）：五导入Job必需输入/坏参数/部分完成及
 EC05d DONE/PASS（本地）：十二召回/样本Job无输入/无产出明确码，合法空词表/全负标签与部分关联缺失保持有效输出并受控提示；数字参数复用并前置拒绝。目录189，原175/8族保持；完整offline及依赖453项/83类0失败错误、1项CI环境探针skip（实际PG等均运行），前端57、24compile和目录/SQL/hygiene通过。见EC05D_DESIGN/RESULT。C已ff/push cb701520、CI四门成功/build仍运行；父EC05余项及EC06～08继续。
 
 EC05e DONE/PASS（本地）：种子/模拟参数先于清理校验，清理部分失败阻止生成；创意读取失败拒绝写事件，真实空创意保留NULL归因并受控提示。目录194原189/8族保持；55后端/7类含真实PG FK与Redis ACL故障及恢复、前端57、24compile和目录/SQL/hygiene通过。见EC05E_DESIGN/RESULT。D已ff/push bc781867，CI38811445623仍运行；EC05评估/报表/投影/共享CLI及EC06～08继续。
+
+EC05f DONE/PASS（本地）：三评估Job部分失败最终受控失败，正常/原部分CSV与曲线完整摘要保持；非法参数先于发布，缺head与空候选区分，Eval中断和Error不吞。目录202原194/8族保持；41后端/5类、57前端、24compile与目录/SQL/hygiene通过，详见EC05F_DESIGN/RESULT。E已ff/push b8638f28，CI38812115409四门SUCCESS/build运行；EC05报表/投影/共享CLI及EC06～08继续。

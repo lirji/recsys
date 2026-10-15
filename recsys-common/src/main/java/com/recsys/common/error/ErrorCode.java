@@ -195,7 +195,15 @@ public enum ErrorCode {
     JOB_NO_ADS("JOB_NO_ADS", "没有可用广告，未生成模拟事件；请先运行 seed-ads 或检查广告目录", 0),
     JOB_SEED_CLEAR_FAILED("JOB_SEED_CLEAR_FAILED", "清理未完整完成，尚未开始生成广告；部分旧数据可能已清除，请检查存储并核对后重试", 0),
     JOB_CREATIVE_INPUT_UNAVAILABLE("JOB_CREATIVE_INPUT_UNAVAILABLE", "创意目录读取失败，未开始生成事件；请检查分片表与连接后重试", 0),
-    JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE("JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE", "创意目录为空，模拟事件仍已生成，但不包含创意归因；请补齐创意后再评估创意效果", 0);
+    JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE("JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE", "创意目录为空，模拟事件仍已生成，但不包含创意归因；请补齐创意后再评估创意效果", 0),
+    JOB_NO_EVALUATION_USERS("JOB_NO_EVALUATION_USERS", "没有可评估的测试正例，请检查评分数据、时间切分和历史物品过滤条件", 0),
+    JOB_NO_EVALUATION_OUTPUT("JOB_NO_EVALUATION_OUTPUT", "没有可用的评估结果，请检查召回候选与历史过滤条件；已生成的零用户报告不能用于效果判断", 0),
+    JOB_CALIBRATION_SAMPLES_INSUFFICIENT("JOB_CALIBRATION_SAMPLES_INSUFFICIENT", "校准样本不足，原曲线保持不变；请增加有效用户或候选，或调整分箱数", 0),
+    JOB_TUNING_STRATEGY_UNSUPPORTED("JOB_TUNING_STRATEGY_UNSUPPORTED", "调参仅支持 mmoe 或 din 多目标策略，请检查 strategy 参数", 0),
+    JOB_MODEL_HEADS_UNAVAILABLE("JOB_MODEL_HEADS_UNAVAILABLE", "没有可用的 pCTR/pCVR 模型输出，请确认多目标模型已启用且加载成功", 0),
+    JOB_MODEL_HEADS_PARTIAL("JOB_MODEL_HEADS_PARTIAL", "部分候选缺少 pCTR/pCVR，已过滤这些候选；结果仅覆盖可用的模型输出", 0),
+    JOB_EVALUATION_RESULT_INVALID("JOB_EVALUATION_RESULT_INVALID", "模型输出或评估计算包含无效数值，请检查模型及调参范围后重试", 0),
+    JOB_EVALUATION_PARTIAL_FAILED("JOB_EVALUATION_PARTIAL_FAILED", "部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

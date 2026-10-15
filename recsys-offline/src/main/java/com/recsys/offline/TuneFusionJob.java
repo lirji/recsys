@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.rank.RankedItem;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
@@ -82,15 +85,16 @@ public class TuneFusionJob implements OfflineJob {
         double[] biases = parseGrid(strArg(args, "biases", "0,0.05,0.1,0.2,0.5,1.0"));
         double[] weights = parseGrid(strArg(args, "weights", "0,0.5,1,1.5,2,3"));
 
+        if (validFrac < 0 || validFrac > 1 || recallSize <= 0 || k <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         if (!strategy.equals("mmoe") && !strategy.equals("din")) {
-            log.warn("tune-fusion 只对多目标策略有意义(mmoe/din);当前 --strategy={} 非多目标,退出", strategy);
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_TUNING_STRATEGY_UNSUPPORTED);
         }
 
         Split split = buildSplit(source, validFrac);
         if (split.testUsers.isEmpty()) {
-            log.warn("无测试正例(需 ts>splitTs 的 RATING≥4);先跑 import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_EVALUATION_USERS);
         }
         List<Long> users = new ArrayList<>(split.testUsers);
         java.util.Collections.shuffle(users, new Random(seed));
@@ -102,32 +106,37 @@ public class TuneFusionJob implements OfflineJob {
 
         // 一次昂贵重跑:收集每个用户候选的 (pCTR, pCVR, 是否正例)
         List<UserHeads> data = new ArrayList<>();
+        EvaluationFailures failures = new EvaluationFailures();
         int missSnap = 0, done = 0;
         for (long userId : users) {
             Set<Long> history = split.history.getOrDefault(userId, Set.of());
             Set<Long> testPos = split.test.getOrDefault(userId, Set.of());
-            UserHeads uh = collect(userId, recallSize, strategy, history, testPos);
+            UserHeads uh;
+            try {
+                uh = collect(userId, recallSize, strategy, history, testPos);
+            } catch (RuntimeException failure) {
+                failures.record(failure);
+                continue;
+            }
             if (uh == null) {
                 continue;
             }
             if (uh.missingHeads) {
                 missSnap++;
             }
+            if (uh.pctr.isEmpty()) continue;
             data.add(uh);
             if (++done % 200 == 0) {
                 log.info("  已重跑 {} / {} 用户", done, users.size());
             }
         }
         if (data.isEmpty()) {
-            log.warn("无有效用户数据;检查召回/排序是否正常");
-            return;
+            failures.throwIfAny();
+            throw new PublicErrorException(missSnap > 0
+                    ? ErrorCode.JOB_MODEL_HEADS_UNAVAILABLE : ErrorCode.JOB_NO_EVALUATION_OUTPUT);
         }
-        if (missSnap == data.size()) {
-            log.warn("全部用户都缺 pCTR/pCVR 快照 —— 该策略未真正跑多目标模型。请用 RANK_STRATEGY={} 启动 offline"
-                    + "(否则 {} 的条件 Bean 不存在,RankRouter 回退规则排序、无 pCTR/pCVR)。", strategy, strategy);
-            return;
-        } else if (missSnap > 0) {
-            log.warn("有 {} 个用户的排序结果缺 pCTR/pCVR 快照(部分召回/排序为空,忽略)", missSnap);
+        if (missSnap > 0) {
+            log.warn("{}；涉及用户数={}", ErrorCode.JOB_MODEL_HEADS_PARTIAL.displayMessage(), missSnap);
         }
 
         // 网格搜参:纯内存重打分 + NDCG@K
@@ -148,6 +157,9 @@ public class TuneFusionJob implements OfflineJob {
 
         // 报告
         grid.sort((a, b) -> Double.compare(b[2], a[2]));
+        writeCsv(strategy, k, grid, curNdcg);
+        // 部分结果文件保留，但不把不完整样本的最优参数作为完整成功建议。
+        failures.throwIfAny();
         log.info("tune-fusion 结果(strategy={} 用户={} k={}):", strategy, data.size(), k);
         log.info("  当前默认 cvrBias={}, cvrWeight={} → NDCG@{}={}", CUR_BIAS, CUR_WEIGHT, k, round4(curNdcg));
         log.info("  最优     cvrBias={}, cvrWeight={} → NDCG@{}={} (相对当前 {}{}%)",
@@ -161,19 +173,14 @@ public class TuneFusionJob implements OfflineJob {
         log.info("  → 建议把 recsys.rank.multi-task 设为 cvr-bias={}, cvr-weight={}(无需重训,重启生效)",
                 bestBias, bestWeight);
 
-        writeCsv(strategy, k, grid, curNdcg);
     }
 
     /** 一个用户:recall → 过滤历史 → rank,收集候选的 (pCTR, pCVR, 正例标签)。 */
     private UserHeads collect(long userId, int recallSize, String strategy,
                               Set<Long> history, Set<Long> testPos) {
-        List<RecallItem> recalled;
-        try {
-            recalled = recallService.recall(new RecallContext(userId, recallSize, "eval", List.of(), Map.of()));
-        } catch (Exception e) {
-            return null;
-        }
-        if (recalled == null || recalled.isEmpty()) {
+        List<RecallItem> recalled = recallService.recall(new RecallContext(userId, recallSize, "eval", List.of(), Map.of()));
+        if (recalled == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+        if (recalled.isEmpty()) {
             return null;
         }
         List<Long> candidates = recalled.stream()
@@ -184,12 +191,8 @@ public class TuneFusionJob implements OfflineJob {
         if (candidates.isEmpty()) {
             return null;
         }
-        List<RankedItem> ranked;
-        try {
-            ranked = rankRouter.rank(userId, candidates, "eval", strategy);
-        } catch (Exception e) {
-            return null;
-        }
+        List<RankedItem> ranked = rankRouter.rank(userId, candidates, "eval", strategy);
+        if (ranked == null) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
         UserHeads uh = new UserHeads();
         uh.numPos = testPos.size();
         for (RankedItem ri : ranked) {
@@ -200,11 +203,15 @@ public class TuneFusionJob implements OfflineJob {
                 uh.missingHeads = true;
                 continue;
             }
+            if (!Double.isFinite(pctr) || !Double.isFinite(pcvr)) {
+                throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
+            }
             uh.pctr.add(pctr);
             uh.pcvr.add(pcvr);
             uh.pos.add(testPos.contains(ri.itemId()));
         }
-        return uh.pctr.isEmpty() ? null : uh;
+        // 保留缺 head 的事实，由调用方区分全部不可用和部分候选过滤。
+        return uh;
     }
 
     /** 用给定 (bias,weight) 对每个用户重打分排序取 topK,算平均 NDCG@K。 */
@@ -218,6 +225,7 @@ public class TuneFusionJob implements OfflineJob {
             for (int i = 0; i < m; i++) {
                 idx[i] = i;
                 score[i] = uh.pctr.get(i) * (bias + weight * uh.pcvr.get(i));
+                if (!Double.isFinite(score[i])) throw new PublicErrorException(ErrorCode.JOB_EVALUATION_RESULT_INVALID);
             }
             final double[] s = score;
             java.util.Arrays.sort(idx, (a, b) -> Double.compare(s[b], s[a]));
@@ -314,10 +322,15 @@ public class TuneFusionJob implements OfflineJob {
     }
 
     private static double[] parseGrid(String csv) {
-        String[] parts = csv.split(",");
+        String[] parts = csv.split(",", -1);
         double[] out = new double[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            out[i] = Double.parseDouble(parts[i].trim());
+        try {
+            for (int i = 0; i < parts.length; i++) {
+                out[i] = Double.parseDouble(parts[i].trim());
+                if (!Double.isFinite(out[i])) throw new NumberFormatException();
+            }
+        } catch (NumberFormatException invalid) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, invalid);
         }
         return out;
     }
@@ -331,14 +344,14 @@ public class TuneFusionJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.decimal(a, k, def);
     }
 
     private static String strArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) ? a.getOptionValues(k).get(0) : def;
+        return JobArguments.text(a, k, def);
     }
 }

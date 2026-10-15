@@ -1,6 +1,7 @@
 package com.recsys.offline;
 
 import com.recsys.common.rank.RankedItem;
+import com.recsys.common.error.PublicErrorException;
 import com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -26,7 +27,21 @@ public final class EvaluationFixture {
         var inputs=sessions.getMapper(EvaluationInputMapper.class);
         var options=new DefaultApplicationArguments(Arrays.copyOfRange(args,6,args.length));
         boolean fail=options.containsOption("fixture-failures");
+        Thread caller = Thread.currentThread();
         RecallService recall=ctx->{
+            if (options.containsOption("fixture-interrupt")) {
+                caller.interrupt();
+                try { new java.util.concurrent.CountDownLatch(1).await(); }
+                catch (InterruptedException stopped) {
+                    Thread.currentThread().interrupt();
+                    System.out.println("WORKER_STOPPED");
+                    throw new IllegalStateException("fixture worker interrupted", stopped);
+                }
+            }
+            if (options.containsOption("fixture-fatal")) throw new AssertionError("fixture fatal error");
+            if (options.containsOption("fixture-all-fail")) throw new IllegalStateException("fixture recall failure");
+            if (options.containsOption("fixture-empty")) return List.of();
+            if (options.containsOption("fixture-one-channel") && !ctx.enabledChannels().contains(RecallChannel.HOT)) return List.of();
             if(fail&&ctx.userId()==2)throw new IllegalStateException("fixture recall failure");
             var out=new ArrayList<>(LongStream.rangeClosed(1,8).mapToObj(id->new RecallItem(id,1.0/id,RecallChannel.HOT)).toList());
             out.add(new RecallItem(2,0.5,RecallChannel.HOT));return out;
@@ -34,7 +49,15 @@ public final class EvaluationFixture {
         var rank=new RankRouter(null,null,null,null,null,null,null,null,null,null,null){
             @Override public List<RankedItem> rank(long user,List<Long> ids,String scene,String strategy){
                 if(fail&&user==3)throw new IllegalStateException("fixture rank failure");
-                return ids.stream().map(id->new RankedItem(id,1.0/id,Map.of("pCTR",1.0/id,"pCVR",id%3*0.4))).toList();
+                return ids.stream().map(id -> {
+                    double score = options.containsOption("fixture-nan-score") ? Double.NaN : 1.0 / id;
+                    double pctr = options.containsOption("fixture-nan-head") ? Double.NaN : 1.0 / id;
+                    double pcvr = options.containsOption("fixture-overflow-head") ? Double.MAX_VALUE : id % 3 * 0.4;
+                    Map<String, Double> heads = options.containsOption("fixture-no-heads")
+                            || (options.containsOption("fixture-partial-heads") && id % 2 == 0)
+                            ? Map.of() : Map.of("pCTR", pctr, "pCVR", pcvr);
+                    return new RankedItem(id, score, heads);
+                }).toList();
             }
         };
         ContentService content=new ContentService(){
@@ -53,7 +76,14 @@ public final class EvaluationFixture {
             default->throw new IllegalArgumentException("未知测试作业");
         };
         try{job.run(options);}
+        catch (PublicErrorException failure) {
+            System.out.println(failure.errorCode().displayMessage());
+            System.out.println("CALLER_INTERRUPTED=" + Thread.currentThread().isInterrupted());
+            throw failure;
+        }
         finally{
+            // 记录真实作业标记后清除，避免中断破坏独立的测试资源清理与连接核验。
+            Thread.interrupted();
             factory.destroy();
             source.assertClosed(new JdbcTemplate(new DriverManagerDataSource(args[0].replace("ApplicationName=evaluation-reader","ApplicationName=evaluation-observer"),args[1],args[2])),"evaluation-reader");
         }

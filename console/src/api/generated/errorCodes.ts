@@ -777,6 +777,39 @@ export const errorCodes = {
     message: '创意目录为空，模拟事件仍已生成，但不包含创意归因；请补齐创意后再评估创意效果',
     httpStatus: 0,
   },
+  JOB_NO_EVALUATION_USERS: {
+    message: '没有可评估的测试正例，请检查评分数据、时间切分和历史物品过滤条件',
+    httpStatus: 0,
+  },
+  JOB_NO_EVALUATION_OUTPUT: {
+    message: '没有可用的评估结果，请检查召回候选与历史过滤条件；已生成的零用户报告不能用于效果判断',
+    httpStatus: 0,
+  },
+  JOB_CALIBRATION_SAMPLES_INSUFFICIENT: {
+    message: '校准样本不足，原曲线保持不变；请增加有效用户或候选，或调整分箱数',
+    httpStatus: 0,
+  },
+  JOB_TUNING_STRATEGY_UNSUPPORTED: {
+    message: '调参仅支持 mmoe 或 din 多目标策略，请检查 strategy 参数',
+    httpStatus: 0,
+  },
+  JOB_MODEL_HEADS_UNAVAILABLE: {
+    message: '没有可用的 pCTR/pCVR 模型输出，请确认多目标模型已启用且加载成功',
+    httpStatus: 0,
+  },
+  JOB_MODEL_HEADS_PARTIAL: {
+    message: '部分候选缺少 pCTR/pCVR，已过滤这些候选；结果仅覆盖可用的模型输出',
+    httpStatus: 0,
+  },
+  JOB_EVALUATION_RESULT_INVALID: {
+    message: '模型输出或评估计算包含无效数值，请检查模型及调参范围后重试',
+    httpStatus: 0,
+  },
+  JOB_EVALUATION_PARTIAL_FAILED: {
+    message:
+      '部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

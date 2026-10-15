@@ -1,0 +1,15 @@
+# EC05f 评估、调参与推荐校准的部分失败
+
+基线b8638f28f72608620df88228ffb901bc8b0881ae。范围EvalJob、RecCalibrateJob、TuneFusionJob与现有EvaluationFixture/EvaluationJobsPostgresTest，复用JobArguments/JobRunner。正常指标公式、样本切分/抽样、CSV字段与完整成功文件摘要、Redis曲线和持久层不变；无真实模型服务调用、SQL/schema/依赖改变。
+
+无测试正例、无有效评估产出、校准样本不足、非法策略不再return成功，使用各自可行动目录。--print-split保留独立打印契约，不把它当完整评估。k/recall-size/bins必须正，threads正、valid-frac在[0,1]，默认值与既有max-users<=0全量语义保留；参数解析复用JobArguments，网格/列表拒绝空项、坏数字与非有限值。bins在Redis写入之前检查，纠正空曲线已发布后数组越界。
+
+召回/排序抛异常与合法空候选分开。保留现有逐用户继续收集、成功用户的部分结果/曲线发布规则，但作业最终必须以JOB_EVALUATION_PARTIAL_FAILED失败，不写完整完成摘要；下游DAG停止。若没有足够结果可发布，先报告真实依赖失败，不能掩盖成样本不足。正常空候选和历史过滤不凭空计为依赖故障。可用一个仅供这三个类实际共用的EvaluationFailures聚合器保存首个原因及失败计数，不建通用任务框架。
+
+Eval并行任务的Runtime失败在收集Future时聚合，recall不能先吞成空列表；ExecutionException里的Error不能作为普通业务失败吞掉。InterruptedException恢复中断标记、停止等待并抛既有JOB_INTERRUPTED，finally终止尚未完成任务；不能声称已撤销模型调用。多variant文件可保留已写部分，部分结果不得显示全成功。全部没有可评估用户结果时，已写零用户报告仍明确无产出；单个召回channel为空但其他channel有效继续保留真实结果。
+
+TuneFusion明确“缺少pCTR/pCVR”与合法空召回：全部缺head时给专用未就绪码。部分head缺失是已知候选过滤，保留可用head和受控目录warning，不能将所有用户各缺一个head误判为完全没有多目标模型。异常依赖失败仍最终失败，不能把异常过滤成正常部分head提示。非有限模型输出拒绝进入校准/网格，防止发布NaN曲线或虚假指标。
+
+验证：原整文件/曲线SHA基线与替代来源保持；旧注入依赖失败的部分结果SHA仍保持，但状态改为失败且不输出完成。无输入、无候选、全部/部分缺head、坏参数无发布、bins0保留旧曲线、非有限模型输出和中断恢复新增有行为价值的测试。真实PG/Redis+临时子JVM，召回/排序是受控替身，不声称真实模型推理。必要专项、24compile、目录/SQL/前端生成检查和hygiene通过后正常Git交付。
+
+EC05其余AbReport、Delay、Lookalike、AdExplore及共享CLI来源仍继续；EC06广告计算/发布债务、EC07/08不缩减。本设计已按现有整体授权冻结，可以直接实施，不再请求确认。
