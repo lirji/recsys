@@ -1,0 +1,11 @@
+# EC05b 类目加载与批处理的部分失败
+
+基线7bd314fdd1c243d4fa0a9e3260f75169642fc69c。分发器已正确传播，当前片修复三个仍在内部吞错的生产路径：Flink CategoryEnricher、BackfillEmbeddingJob、PublishReportsJob；其余Job留父EC05，EC06计算/模型发布债务不合并到本片。
+
+Flink类目快照仅在完整加载后发布，数据库不可读时抛STREAM_CATEGORY_LOAD_FAILED使算子open失败，不再以空/半份类目继续健康运行。失败重开清除旧快照；正常空表、NULL/重复/大ID和序列化口径保持。ItemCategoryLoader自身ResultHandler API不改，局部Map仅是未发布的构建数据；不改变Flink既有重启策略。
+
+向量回填继续既有逐项容错、成功项落库与skip-existing续跑；任意项失败或配额停止后最终抛专用安全码，不让DAG下游误用完整产出。维度/非有限结果使用目录异常；中断恢复标记并立即终止，不继续后续项。正常成功/已存在跳过/物品已不存在的原跳过保持；无新重试、事务或全批回滚。错误日志用目录码、计数/标识/异常类型，cause只供内部诊断。
+
+报表发布保留逐文件继续、已有名幂等、成功文件保留、原建表时机与事务传播。目录不存在返回JOB_REPORT_INPUT_UNAVAILABLE，不再成功；存在但空目录是合法完整空遍历。解析/写入失败后最终JOB_REPORT_PARTIAL_FAILED，已发布文件不撤销。自举数据库失败仍由JobRunner归一为未知执行失败，不改变DDL或历史SQL。
+
+复用真实PG/pgvector测试（当前断言明确记录了旧吞错语义），增加故障后的修复续跑、配额/中断、完整成功与部分效果证据；Flink verify从最终fat jar做真实PG类目查询，避免仅测试classpath补类。无共享环境、无模型网络请求。状态code与前端目录自动生成，EC05a codec自然接受JOB_新码，前端仅本地安全目录显示。

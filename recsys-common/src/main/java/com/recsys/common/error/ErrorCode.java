@@ -160,7 +160,14 @@ public enum ErrorCode {
     JOB_STATUS_WRITE_FAILED("JOB_STATUS_WRITE_FAILED", "作业状态未能确认，业务效果可能已生效，请核对后再重试", 0),
     JOB_STATUS_INVALID("JOB_STATUS_INVALID", "作业状态记录无法识别，当前结果未知，请核对执行记录", 0),
     CONSOLE_OPS_UNAVAILABLE("CONSOLE_OPS_UNAVAILABLE", "运行配置与作业状态暂时无法读取，请稍后重试", 0),
-    JOB_LOCK_RELEASE_FAILED("JOB_LOCK_RELEASE_FAILED", "作业执行已结束，但锁释放未能确认，请核对锁状态后再运行", 0);
+    JOB_LOCK_RELEASE_FAILED("JOB_LOCK_RELEASE_FAILED", "作业执行已结束，但锁释放未能确认，请核对锁状态后再运行", 0),
+    STREAM_CATEGORY_LOAD_FAILED("STREAM_CATEGORY_LOAD_FAILED", "物品类目加载失败，实时特征作业未就绪，请检查数据源后重试", 0),
+    JOB_EMBEDDING_QUOTA_EXHAUSTED("JOB_EMBEDDING_QUOTA_EXHAUSTED", "向量化配额耗尽，本次回填未完成；已有结果保留，可在配额恢复后使用 --skip-existing 续跑", 0),
+    JOB_EMBEDDING_PARTIAL_FAILED("JOB_EMBEDDING_PARTIAL_FAILED", "部分向量回填失败，已有结果保留，请核对失败项后使用 --skip-existing 续跑", 0),
+    JOB_EMBEDDING_INVALID_RESULT("JOB_EMBEDDING_INVALID_RESULT", "向量结果的维度或数值不合法，请检查模型配置与响应", 0),
+    JOB_REPORT_INPUT_UNAVAILABLE("JOB_REPORT_INPUT_UNAVAILABLE", "报表输入目录不存在或不可读取，请检查 --eval-dir 与上游产物", 0),
+    JOB_REPORT_PARTIAL_FAILED("JOB_REPORT_PARTIAL_FAILED", "部分报表未能发布，已发布结果保留，请修复输入或数据源后重试", 0),
+    JOB_INTERRUPTED("JOB_INTERRUPTED", "作业被中断，可能已有部分结果，请核对后再运行", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

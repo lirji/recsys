@@ -1120,6 +1120,55 @@
       "httpStatus": 0,
       "message": "作业执行已结束，但锁释放未能确认，请核对锁状态后再运行",
       "httpDefault": false
+    },
+    {
+      "name": "STREAM_CATEGORY_LOAD_FAILED",
+      "code": "STREAM_CATEGORY_LOAD_FAILED",
+      "httpStatus": 0,
+      "message": "物品类目加载失败，实时特征作业未就绪，请检查数据源后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_EMBEDDING_QUOTA_EXHAUSTED",
+      "code": "JOB_EMBEDDING_QUOTA_EXHAUSTED",
+      "httpStatus": 0,
+      "message": "向量化配额耗尽，本次回填未完成；已有结果保留，可在配额恢复后使用 --skip-existing 续跑",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_EMBEDDING_PARTIAL_FAILED",
+      "code": "JOB_EMBEDDING_PARTIAL_FAILED",
+      "httpStatus": 0,
+      "message": "部分向量回填失败，已有结果保留，请核对失败项后使用 --skip-existing 续跑",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_EMBEDDING_INVALID_RESULT",
+      "code": "JOB_EMBEDDING_INVALID_RESULT",
+      "httpStatus": 0,
+      "message": "向量结果的维度或数值不合法，请检查模型配置与响应",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_REPORT_INPUT_UNAVAILABLE",
+      "code": "JOB_REPORT_INPUT_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "报表输入目录不存在或不可读取，请检查 --eval-dir 与上游产物",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_REPORT_PARTIAL_FAILED",
+      "code": "JOB_REPORT_PARTIAL_FAILED",
+      "httpStatus": 0,
+      "message": "部分报表未能发布，已发布结果保留，请修复输入或数据源后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_INTERRUPTED",
+      "code": "JOB_INTERRUPTED",
+      "httpStatus": 0,
+      "message": "作业被中断，可能已有部分结果，请核对后再运行",
+      "httpDefault": false
     }
   ],
   "families": [

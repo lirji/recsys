@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.offline.persistence.mapper.primary.ReportPublicationMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -36,7 +39,10 @@ class ReportPublicationPostgresTest {
     @BeforeEach void reset(){db.execute("DROP TABLE IF EXISTS eval_report");}
     @AfterEach void closeConnections(){source.assertClosed(admin,"report-publisher");}
     @Test void bootstrapStillHappensBeforeMissingDirectoryCheck() throws Exception {
-        job.run(new DefaultApplicationArguments("--eval-dir="+directory.resolve("missing")));assertEquals(0,count());
+        var failure = assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments("--eval-dir="+directory.resolve("missing"))));
+        assertEquals(ErrorCode.JOB_REPORT_INPUT_UNAVAILABLE, failure.errorCode());
+        assertEquals(0,count());
         assertEquals("离线评估与分析报表的结构化存储",db.queryForObject("SELECT obj_description('eval_report'::regclass)",String.class));
         assertEquals(1,db.queryForObject("SELECT count(*) FROM pg_indexes WHERE tablename='eval_report' AND indexname='idx_eval_report_cat_ts'",Integer.class));
         assertEquals(8,db.queryForObject("SELECT count(*) FROM pg_attribute WHERE attrelid='eval_report'::regclass AND attnum>0 AND NOT attisdropped AND col_description(attrelid,attnum) IS NOT NULL",Integer.class));
@@ -62,8 +68,15 @@ class ReportPublicationPostgresTest {
     }
     @Test void malformedFileDirectoryAndRejectedRowDoNotStopLaterFiles() throws Exception {
         run();db.execute("ALTER TABLE eval_report ADD CONSTRAINT reject_test_report CHECK(name<>'02-reject.csv')");
-        write("00-good.csv","a\n0\n");write("01-malformed.csv","a\n\"unfinished\n");write("02-reject.csv","a\n2\n");Files.createDirectory(directory.resolve("03-directory.csv"));write("04-good.csv","a\n4\n");run();
+        write("00-good.csv","a\n0\n");write("01-malformed.csv","a\n\"unfinished\n");write("02-reject.csv","a\n2\n");Files.createDirectory(directory.resolve("03-directory.csv"));write("04-good.csv","a\n4\n");
+        var failure = assertThrows(PublicErrorException.class,this::run);
+        assertEquals(ErrorCode.JOB_REPORT_PARTIAL_FAILED,failure.errorCode());
+        assertFalse(failure.getMessage().contains("02-reject"));
         assertEquals(List.of("00-good.csv","04-good.csv"),db.queryForList("SELECT name FROM eval_report ORDER BY name",String.class));
+        write("01-malformed.csv","a\n1\n");
+        Files.delete(directory.resolve("03-directory.csv"));write("03-directory.csv","a\n3\n");
+        db.execute("ALTER TABLE eval_report DROP CONSTRAINT reject_test_report");
+        run();assertEquals(5,count());
     }
     @Test void outerTransactionRollsBackPublicationAndBootstrapFailurePropagates() throws Exception {
         run();write("metrics-tx.csv","a\n1\n");

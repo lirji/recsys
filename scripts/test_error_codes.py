@@ -91,6 +91,15 @@ class ErrorCodeContractTest(unittest.TestCase):
         self.assertEqual(generator.outputs(old)[generator.TYPESCRIPT], generator.outputs(self.catalog)[generator.TYPESCRIPT])
         self.assertEqual(generator.outputs(old)[generator.JAVA], generator.outputs(self.catalog)[generator.JAVA])
 
+    def test_long_cjk_message_wraps_without_changing_its_literal(self):
+        long_message = "检查" * 30 + " --skip-existing"
+        candidate = copy.deepcopy(self.catalog)
+        candidate["errors"][0]["message"] = long_message
+        generated = generator.outputs(candidate)[generator.TYPESCRIPT]
+        self.assertIn("    message:\n      '" + long_message + "',", generated)
+        candidate["errors"][0]["message"] = "检查参数"
+        self.assertIn("    message: '检查参数',", generator.outputs(candidate)[generator.TYPESCRIPT])
+
     def test_check_fails_on_missing_or_modified_outputs_and_never_overwrites_them(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

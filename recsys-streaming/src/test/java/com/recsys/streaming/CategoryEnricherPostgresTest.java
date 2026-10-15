@@ -1,5 +1,8 @@
 package com.recsys.streaming;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.apache.flink.configuration.Configuration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,13 +67,19 @@ class CategoryEnricherPostgresTest {
         assertReleased();
     }
 
-    @Test void missingTableIsCaughtAndFailedReopenClearsOldSnapshot() throws Exception {
+    @Test void missingTableFailsStartupAndFailedReopenClearsOldSnapshot() throws Exception {
         var enricher = enricher();
         enricher.open(new Configuration());
         sql("DROP TABLE item");
-        assertDoesNotThrow(() -> enricher.open(new Configuration()));
+        var failure = assertThrows(PublicErrorException.class, () -> enricher.open(new Configuration()));
+        assertEquals(ErrorCode.STREAM_CATEGORY_LOAD_FAILED, failure.errorCode());
+        assertFalse(failure.getMessage().contains("SELECT"));
         assertTrue(snapshot(enricher).isEmpty());
         assertNull(enricher.map(event(1, "CLICK", 0)).category);
+        assertReleased();
+        prepare();
+        enricher.open(new Configuration());
+        assertEquals("last", enricher.map(event(1, "CLICK", 0)).category);
         assertReleased();
     }
 

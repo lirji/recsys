@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -66,14 +69,16 @@ public class PublishReportsJob implements OfflineJob {
 
         Path evalDir = Path.of(dir);
         if (!Files.isDirectory(evalDir)) {
-            log.warn("报表目录不存在,跳过: {}", evalDir.toAbsolutePath());
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_REPORT_INPUT_UNAVAILABLE);
         }
 
         int published = 0, skipped = 0, failed = 0;
+        Exception firstFailure = null;
         List<Path> files;
         try (Stream<Path> s = Files.list(evalDir)) {
             files = s.filter(p -> p.getFileName().toString().endsWith(".csv")).sorted().toList();
+        } catch (java.io.IOException | SecurityException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_REPORT_INPUT_UNAVAILABLE, failure);
         }
         for (Path file : files) {
             String fileName = file.getFileName().toString();
@@ -98,11 +103,14 @@ public class PublishReportsJob implements OfflineJob {
                         mapper.writeValueAsString(columns), mapper.writeValueAsString(rows),
                         Files.size(file)));
                 if (n > 0) published++; else skipped++;
-            } catch (Exception e) {
+            } catch (Exception failure) {
                 failed++;
-                log.warn("解析/落库失败 {}: {}", fileName, e.getMessage());
+                if (firstFailure == null) firstFailure = failure;
+                log.warn("{} failureType={}", ErrorCode.JOB_REPORT_PARTIAL_FAILED.displayMessage(), failure.getClass().getSimpleName());
             }
         }
+        // 单文件成功仍保留；最终异常让DAG停止，不把部分发布当全成功。
+        if (failed > 0) throw new PublicErrorException(ErrorCode.JOB_REPORT_PARTIAL_FAILED, firstFailure);
         log.info("publish-reports 完成: 新增 {}, 已存在跳过 {}, 失败 {} (共 {} 个 CSV)",
                 published, skipped, failed, files.size());
     }

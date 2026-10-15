@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.embedding.EmbeddingClient;
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
@@ -91,11 +94,17 @@ class BackfillEmbeddingPostgresTest {
         when(client.embedText("item1")).thenReturn(new float[]{1, 0, 0});
         when(client.embedText("item2")).thenReturn(new float[]{1, 0});
         when(client.embedText("item3")).thenReturn(new float[]{Float.NaN, 0, 0});
-        when(client.embedText("item4")).thenThrow(new QuotaExhaustedException("test quota"));
-        job.run(new DefaultApplicationArguments("--sleep-ms=0"));
+        when(client.embedText("item4")).thenThrow(new QuotaExhaustedException("private quota token"));
+        var failure = assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--sleep-ms=0")));
+        assertEquals(ErrorCode.JOB_EMBEDDING_QUOTA_EXHAUSTED, failure.errorCode());
+        assertFalse(failure.getMessage().contains("private"));
         assertEquals(List.of(1L), db.queryForList("SELECT item_id FROM item_embedding", Long.class));
         verify(client).embedText("item3"); verify(client).embedText("item4");
         verify(content, never()).findById(5); verify(client, never()).embedText("item5");
+        doReturn(new float[]{1, 0, 0}).when(client).embedText(anyString());
+        job.run(new DefaultApplicationArguments("--sleep-ms=0", "--skip-existing"));
+        assertEquals(5, db.queryForObject("SELECT count(*) FROM item_embedding", Integer.class));
+        verify(client, times(1)).embedText("item1");
         source.assertClosed(admin, "embedding-backfill-writer");
     }
 
@@ -110,6 +119,35 @@ class BackfillEmbeddingPostgresTest {
             status.setRollbackOnly();
         });
         assertEquals(0, db.queryForObject("SELECT count(*) FROM item_embedding", Integer.class));
+        source.assertClosed(admin, "embedding-backfill-writer");
+    }
+
+    @Test void rejectedRowKeepsOtherResultsButFailsSummaryAndCanResume() throws Exception {
+        items(1, 2, 3);
+        when(client.embedText(anyString())).thenReturn(new float[]{1, 0, 0});
+        db.execute("ALTER TABLE item_embedding ADD CONSTRAINT reject_item CHECK(item_id<>2)");
+        try {
+            var failure = assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--sleep-ms=0")));
+            assertEquals(ErrorCode.JOB_EMBEDDING_PARTIAL_FAILED, failure.errorCode());
+            assertEquals(List.of(1L,3L), db.queryForList("SELECT item_id FROM item_embedding ORDER BY item_id", Long.class));
+        } finally { db.execute("ALTER TABLE item_embedding DROP CONSTRAINT reject_item"); }
+        job.run(new DefaultApplicationArguments("--sleep-ms=0", "--skip-existing"));
+        assertEquals(3, db.queryForObject("SELECT count(*) FROM item_embedding", Integer.class));
+        verify(client, times(1)).embedText("item1"); verify(client, times(1)).embedText("item3");
+        source.assertClosed(admin, "embedding-backfill-writer");
+    }
+
+    @Test void interruptionStopsRemainingItemsAndPreservesEarlierWrite() throws Exception {
+        items(1, 2, 3);
+        when(client.embedText("item1")).thenReturn(new float[]{1, 0, 0});
+        when(client.embedText("item2")).thenAnswer(call -> { throw new InterruptedException("private cancelled"); });
+        try {
+            var failure = assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--sleep-ms=0")));
+            assertEquals(ErrorCode.JOB_INTERRUPTED, failure.errorCode());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally { Thread.interrupted(); }
+        assertEquals(List.of(1L), db.queryForList("SELECT item_id FROM item_embedding", Long.class));
+        verify(content, never()).findById(3);
         source.assertClosed(admin, "embedding-backfill-writer");
     }
 

@@ -1,5 +1,8 @@
 package com.recsys.streaming;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.constant.RedisKeys;
@@ -157,11 +160,15 @@ public class RealtimeFeatureJob {
         @Override
         public void open(Configuration parameters) {
             catMap = new HashMap<>();
+            Map<Long, String> loaded = new HashMap<>();
             try {
-                ItemCategoryLoader.loadInto(url, user, pass, catMap);
+                ItemCategoryLoader.loadInto(url, user, pass, loaded);
+                // 完整加载后发布；查询中断留下的子集不能成为完整快照。
+                catMap = loaded;
                 log.info("类目富化:加载 item→category {} 条", catMap.size());
-            } catch (Exception e) {
-                log.warn("加载 item 类目失败(类目偏好管线将无类目):{}", e.getMessage());
+            } catch (Exception failure) {
+                log.error("{}", ErrorCode.STREAM_CATEGORY_LOAD_FAILED.displayMessage());
+                throw new PublicErrorException(ErrorCode.STREAM_CATEGORY_LOAD_FAILED, failure);
             }
         }
 

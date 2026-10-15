@@ -36,6 +36,18 @@ class JobRunnerErrorTest {
         var runner = new JobRunner(List.of(job("bad", () -> { throw safe; })));
         assertSame(safe, assertThrows(PublicErrorException.class, () -> runner.run(args("--job=bad"))));
     }
+    @Test void checkedInterruptionKeepsCancellationFlagAndCode() {
+        var runner = new JobRunner(List.of(new OfflineJob() {
+            public String name() { return "interrupted"; }
+            public void run(ApplicationArguments args) throws Exception { throw new InterruptedException("private token"); }
+        }));
+        try {
+            assertEquals(ErrorCode.JOB_INTERRUPTED, assertThrows(PublicErrorException.class,
+                    () -> runner.run(args("--job=interrupted"))).errorCode());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally { Thread.interrupted(); }
+    }
+
     static ApplicationArguments args(String... args) { return new DefaultApplicationArguments(args); }
     static OfflineJob job(String name, Runnable action) {
         return new OfflineJob() {

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import com.recsys.common.embedding.EmbeddingClient;
 import com.recsys.embedding.QuotaExhaustedException;
@@ -59,6 +62,7 @@ public class BackfillEmbeddingJob implements OfflineJob {
 
         int done = 0, skipped = 0, failed = 0;
         boolean quotaHit = false;
+        Exception firstFailure = null;
         for (long itemId : ids) {
             try {
                 if (skipExisting && embeddingExists(itemId)) {
@@ -71,9 +75,11 @@ public class BackfillEmbeddingJob implements OfflineJob {
                 }
                 String text = buildText(item);
                 float[] vec = embeddingClient.embedText(text);
-                if (vec.length != embeddingClient.dimension()) {
-                    throw new IllegalStateException("维度不符: 期望 " + embeddingClient.dimension()
-                            + " 实得 " + vec.length);
+                if (vec == null || vec.length != embeddingClient.dimension()) {
+                    throw new PublicErrorException(ErrorCode.JOB_EMBEDDING_INVALID_RESULT);
+                }
+                for (float value : vec) {
+                    if (!Float.isFinite(value)) throw new PublicErrorException(ErrorCode.JOB_EMBEDDING_INVALID_RESULT);
                 }
                 upsertEmbedding(itemId, vec, embeddingClient.modelName());
                 done++;
@@ -86,17 +92,24 @@ public class BackfillEmbeddingJob implements OfflineJob {
             } catch (QuotaExhaustedException qe) {
                 // 配额耗尽:优雅停止,不空转。下次用 --skip-existing 续跑即可。
                 quotaHit = true;
-                log.warn("向量化配额耗尽,提前停止。已灌 {};稍后用 --skip-existing 续跑。原因: {}",
-                        done, qe.getMessage());
+                firstFailure = qe;
+                log.warn("{} completed={}", ErrorCode.JOB_EMBEDDING_QUOTA_EXHAUSTED.displayMessage(), done);
                 break;
-            } catch (Exception e) {
+            } catch (InterruptedException interrupted) {
+                // 线程取消不是普通脏数据，已有单项效果保留，不能继续跑后面的项。
+                Thread.currentThread().interrupt();
+                throw new PublicErrorException(ErrorCode.JOB_INTERRUPTED, interrupted);
+            } catch (Exception failure) {
                 failed++;
-                log.warn("物品 {} 灌向量失败: {}", itemId, e.getMessage());
+                if (firstFailure == null) firstFailure = failure;
+                log.warn("{} item={} failureType={}", ErrorCode.JOB_EMBEDDING_PARTIAL_FAILED.displayMessage(),
+                        itemId, failure.getClass().getSimpleName());
             }
         }
+        if (quotaHit) throw new PublicErrorException(ErrorCode.JOB_EMBEDDING_QUOTA_EXHAUSTED, firstFailure);
+        if (failed > 0) throw new PublicErrorException(ErrorCode.JOB_EMBEDDING_PARTIAL_FAILED, firstFailure);
         Long total = mapper.countAll();
-        log.info("backfill-embedding {}:成功 {},跳过 {},失败 {};item_embedding 总数 {}",
-                quotaHit ? "因配额中断" : "完成", done, skipped, failed, total);
+        log.info("backfill-embedding 完成:成功 {},跳过 {};item_embedding 总数 {}", done, skipped, total);
     }
 
     private boolean embeddingExists(long itemId) {

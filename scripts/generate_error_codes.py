@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = "recsys-common/src/main/java/com/recsys/common/error/ErrorCode.java"
@@ -14,6 +15,8 @@ TYPESCRIPT = "console/src/api/generated/errorCodes.ts"
 NO_HTTP_STATUS = 0
 HTTP_ERROR_STATUS_MIN = 400
 HTTP_ERROR_STATUS_MAX = 599
+# 沿用console现有Prettier 100列规范；中文全角占两列。
+TS_PRINT_WIDTH = 100
 
 
 def validate(catalog):
@@ -146,7 +149,11 @@ public enum ErrorCode {
     ts = "// 由contracts/errors.json生成；请运行python3 scripts/generate_error_codes.py，勿手工修改。\n"
     ts += "export const errorCodes = {\n"
     for entry in entries:
-        ts += f"  {entry['code']}: {{\n    message: {ts_string(entry['message'])},\n    httpStatus: {entry['httpStatus']},\n  }},\n"
+        message = ts_string(entry['message'])
+        inline = f"    message: {message},"
+        width = sum(0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in inline)
+        message_line = inline if width <= TS_PRINT_WIDTH else f"    message:\n      {message},"
+        ts += f"  {entry['code']}: {{\n{message_line}\n    httpStatus: {entry['httpStatus']},\n  }},\n"
     ts += "} as const;\n\n"
     ts += "export type KnownErrorCode = keyof typeof errorCodes;\n\n"
     ts += "export const defaultHttpErrorCodes: Readonly<Record<number, KnownErrorCode>> = {\n"

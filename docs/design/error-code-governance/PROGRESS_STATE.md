@@ -27,3 +27,5 @@ EC04e4 DONE/PASS（本地）：User360保留成功数据，各失败分区显示
 EC04e5 DONE/PASS（本地）：Item故障返回安全503，真实缺失/批量约束及标题fallback保持。目录149；36后端真实PG/HTTP等、164前端、24compile与目录/SQL/hygiene通过，见EC04E5_DESIGN/RESULT。父EC04剩余SystemOps与EC05共同推进。E4已交付d36f184b；后续最终SHA CI待EC08核验。
 
 EC05a DONE/PASS（本地）：作业状态codec、JobRunner预检/失败传播、DAG安全状态与未知结果、SystemOps安全消费和页面已实现，总159码。147后端/16类、168前端/25文件、24compile与目录/SQL/hygiene通过，见EC05A_DESIGN/RESULT。两处边界catch和第三方enum advisory已说明，Java工具限制保持。EC04（a～e5+SystemOps）既定公开边界本地验收完成；EC05其余Job/streaming、EC06～08继续。E5已交付d3f15c62，新片最终CI另核验。
+
+EC05b DONE/PASS（本地）：Flink类目不可读不再健康启动；向量/报表部分失败最终受控异常、成功部分保留并支持修复续跑。166码，43后端+streaming最终jar6+1、24compile、Python7、前端57专项/格式/ESLint、目录/SQL/hygiene通过，见EC05B_DESIGN/RESULT。生成器沿现有100列规范折行，无新依赖。父EC05其余Job、EC06～08继续；A已交付7bd314fd，新CI仍需最终SHA核验。

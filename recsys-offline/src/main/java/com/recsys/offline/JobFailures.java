@@ -9,7 +9,10 @@ final class JobFailures {
     /** 不以任意异常文本猜测业务原因；明确的作业目录异常保留其可行动说明。 */
     static PublicErrorException publicFailure(Exception failure) {
         if (failure instanceof PublicErrorException safe && safe.errorCode().code().startsWith("JOB_")) return safe;
-        if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+        if (failure instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+            return new PublicErrorException(ErrorCode.JOB_INTERRUPTED, failure);
+        }
         return new PublicErrorException(ErrorCode.JOB_EXECUTION_FAILED, failure);
     }
 }
