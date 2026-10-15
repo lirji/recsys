@@ -1,6 +1,8 @@
 package com.recsys.recengine.user;
 
 import com.recsys.proto.user.v1.Ack;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.user.v1.Interests;
 import com.recsys.proto.user.v1.UpdateInterestsRequest;
 import com.recsys.proto.user.v1.UserId;
@@ -36,27 +38,28 @@ public class GrpcUserGateway implements UserGateway {
     @Retry(name = "user-grpc", fallbackMethod = "getInterestsFallback")
     @CircuitBreaker(name = "user-grpc")
     public List<String> getInterests(long userId) {
-        Interests reply = stub.getInterests(UserId.newBuilder().setUserId(userId).build());
+        Interests reply = GrpcErrors.call(ErrorCode.RPC_USER_QUERY_FAILED,
+                () -> stub.getInterests(UserId.newBuilder().setUserId(userId).build()));
         return new ArrayList<>(reply.getCategoriesList());
     }
 
     @Override
     @CircuitBreaker(name = "user-grpc", fallbackMethod = "updateInterestsFallback")
     public void updateInterests(long userId, List<String> categories) {
-        Ack ignored = stub.updateInterests(UpdateInterestsRequest.newBuilder()
+        Ack ignored = GrpcErrors.call(ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN, () -> stub.updateInterests(UpdateInterestsRequest.newBuilder()
                 .setUserId(userId)
                 .addAllCategories(categories == null ? List.of() : categories)
-                .build());
+                .build()));
     }
 
     /** 读兴趣降级(P1):user-service 不可达时返回空(视为冷启动),推荐照常走冷启动兜底。 */
     List<String> getInterestsFallback(long userId, Throwable t) {
-        log.warn("user gRPC getInterests 降级为空(按冷启动处理): userId={} err={}", userId, t.toString());
+        log.warn("{}；降级为冷启动，userId={} failureType={}", ErrorCode.RPC_USER_QUERY_FAILED.displayMessage(), userId, t.getClass().getSimpleName());
         return List.of();
     }
 
-    /** 写兴趣降级(P1):记日志不阻断(onboarding 写丢失不影响主链路)。 */
+    /** 保留旧降级返回；应答失败不代表写入一定丢失，必须记录未知而非未落库。 */
     void updateInterestsFallback(long userId, List<String> categories, Throwable t) {
-        log.warn("user gRPC updateInterests 降级(兴趣写未落库): userId={} err={}", userId, t.toString());
+        log.warn("{} userId={} failureType={}", ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN.displayMessage(), userId, t.getClass().getSimpleName());
     }
 }

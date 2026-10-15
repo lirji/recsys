@@ -896,6 +896,48 @@
       "httpStatus": 0,
       "message": "CPA响应无法验证，请按原ID查询",
       "httpDefault": false
+    },
+    {
+      "name": "RPC_AD_QUERY_FAILED",
+      "code": "RPC_AD_QUERY_FAILED",
+      "httpStatus": 0,
+      "message": "广告查询暂不可用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_AD_REPORT_QUERY_FAILED",
+      "code": "RPC_AD_REPORT_QUERY_FAILED",
+      "httpStatus": 0,
+      "message": "广告报表查询暂不可用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_AD_WRITE_RESULT_UNKNOWN",
+      "code": "RPC_AD_WRITE_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "广告写入结果未知，请核查原业务记录",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONTENT_QUERY_FAILED",
+      "code": "RPC_CONTENT_QUERY_FAILED",
+      "httpStatus": 0,
+      "message": "内容查询暂不可用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_USER_QUERY_FAILED",
+      "code": "RPC_USER_QUERY_FAILED",
+      "httpStatus": 0,
+      "message": "用户偏好查询暂不可用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_USER_WRITE_RESULT_UNKNOWN",
+      "code": "RPC_USER_WRITE_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "用户偏好保存结果未知",
+      "httpDefault": false
     }
   ],
   "families": [

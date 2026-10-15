@@ -2,6 +2,8 @@ package com.recsys.contentserving.grpc;
 
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.ContentProtoMapper;
 import com.recsys.proto.content.v1.BatchGetItemsReply;
 import com.recsys.proto.content.v1.BatchGetItemsRequest;
@@ -24,14 +26,14 @@ public class ContentGrpcService extends ContentServiceGrpc.ContentServiceImplBas
         this.content = content;
     }
 
+    /** 查询失败只返回安全目录提示，不能以空物料冒充成功，也不改变原UNKNOWN状态。 */
     @Override
     public void batchGetItems(BatchGetItemsRequest req, StreamObserver<BatchGetItemsReply> obs) {
-        Map<Long, Item> items = content.findByIds(req.getItemIdsList());
-        BatchGetItemsReply.Builder rb = BatchGetItemsReply.newBuilder();
-        for (Item it : items.values()) {
-            rb.addItems(ContentProtoMapper.toProto(it));
-        }
-        obs.onNext(rb.build());
-        obs.onCompleted();
+        GrpcErrors.respondWithUnknownOnFailure(obs, ErrorCode.RPC_CONTENT_QUERY_FAILED, () -> {
+            Map<Long, Item> items = content.findByIds(req.getItemIdsList());
+            BatchGetItemsReply.Builder rb = BatchGetItemsReply.newBuilder();
+            for (Item it : items.values()) rb.addItems(ContentProtoMapper.toProto(it));
+            return rb.build();
+        });
     }
 }

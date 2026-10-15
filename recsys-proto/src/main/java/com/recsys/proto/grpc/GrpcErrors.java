@@ -4,14 +4,41 @@ import com.recsys.common.error.ErrorCode;
 import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /** gRPC只传目录内的安全错误；协议状态独立于HTTP，不传播上游描述或任意trailer。 */
 public final class GrpcErrors {
+    private static final System.Logger LOG = System.getLogger(GrpcErrors.class.getName());
     public static final Metadata.Key<String> ERROR_CODE =
             Metadata.Key.of("recsys-error-code", Metadata.ASCII_STRING_MARSHALLER);
 
     private GrpcErrors() {}
+
+    /** 客户端只清除远端详情，保留异常类型/协议状态，让既有重试和fallback继续自行分类。 */
+    public static <T> T call(ErrorCode unknownResult, Supplier<T> action) {
+        try {
+            return action.get();
+        } catch (StatusRuntimeException failure) {
+            throw sanitize(failure, unknownResult);
+        }
+    }
+
+    /** 普通RPC原未捕获异常均为UNKNOWN；保留此状态，避免把新安全提示变成额外重试。 */
+    public static <T> void respondWithUnknownOnFailure(StreamObserver<T> observer, ErrorCode error, Supplier<T> action) {
+        T reply;
+        try {
+            reply = Objects.requireNonNull(action.get());
+        } catch (RuntimeException failure) {
+            LOG.log(System.Logger.Level.WARNING, "{0}; failureType={1}", error.displayMessage(), failure.getClass().getSimpleName());
+            observer.onError(exception(Status.Code.UNKNOWN, error));
+            return;
+        }
+        // 网络写入/取消引起的observer异常由gRPC负责，不再次发送onError或完成通知。
+        observer.onNext(reply);
+        observer.onCompleted();
+    }
 
     /** 内部认证失败不是HTTP用户无权限；只识别匹配协议状态的单个明确caller码。 */
     public static boolean isInternalAccessFailure(StatusRuntimeException failure) {

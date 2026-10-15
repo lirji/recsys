@@ -1,6 +1,8 @@
 package com.recsys.recengine.content;
 
 import com.recsys.content.Item;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.ContentProtoMapper;
 import com.recsys.proto.content.v1.BatchGetItemsReply;
 import com.recsys.proto.content.v1.BatchGetItemsRequest;
@@ -40,8 +42,8 @@ public class GrpcContentGateway implements ContentGateway {
         if (itemIds == null || itemIds.isEmpty()) {
             return Map.of();
         }
-        BatchGetItemsReply reply = stub.batchGetItems(
-                BatchGetItemsRequest.newBuilder().addAllItemIds(itemIds).build());
+        BatchGetItemsReply reply = GrpcErrors.call(ErrorCode.RPC_CONTENT_QUERY_FAILED, () -> stub.batchGetItems(
+                BatchGetItemsRequest.newBuilder().addAllItemIds(itemIds).build()));
         return ContentProtoMapper.toItemMap(reply.getItemsList());
     }
 
@@ -50,7 +52,7 @@ public class GrpcContentGateway implements ContentGateway {
      * 上层编排对缺 Item 的候选 fail-soft(不因单次 hydrate 失败整条推荐失败)。
      */
     Map<Long, Item> findByIdsFallback(List<Long> itemIds, Throwable t) {
-        log.warn("content gRPC hydrate 降级为空(候选展示字段缺失): {}", t.toString());
+        log.warn("{}；降级为空展示字段，failureType={}", ErrorCode.RPC_CONTENT_QUERY_FAILED.displayMessage(), t.getClass().getSimpleName());
         return Map.of();
     }
 }

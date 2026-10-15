@@ -6,6 +6,8 @@ import com.recsys.proto.user.v1.UpdateInterestsRequest;
 import com.recsys.proto.user.v1.UserId;
 import com.recsys.proto.user.v1.UserProfileServiceGrpc;
 import com.recsys.user.UserProfileService;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 
@@ -24,17 +26,21 @@ public class UserGrpcService extends UserProfileServiceGrpc.UserProfileServiceIm
         this.userProfile = userProfile;
     }
 
+    /** RPC边界失败与空兴趣分开，保留已有UNKNOWN以免改变客户端重试。 */
     @Override
     public void getInterests(UserId req, StreamObserver<Interests> obs) {
-        List<String> cats = userProfile.getInterests(req.getUserId());
-        obs.onNext(Interests.newBuilder().addAllCategories(cats).build());
-        obs.onCompleted();
+        GrpcErrors.respondWithUnknownOnFailure(obs, ErrorCode.RPC_USER_QUERY_FAILED, () -> {
+            List<String> cats = userProfile.getInterests(req.getUserId());
+            return Interests.newBuilder().addAllCategories(cats).build();
+        });
     }
 
+    /** 写入异常不能生成成功ACK；是否已生效须保留未知，不声称回滚或未落库。 */
     @Override
     public void updateInterests(UpdateInterestsRequest req, StreamObserver<Ack> obs) {
-        userProfile.updateInterests(req.getUserId(), req.getCategoriesList());
-        obs.onNext(Ack.newBuilder().setOk(true).build());
-        obs.onCompleted();
+        GrpcErrors.respondWithUnknownOnFailure(obs, ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN, () -> {
+            userProfile.updateInterests(req.getUserId(), req.getCategoriesList());
+            return Ack.newBuilder().setOk(true).build();
+        });
     }
 }

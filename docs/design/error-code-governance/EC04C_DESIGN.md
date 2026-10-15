@@ -1,0 +1,17 @@
+# EC04c 普通RPC安全错误
+
+基线ba09172fda312c2d0e33c5aadccbab5a6ebc20ce。继续父EC04，范围为普通AdServing/Content/User服务的8个方法及四个RPC调用入口（GrpcAdServingGateway旧接口、GrpcContentGateway、GrpcUserGateway、GrpcAdReportReader）。不改sandbox路径、资金算法、读写重试与熔断配置。
+
+## 实测与决定
+
+ContentGrpcErrorContractTest在未修改的普通服务上真实TCP验证：IllegalArgumentException、IllegalStateException、StatusRuntimeException(UNAVAILABLE)从方法内抛出时，对端均收到UNKNOWN。不能根据异常本身的Status改成UNAVAILABLE，否则会让现有GrpcRetryablePredicate增加读重试。另补广告5方法、用户2方法的同类基线保护。
+
+复用GrpcErrors增加普通一元调用适配：只捕获业务执行/回复构造阶段的RuntimeException，使用原UNKNOWN状态和调用入口选定的目录码；生成回复成功后才发送onNext/onCompleted。响应观察者自身故障由gRPC处理，不重复通知终态。记录固定错误码和异常类型，不输出原异常文本。Fatal Error不吞。
+
+增加6个RPC专用目录项，分别用于广告查询/报表/写入未知、内容查询、用户偏好读/写未知。四个客户端对远端StatusRuntimeException重建安全描述和metadata，保留实际状态及异常类型、读重试谓词、写不重试、既有fallback返回值。普通降级日志使用目录码并区分“未知”与“未落库”，不再声称写入一定没有生效。
+
+UNCHANGED：RPC消息schema、成功/重复false/空数据、协议状态与重试、领域逻辑/事务。CHANGED：异常描述和trailer安全目录化，客户端不保留原描述、cause或任意metadata。内部服务认证仍由已接入的全局拦截器负责。本片不把已有降级返回当成完整错误展示：写fallback吞错使HTTP伪成功、读模型对未知与空的区分留在后续EC04d明确修复并记录兼容变化；console正常对象内错误也仍在父范围。
+
+## 验证
+
+改前真实TCP的8方法状态、成功恢复及现有fallback/重试测试；改后加目录描述/trailer和恶意metadata隔离、成功/重复写ACK、四客户端状态和次数保护。运行受影响模块专项、common/platform/gateway相关兼容测试、全仓编译、目录生成/SQL边界、生成TS格式/前端测试及构建。资金、自然和三浏览器的EC04b基线可复用，因为本片不改sandbox/HTTP/前端解析；若测试或影响分析发现传播，补相应回归，不无据重复所有集成套件。

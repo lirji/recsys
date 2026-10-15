@@ -508,6 +508,30 @@ export const errorCodes = {
     message: 'CPA响应无法验证，请按原ID查询',
     httpStatus: 0,
   },
+  RPC_AD_QUERY_FAILED: {
+    message: '广告查询暂不可用',
+    httpStatus: 0,
+  },
+  RPC_AD_REPORT_QUERY_FAILED: {
+    message: '广告报表查询暂不可用',
+    httpStatus: 0,
+  },
+  RPC_AD_WRITE_RESULT_UNKNOWN: {
+    message: '广告写入结果未知，请核查原业务记录',
+    httpStatus: 0,
+  },
+  RPC_CONTENT_QUERY_FAILED: {
+    message: '内容查询暂不可用',
+    httpStatus: 0,
+  },
+  RPC_USER_QUERY_FAILED: {
+    message: '用户偏好查询暂不可用',
+    httpStatus: 0,
+  },
+  RPC_USER_WRITE_RESULT_UNKNOWN: {
+    message: '用户偏好保存结果未知',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -271,7 +271,7 @@ public class GrpcAdServingGateway implements AdServingGateway {
                 .setReservePrice(reserve)
                 .setRawQuery(sq != null ? nz(sq.raw()) : "")
                 .build();
-        AdsReply reply = stub.searchAds(req);
+        AdsReply reply = GrpcErrors.call(ErrorCode.RPC_AD_QUERY_FAILED, () -> stub.searchAds(req));
         List<com.recsys.common.ad.SponsoredAd> ads = AdProtoMapper.fromProto(reply.getAdsList());
         return new SearchAdsResponse(
                 reply.getUserId(),
@@ -284,26 +284,26 @@ public class GrpcAdServingGateway implements AdServingGateway {
     @Override
     @CircuitBreaker(name = "ad-serving-grpc", fallbackMethod = "recordClickFallback")
     public void recordClick(String requestId, long adId, long userId) {
-        Ack ignored = stub.recordClick(ClickRequest.newBuilder()
-                .setRequestId(nz(requestId)).setAdId(adId).setUserId(userId).build());
+        Ack ignored = GrpcErrors.call(ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN, () -> stub.recordClick(ClickRequest.newBuilder()
+                .setRequestId(nz(requestId)).setAdId(adId).setUserId(userId).build()));
     }
 
     @Override
     @CircuitBreaker(name = "ad-serving-grpc", fallbackMethod = "recordConversionFallback")
     public void recordConversion(String requestId, long adId, long userId) {
-        Ack ignored = stub.recordConversion(ConversionRequest.newBuilder()
-                .setRequestId(nz(requestId)).setAdId(adId).setUserId(userId).build());
+        Ack ignored = GrpcErrors.call(ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN, () -> stub.recordConversion(ConversionRequest.newBuilder()
+                .setRequestId(nz(requestId)).setAdId(adId).setUserId(userId).build()));
     }
 
     @Override
     @CircuitBreaker(name = "ad-serving-grpc", fallbackMethod = "recordOutcomeFallback")
     public boolean recordOutcome(String eventId, long advertiserId, long userId,
                                  String objective, double value, Instant occurredAt) {
-        Ack ack = stub.recordOutcome(OutcomeRequest.newBuilder()
+        Ack ack = GrpcErrors.call(ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN, () -> stub.recordOutcome(OutcomeRequest.newBuilder()
                 .setEventId(nz(eventId)).setAdvertiserId(advertiserId).setUserId(userId)
                 .setObjective(nz(objective)).setValue(value)
                 .setOccurredAtEpochMs((occurredAt == null ? Instant.now() : occurredAt).toEpochMilli())
-                .build());
+                .build()));
         return ack.getOk();
     }
 
@@ -312,26 +312,26 @@ public class GrpcAdServingGateway implements AdServingGateway {
     /** 搜索广告降级:返回无广告(no-ad feed),自然结果照常返回。 */
     SearchAdsResponse searchAdsFallback(long userId, StructuredQuery sq, int slots,
                                         String scene, String adBucket, double reserve, Throwable t) {
-        log.warn("ad-serving gRPC 降级为无广告 feed: {}", t.toString());
+        log.warn("{}；降级为无广告 feed，failureType={}", ErrorCode.RPC_AD_QUERY_FAILED.displayMessage(), t.getClass().getSimpleName());
         return new SearchAdsResponse(userId, sq != null ? sq.raw() : "", "", List.of(), "");
     }
 
-    /** 点击计费降级:记账链路暂不可达,记日志不阻断(计费幂等,可由离线补账/重试补齐)。 */
+    /** 保留旧降级返回；写入是否生效未知，日志不能承诺未落库或可安全重试。 */
     void recordClickFallback(String requestId, long adId, long userId, Throwable t) {
-        log.warn("ad-serving gRPC recordClick 降级(点击计费未落库): requestId={} adId={} userId={} err={}",
-                requestId, adId, userId, t.toString());
+        log.warn("{} requestId={} adId={} userId={} failureType={}", ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN.displayMessage(),
+                requestId, adId, userId, t.getClass().getSimpleName());
     }
 
     /** 转化回传降级:同上,记日志不阻断。 */
     void recordConversionFallback(String requestId, long adId, long userId, Throwable t) {
-        log.warn("ad-serving gRPC recordConversion 降级(转化未落库): requestId={} adId={} userId={} err={}",
-                requestId, adId, userId, t.toString());
+        log.warn("{} requestId={} adId={} userId={} failureType={}", ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN.displayMessage(),
+                requestId, adId, userId, t.getClass().getSimpleName());
     }
 
     boolean recordOutcomeFallback(String eventId, long advertiserId, long userId,
                                   String objective, double value, Instant occurredAt, Throwable t) {
-        log.warn("ad-serving gRPC recordOutcome 降级(独立 outcome 未落库): eventId={} err={}",
-                eventId, t.toString());
+        log.warn("{} eventId={} failureType={}", ErrorCode.RPC_AD_WRITE_RESULT_UNKNOWN.displayMessage(),
+                eventId, t.getClass().getSimpleName());
         return false;
     }
 }

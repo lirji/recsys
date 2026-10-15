@@ -1,5 +1,7 @@
 package com.recsys.advertiser;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.ad.v1.AdEventStat;
 import com.recsys.proto.ad.v1.AdEventStatsReply;
 import com.recsys.proto.ad.v1.AdEventStatsRequest;
@@ -30,8 +32,8 @@ public class GrpcAdReportReader implements AdReportReader {
         if (adIds == null || adIds.isEmpty()) {
             return out;
         }
-        AdEventStatsReply reply = stub.getAdEventStats(
-                AdEventStatsRequest.newBuilder().addAllAdId(adIds).build());
+        AdEventStatsReply reply = GrpcErrors.call(ErrorCode.RPC_AD_REPORT_QUERY_FAILED, () -> stub.getAdEventStats(
+                AdEventStatsRequest.newBuilder().addAllAdId(adIds).build()));
         for (AdEventStat s : reply.getStatsList()) {
             out.put(s.getAdId(), new Stats(
                     s.getImpressions(), s.getClicks(), s.getConversions(), s.getSpend()));
