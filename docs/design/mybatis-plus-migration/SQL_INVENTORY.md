@@ -299,3 +299,5 @@ MP07a：推荐输入与曝光 → `recengine.persistence.mapper.{primary.EngineB
 MP07b：MmrReranker/DppReranker → 派生EngineEmbeddingMapper.itemVectors + XML；算法SQL已核销，证据见MP07B_RESULT。
 
 MP08a：BudgetRepository/Configuration → addb BudgetMapper/XML；实际SqlSessionTemplate资源身份，UPDATE RETURNING写标记，证据见MP08A_RESULT。Click/ConversionQuote及三族Event仅同步预算schema验证构造，其他SQL仍属于后续工作包。
+
+MP13a2补充：PositiveFeedbackMapper.scanPairs/scanWeighted对历史可空ID显式保留JDBC getLong(NULL)=0，见OFFLINE_NULL_ID_RESULT；来源/过滤/重复行和其他投影不变。

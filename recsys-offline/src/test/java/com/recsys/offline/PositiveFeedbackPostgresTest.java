@@ -83,6 +83,21 @@ class PositiveFeedbackPostgresTest {
         assertEquals(5,pairs("user_behavior",100L).size());
     }
 
+    @Test void nullableIdentitiesKeepOriginalJdbcGetLongZeroSemantics() {
+        admin.execute("INSERT INTO user_behavior VALUES(NULL,NULL,'CLICK',1,to_timestamp(88)),(NULL,10,'LIKE',1,to_timestamp(88)),(1,NULL,'PLAY',1,to_timestamp(88))");
+        try {
+            var oldPairs = jdbc.query("SELECT user_id,item_id FROM user_behavior WHERE (action IN('CLICK','LIKE','PLAY') OR (action='RATING' AND value>=?)) AND extract(epoch FROM ts)<=?",
+                    (rs, index) -> rs.getLong("user_id") + ":" + rs.getLong("item_id"), 4.0, 88L);
+            assertThat(oldPairs).containsExactlyInAnyOrder("0:0", "0:10", "1:0");
+            assertThat(pairs("user_behavior", 88L)).containsExactlyInAnyOrderElementsOf(oldPairs);
+            assertThat(weighted("user_behavior", 88L)).containsExactlyInAnyOrder(
+                    new Feedback(0, 0, "CLICK", 1, 88), new Feedback(0, 10, "LIKE", 1, 88),
+                    new Feedback(1, 0, "PLAY", 1, 88));
+        } finally {
+            admin.execute("DELETE FROM user_behavior WHERE ts=to_timestamp(88)");
+        }
+    }
+
     private List<String> pairs(String table,Long cutoff) {
         List<String> result=new ArrayList<>();
         mapper.scanPairs(filter(table,cutoff), context->{

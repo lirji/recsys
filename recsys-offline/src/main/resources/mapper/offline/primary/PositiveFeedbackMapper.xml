@@ -27,10 +27,13 @@
         <if test="filter.maxTs != null">AND extract(epoch from ts) &lt;= #{filter.maxTs}</if>
     </sql>
     <select id="scanPairs" resultMap="pair" useCache="false">
-        SELECT user_id,item_id FROM <include refid="source"/> <include refid="positive"/>
+        <!-- 历史表允许空ID；显式保留原ResultSet.getLong(NULL)读取为0的训练输入语义。 -->
+        SELECT COALESCE(user_id,0) AS user_id,COALESCE(item_id,0) AS item_id
+        FROM <include refid="source"/> <include refid="positive"/>
     </select>
     <select id="scanWeighted" resultMap="weighted" useCache="false">
-        SELECT user_id,item_id,action,value,extract(epoch from ts) AS ts_epoch
+        SELECT COALESCE(user_id,0) AS user_id,COALESCE(item_id,0) AS item_id,
+               action,value,extract(epoch from ts) AS ts_epoch
         FROM <include refid="source"/> <include refid="positive"/>
     </select>
     <select id="maxEpoch" resultType="java.lang.Double" useCache="false">

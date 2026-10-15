@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID兼容修复本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -60,7 +60,7 @@
 
 ## 已修改文件
 
-MP00～MP12已交付。当前MP13a2共用正反馈Mapper/XML及六个作业、装配和真实PG保护；具体见MP13A2_RESULT。根恢复文档只更新入口，旧暂停交接字节保留。
+MP00～MP12及MP13a1/a2、b1～b6已交付。当前修复共用正反馈Mapper对历史可空ID的兼容，之后继续b7推荐模拟；具体见OFFLINE_NULL_ID_RESULT。根恢复文档只更新入口，旧暂停交接字节保留。
 
 ## 保护内容
 
@@ -79,8 +79,8 @@ MP00～MP12已交付。当前MP13a2共用正反馈Mapper/XML及六个作业、�
 
 ## 下一步
 
-1. MP10b/c已交付e0949431，继续MP11a Outbox旧实现保护及迁移。
-2. 继续MP11～MP15，全部SQL完成后处理统一错误码。
+1. MP13b6已交付19592ca6；完成正反馈可空ID兼容修复，再继续MP13b7推荐模拟保护及迁移。
+2. 继续MP13～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -356,3 +356,7 @@ b4=13f6a9ef、b5=abe65238均已正常ff/push main。下一片SimAdEventsJob的�
 ## MP13b6最终验证
 
 DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98项/21类、24 reactor测试编译、hygiene通过；8源指纹64f742e08116c22b7f449431a698a83117abbfd556131633d3e540e38e8730b3。实际晚失败已提交14847条（旧/新一致），CLICK失败保留5000曝光；同源Spring事务提交/回滚、已有SIMPLE会话与独立BATCH共存、连接关闭通过。SpringMapperBatches不接受SQL、不主动commit、不新增事务，需继续保持这个边界。abe65238远程CI38747583977五门禁全部SUCCESS。下一片SimRecEventsJob原单大批次、主源item/item_local选择、RATING热度和sim-rec来源清理；同样先旧PG测试，再复用batch helper。
+
+## 正反馈可空ID检查点
+
+见OFFLINE_NULL_ID_RESULT。旧JDBC对照已通过，迁移路径先复现全NULL行NPE，再经两ID投影COALESCE修复；全离线99/21类、全仓24 reactor测试编译通过。前序CI38749329611四门禁成功但build连接退出瞬时断言失败，先独立核实该观察时序再继续b7。
