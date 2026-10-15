@@ -12,6 +12,8 @@ import com.recsys.recengine.delivery.DeliveryOperation.*;
 import org.junit.jupiter.api.*;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -31,17 +33,19 @@ class DeliveryOperationPostgresTest {
     @Container static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
     static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static DeliveryOperationRepository repository;
     AdServingGateway gateway;
     QueryUnderstandingService queries;
     ExperimentService experiments;
     @BeforeAll static void migrate() throws Exception {
         var ds = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()); jdbc = new JdbcTemplate(ds);
+        sessions = new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/recengine/primary/**/*.xml"));
         try (var c = ds.getConnection(); var stmt = c.createStatement()) {
             stmt.execute("SET recsys.migration_sha256 = '" + DeliveryOperationRepository.migrationSha256() + "'");
             ScriptUtils.executeSqlScript(c, new ClassPathResource(DeliveryOperationRepository.MIGRATION));
         }
-        repository = new DeliveryOperationRepository(jdbc, JSON); repository.verifySchema();
+        repository = new DeliveryOperationRepository(sessions, JSON); repository.verifySchema();
     }
     @BeforeEach void mocks() {
         gateway = mock(AdServingGateway.class); queries = mock(QueryUnderstandingService.class); experiments = mock(ExperimentService.class);
@@ -71,7 +75,7 @@ class DeliveryOperationPostgresTest {
         var partial = repository.find(request.operationId(), "admin").orElseThrow();
         assertEquals(firstResult, partial.plan().get(0).result()); assertNull(partial.plan().get(1).result());
         when(gateway.sandboxCandidates(any())).thenReturn(List.of(candidate(99)));
-        var restored = fresh(new DeliveryOperationRepository(jdbc, JSON)).deliver(request);
+        var restored = fresh(new DeliveryOperationRepository(sessions, JSON)).deliver(request);
         assertEquals(State.COMPLETE, restored.state());
         assertEquals(List.of(new Entry(1, first, firstResult), new Entry(2, second, secondResult)), restored.plan());
         verify(gateway, times(1)).sandboxCandidates(any()); verify(gateway, times(2)).prepareSandbox(any());
@@ -79,12 +83,27 @@ class DeliveryOperationPostgresTest {
     }
     @Test void freezeFailureCannotPrepareUnpersistedPlan() {
         var request = request(); when(gateway.sandboxCandidates(any())).thenReturn(List.of(candidate(1)));
-        var failure = new DeliveryOperationRepository(jdbc, JSON) {
+        var failure = new DeliveryOperationRepository(sessions, JSON) {
             @Override public boolean freeze(DeliveryOperation operation, List<Entry> plan) { throw new IllegalStateException("database failure"); }
         };
         assertThrows(IllegalStateException.class, () -> fresh(failure).deliver(request));
         verify(gateway, never()).prepareSandbox(any());
         assertNull(repository.find(request.operationId(), "admin").orElseThrow().plan());
+    }
+    /** RETURNING领取必须服从调用方事务回滚，不能留下已消耗的fence或租约。 */
+    @Test void rolledBackAcquireDoesNotConsumeFenceOrLease() {
+        var request=request();repository.create(request,"original",.1);
+        var tx=new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
+        tx.setTimeout(5);
+        tx.executeWithoutResult(status->{
+            assertEquals(1,repository.acquire(request.operationId(),"admin").orElseThrow().fence());
+            assertTrue(repository.acquire(request.operationId(),"admin").isEmpty());
+            status.setRollbackOnly();
+        });
+        assertEquals(0,repository.find(request.operationId(),"admin").orElseThrow().fence());
+        assertEquals(1,repository.acquire(request.operationId(),"admin").orElseThrow().fence());
+        assertTrue(repository.acquire(request.operationId(),"admin").isEmpty());
     }
     @Test void staleLeaseCannotSavePlanProgressOrReleaseNewLease() {
         var request = request(); repository.create(request, "original", .1);

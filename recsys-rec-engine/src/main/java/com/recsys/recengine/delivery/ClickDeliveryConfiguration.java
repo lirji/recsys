@@ -9,15 +9,15 @@ import com.recsys.recengine.experiment.ExperimentService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 
 /** 点击整次交付只存engine primary，双模式共享同一恢复编排。 */
 @Configuration(proxyBeanMethods=false)
 @ConditionalOnProperty(prefix="recsys.ad.billing",name={"sandbox-enabled","clicks-enabled","click-settlement-enabled","click-delivery-enabled"},havingValue="true")
 public class ClickDeliveryConfiguration {
     /** 新迁移须预先显式执行，应用只校验。 */
-    @Bean public DeliveryOperationRepository clickDeliveryOperationRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbc,ObjectMapper json) {
-        var repository=new DeliveryOperationRepository(jdbc,json,ChargeMode.CLICK);repository.verifySchema();return repository;
+    @Bean public DeliveryOperationRepository clickDeliveryOperationRepository(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
+        var repository=new DeliveryOperationRepository(sessions,json,ChargeMode.CLICK);repository.verifySchema();return repository;
     }
     /** 固定CLICK仓储决定候选/准备调用，不以客户端模式动态选择表。 */
     @Bean public DeliveryOperationService clickDeliveryOperationService(@Qualifier("clickDeliveryOperationRepository") DeliveryOperationRepository repository,

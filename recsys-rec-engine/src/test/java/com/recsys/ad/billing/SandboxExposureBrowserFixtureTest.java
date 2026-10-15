@@ -155,7 +155,8 @@ class SandboxExposureBrowserFixtureTest {
             for(String path:List.of(BudgetRepository.MIGRATION,CpmQuoteRepository.MIGRATION,ReservationRepository.MIGRATION,
                     PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,BillingOutboxRepository.MIGRATION))migrate(adDs,path,BudgetRepository.migrationSha256(path));
             migrate(engineDs,DeliveryOperationRepository.MIGRATION,DeliveryOperationRepository.migrationSha256());
-            operations=new DeliveryOperationRepository(new JdbcTemplate(engineDs),JSON);operations.verifySchema();
+            operations=new DeliveryOperationRepository(new SqlSessionTemplate(
+                    SpringSqlSessions.create(engineDs, "classpath*:mapper/recengine/primary/**/*.xml")),JSON);operations.verifySchema();
             // 独立种子表不进入产品 schema，所有测试字段也有注释。
             ad.execute("CREATE TABLE browser_ad_seed(ad_id bigint PRIMARY KEY,title text NOT NULL,amount numeric(20,6) NOT NULL)");
             ad.execute("COMMENT ON TABLE browser_ad_seed IS '浏览器联调专用候选种子'");

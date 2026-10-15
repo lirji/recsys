@@ -184,10 +184,10 @@
 |---|---:|---:|---|
 | [com/recsys/recengine/PersonalizationScorer.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/PersonalizationScorer.java) | 5 | 2 | DONE MP07a |
 | [com/recsys/recengine/coldstart/ColdStartDetector.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/coldstart/ColdStartDetector.java) | 7 | 2 | DONE MP07a |
-| [com/recsys/recengine/delivery/ClickDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ClickDeliveryConfiguration.java) | 12 | 0 | TODO |
-| [com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java) | 12 | 0 | TODO |
-| [com/recsys/recengine/delivery/DeliveryOperationConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationConfiguration.java) | 12 | 0 | TODO |
-| [com/recsys/recengine/delivery/DeliveryOperationRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationRepository.java) | 11 | 8 | TODO |
+| [com/recsys/recengine/delivery/ClickDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ClickDeliveryConfiguration.java) | 12 | 0 | DONE MP12b：见MP12B_RESULT |
+| [com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java) | 12 | 0 | DONE MP12b：见MP12B_RESULT |
+| [com/recsys/recengine/delivery/DeliveryOperationConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationConfiguration.java) | 12 | 0 | DONE MP12b：见MP12B_RESULT |
+| [com/recsys/recengine/delivery/DeliveryOperationRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationRepository.java) | 11 | 8 | DONE MP12b：见MP12B_RESULT |
 | [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | DONE MP07a |
 | [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | TODO |
 | [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | TODO |

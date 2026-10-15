@@ -12,6 +12,8 @@ import com.recsys.recengine.delivery.DeliveryOperation.*;
 import org.junit.jupiter.api.*;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -31,12 +33,14 @@ class ConversionDeliveryOperationPostgresTest {
     @Container static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
     static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static DeliveryOperationRepository repository;
     AdServingGateway gateway;
     QueryUnderstandingService queries;
     ExperimentService experiments;
     @BeforeAll static void migrate() throws Exception {
         var ds = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()); jdbc = new JdbcTemplate(ds);
+        sessions = new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/recengine/primary/**/*.xml"));
         try (var c = ds.getConnection(); var stmt = c.createStatement()) {
             stmt.execute("SET recsys.migration_sha256 = '" + DeliveryOperationRepository.migrationSha256() + "'");
             ScriptUtils.executeSqlScript(c, new ClassPathResource(DeliveryOperationRepository.MIGRATION));
@@ -45,7 +49,7 @@ class ConversionDeliveryOperationPostgresTest {
             st.execute("SET recsys.migration_sha256='"+DeliveryOperationRepository.migrationSha256(ChargeMode.CONVERSION)+"'");
             st.execute(new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
         }
-        repository = new DeliveryOperationRepository(jdbc, JSON, ChargeMode.CONVERSION); repository.verifySchema();
+        repository = new DeliveryOperationRepository(sessions, JSON, ChargeMode.CONVERSION); repository.verifySchema();
     }
     @BeforeEach void mocks() {
         gateway = mock(AdServingGateway.class); queries = mock(QueryUnderstandingService.class); experiments = mock(ExperimentService.class);
@@ -75,7 +79,7 @@ class ConversionDeliveryOperationPostgresTest {
         var partial = repository.find(request.operationId(), "admin").orElseThrow();
         assertEquals(firstResult, partial.plan().get(0).result()); assertNull(partial.plan().get(1).result());
         when(gateway.sandboxConversionCandidates(any())).thenReturn(List.of(candidate(99)));
-        var restored = fresh(new DeliveryOperationRepository(jdbc, JSON, ChargeMode.CONVERSION)).deliver(request);
+        var restored = fresh(new DeliveryOperationRepository(sessions, JSON, ChargeMode.CONVERSION)).deliver(request);
         assertEquals(State.COMPLETE, restored.state());
         assertEquals(List.of(new Entry(1, first, firstResult), new Entry(2, second, secondResult)), restored.plan());
         verify(gateway, times(1)).sandboxConversionCandidates(any()); verify(gateway, times(2)).prepareSandboxConversion(any());
@@ -83,7 +87,7 @@ class ConversionDeliveryOperationPostgresTest {
     }
     @Test void freezeFailureCannotPrepareUnpersistedPlan() {
         var request = request(); when(gateway.sandboxConversionCandidates(any())).thenReturn(List.of(candidate(1)));
-        var failure = new DeliveryOperationRepository(jdbc, JSON, ChargeMode.CONVERSION) {
+        var failure = new DeliveryOperationRepository(sessions, JSON, ChargeMode.CONVERSION) {
             @Override public boolean freeze(DeliveryOperation operation, List<Entry> plan) { throw new IllegalStateException("database failure"); }
         };
         assertThrows(IllegalStateException.class, () -> fresh(failure).deliver(request));
@@ -132,7 +136,7 @@ class ConversionDeliveryOperationPostgresTest {
         assertEquals(State.PREPARING, repository.find(failed.operationId(), "admin").orElseThrow().state());
     }
     @Test void sameIdAcrossModesIsIsolatedAndDatabaseRejectsPlanIdentityMutation() throws Exception {
-        var request=request();var cpm=new DeliveryOperationRepository(jdbc,JSON);
+        var request=request();var cpm=new DeliveryOperationRepository(sessions,JSON);
         repository.create(request,"conversion",.1);cpm.create(request,"cpm",.2);
         var claimed=repository.acquire(request.operationId(),"admin").orElseThrow();
         repository.freeze(claimed,List.of(new Entry(1,candidate(1),null)));

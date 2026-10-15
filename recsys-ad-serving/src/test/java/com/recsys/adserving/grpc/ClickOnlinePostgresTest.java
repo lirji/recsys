@@ -126,7 +126,8 @@ class ClickOnlinePostgresTest {
                     assertEquals(SandboxDelivery.ChargeMode.IMPRESSION,c.getBean("preparationRepository",PreparationRepository.class).mode());
                     assertNotNull(c.getBean(ImpressionReceiptService.class));assertNotNull(c.getBean(ClickPreparationService.class));});
         contexts.withUserConfiguration(DeliveryOperationConfiguration.class,ClickDeliveryConfiguration.class,SandboxDeliveryController.class,SandboxClickDeliveryController.class)
-                .withPropertyValues(flags).withBean("jdbcTemplate",org.springframework.jdbc.core.JdbcTemplate.class,()->f.engine)
+                .withPropertyValues(flags).withBean("sqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.engineSessions)
+                .withBean("adDbSqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.sessions)
                 .withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.ad)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ClickOnlineFixture.JSON)
                 .withBean(com.recsys.common.query.QueryUnderstandingService.class,()->f.queries)

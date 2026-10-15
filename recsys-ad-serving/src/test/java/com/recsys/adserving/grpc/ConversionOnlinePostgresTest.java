@@ -206,7 +206,8 @@ class ConversionOnlinePostgresTest {
                     assertNotNull(c.getBean(ImpressionReceiptService.class));assertNotNull(c.getBean(ClickPreparationService.class));assertNotNull(c.getBean(ConversionPreparationService.class));
                     assertEquals(SandboxDelivery.ChargeMode.CONVERSION,c.getBean("conversionPreparationRepository",PreparationRepository.class).mode());});
         contexts.withUserConfiguration(DeliveryOperationConfiguration.class,ClickDeliveryConfiguration.class,ConversionDeliveryConfiguration.class,SandboxDeliveryController.class,SandboxClickDeliveryController.class,SandboxConversionDeliveryController.class)
-                .withPropertyValues(flags).withBean("jdbcTemplate",org.springframework.jdbc.core.JdbcTemplate.class,()->f.engine)
+                .withPropertyValues(flags).withBean("sqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.engineSessions)
+                .withBean("adDbSqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.sessions)
                 .withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.ad)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ConversionOnlineFixture.JSON)
                 .withBean(com.recsys.common.query.QueryUnderstandingService.class,()->f.queries)

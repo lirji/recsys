@@ -34,7 +34,7 @@ class ConversionOnlineFixture implements AutoCloseable {
     static final String SECRET="conversion-online-fixture-internal-only";
     final DriverManagerDataSource adDs,engineDs;
     final JdbcTemplate ad,engine;
-    final SqlSessionTemplate sessions;
+    final SqlSessionTemplate sessions,engineSessions;
     final AdPipeline pipeline=mock(AdPipeline.class);
     final ConversionQuoteRepository quotes;
     final ConversionSettlementService settlements;
@@ -49,6 +49,7 @@ class ConversionOnlineFixture implements AutoCloseable {
     ConversionOnlineFixture(PostgreSQLContainer<?> pg) throws Exception {
         adDs=schema(pg,"ad");engineDs=schema(pg,"engine");ad=new JdbcTemplate(adDs);engine=new JdbcTemplate(engineDs);
         sessions=new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml"));
+        engineSessions=new SqlSessionTemplate(SpringSqlSessions.create(engineDs, "classpath*:mapper/recengine/primary/**/*.xml"));
         for(String name:List.of("V001__budget_account.sql","V002__cpm_quote.sql","V003__budget_reservation.sql","V004__delivery_preparation.sql",
                 "V005__impression_capture.sql","V006__billing_event_delivery.sql","V007__feed_frequency.sql","V008__click_quote.sql",
                 "V009__click_settlement.sql","V010__click_event_delivery.sql","V011__click_preparation.sql","V012__conversion_quote.sql",
@@ -73,7 +74,7 @@ class ConversionOnlineFixture implements AutoCloseable {
             return List.of(new BiddingService.ConversionQuotedAd(a,price));
         });
         when(queries.parse(anyString(),anyLong())).thenAnswer(i->new StructuredQuery(i.getArgument(0),i.getArgument(0),null,null,null,null));
-        operations=new DeliveryOperationRepository(engine,JSON,ChargeMode.CONVERSION);operations.verifySchema();
+        operations=new DeliveryOperationRepository(engineSessions,JSON,ChargeMode.CONVERSION);operations.verifySchema();
     }
     static DriverManagerDataSource schema(PostgreSQLContainer<?> pg,String prefix) {
         String schema=prefix+UUID.randomUUID().toString().replace("-","");

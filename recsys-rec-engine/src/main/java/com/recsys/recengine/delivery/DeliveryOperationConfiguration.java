@@ -9,16 +9,16 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 
-/** engine owner 只引用 primary jdbcTemplate；与 adDb 预占无共享事务。 */
+/** engine owner 只引用 primary sqlSessionTemplate；与 adDb 预占无共享事务。 */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "recsys.ad.billing.sandbox-enabled", havingValue = "true")
 public class DeliveryOperationConfiguration {
     /** 显式绑定 primary，启动只做 schema 校验。 */
     @Bean
-    public DeliveryOperationRepository deliveryOperationRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbc, ObjectMapper json) {
-        var repository = new DeliveryOperationRepository(jdbc, json);
+    public DeliveryOperationRepository deliveryOperationRepository(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions, ObjectMapper json) {
+        var repository = new DeliveryOperationRepository(sessions, json);
         repository.verifySchema();
         return repository;
     }

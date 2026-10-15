@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a DONE/PASS，准备Git后继续MP12b三模式交付操作。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b本地DONE/PASS，待Git交付；下一片MP12c自然交付。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -260,3 +260,15 @@ DONE/PASS，见MP12A_RESULT。6源文件指纹0d7a12e5e5e4b2175ae069df1356f1c917
 下一片MP12b DeliveryOperationRepository（三模式）共8条SQL，固定表选择移入XML；owner主源为sqlSessionTemplate，XML应放mapper/recengine/primary，factory测试pattern=classpath*:mapper/recengine/primary/**/*.xml。原create的INSERT和后续find保持独立提交；acquire UPDATE RETURNING必须affectData=true/flushCache=true/useCache=false，全部5秒超时。原JSON编解码/异常、subject先于JSON校验、bucket/reserve冻结、lease30秒、fence/旧plan比较及可空plan保持。progress状态可用已有State枚举name，保持持久化值不变。
 
 配置引用DeliveryOperationConfiguration/ClickDeliveryConfiguration/ConversionDeliveryConfiguration；测试三DeliveryOperationPostgresTest（可新增static sessions复用故障子类）、ClickOnlineFixture/ConversionOnlineFixture（engine源独立sessions不能误用已有adDb sessions）、SandboxExposureBrowserFixtureTest（engineDs）。当前完整资金链378已涵盖旧三模式/在线；可在CPM旧测试增加acquire显式事务回滚不消耗fence/lease保护，再跑三模式/在线与宿主。自然与混排Repository留MP12c/d。
+
+## MP12b迁移前保护
+
+MP12a=5bc7cf2e已正常提交/ff合并/push main。DeliveryOperationPostgresTest新增acquire显式事务回滚不消耗fence/lease；同一事务第二次领取为空，回滚后fence回0，重新自动提交领取仍为1。旧三模式PG运行/tmp/recsys-mp12b-before.log，尚未改交付产品代码。
+
+MP12b旧三模式PG24项通过。8条SQL已进入engine primary DeliveryOperationMapper/XML；三Configuration及全部fixture使用实际会话工厂，在线fixture单独绑定engineDs。owner校验先于JSON解码、5秒SQL超时、原create独立提交、30秒租约、fence/旧plan比较保持；acquire已显式affectData。迁移后专项/tmp/recsys-mp12b-after.log运行中；12源指纹ba62bc814df1d5f3928469c55c1941992af10af376c962b27cc441b288477cff，清单/tmp/recsys-mp12b-source-paths.json。MP12a CI38737890572运行中，MP11c最终cancelled。
+
+MP12b首次迁移后45项中2项在线Spring装配失败，原因是测试上下文仅注册旧jdbcTemplate；已补齐独立engineSessions及adDb会话，多源绑定继续实测。修复后45项/6类全部通过（PG三模式24、在线CPC8/CPA10、宿主3），/tmp/recsys-mp12b-after-final.log。最终14源指纹dd9a818a8f68a834f644b1a52a87da3bd77c9aa1a6dd57f489e383f634fed08c；旧12源指纹已被fixture修正替代。sandbox浏览器/tmp/recsys-mp12b-sandbox-browser.log运行中，之后全仓24 reactor编译。
+
+## MP12b最终验证
+
+DONE/PASS，见MP12B_RESULT；14源指纹dd9a818a8f68a834f644b1a52a87da3bd77c9aa1a6dd57f489e383f634fed08c。旧24、新45项/6类、sandbox浏览器4项、全仓24 reactor编译全部通过；hygiene无阻塞，45历史SQL/8保护文件不变。下一片MP12c自然Repository的8条SQL及实际DataSource的REQUIRES_NEW/READ_COMMITTED/5秒事务保持；新增外层回滚仍保留独立领取/冻结保护后先跑旧路径，再迁移。
