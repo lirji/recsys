@@ -39,7 +39,7 @@ class AdCvrSamplesPostgresTest {
         one.execute("INSERT INTO ad VALUES(1,1,101),(3,1,103),(9223372036854775807,1,9223372036854775807)");
     }
     @Test void defaultMergesBothShardsEarliestConversionAndCensoredFuture() throws Exception {
-        seed();run("freeze");var rows=rows();assertEquals(7,rows.size());
+        seed();var result=invoke("freeze");assertEquals(0,result.status,result.log);assertTrue(result.log.contains("[JOB_SAMPLES_MISSING_ITEM]"),result.log);var rows=rows();assertEquals(7,rows.size());
         assertEquals(List.of("1","11","2","3","5","7","8"),rows.stream().map(r->r[3]).toList());
         assertEquals(List.of("1","1","0","1","0","0","0"),rows.stream().map(r->r[0]).toList());
         assertEquals(List.of("1.0","0.5","-1.0","-1.0","-1.0","-1.0","-1.0"),rows.stream().map(r->r[1]).toList());
@@ -59,13 +59,13 @@ class AdCvrSamplesPostgresTest {
         assertEquals("1",rows.getFirst()[0]);assertTrue(Double.parseDouble(rows.getFirst()[1])>10000);assertEquals("0.0",rows.getFirst()[2]);assertEquals(Long.toString(Long.MAX_VALUE),rows.get(1)[3]);assertEquals(Long.toString(Long.MAX_VALUE),rows.get(1)[4]);
     }
     @Test void emptyAndQueryFailuresPreserveOldFile() throws Exception {
-        keep();run("freeze");assertEquals("keep",Files.readString(csv()));
+        keep();fail("freeze","JOB_NO_AD_CLICKS");assertEquals("keep",Files.readString(csv()));
         seed();events.execute("ALTER TABLE ad_event RENAME TO hidden_events");
         try{fail("read-only","BadSqlGrammarException");assertEquals("keep",Files.readString(csv()));}finally{events.execute("ALTER TABLE hidden_events RENAME TO ad_event");}
         fail("read-only","非法 --ad-event-table","--ad-event-table=ad_event;DROP TABLE ad");assertEquals("keep",Files.readString(csv()));
     }
     @Test void missingItemsOnlyWritesHeaderAndLateFeatureFailureKeepsPartialRows() throws Exception {
-        events.execute("INSERT INTO ad_event VALUES('missing',1,4,'CLICK',NULL,-86400)");run("freeze");assertEquals(0,rows().size());
+        events.execute("INSERT INTO ad_event VALUES('missing',1,4,'CLICK',NULL,-86400)");fail("freeze","JOB_NO_SAMPLE_OUTPUT");assertEquals(0,rows().size());
         events.execute("TRUNCATE ad_event");seed();fail("user-failure","fixture-user-failure");assertEquals(3,rows().size());assertEquals(List.of("1","11","2"),rows().stream().map(r->r[3]).toList());
     }
     @Test void autocommitReadsAlsoCloseConnectionsAndReturnSameLabels() throws Exception {

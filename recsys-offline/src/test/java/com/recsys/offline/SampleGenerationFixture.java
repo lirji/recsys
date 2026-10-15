@@ -34,6 +34,9 @@ public final class SampleGenerationFixture {
         };
         try {
             job.run(new DefaultApplicationArguments(Arrays.copyOfRange(args,4,args.length)));
+        } catch (com.recsys.common.error.PublicErrorException failure) {
+            System.err.println(failure.errorCode().displayMessage());
+            throw failure;
         } finally {
             source.assertClosed(new JdbcTemplate(new DriverManagerDataSource(args[0].replace("ApplicationName=samples-reader","ApplicationName=samples-observer"),args[1],args[2])),"samples-reader");
         }

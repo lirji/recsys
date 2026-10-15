@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,9 +54,9 @@ public class UserEmbeddingJob implements OfflineJob {
     /** 仅有产出时才重建；单条写入和外层事务保持原失败语义。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        double minRating = doubleArg(args, "min-rating", 4.0);
+        double minRating = JobArguments.decimal(args, "min-rating", 4.0);
         boolean rebuild = !args.containsOption("no-rebuild");
-        double halfLifeDays = doubleArg(args, "half-life-days", 180.0);  // 时间衰减半衰期(天);<=0 关闭
+        double halfLifeDays = JobArguments.decimal(args, "half-life-days", 180.0);  // 时间衰减半衰期(天);<=0 关闭
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只用切分点前的行为聚合用户向量
         BehaviorSource bt = BehaviorQuery.source(args);    // #2:行为读来源表(默认 user_behavior)
 
@@ -68,8 +71,7 @@ public class UserEmbeddingJob implements OfflineJob {
         // 1. 全量加载物品向量到内存(当前约 1000 条 × 768 维,约 3MB)
         Map<Long, float[]> itemVecs = loadItemVectors();
         if (itemVecs.isEmpty()) {
-            log.warn("item_embedding 为空,先跑 --job=backfill-embedding");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_ITEM_VECTORS);
         }
         int dim = itemVecs.values().iterator().next().length;
         log.info("加载物品向量 {} 条(dim={});min-rating={}, rebuild={}, half-life-days={}({})",
@@ -104,8 +106,7 @@ public class UserEmbeddingJob implements OfflineJob {
                 });
         log.info("命中带向量的正反馈 {} 条,覆盖用户 {} 个", hit[0], acc.size());
         if (acc.isEmpty()) {
-            log.warn("无用户产出向量(可能正反馈物品都未灌向量)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_USER_VECTORS);
         }
 
         // 3. L2 归一化并写库
@@ -175,7 +176,4 @@ public class UserEmbeddingJob implements OfflineJob {
         users.upsert(userId, new PGvector(vec));
     }
 
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

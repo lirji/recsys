@@ -27,6 +27,17 @@ final class JobArguments {
         catch (NumberFormatException failure) { throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, failure); }
     }
 
+    /** 非有限数会污染权重与切分，和坏字面量一起在副作用前拒绝。 */
+    static double decimal(ApplicationArguments args, String key, double fallback) {
+        try {
+            double value = Double.parseDouble(text(args, key, Double.toString(fallback)));
+            if (!Double.isFinite(value)) throw new NumberFormatException();
+            return value;
+        } catch (NumberFormatException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, failure);
+        }
+    }
+
     /** 不能用Boolean.parseBoolean把拼错的安全开关当false。 */
     static boolean bool(ApplicationArguments args, String key, boolean fallback) {
         String value = text(args, key, Boolean.toString(fallback));

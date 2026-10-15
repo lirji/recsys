@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.recsys.offline.persistence.mapper.addb.UpliftSampleMapper;
@@ -32,16 +35,18 @@ public class GenAdUpliftSamplesJob implements OfflineJob {
     /** 仅成熟分配可生成标签，按用户最后分配时间整体切分以避免泄漏。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        Path out = Path.of(arg(args, "out", "train/ad_uplift_samples.csv"));
-        String objective = arg(args, "objective", "purchase");
-        int days = Integer.parseInt(arg(args, "days", "0"));
-        Instant asOf = args.containsOption("as-of")
-                ? Instant.parse(args.getOptionValues("as-of").get(0)) : Instant.now();
+        Path out = Path.of(JobArguments.text(args, "out", "train/ad_uplift_samples.csv"));
+        String objective = JobArguments.text(args, "objective", "purchase");
+        int days = JobArguments.integer(args, "days", 0);
+        Instant asOf;
+        try { asOf = Instant.parse(JobArguments.text(args, "as-of", Instant.now().toString())); }
+        catch (java.time.format.DateTimeParseException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, failure);
+        }
         List<Row> rows = mapper.load(objective, Timestamp.from(asOf), days > 0
                 ? Timestamp.from(asOf.minusSeconds(days * 86400L)) : null);
         if (rows.isEmpty()) {
-            log.warn("没有已成熟 uplift assignment(as-of={});不生成空模型", asOf);
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_MATURE_ASSIGNMENTS);
         }
         // user-level 时间切分：按每个用户最后一次 assignment 排序，整用户进同一侧，杜绝跨 split 泄漏。
         Map<Long, Instant> userLast = new LinkedHashMap<>();
@@ -67,7 +72,4 @@ public class GenAdUpliftSamplesJob implements OfflineJob {
                 rows.size(), out.toAbsolutePath(), treated, rows.size() - treated, controlPositive);
     }
 
-    private static String arg(ApplicationArguments a, String key, String def) {
-        List<String> values = a.getOptionValues(key); return values == null || values.isEmpty() ? def : values.get(0);
-    }
 }

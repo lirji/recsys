@@ -28,4 +28,15 @@ class JobArgumentsTest {
         assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
                 () -> JobArguments.integer(new DefaultApplicationArguments("--dim=2147483648"), "dim", 64)).errorCode());
     }
+    @Test void decimalsKeepFiniteValuesAndRejectNonFiniteBeforePublication() {
+        assertEquals(4.0, JobArguments.decimal(new DefaultApplicationArguments(), "rating", 4.0));
+        assertEquals(-1.5, JobArguments.decimal(new DefaultApplicationArguments("--rating=-1.5"), "rating", 4));
+        for(String value : new String[]{"NaN", "Infinity", "-Infinity", "1e999", "private"}) {
+            var failure=assertThrows(PublicErrorException.class, () -> JobArguments.decimal(
+                    new DefaultApplicationArguments("--rating="+value), "rating", 4));
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, failure.errorCode());
+            assertFalse(failure.getMessage().contains("private"));
+        }
+    }
+
 }

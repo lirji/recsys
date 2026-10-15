@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,23 +83,26 @@ public class GenSamplesMtJob implements OfflineJob {
         return "gen-samples-mt";
     }
 
+    /** 输入不足时让调度方可见；正常过滤、算法和发布顺序保持原契约。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         BehaviorSource source = BehaviorQuery.source(args);
         CatalogTable table = ItemQuery.source(args);
-        int negRatio = intArg(args, "neg-ratio", 2);
-        double hardNegRatio = doubleArg(args, "hard-neg-ratio", 0.0);  // S6:同类目 hard negative 占比(0=纯热度随机)
-        double validFrac = doubleArg(args, "valid-frac", 0.2);
-        long seed = (long) doubleArg(args, "seed", 42);
-        int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
+        int negRatio = JobArguments.integer(args, "neg-ratio", 2);
+        double hardNegRatio = JobArguments.decimal(args, "hard-neg-ratio", 0.0);  // S6:同类目 hard negative 占比(0=纯热度随机)
+        double validFrac = JobArguments.decimal(args, "valid-frac", 0.2);
+        long seed = (long) JobArguments.decimal(args, "seed", 42);
+        int seqLen = JobArguments.integer(args, "seq-len", DEFAULT_SEQ_LEN);
         boolean positionProxy = args.containsOption("position-proxy");
-        int maxPosition = intArg(args, "max-position", 10);
+        int maxPosition = JobArguments.integer(args, "max-position", 10);
+        if (negRatio < 0 || seqLen < 0 || maxPosition < 0 || validFrac < 0 || validFrac > 1 || hardNegRatio < 0 || hardNegRatio > 1) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         Random rnd = new Random(seed);
 
         List<RatingEvent> events = inputs.ratings(source, table);
         if (events.isEmpty()) {
-            log.warn("无评分事件;先跑 import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_RATINGS);
         }
         events.sort((a, b) -> Long.compare(a.ts(), b.ts()));
 
@@ -319,11 +325,4 @@ public class GenSamplesMtJob implements OfflineJob {
         }
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

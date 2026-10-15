@@ -1,12 +1,15 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.primary.HotScoreMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.DefaultApplicationArguments;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -77,10 +80,10 @@ class HotPostgresTest {
 
     @Test void emptyZeroLimitAndInvalidInputsDoNotReplaceOldRanking() throws Exception {
         redis.opsForZSet().add(RedisKeys.HOT_RECALL,"old",7);
-        job.run(new DefaultApplicationArguments());
+        assertEquals(ErrorCode.JOB_NO_BEHAVIOR, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode());
         db.execute("INSERT INTO user_behavior VALUES(1,'LIKE',1,now())");
-        job.run(new DefaultApplicationArguments("--topn=0"));
-        assertThrows(DataAccessException.class,()->job.run(new DefaultApplicationArguments("--topn=-1")));
+        assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--topn=0"))).errorCode());
+        assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--topn=-1"))).errorCode());
         assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
         assertEquals(Map.of("old",7.0),scores());source.assertClosed(admin,"hot-reader");
     }

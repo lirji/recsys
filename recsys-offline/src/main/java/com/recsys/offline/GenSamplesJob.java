@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.feature.FeatureService;
 import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
@@ -68,21 +71,24 @@ public class GenSamplesJob implements OfflineJob {
         return "gen-samples";
     }
 
+    /** 输入不足时让调度方可见；正常过滤、算法和发布顺序保持原契约。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         BehaviorSource source = BehaviorQuery.source(args);
         CatalogTable table = ItemQuery.source(args);
-        int negRatio = intArg(args, "neg-ratio", 2);
-        double validFrac = doubleArg(args, "valid-frac", 0.2);
-        long seed = (long) doubleArg(args, "seed", 42);
+        int negRatio = JobArguments.integer(args, "neg-ratio", 2);
+        double validFrac = JobArguments.decimal(args, "valid-frac", 0.2);
+        long seed = (long) JobArguments.decimal(args, "seed", 42);
         boolean leaky = args.containsOption("leaky");
+        if (negRatio < 0 || validFrac < 0 || validFrac > 1) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         Random rnd = new Random(seed);
 
         // 1. 全量评分事件(带类目),按 ts 升序 —— as-of 流式聚合与时间切分都依赖它
         List<RatingEvent> events = inputs.ratings(source, table);
         if (events.isEmpty()) {
-            log.warn("无评分事件;先跑 import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_RATINGS);
         }
         events.sort((a, b) -> Long.compare(a.ts(), b.ts()));
 
@@ -100,8 +106,7 @@ public class GenSamplesJob implements OfflineJob {
             }
         }
         if (posTs.isEmpty()) {
-            log.warn("无正样本(RATING≥4)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_POSITIVE_FEEDBACK);
         }
         posTs.sort(Long::compare);
         long splitTs = posTs.get((int) ((1 - validFrac) * (posTs.size() - 1)));
@@ -253,11 +258,4 @@ public class GenSamplesJob implements OfflineJob {
         }
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

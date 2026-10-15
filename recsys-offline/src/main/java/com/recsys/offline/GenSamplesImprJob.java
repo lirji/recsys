@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,20 +67,23 @@ public class GenSamplesImprJob implements OfflineJob {
         return "gen-samples-impr";
     }
 
+    /** 输入不足时让调度方可见；正常过滤、算法和发布顺序保持原契约。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         BehaviorSource source = BehaviorQuery.source(args);
         CatalogTable table = ItemQuery.source(args);
-        double validFrac = doubleArg(args, "valid-frac", 0.2);
-        int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
-        int windowHours = intArg(args, "window-hours", 24);
-        int maxPosition = intArg(args, "max-position", 10);
+        double validFrac = JobArguments.decimal(args, "valid-frac", 0.2);
+        int seqLen = JobArguments.integer(args, "seq-len", DEFAULT_SEQ_LEN);
+        int windowHours = JobArguments.integer(args, "window-hours", 24);
+        int maxPosition = JobArguments.integer(args, "max-position", 10);
+        if (seqLen < 0 || maxPosition < 0 || validFrac < 0 || validFrac > 1) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         long windowSec = windowHours > 0 ? (long) windowHours * 3600 : Long.MAX_VALUE;
 
         List<Impression> imprs = inputs.impressions(source);
         if (imprs.isEmpty()) {
-            log.warn("无 IMPRESSION 日志;先让 /api/recommend 产生曝光,或跑 --job=sim-rec-events(教学)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_IMPRESSIONS);
         }
         List<RatingEvent> ratings = inputs.ratings(source, table);      // 仅用于 as-of 特征/序列累加
         Positives pos = loadPositives(source);          // (user,item) → 正反馈 ts 列表(归因标签)
@@ -105,7 +111,7 @@ public class GenSamplesImprJob implements OfflineJob {
         }
         stream.sort((a, b) -> a[0] != b[0] ? Long.compare(a[0], b[0]) : Long.compare(a[1], b[1]));
 
-        java.util.Random rnd = new java.util.Random((long) doubleArg(args, "seed", 42));
+        java.util.Random rnd = new java.util.Random((long) JobArguments.decimal(args, "seed", 42));
         Path out = Path.of(OUT);
         Files.createDirectories(out.getParent());
         long rows = 0, posClick = 0, posLike = 0;
@@ -146,8 +152,7 @@ public class GenSamplesImprJob implements OfflineJob {
         log.info("gen-samples-impr 完成:曝光样本 {} 行(click 正例 {} / like 正例 {},负 {})→ {}",
                 rows, posClick, posLike, rows - posClick, out.toAbsolutePath());
         if (posClick == 0) {
-            log.warn("⚠️ 全是负样本:曝光后窗口内无正反馈归因(MovieLens 评分多早于曝光)。"
-                    + "教学演示请先跑 --job=sim-rec-events 造带点击的曝光日志。");
+            log.warn("{}", ErrorCode.JOB_SAMPLES_ALL_NEGATIVE.displayMessage());
         }
     }
 
@@ -239,11 +244,4 @@ public class GenSamplesImprJob implements OfflineJob {
         }
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

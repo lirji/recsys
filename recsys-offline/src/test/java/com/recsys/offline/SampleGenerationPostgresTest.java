@@ -71,9 +71,9 @@ class SampleGenerationPostgresTest {
     }
     @Test void emptyInputsAndNoCtrPositivesKeepExistingCsv() throws Exception {
         Files.createDirectories(output.resolve("train"));Files.writeString(csv("ctr"),"keep-ctr");Files.writeString(csv("mt"),"keep-mt");
-        for(String kind:List.of("ctr","mt","impr"))run(kind);
+        for(String kind:List.of("ctr","mt","impr"))fail(kind,kind.equals("impr") ? "JOB_NO_IMPRESSIONS" : "JOB_NO_RATINGS");
         assertEquals("keep-ctr",Files.readString(csv("ctr")));assertEquals("keep-mt",Files.readString(csv("mt")));
-        db.execute("INSERT INTO user_behavior VALUES(1,1,'RATING',3,to_timestamp(1),NULL)");run("ctr");assertEquals("keep-ctr",Files.readString(csv("ctr")));
+        db.execute("INSERT INTO user_behavior VALUES(1,1,'RATING',3,to_timestamp(1),NULL)");fail("ctr","JOB_NO_POSITIVE_FEEDBACK");assertEquals("keep-ctr",Files.readString(csv("ctr")));
     }
     @Test void invalidSourceAndLateCatalogSqlFailurePreserveOldOutput() throws Exception {
         seed();Files.createDirectories(output.resolve("train"));Files.writeString(csv("ctr"),"keep-ctr");Files.writeString(csv("mt"),"keep-mt");
@@ -92,6 +92,25 @@ class SampleGenerationPostgresTest {
             fail(kind,"ArrayIndexOutOfBoundsException");
             var rows=Files.readAllLines(csv(kind));assertEquals(2,rows.size());assertTrue(rows.get(0).startsWith("label"));assertTrue(rows.get(1).startsWith("1,"));
         }
+    }
+    @Test void knownAllNegativeImpressionsStillProduceUsableFileWithWarning() throws Exception {
+        db.execute("INSERT INTO user_behavior VALUES(1,1,'IMPRESSION',1,to_timestamp(1),1)");
+        var result=invoke("impr");assertEquals(0,result.status,result.log);
+        assertTrue(result.log.contains("[JOB_SAMPLES_ALL_NEGATIVE]"),result.log);
+        var rows=Files.readAllLines(csv("impr"));assertEquals(2,rows.size());assertTrue(rows.get(1).startsWith("0,0,"));
+    }
+    @Test void invalidNumericOptionsLeaveExistingFilesUntouched() throws Exception {
+        seed();Files.createDirectories(output.resolve("train"));
+        for(String kind:List.of("ctr","mt","impr")) {
+            Files.writeString(csv(kind),"keep");
+            for(String arg:List.of("--valid-frac=NaN","--valid-frac=1.1","--seed=private")) {
+                fail(kind,"JOB_INVALID_ARGUMENT",arg);assertEquals("keep",Files.readString(csv(kind)));
+            }
+        }
+        fail("ctr","JOB_INVALID_ARGUMENT","--neg-ratio=-1");
+        fail("mt","JOB_INVALID_ARGUMENT","--seq-len=-1");
+        fail("mt","JOB_INVALID_ARGUMENT","--hard-neg-ratio=1.1");
+        fail("impr","JOB_INVALID_ARGUMENT","--max-position=-1");
     }
     private static void seed(){
         db.execute("INSERT INTO item VALUES(30,'A',5),(10,'A',2),(20,'B',NULL),(40,NULL,-2),(50,'',0),(60,'B',1),(9223372036854775807,'A',1),(NULL,'A',1)");

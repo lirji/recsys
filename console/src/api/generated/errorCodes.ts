@@ -701,6 +701,62 @@ export const errorCodes = {
     message: '缺少可选评分文件，本次使用0热度导入物品，后续补齐评分后可重跑',
     httpStatus: 0,
   },
+  JOB_NO_BEHAVIOR: {
+    message: '没有符合条件的行为数据，本次未更新热榜；请检查输入来源与时间范围',
+    httpStatus: 0,
+  },
+  JOB_NO_ITEMS: {
+    message: '物品语料为空，本次未更新；请先导入物品或检查目录来源',
+    httpStatus: 0,
+  },
+  JOB_NO_POSITIVE_FEEDBACK: {
+    message: '没有符合条件的正反馈，本次未生成结果；请检查行为输入与评分阈值',
+    httpStatus: 0,
+  },
+  JOB_NO_CATEGORY_STATS: {
+    message: '没有可关联的类目行为，本次未更新统计；请检查物品类目与行为来源',
+    httpStatus: 0,
+  },
+  JOB_NO_ITEM_VECTORS: {
+    message: '没有可用物品向量，本次未更新用户向量；请先完成物品向量回填',
+    httpStatus: 0,
+  },
+  JOB_NO_USER_VECTORS: {
+    message: '正反馈未命中可用物品向量，本次未更新用户向量；请检查输入覆盖范围',
+    httpStatus: 0,
+  },
+  JOB_NO_RECALL_OUTPUT: {
+    message: '输入未形成可发布的相似召回列表；请检查共现数据与过滤参数',
+    httpStatus: 0,
+  },
+  JOB_NO_RATINGS: {
+    message: '没有评分事件，本次未生成样本；请先导入行为或检查输入来源',
+    httpStatus: 0,
+  },
+  JOB_NO_IMPRESSIONS: {
+    message: '没有曝光事件，本次未生成样本；请先积累曝光或运行 sim-rec-events',
+    httpStatus: 0,
+  },
+  JOB_NO_AD_CLICKS: {
+    message: '没有符合条件的广告点击，本次未生成样本；请检查输入或运行 sim-ad-events',
+    httpStatus: 0,
+  },
+  JOB_NO_MATURE_ASSIGNMENTS: {
+    message: '没有已成熟的实验分配，本次未生成样本；请检查 as-of、时间范围与归因窗口',
+    httpStatus: 0,
+  },
+  JOB_SAMPLES_ALL_NEGATIVE: {
+    message: '样本已生成，但全部为负标签；请检查曝光后的正反馈与归因窗口再训练',
+    httpStatus: 0,
+  },
+  JOB_SAMPLES_MISSING_ITEM: {
+    message: '样本已生成，但已跳过无物品关联的广告点击；请检查广告物品映射及样本覆盖范围',
+    httpStatus: 0,
+  },
+  JOB_NO_SAMPLE_OUTPUT: {
+    message: '没有可用样本产出，输出可能仅含表头；请补齐广告物品关联后重新生成',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

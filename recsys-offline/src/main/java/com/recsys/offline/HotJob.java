@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +45,11 @@ public class HotJob implements OfflineJob {
     /** 空结果保留旧榜单，完整查询成功后才按原顺序发布。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        int recentDays = intArg(args, "recent-days", 0);
-        int topN = intArg(args, "topn", 1000);
+        int recentDays = JobArguments.integer(args, "recent-days", 0);
+        int topN = JobArguments.integer(args, "topn", 1000);
+        if (topN <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只统计切分点前的热度
         var source = BehaviorQuery.source(args);
 
@@ -54,8 +60,7 @@ public class HotJob implements OfflineJob {
         });
 
         if (tuples.isEmpty()) {
-            log.warn("无行为数据,recall:hot 未更新;先跑 --job=import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_BEHAVIOR);
         }
         // 沿用删旧key后整榜写入；这两条Redis命令之间仍存在原有窗口。
         redis.delete(RedisKeys.HOT_RECALL);
@@ -64,7 +69,4 @@ public class HotJob implements OfflineJob {
                 tuples.size(), recentDays, topN);
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
 }

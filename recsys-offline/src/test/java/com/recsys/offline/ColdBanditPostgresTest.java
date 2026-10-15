@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.primary.ColdBanditMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -75,7 +79,7 @@ class ColdBanditPostgresTest {
 
     @Test void emptyResultsAndDisappearedCategoriesLeaveExistingKeys() {
         redis.opsForValue().set(RedisKeys.coldCatStats("old"),"99,88");redis.opsForValue().set(RedisKeys.COLD_CAT_TOTAL,"99");
-        job.run(new DefaultApplicationArguments());assertEquals("99",redis.opsForValue().get(RedisKeys.COLD_CAT_TOTAL));
+        assertEquals(ErrorCode.JOB_NO_CATEGORY_STATS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode());assertEquals("99",redis.opsForValue().get(RedisKeys.COLD_CAT_TOTAL));
         db.execute("INSERT INTO item VALUES(1,'new');INSERT INTO user_behavior VALUES(1,'CLICK',1)");
         job.run(new DefaultApplicationArguments());assertEquals("1",redis.opsForValue().get(RedisKeys.COLD_CAT_TOTAL));
         assertEquals("99,88",stat("old"));assertEquals("1,1",stat("new"));source.assertClosed(admin,"cold-bandit-reader");

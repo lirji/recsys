@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,11 +54,15 @@ public class ItemCfJob implements OfflineJob {
         return "item-cf";
     }
 
+    /** 输入不足时让调度方可见；正常过滤、算法和发布顺序保持原契约。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        double minRating = doubleArg(args, "min-rating", 4.0);
-        int topK = intArg(args, "topk", 50);
-        int maxUserItems = intArg(args, "max-user-items", 500);
+        double minRating = JobArguments.decimal(args, "min-rating", 4.0);
+        int topK = JobArguments.integer(args, "topk", 50);
+        int maxUserItems = JobArguments.integer(args, "max-user-items", 500);
+        if (topK <= 0 || maxUserItems <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
 
         // 1. 加载正反馈:user -> [items](--max-ts 时只用切分点前的行为,供严格 eval)
         Long maxTs = BehaviorQuery.maxTs(args);
@@ -64,8 +71,7 @@ public class ItemCfJob implements OfflineJob {
         log.info("正反馈用户数 {};min-rating={}, topk={}, max-ts={}", userItems.size(), minRating, topK,
                 maxTs == null ? "全量" : maxTs);
         if (userItems.isEmpty()) {
-            log.warn("无正反馈数据,先跑 --job=import-behavior");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_POSITIVE_FEEDBACK);
         }
 
         // 2. 物品流行度 |U(i)| 与 共现矩阵 C[i][j](IUF 加权)
@@ -91,6 +97,7 @@ public class ItemCfJob implements OfflineJob {
 
         // 3. 归一化为余弦相似度 + 取 TopK
         int written = writeTopK(cooc, itemPop, topK);
+        if (written == 0) throw new PublicErrorException(ErrorCode.JOB_NO_RECALL_OUTPUT);
         log.info("item-cf 完成:写入 {} 个物品的 i2i 倒排到 Redis", written);
     }
 
@@ -147,11 +154,4 @@ public class ItemCfJob implements OfflineJob {
         return written[0];
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

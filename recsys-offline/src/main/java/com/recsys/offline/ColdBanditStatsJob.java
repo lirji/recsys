@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,13 +51,12 @@ public class ColdBanditStatsJob implements OfflineJob {
     public void run(ApplicationArguments args) {
         var behavior = BehaviorQuery.source(args);
         var items = ItemQuery.source(args);
-        double minRating = doubleArg(args, "min-rating", 4.0);
+        double minRating = JobArguments.decimal(args, "min-rating", 4.0);
 
         List<ColdBanditMapper.Stats> rows = mapper.categoryStats(behavior, items, minRating);
 
         if (rows.isEmpty()) {
-            log.warn("无类目统计(user_behavior 为空?先跑 import-behavior)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_CATEGORY_STATS);
         }
         long total = 0;
         for (var row : rows) {
@@ -66,7 +68,4 @@ public class ColdBanditStatsJob implements OfflineJob {
                 rows.size(), total, rows.get(0).category(), rows.get(0).impressions(), rows.get(0).positives());
     }
 
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

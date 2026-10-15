@@ -176,7 +176,21 @@ public enum ErrorCode {
     JOB_R9_INVALID_IDENTITY("JOB_R9_INVALID_IDENTITY", "R9 向量版本为空或同组身份重复，请检查输入文件", 0),
     JOB_R9_VERSION_MISMATCH("JOB_R9_VERSION_MISMATCH", "R9 三组向量必须使用同一个模型版本，请检查输入产物", 0),
     JOB_R9_NO_INPUT("JOB_R9_NO_INPUT", "没有可发布的R9向量，本次未发布，请先生成输入产物", 0),
-    JOB_POPULARITY_FALLBACK("JOB_POPULARITY_FALLBACK", "缺少可选评分文件，本次使用0热度导入物品，后续补齐评分后可重跑", 0);
+    JOB_POPULARITY_FALLBACK("JOB_POPULARITY_FALLBACK", "缺少可选评分文件，本次使用0热度导入物品，后续补齐评分后可重跑", 0),
+    JOB_NO_BEHAVIOR("JOB_NO_BEHAVIOR", "没有符合条件的行为数据，本次未更新热榜；请检查输入来源与时间范围", 0),
+    JOB_NO_ITEMS("JOB_NO_ITEMS", "物品语料为空，本次未更新；请先导入物品或检查目录来源", 0),
+    JOB_NO_POSITIVE_FEEDBACK("JOB_NO_POSITIVE_FEEDBACK", "没有符合条件的正反馈，本次未生成结果；请检查行为输入与评分阈值", 0),
+    JOB_NO_CATEGORY_STATS("JOB_NO_CATEGORY_STATS", "没有可关联的类目行为，本次未更新统计；请检查物品类目与行为来源", 0),
+    JOB_NO_ITEM_VECTORS("JOB_NO_ITEM_VECTORS", "没有可用物品向量，本次未更新用户向量；请先完成物品向量回填", 0),
+    JOB_NO_USER_VECTORS("JOB_NO_USER_VECTORS", "正反馈未命中可用物品向量，本次未更新用户向量；请检查输入覆盖范围", 0),
+    JOB_NO_RECALL_OUTPUT("JOB_NO_RECALL_OUTPUT", "输入未形成可发布的相似召回列表；请检查共现数据与过滤参数", 0),
+    JOB_NO_RATINGS("JOB_NO_RATINGS", "没有评分事件，本次未生成样本；请先导入行为或检查输入来源", 0),
+    JOB_NO_IMPRESSIONS("JOB_NO_IMPRESSIONS", "没有曝光事件，本次未生成样本；请先积累曝光或运行 sim-rec-events", 0),
+    JOB_NO_AD_CLICKS("JOB_NO_AD_CLICKS", "没有符合条件的广告点击，本次未生成样本；请检查输入或运行 sim-ad-events", 0),
+    JOB_NO_MATURE_ASSIGNMENTS("JOB_NO_MATURE_ASSIGNMENTS", "没有已成熟的实验分配，本次未生成样本；请检查 as-of、时间范围与归因窗口", 0),
+    JOB_SAMPLES_ALL_NEGATIVE("JOB_SAMPLES_ALL_NEGATIVE", "样本已生成，但全部为负标签；请检查曝光后的正反馈与归因窗口再训练", 0),
+    JOB_SAMPLES_MISSING_ITEM("JOB_SAMPLES_MISSING_ITEM", "样本已生成，但已跳过无物品关联的广告点击；请检查广告物品映射及样本覆盖范围", 0),
+    JOB_NO_SAMPLE_OUTPUT("JOB_NO_SAMPLE_OUTPUT", "没有可用样本产出，输出可能仅含表头；请补齐广告物品关联后重新生成", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

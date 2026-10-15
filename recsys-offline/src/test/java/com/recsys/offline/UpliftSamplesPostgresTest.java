@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.recsys.offline.persistence.mapper.addb.UpliftSampleMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -64,14 +68,14 @@ class UpliftSamplesPostgresTest {
         run();assertEquals("0,0,0.0,0,0,0,0,0.0,0.0,0.0,0.0,0.0,train",String.join(",",rows().getFirst()));assertEquals(Long.toString(Long.MAX_VALUE),rows().get(1)[3]);source.assertClosed(admin,"uplift-samples-reader");
     }
     @Test void emptyOrImmatureInputsAndSqlFailurePreservePreviousFile() throws Exception {
-        Files.writeString(csv(),"keep");run();assertEquals("keep",Files.readString(csv()));
-        assignment(1,1,"2025-01-01T00:00:00Z","2025-01-21T00:00:00Z");run();assertEquals("keep",Files.readString(csv()));
+        Files.writeString(csv(),"keep");assertEquals(ErrorCode.JOB_NO_MATURE_ASSIGNMENTS, assertThrows(PublicErrorException.class, () -> run()).errorCode());assertEquals("keep",Files.readString(csv()));
+        assignment(1,1,"2025-01-01T00:00:00Z","2025-01-21T00:00:00Z");assertEquals(ErrorCode.JOB_NO_MATURE_ASSIGNMENTS, assertThrows(PublicErrorException.class, () -> run()).errorCode());assertEquals("keep",Files.readString(csv()));
         db.execute("ALTER TABLE ad_conversion_fact RENAME TO hidden_facts");
         try{assertThrows(BadSqlGrammarException.class,()->run());assertEquals("keep",Files.readString(csv()));source.assertClosed(admin,"uplift-samples-reader");}
         finally{db.execute("ALTER TABLE hidden_facts RENAME TO ad_conversion_fact");}
     }
     @Test void invalidAsOfAndUnwritableOutputFailWithoutLeakingReadConnection() throws Exception {
-        seed();assertThrows(java.time.format.DateTimeParseException.class,()->run("--as-of=invalid"));
+        seed();assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,()->run("--as-of=invalid")).errorCode());
         Path directory=output.resolve("directory");Files.createDirectory(directory);
         assertThrows(java.io.IOException.class,()->job.run(new DefaultApplicationArguments("--out="+directory,"--as-of="+AS_OF)));source.assertClosed(admin,"uplift-samples-reader");
     }

@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -72,7 +76,7 @@ class IdfPublishingPostgresTest {
     }
 
     @Test void emptyCorpusKeepsOldSnapshotButNoQualifyingTermsDeletesBothHashes() throws Exception {
-        oldSnapshot();job.run(new DefaultApplicationArguments());assertOldSnapshot();
+        oldSnapshot();assertEquals(ErrorCode.JOB_NO_ITEMS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode());assertOldSnapshot();
         db.execute("INSERT INTO item(item_id,title) VALUES(1,'about the')");
         job.run(new DefaultApplicationArguments());assertFalse(redis.hasKey(RedisKeys.IDF_LEXEMES));assertFalse(redis.hasKey(RedisKeys.IDF_TERMS));assertEquals("1",redis.opsForValue().get(RedisKeys.IDF_DOC_COUNT));
         oldSnapshot();db.update("UPDATE item SET title='movie'");job.run(new DefaultApplicationArguments("--min-df=2"));

@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.pgvector.PGvector;
 import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
 import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
@@ -98,14 +102,14 @@ class UserEmbeddingPostgresTest {
         assertClosed();
     }
 
-    @Test void noUsableItemVectorsOrFeedbackReturnsBeforeClearingOldUsers() throws Exception {
+    @Test void noUsableItemVectorsOrFeedbackFailsBeforeClearingOldUsers() throws Exception {
         derived.execute("TRUNCATE item_embedding");
-        job.run(new DefaultApplicationArguments()); assertEquals(List.of(99L), users());
+        assertEquals(ErrorCode.JOB_NO_ITEM_VECTORS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode()); assertEquals(List.of(99L), users());
         derived.execute("INSERT INTO item_embedding VALUES(10,NULL)");
-        job.run(new DefaultApplicationArguments()); assertEquals(List.of(99L), users());
+        assertEquals(ErrorCode.JOB_NO_ITEM_VECTORS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode()); assertEquals(List.of(99L), users());
         derived.execute("UPDATE item_embedding SET embedding='[1,0,0]'");
         primary.execute("TRUNCATE user_behavior");
-        job.run(new DefaultApplicationArguments()); assertEquals(List.of(99L), users());
+        assertEquals(ErrorCode.JOB_NO_USER_VECTORS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode()); assertEquals(List.of(99L), users());
         assertClosed();
     }
 

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.common.query.QueryTokens;
 import org.slf4j.Logger;
@@ -53,13 +56,12 @@ public class IdfJob implements OfflineJob {
     /** 完整语料计算成功后按原canonical、alias、总数顺序发布。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        int minDf = intArg(args, "min-df", 1);
+        int minDf = JobArguments.integer(args, "min-df", 1);
         var source = ItemQuery.source(args);
 
         IdfSnapshot snapshot = compute(source, minDf);
         if (snapshot.totalDocuments() == 0) {
-            log.warn("item 表为空,idf:terms 未更新;先跑 --job=import-items");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_ITEMS);
         }
 
         // 临时 Hash 完整写好后 RENAME 替换，单表发布无空窗；先 canonical、后兼容 alias。
@@ -149,7 +151,4 @@ public class IdfJob implements OfflineJob {
     record IdfSnapshot(int totalDocuments, Map<String, String> lexemes, Map<String, String> rawTerms) {
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
 }

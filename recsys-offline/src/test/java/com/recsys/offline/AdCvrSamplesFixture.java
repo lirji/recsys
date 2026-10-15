@@ -57,7 +57,9 @@ public final class AdCvrSamplesFixture {
             } else {
                 new TransactionTemplate(new DataSourceTransactionManager(primary)).executeWithoutResult(status->{
                     freeze(db);
-                    try{job.run(options);}catch(Exception error){throw new RuntimeException(error);}
+                    try{job.run(options);}catch(com.recsys.common.error.PublicErrorException failure){
+                        System.err.println(failure.errorCode().displayMessage()); throw failure;
+                    }catch(Exception error){throw new RuntimeException(error);}
                 });
             }
         } finally {

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.feature.FeatureService;
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
@@ -75,8 +78,8 @@ public class GenAdCvrSamplesJob implements OfflineJob {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         AdEventSource source = AdEventQuery.source(args);
-        int days = intArg(args, "days", 30);
-        long seed = intArg(args, "seed", 42);
+        int days = JobArguments.integer(args, "days", 30);
+        long seed = JobArguments.integer(args, "seed", 42);
 
         // 1. ad_id → item_id(分片 ad 表全量)
         Map<Long, Long> adToItem = new HashMap<>();
@@ -95,8 +98,7 @@ public class GenAdCvrSamplesJob implements OfflineJob {
         // 3. 仍在打开CSV前读齐点击，保持查询失败时旧文件不变。
         List<Click> clicks = events.loadClicks(source, days);
         if (clicks.isEmpty()) {
-            log.warn("无 CLICK 事件;先跑 --job=sim-ad-events(造点击+指数延迟+右删失转化),或灌真实广告点击/转化");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_AD_CLICKS);
         }
 
         // 4. 批量预取候选 item 特征 + 类目(经 ad.item_id)
@@ -115,51 +117,48 @@ public class GenAdCvrSamplesJob implements OfflineJob {
         Random rng = new Random(seed);
         Path out = Path.of(OUT);
         int written = 0, converted = 0, noItem = 0;
-        try {
-            Files.createDirectories(out.getParent());
-            try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
-                w.write("converted,delay_days,elapsed_days,user_id,item_id,category," + String.join(",", order) + ",split");
-                w.newLine();
-                for (Click c : clicks) {
-                    String reqId = c.requestId();
-                    long userId = c.userId();
-                    long adId = c.adId();
-                    double clickEp = c.epoch();
-                    double elapsed = c.elapsedDays();
-                    Long itemId = adToItem.get(adId);
-                    if (itemId == null) {
-                        noItem++;
-                        continue;
-                    }
-                    Double convE = convEp.get(reqId + ":" + adId);
-                    int conv = convE != null ? 1 : 0;
-                    double delay = convE != null ? (convE - clickEp) / 86400.0 : -1.0;
-                    if (conv == 1) {
-                        converted++;
-                    }
-                    Item it = items.get(itemId);
-                    String cat = it == null ? null : it.category();
-                    Map<String, Double> uf = userCache.computeIfAbsent(userId, featureService::userFeatures);
-                    double[] f = FeatureAssembler.assemble(uf, itemFeats.getOrDefault(itemId, Map.of()), cat, order);
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(conv).append(',').append(round5(delay)).append(',').append(round5(elapsed))
-                            .append(',').append(userId).append(',').append(itemId).append(',')
-                            .append(cat == null ? "" : cat);
-                    for (double v : f) {
-                        sb.append(',').append(round5(v));
-                    }
-                    sb.append(',').append(rng.nextDouble() < 0.85 ? "train" : "valid");
-                    w.write(sb.toString());
-                    w.newLine();
-                    written++;
+        Files.createDirectories(out.getParent());
+        try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+            w.write("converted,delay_days,elapsed_days,user_id,item_id,category," + String.join(",", order) + ",split");
+            w.newLine();
+            for (Click c : clicks) {
+                String reqId = c.requestId();
+                long userId = c.userId();
+                long adId = c.adId();
+                double clickEp = c.epoch();
+                double elapsed = c.elapsedDays();
+                Long itemId = adToItem.get(adId);
+                if (itemId == null) {
+                    noItem++;
+                    continue;
                 }
+                Double convE = convEp.get(reqId + ":" + adId);
+                int conv = convE != null ? 1 : 0;
+                double delay = convE != null ? (convE - clickEp) / 86400.0 : -1.0;
+                if (conv == 1) {
+                    converted++;
+                }
+                Item it = items.get(itemId);
+                String cat = it == null ? null : it.category();
+                Map<String, Double> uf = userCache.computeIfAbsent(userId, featureService::userFeatures);
+                double[] f = FeatureAssembler.assemble(uf, itemFeats.getOrDefault(itemId, Map.of()), cat, order);
+
+                StringBuilder sb = new StringBuilder();
+                sb.append(conv).append(',').append(round5(delay)).append(',').append(round5(elapsed))
+                        .append(',').append(userId).append(',').append(itemId).append(',')
+                        .append(cat == null ? "" : cat);
+                for (double v : f) {
+                    sb.append(',').append(round5(v));
+                }
+                sb.append(',').append(rng.nextDouble() < 0.85 ? "train" : "valid");
+                w.write(sb.toString());
+                w.newLine();
+                written++;
             }
-        } catch (Exception ex) {
-            log.warn("gen-ad-cvr-samples 写 CSV 失败: {}", ex.getMessage());
-            throw ex;
         }
 
+        if (written == 0) throw new PublicErrorException(ErrorCode.JOB_NO_SAMPLE_OUTPUT);
+        if (noItem > 0) log.warn("{}", ErrorCode.JOB_SAMPLES_MISSING_ITEM.displayMessage());
         log.info("gen-ad-cvr-samples 完成:点击 {},写样本 {}(已到达转化 {},观测转化率 {} —— 被延迟删失低估,"
                         + "DFM 训练后 pCVR 会回升),无关联 item 跳过 {}。→ {}",
                 clicks.size(), written, converted,
@@ -174,7 +173,4 @@ public class GenAdCvrSamplesJob implements OfflineJob {
         return Math.round(v * 100000) / 100000.0;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
 }
