@@ -34,6 +34,14 @@ public final class AdAnalysisFixture {
                 for(String table:List.of("ad_event","ad_event_log"))db.execute("UPDATE "+table+" SET ts=now()+offset_s*interval '1 second' WHERE offset_s IS NOT NULL");
                 try{job.run(options);}catch(Exception error){throw new RuntimeException(error);}
             });
+        } catch (RuntimeException failure) {
+            // 测试事务包装异常后仍打印生产边界应展示的固定码，原cause保留供真实故障断言。
+            for(Throwable cause=failure;cause!=null;cause=cause.getCause()) {
+                if(cause instanceof com.recsys.common.error.PublicErrorException visible) {
+                    System.out.println(visible.errorCode().displayMessage());break;
+                }
+            }
+            throw failure;
         } finally {
             factory.destroy();source.assertClosed(new JdbcTemplate(new DriverManagerDataSource(args[0].replace("ApplicationName=ad-analysis-reader","ApplicationName=ad-analysis-observer"),args[1],args[2])),"ad-analysis-reader");
         }

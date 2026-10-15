@@ -868,6 +868,34 @@ export const errorCodes = {
     message: '无效点击计数无法确认，本次报表未完成；请检查广告事件来源后重试',
     httpStatus: 0,
   },
+  JOB_ATTRIBUTION_MODEL_FALLBACK: {
+    message: '归因模型不受支持，本次使用 position 模型；请检查 model 参数',
+    httpStatus: 0,
+  },
+  JOB_NO_ATTRIBUTION_CONVERSIONS: {
+    message: '没有可归因的转化事件，本次未生成报表；请检查事件采集和时间窗口',
+    httpStatus: 0,
+  },
+  JOB_REPORT_OUTPUT_FAILED: {
+    message: '报表写入未完成，可能留下部分文件；请检查输出目录和磁盘后重试',
+    httpStatus: 0,
+  },
+  JOB_NO_AD_QUALITY_INPUT: {
+    message: '没有广告质量度所需的曝光数据，原结果保持不变；请检查事件来源和时间窗口',
+    httpStatus: 0,
+  },
+  JOB_NO_AD_QUALITY_OUTPUT: {
+    message: '没有广告达到质量度计算门槛，原结果保持不变；请补齐数据或调整最少曝光数',
+    httpStatus: 0,
+  },
+  JOB_AD_QUALITY_INPUT_INVALID: {
+    message: '广告质量度输入或计算结果无效，可能已有部分结果更新；请检查统计值和先验参数后重试',
+    httpStatus: 0,
+  },
+  JOB_AD_QUALITY_PUBLICATION_FAILED: {
+    message: '广告质量度发布未完成，Redis 或报表可能已部分写入；请核对已有结果并修复依赖后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

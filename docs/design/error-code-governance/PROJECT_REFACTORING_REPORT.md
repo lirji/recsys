@@ -47,3 +47,5 @@ EC05g DONE/PASS（本地）：报表空输入/非法统计参数、延迟样本�
 EC05h DONE/PASS（本地），父EC05本地验收完成：三共享来源与max-ts安全参数、三Sync校验先于DDL/full清除、Uplift严格参数且0 no-op保持。35个EC05 Job与9个待EC06 Job的44项清单见EC05H_RESULT。212目录旧209/8族保持；完整offline依赖477/84类0失败错误、1个CI环境探针skip（实际集成运行），57FE/24compile/守卫/hygiene过。G已ff/push2717c956，CI38814199492运行，F/E已取消。EC06～08继续。
 
 EC06a DONE/PASS（本地）：广告校准无效数值/样本不足/坏参数不覆盖旧曲线；广告报表未知风控计数不伪零、空输入不假成功。216目录原212/8族保持；56后端/6类、57前端、24compile/守卫/hygiene过，见EC06A_DESIGN/RESULT。正常完整CSV/JSON和原部分文件边界保持；计数异常适配器仅证明边界，不声称网络故障。H已ff/push82a4a07a，CI38815509098仍运行。EC06余7作业和EC07/08继续。
+
+EC06b DONE/PASS（本地）：归因全程long身份/具名触点/显式模型，三模型原SHA保持；质量/归因无输入或发布失败不假完成，NaN质量不再round成0，成功部分保留。223目录旧216/8族保持；59后端/7类、57FE、24compile/守卫/hygiene过，见EC06B_DESIGN/RESULT。A已ff/push c6921b8f，CI38816279798仍运行。EC06余5作业、EC07/08继续。

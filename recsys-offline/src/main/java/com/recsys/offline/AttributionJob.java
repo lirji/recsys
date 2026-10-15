@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -8,6 +10,7 @@ import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -48,22 +52,36 @@ public class AttributionJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(AttributionJob.class);
     private static final String OUT_DIR = "eval";
-    private static final int IMPRESSION = AttributionKind.IMPRESSION.pathCode;
-    private static final int CLICK = AttributionKind.CLICK.pathCode;
-    private static final int CONVERSION = AttributionKind.CONVERSION.pathCode;
+    private static final double SECONDS_PER_DAY = 86_400.0;
 
-    /** 归因输入类型对应数据库事件码与旧路径数值码，区别于计费Outbox表族，不使用ordinal。 */
+    /** 显式数据库事件码，路径内部直接用类型而非数字下标和ordinal。 */
     private enum AttributionKind {
-        IMPRESSION("IMPRESSION", 0), CLICK("CLICK", 1), CONVERSION("CONVERSION", 2);
+        IMPRESSION("IMPRESSION"), CLICK("CLICK"), CONVERSION("CONVERSION");
         private final String code;
-        private final int pathCode;
-        AttributionKind(String code, int pathCode) { this.code = code; this.pathCode = pathCode; }
+        AttributionKind(String code) { this.code = code; }
         /** SQL限定三类输入，仍保留旧解析对其他值退回曝光的行为。 */
         static AttributionKind fromCode(String code) {
             for (AttributionKind type : values()) if (type.code.equals(code)) return type;
             return IMPRESSION;
         }
     }
+
+    /** 兼容原模型选择与未知值回退，但公开提示不回显任意CLI输入。 */
+    private enum AttributionModel {
+        LINEAR("linear"), POSITION("position"), TIME_DECAY("time-decay");
+        private final String code;
+        AttributionModel(String code) { this.code = code; }
+        static AttributionModel fromCode(String value) {
+            for (AttributionModel model : values()) if (model.code.equals(value.toLowerCase(Locale.ROOT))) return model;
+            log.warn("{}", ErrorCode.JOB_ATTRIBUTION_MODEL_FALLBACK.displayMessage());
+            return POSITION;
+        }
+    }
+
+    /** ID必须全程保持long，double只能承载时间和权重，避免相邻大ID被合并。 */
+    private record PathEvent(double epoch, long adId, AttributionKind kind) { }
+    /** 折叠后的触点保留被选中类型与时间，点击优先规则不变。 */
+    private record Touch(double ageDays, AttributionKind kind, double epoch) { }
 
     private final AdAttributionMapper mapper;
 
@@ -78,35 +96,33 @@ public class AttributionJob implements OfflineJob {
         return "ad-attribution";
     }
 
-    /** 单次来源显式传递，保留原统计口径与输出失败处理。 */
+    /** 身份与输入先校验；报表失败必须传播，不能让Runner记录假完成。 */
     @Override
     public void run(ApplicationArguments args) {
         AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 30);
-        String model = stringArg(args, "model", "position").toLowerCase();
+        AttributionModel model = AttributionModel.fromCode(stringArg(args, "model", "position"));
         double halfLife = dblArg(args, "half-life-days", 3.0);
         double clickWindow = dblArg(args, "click-window-days", 7.0);
         double viewWindow = dblArg(args, "view-window-days", 1.0);
         double first = dblArg(args, "first", 0.4);
         double last = dblArg(args, "last", 0.4);
-        if (!model.equals("linear") && !model.equals("position") && !model.equals("time-decay")) {
-            log.warn("未知 model={},支持 linear|position|time-decay;退回 position", model);
-            model = "position";
+        if (halfLife <= 0 || !Double.isFinite(Math.log(2.0) / halfLife)
+                || clickWindow < 0 || viewWindow < 0 || first < 0 || last < 0
+                || !Double.isFinite(first + last)) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         }
 
         // 按 user_id, ts 升序流式载入窗口内事件(教学规模,内存聚路径)。ep=epoch 秒,便于算 age。
-        Map<Long, List<double[]>> byUser = new HashMap<>();  // user → [ep, adId, typeCode] 列表(已按 ts 升序)
+        Map<Long, List<PathEvent>> byUser = new HashMap<>();
         mapper.scan(source, days, context -> {
             var row = context.getResultObject();
-            int code = AttributionKind.fromCode(row.eventType()).pathCode;
-            // 沿用原double路径表示（大身份存在既有舍入问题），不将身份修复混入SQL迁移。
             byUser.computeIfAbsent(row.userId(), k -> new ArrayList<>())
-                    .add(new double[]{row.epoch(), row.adId(), code});
+                    .add(new PathEvent(row.epoch(), row.adId(), AttributionKind.fromCode(row.eventType())));
         });
 
         if (byUser.isEmpty()) {
-            log.warn("无广告事件,先跑 --job=sim-ad-events(或灌真实曝光/点击/转化)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_ATTRIBUTION_CONVERSIONS);
         }
 
         Map<Long, Double> lastTouch = new HashMap<>();
@@ -116,61 +132,61 @@ public class AttributionJob implements OfflineJob {
         long totalConversions = 0;
         long pathTouchTotal = 0;   // 累计路径触点数(用于报平均路径长度)
 
-        for (List<double[]> ev : byUser.values()) {
+        for (List<PathEvent> ev : byUser.values()) {
             for (int k = 0; k < ev.size(); k++) {
-                if ((int) ev.get(k)[2] != CONVERSION) {
+                if (ev.get(k).kind() != AttributionKind.CONVERSION) {
                     continue;
                 }
-                double convEp = ev.get(k)[0];
-                long convAd = (long) ev.get(k)[1];
+                double convEp = ev.get(k).epoch();
+                long convAd = ev.get(k).adId();
                 lastTouch.merge(convAd, 1.0, Double::sum);
                 totalConversions++;
 
-                // 回看窗口内触点,按 adId 折叠(CLICK 优先、同类型取更近);best: adId → [ageDays, typeCode, ep]
-                Map<Long, double[]> best = new LinkedHashMap<>();
+                // 回看窗口内触点,按 adId 折叠(CLICK 优先、同类型取更近);best按完整long广告ID归并
+                Map<Long, Touch> best = new LinkedHashMap<>();
                 for (int j = 0; j < k; j++) {
-                    long adId = (long) ev.get(j)[1];
-                    int code = (int) ev.get(j)[2];
-                    if (code == CONVERSION) {
+                    long adId = ev.get(j).adId();
+                    AttributionKind kind = ev.get(j).kind();
+                    if (kind == AttributionKind.CONVERSION) {
                         continue;
                     }
-                    double ep = ev.get(j)[0];
-                    double ageDays = (convEp - ep) / 86400.0;
-                    boolean qualifies = (code == CLICK && ageDays <= clickWindow)
-                            || (code == IMPRESSION && ageDays <= viewWindow);
+                    double ep = ev.get(j).epoch();
+                    double ageDays = (convEp - ep) / SECONDS_PER_DAY;
+                    boolean qualifies = (kind == AttributionKind.CLICK && ageDays <= clickWindow)
+                            || (kind == AttributionKind.IMPRESSION && ageDays <= viewWindow);
                     if (!qualifies) {
                         continue;
                     }
-                    double[] cur = best.get(adId);
+                    Touch cur = best.get(adId);
                     if (cur == null) {
-                        best.put(adId, new double[]{ageDays, code, ep});
+                        best.put(adId, new Touch(ageDays, kind, ep));
                     } else {
-                        int curType = (int) cur[1];
-                        boolean better = (code == CLICK && curType == IMPRESSION)   // 点击胜过曝光
-                                || (code == curType && ageDays < cur[0]);           // 同类型取更近
+                        AttributionKind curType = cur.kind();
+                        boolean better = (kind == AttributionKind.CLICK && curType == AttributionKind.IMPRESSION)   // 点击胜过曝光
+                                || (kind == curType && ageDays < cur.ageDays());           // 同类型取更近
                         if (better) {
-                            best.put(adId, new double[]{ageDays, code, ep});
+                            best.put(adId, new Touch(ageDays, kind, ep));
                         }
                     }
                 }
                 // 窗口内无触点 → 回退把信用给转化广告本身(等价 last-touch)
                 if (best.isEmpty()) {
-                    best.put(convAd, new double[]{0.0, CLICK, convEp});
+                    best.put(convAd, new Touch(0.0, AttributionKind.CLICK, convEp));
                 }
 
                 // 按 ep 升序成路径(首触点=最早)
-                List<Map.Entry<Long, double[]>> path = new ArrayList<>(best.entrySet());
-                path.sort(Comparator.comparingDouble(e -> e.getValue()[2]));
+                List<Map.Entry<Long, Touch>> path = new ArrayList<>(best.entrySet());
+                path.sort(Comparator.comparingDouble(e -> e.getValue().epoch()));
                 int n = path.size();
                 pathTouchTotal += n;
 
                 double[] weights;
                 switch (model) {
-                    case "linear" -> weights = MultiTouchAttribution.linearWeights(n);
-                    case "time-decay" -> {
+                    case LINEAR -> weights = MultiTouchAttribution.linearWeights(n);
+                    case TIME_DECAY -> {
                         double[] ages = new double[n];
                         for (int i = 0; i < n; i++) {
-                            ages[i] = path.get(i).getValue()[0];
+                            ages[i] = path.get(i).getValue().ageDays();
                         }
                         weights = MultiTouchAttribution.timeDecayWeights(ages, halfLife);
                     }
@@ -179,10 +195,10 @@ public class AttributionJob implements OfflineJob {
 
                 for (int i = 0; i < n; i++) {
                     long adId = path.get(i).getKey();
-                    int type = (int) path.get(i).getValue()[1];
+                    AttributionKind type = path.get(i).getValue().kind();
                     double w = weights[i];
                     mtaCredit.merge(adId, w, Double::sum);
-                    if (type == CLICK) {
+                    if (type == AttributionKind.CLICK) {
                         ctaCredit.merge(adId, w, Double::sum);
                     } else {
                         vtaCredit.merge(adId, w, Double::sum);
@@ -192,8 +208,7 @@ public class AttributionJob implements OfflineJob {
         }
 
         if (totalConversions == 0) {
-            log.warn("窗口内无转化事件(CONVERSION),无从归因;先跑 --job=sim-ad-events");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_ATTRIBUTION_CONVERSIONS);
         }
 
         Path outFile = Path.of(OUT_DIR,
@@ -222,13 +237,13 @@ public class AttributionJob implements OfflineJob {
                     w.newLine();
                 }
             }
-        } catch (Exception ex) {
-            log.warn("ad-attribution 写 CSV 失败: {}", ex.getMessage());
+        } catch (IOException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_REPORT_OUTPUT_FAILED, failure);
         }
 
         log.info("ad-attribution 完成:model={},转化 {},MTA 信用和 {}(应≈转化数,守恒自检),"
                         + "平均路径 {} 触点,窗口 CTA={}d/VTA={}d。明细 CSV: {}",
-                model, totalConversions, round4(mtaSum),
+                model.code, totalConversions, round4(mtaSum),
                 round2((double) pathTouchTotal / totalConversions), clickWindow, viewWindow,
                 outFile.toAbsolutePath());
     }
@@ -242,15 +257,14 @@ public class AttributionJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.decimal(a, k, def);
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
+        return JobArguments.text(a, k, def);
     }
 }

@@ -1,6 +1,8 @@
 package com.recsys.offline;
 
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -10,6 +12,7 @@ import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +53,7 @@ public class QualityScoreJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(QualityScoreJob.class);
     private static final String OUT_DIR = "eval";
+    private static final double QUALITY_SCALE = 10_000.0;
 
     private final AdQualityMapper mapper;
     private final StringRedisTemplate redis;
@@ -66,7 +70,7 @@ public class QualityScoreJob implements OfflineJob {
         return "ad-quality";
     }
 
-    /** 单次来源显式传递，保留原统计口径与输出失败处理。 */
+    /** 保持逐广告发布顺序；任一失败须说明已有结果可能生效，不能伪称整批成功。 */
     @Override
     public void run(ApplicationArguments args) {
         AdEventSource source = AdEventQuery.source(args);
@@ -81,9 +85,9 @@ public class QualityScoreJob implements OfflineJob {
         double priorImpr = dblArg(args, "prior-impr", 200);
         double priorClick = dblArg(args, "prior-click", 20);
         double wSum = wRel + wCtr + wCvr;
-        if (wSum <= 0) {
-            log.warn("权重之和 {} 非正,跳过", wSum);
-            return;
+        if (minImpr < 0 || priorImpr < 0 || priorClick < 0 || wRel < 0 || wCtr < 0 || wCvr < 0
+                || wSum <= 0 || !Double.isFinite(wSum) || qMin < 0 || qMax < qMin || compClamp < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         }
 
         // 每广告聚合:曝光数 + 相关性和、点击数、转化数(点击/转化按 request 去重)
@@ -106,8 +110,7 @@ public class QualityScoreJob implements OfflineJob {
         });
 
         if (agg.isEmpty()) {
-            log.warn("无曝光事件,先跑 --job=sim-ad-events(或灌真实曝光/点击/转化)");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_AD_QUALITY_INPUT);
         }
 
         // 大盘均值(归一基准):popRel=曝光加权相关性、popCtr=总点击/总曝光、popCvr=总转化/总点击
@@ -121,6 +124,11 @@ public class QualityScoreJob implements OfflineJob {
         double popRel = totImpr > 0 ? totRel / totImpr : 0;
         double popCtr = totImpr > 0 ? totClick / totImpr : 0;
         double popCvr = totClick > 0 ? totConv / totClick : 0;
+
+        // 大盘无效不能因后续clamp或round悄悄转成中性值/零；尚未发布任何广告。
+        round4(popRel);
+        round4(popCtr);
+        round4(popCvr);
 
         Path outFile = Path.of(OUT_DIR,
                 "ad-quality-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".csv");
@@ -146,17 +154,22 @@ public class QualityScoreJob implements OfflineJob {
                     double ctrN = QualityScore.norm(ctrShrunk, popCtr, compClamp);
                     double cvrN = QualityScore.norm(cvrShrunk, popCvr, compClamp);
                     double quality = QualityScore.fuse(relN, ctrN, cvrN, wRel, wCtr, wCvr, qMin, qMax);
+                    // 先校验整行再发布当前广告；零先验且零点击产生的NaN不能被Math.round伪装成0。
+                    String csvRow = e.getKey() + "," + (long) impr + "," + (long) clicks + "," + (long) conv + ","
+                            + round4(rel) + "," + round4(ctrShrunk) + "," + round4(cvrShrunk) + ","
+                            + round4(relN) + "," + round4(ctrN) + "," + round4(cvrN) + "," + round4(quality);
                     redis.opsForValue().set(RedisKeys.adQuality(e.getKey()), String.valueOf(round4(quality)));
                     written++;
-                    w.write(e.getKey() + "," + (long) impr + "," + (long) clicks + "," + (long) conv + ","
-                            + round4(rel) + "," + round4(ctrShrunk) + "," + round4(cvrShrunk) + ","
-                            + round4(relN) + "," + round4(ctrN) + "," + round4(cvrN) + "," + round4(quality));
+                    w.write(csvRow);
                     w.newLine();
                 }
             }
-        } catch (Exception ex) {
-            log.warn("ad-quality 写 CSV 失败(Redis 可能已部分写入): {}", ex.getMessage());
+        } catch (PublicErrorException failure) {
+            throw failure;
+        } catch (IOException | RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_AD_QUALITY_PUBLICATION_FAILED, failure);
         }
+        if (written == 0) throw new PublicErrorException(ErrorCode.JOB_NO_AD_QUALITY_OUTPUT);
 
         log.info("ad-quality 完成:候选广告 {},写入 {}(曝光<{} 跳过 {})。大盘 rel={} ctr={} cvr={}。"
                         + "权重 rel/ctr/cvr={}/{}/{},clamp [{},{}]。明细 CSV: {}",
@@ -166,14 +179,18 @@ public class QualityScoreJob implements OfflineJob {
     }
 
     private static double round4(double v) {
-        return Math.round(v * 10000) / 10000.0;
+        double scaled = v * QUALITY_SCALE;
+        if (!Double.isFinite(scaled) || scaled < Long.MIN_VALUE || scaled >= (double) Long.MAX_VALUE) {
+            throw new PublicErrorException(ErrorCode.JOB_AD_QUALITY_INPUT_INVALID);
+        }
+        return Math.round(scaled) / QUALITY_SCALE;
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.decimal(a, k, def);
     }
 }
