@@ -13,6 +13,7 @@ import java.util.UUID;
 public class PreparationRepository {
     public static final String MIGRATION = "db/ad-billing/V004__delivery_preparation.sql";
     public static final String CLICK_MIGRATION = "db/ad-billing/V011__click_preparation.sql";
+    public static final String CONVERSION_MIGRATION = "db/ad-billing/V015__conversion_preparation.sql";
     private final ChargeMode mode;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -29,8 +30,8 @@ public class PreparationRepository {
 
     /** 版本历史只校验，不在应用启动时迁移库。 */
     public void verifySchema() {
-        if (!BudgetRepository.migrationSha256(mode==ChargeMode.IMPRESSION?MIGRATION:CLICK_MIGRATION).equals(jdbc.queryForObject(
-                "SELECT script_sha256 FROM ad_billing_schema_history WHERE version = ?", String.class,mode==ChargeMode.IMPRESSION?4:11))) {
+        if (!BudgetRepository.migrationSha256(switch(mode){case IMPRESSION->MIGRATION;case CLICK->CLICK_MIGRATION;case CONVERSION->CONVERSION_MIGRATION;}).equals(jdbc.queryForObject(
+                "SELECT script_sha256 FROM ad_billing_schema_history WHERE version = ?", String.class,switch(mode){case IMPRESSION->4;case CLICK->11;case CONVERSION->15;}))) {
             throw new IllegalStateException("adDb 准备迁移缺失或摘要漂移");
         }
         jdbc.queryForList(sql("SELECT child_id, request_json, result_json FROM ad_delivery_preparation LIMIT 0"));
@@ -76,7 +77,11 @@ public class PreparationRepository {
         return rows.stream().findFirst().orElse(Optional.empty());
     }
     private String sql(String statement) {
-        return mode==ChargeMode.IMPRESSION?statement:statement.replace("ad_delivery_preparation","ad_click_preparation");
+        return switch(mode){
+            case IMPRESSION->statement;
+            case CLICK->statement.replace("ad_delivery_preparation","ad_click_preparation");
+            case CONVERSION->statement.replace("ad_delivery_preparation","ad_conversion_preparation");
+        };
     }
     private String write(Object value) {
         try { return json.writeValueAsString(value); } catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException("准备记录编码失败"); }

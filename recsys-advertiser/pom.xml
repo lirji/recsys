@@ -111,6 +111,15 @@
 
     <build>
         <plugins>
+            <!-- CPA真实HTTP/RPC验收复用本服务类；仅供test classifier，不改变运行依赖。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions><execution>
+                    <id>conversion-test-support</id><phase>process-classes</phase><goals><goal>jar</goal></goals>
+                    <configuration><classifier>test-support</classifier><outputDirectory>${project.build.directory}/test-support</outputDirectory></configuration>
+                </execution></executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

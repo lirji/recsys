@@ -21,11 +21,12 @@ import java.util.UUID;
 public class DeliveryOperationRepository {
     public static final String MIGRATION = "db/engine-delivery/V001__delivery_operation.sql";
     public static final String CLICK_MIGRATION="db/engine-delivery/V004__click_delivery.sql";
+    public static final String CONVERSION_MIGRATION="db/engine-delivery/V005__conversion_delivery.sql";
     private final ChargeMode mode;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     public DeliveryOperationRepository(JdbcTemplate jdbc,ObjectMapper json) { this(jdbc,json,ChargeMode.IMPRESSION); }
-    /** 服务端固定模式隔离两种交付检查点，复用租约和原请求恢复算法。 */
+    /** 服务端固定模式隔离各计费类型交付检查点，复用租约和原请求恢复算法。 */
     public DeliveryOperationRepository(JdbcTemplate jdbc,ObjectMapper json,ChargeMode mode) {
         this.jdbc=new JdbcTemplate(java.util.Objects.requireNonNull(jdbc.getDataSource()));this.jdbc.setQueryTimeout(5);
         this.json=json.copy();this.mode=java.util.Objects.requireNonNull(mode);
@@ -35,7 +36,7 @@ public class DeliveryOperationRepository {
 
     /** 校验 engine 自有历史，绝不在 adDb 上保存整次操作。 */
     public void verifySchema() {
-        if (!migrationSha256(mode).equals(jdbc.queryForObject("SELECT script_sha256 FROM engine_delivery_schema_history WHERE version = ?", String.class,mode==ChargeMode.IMPRESSION?1:4))) {
+        if (!migrationSha256(mode).equals(jdbc.queryForObject("SELECT script_sha256 FROM engine_delivery_schema_history WHERE version = ?", String.class,switch(mode){case IMPRESSION->1;case CLICK->4;case CONVERSION->5;}))) {
             throw new IllegalStateException("engine 交付迁移缺失或摘要漂移");
         }
         jdbc.queryForList(sql("SELECT operation_id, fence, plan_json FROM engine_ad_delivery LIMIT 0"));
@@ -44,7 +45,7 @@ public class DeliveryOperationRepository {
     public static String migrationSha256() { return migrationSha256(ChargeMode.IMPRESSION); }
     /** 不改变旧版本摘要，新模式只核验自己的追加迁移。 */
     public static String migrationSha256(ChargeMode mode) {
-        try (var stream = new ClassPathResource(mode==ChargeMode.IMPRESSION?MIGRATION:CLICK_MIGRATION).getInputStream()) {
+        try (var stream = new ClassPathResource(switch(mode){case IMPRESSION->MIGRATION;case CLICK->CLICK_MIGRATION;case CONVERSION->CONVERSION_MIGRATION;}).getInputStream()) {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stream.readAllBytes()));
         } catch (java.io.IOException | java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException("无法校验 engine 迁移", ex); }
     }
@@ -122,7 +123,11 @@ public class DeliveryOperationRepository {
         } catch (java.io.IOException ex) { throw new IllegalStateException("交付记录版本不兼容"); }
     }
     private String sql(String statement) {
-        return mode==ChargeMode.IMPRESSION?statement:statement.replace("engine_ad_delivery","engine_click_delivery");
+        return switch(mode){
+            case IMPRESSION->statement;
+            case CLICK->statement.replace("engine_ad_delivery","engine_click_delivery");
+            case CONVERSION->statement.replace("engine_ad_delivery","engine_conversion_delivery");
+        };
     }
     private String write(Object value) {
         try { return json.writeValueAsString(value); } catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException("交付记录编码失败"); }

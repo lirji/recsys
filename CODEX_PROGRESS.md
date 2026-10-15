@@ -2,60 +2,58 @@
 
 ## 任务目标
 
-连续完成docs/design/enterprise-reliability/PLAN.md原企业可靠性DAG（曝光可信、钱算对、事件可靠、恢复/效果验证），逐片实施、验证、正常Git合并推送origin/main。用户已明确继续，原总体计划与五类前端规划已批准；不重开规划、不完成一片就停、不启用真实收费或生产部署。
+连续完成docs/design/enterprise-reliability/PLAN.md原企业可靠性DAG S01～S25，逐片实现、验证并按用户持续授权正常提交/合并/push origin/main。原总体计划与五类前端规划已批准，不重开全部规划、不完成一片就停；仅sandbox，不启用生产收费或生产部署。
 
 ## 已完成
 
-- 政策已批准：sandbox、共享硬预算、CNY六位HALF_UP、Asia/Shanghai原预占预算日；跨日不改日、预算不得调低到held+charged以下。图文50%连续1秒、hidden重置；自然natural-text-v1=5000/1000/300000。
-- Q-03 CPC及Q-04 CPA：均为签发起5分钟，资格/预占/接收统一，一资格最多一次收费；点击/转化先到持久化等可见曝光；窗口外或释放后仅非计费。Q-04本轮用户回答“按照你的建议来”，已落PLAN/CONTRACTS，不再询问。
-- S01～S10已交付，详见各ER-Sxx_RESULT及Git。S10=b0b19432；保留原DAG后续范围，尤其S15同时含自然Outbox和旧BehaviorService可靠事件。
-- S11A=365595e2精确CPC；B=b2c2911a双条件原子资金；C1=e599b3e5独立可靠点击事件；C2=f914f571稳定交付/双模式API，249钱链路及全仓577项通过（4个既有按需fixture跳过）。父S11业务已完成。
-- C2旧浏览器fixture Bean名称问题6904889c已修复：广告4+自然5+混排5=14真实浏览器全部通过。其独立CI38699358192被后续main并发取消，继承修复的2f5c3dab之CI38699749896全部5门禁SUCCESS，原CI38698175497浏览器失败已关闭。
-- S12A=2f5c3dabbd9697a91d522c3c14df3371d10f8cbc已合并推送main：CPA精确GSP、纯候选、独立V012不可变报价；14专项+262完整钱链路，CI38699749896全部成功。没有公开CPA入口。
-- **S12B内部CPA结算 DONE / PASS**：V013独立资格/可见/广告主业务事实/账本/捕获Outbox，同一账户硬预算，两条件任意先到，迟到非计费、原事件结果恢复、有界到期工作器。23真实PG+5worker专项及最终290钱链路/57类0失败/错误/跳过；详见ER-S12B_RESULT，已正常提交/合并推送2d107e28，CI38701260200四门禁已成功、build仍进行；当前C1已验证。
-
-- **S12C1 DONE / PASS**：独立AdConversionCapturedV1/V014、固定EventFamily.CONVERSION、三种事件族同时可靠续发；20专项与310完整钱链路0失败/错误/跳过。源指纹38ae50e62b320aa8bd150b7569afb04fe9785eeb77e1b98e07c3a27db8044c10，详见ER-S12C1_RESULT。
+- S01～S10已交付，细节见各ER-Sxx_RESULT；S10=b0b19432。
+- S11完整CPC闭环：A365595e2、Bb2c2911a、C1e599b3e5、C2f914f571；旧浏览器fixture名称修复6904889c，继承CI38699749896全部SUCCESS，原失败已关闭。
+- S12完整CPA闭环已DONE/PASS：A2f5c3dab、B2d107e28、C1f23ca416；三批CI分别38699749896、38701260200、38702085570全部五门禁SUCCESS。
+- S12C2本地完成：严格广告主edit/fullyConsistent、独立engine/advertiser caller、稳定双模式交付、转化回调与原结果查询，原业务事件自身费用不混同资格费用。详见ER-S12C2_RESULT/ER-S12_RESULT。
+- C2最终验证：355钱链路/67类0失败/错误/跳过；全仓其余328项/81类0失败/错误、4个既有按需fixture跳过；最终CPA专项45项0失败/错误/跳过；显式广告4+自然5+混排5真实浏览器全部PASS。最后三套脚本实际执行了默认跳过的三个浏览器宿主。
 
 ## 已修改文件
 
-原项目目录唯一worktree，当前feat/sandbox-conversion-settlement，S12B基线2f5c3dab。B批8源文件（已交付）；当前C1基线2d107e28，C1为10源文件：BillingOutboxRepository固定枚举、ConversionEventCodec/Configuration/ProjectionRepository/ProjectionService、V014及4个测试/fixture；清单/tmp/recsys-s12c1-source-paths.json，完整日志/tmp/recsys-s12c1-money.log。B历史如下：
-
-- common-ad ConversionSettlement领域契约，区分VisibleCommand/ConversionCommand、原决定/当前状态与独立捕获事件。
-- ad ConversionSettlementRepository/Service/Configuration、ConversionExpiryJob、V013__conversion_settlement.sql。
-- ConversionSettlementPostgresTest、ConversionExpiryJobTest。
-- C12_DESIGN、CONTRACTS、IMPLEMENTATION_SLICES、BACKEND_ARCHITECTURE、SANDBOX_BUDGET_RUNBOOK、ER-S12B_RESULT及CODEX_PROGRESS；补S12A/R1真实Git和CI记录。
-- 源清单/tmp/recsys-s12b-source-paths.json；最终指纹07a894e209c52d3cbbb73684a7bf4112d671733e633169e3f79a99e96ec3777d。完整日志/tmp/recsys-s12b-money.log；hygiene=/tmp/recsys-er-s12b-hygiene.json。
+- 当前原目录唯一worktree，任务分支feat/sandbox-conversion-settlement。本批C2基线f23ca416368d2a80147858a33b79ad07937abda8；本地验证已完，接下来立即正常Git交付。
+- C2共31个源码/测试/POM路径：`/tmp/recsys-s12c2-source-paths.json`；最终源指纹`12dc4ace6f0df1430185201e3af27f69220dbc777bfcbc2ebd93778dc33d30f3`（排序路径+NUL+内容+NUL的SHA256）。
+- 主要路径：common-ad ConversionDelivery/ChargeMode；ad ConversionPreparation/V015和固定模式仓储；engine ConversionDelivery配置/HTTP/V005及gateway；proto conversion.v1/ConversionProtoMapper；ad-serving SandboxConversionGrpcService；advertiser严格Authz、GrpcSandboxConversionClient、SandboxConversionController及7类验证/fixture。
+- ad-serving仅test scope新增advertiser test-support，沿既有maven-jar-plugin打到target/test-support；没有新版本或生产依赖。TECH_SELECTION已登记两条hygiene许可。
+- 本片同步C12_DESIGN、BACKEND_ARCHITECTURE、TECH_SELECTION、SANDBOX_BUDGET_RUNBOOK、IMPLEMENTATION_SLICES、B/C1真实CI证据、C2/父S12_RESULT与本文件。
 
 ## 未完成
 
-- S12B已交付2d107e28，S12C1已完成（独立CPA可靠事件、Inbox/日投影/V014，310钱链路/60类全通过），待本批Git；下一项C2严格外部授权和稳定交付。
-- S12C2：稳定CPA交付、严格广告主授权转化接收/查询、可信独立caller、HTTP/gRPC/in-process闭环。**B内部acceptAuthorizedConversion只用于已授权边界，不能冒称公开认证完成**；父S12保持IN_PROGRESS，C1/C2均必需。
-- S13～S25按原DAG全部继续，不收缩为当前片。正式发布来源/期初账务、容量RTO/RPO/保留目标仍需业务决定，不阻断独立sandbox实现。
+- S12C2尚待本批Git commit/正常merge/push和实际远程CI核验；不能将本地PASS说成已推送或远程通过。
+- 原S13～S25全部继续。下一片S13账户预算日对账/未决恢复；已只读考察，但尚未正式冻结C13契约或实现产品代码。临时设计笔记`/tmp/recsys-c13-design-notes.md`可复用，不是正式批准契约。
+- S15必须同时包含自然Outbox和旧BehaviorService可靠事件；用户未跟踪C15A_DESIGN只是备选草案，不替代原S15范围。
 
 ## 当前问题
 
-- 无当前实现阻塞。S12B首轮装配残余FraudPolicy参数与PG提交期异常断言类型已修正，最终290项通过；没有放宽断言或跳过测试。
-- 根级formatter和独立Java静态分析为既有未配置限制；hygiene COMPLETE_WITH_LIMITATIONS。事务/worker advisory已审查；枚举与忽略venv里的Python Status重名无关，不改venv或引入新工具。
-- 七项用户文件必须保持原指纹（/tmp/recsys-s11b-protected.json）：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md、未跟踪docs/design/enterprise-reliability/C15A_DESIGN.md。
-- console/test-results及忽略env/数据/模型/venv/构建产物保留；无额外worktree、无清理授权。C15A仅备选草案，不代替原S15范围。
+- 无当前实现阻塞。C2hygiene初次发现两处magic字面量比较和既有打包插件未登记，已改用HttpStatus/BidType、登记同项目既有插件，最终专项重编译验证通过；没有放宽断言/跳过关键测试。
+- Code Hygiene最终IMPLEMENTATION_COMPLETE_WITH_LIMITATIONS；统一formatter未配置，独立Java静态分析未配置，沿周边约定，不引入新工具。
+- 必须保持7项用户文件指纹`/tmp/recsys-s11b-protected.json`：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md、未跟踪docs/design/enterprise-reliability/C15A_DESIGN.md。最近检查全部未变。
+- console/test-results和忽略的env/数据/模型/venv/构建产物保留，无清理授权，无额外worktree。
 
 ## 下一步建议
 
-1. 核对本批S12C1 Git及B远程CI真实状态，显式路径正常提交/合并/push main；不重复询问授权。
-2. 复用原目录feat/sandbox-conversion-settlement执行S12C2，C12C2设计/CONTRACTS已细化；严格广告主edit/fullyConsistent、两类caller隔离、同业务事件自身实收与资格实收分开。
-3. 随后C2接实际广告主认证与稳定交付，完整验收后才完成父S12；继续S13～S25。
+1. 核对源码指纹/保护文件与显式暂存清单，正常提交C2、ff合并本地main并push origin/main；用户持续授权涵盖正常Git联网，不再问确认，不强推。
+2. 检查该提交CI，更新真实交付证据。同时在原目录建立/复用S13独立分支，按原F12细化正式C13契约与有限实施切片，不扩张为自动冲正。
+3. S13完成后继续S14～S25直到原目标全部处理；独立后续工作不因尚未定的生产参数停止。
 
 ## 重要上下文
 
-- B资格用途conversion-qualification，五分钟不可续期，报价ID=资格ID；原token只用于已验证资格。业务键(SANDBOX,advertiserId,eventId UUID)，occurredAt为UTC最多微秒、>=issuedAt且<expiresAt且<=DB决策时间；原actor审计但不纳入业务内容摘要，当前同广告主另一个有权主体可恢复同请求。
-- B锁序quote→命令唯一键→原日账户，持齐锁后重读DB时间；原决定不可变，当前状态另查；只有CAPTURED有chargedAmount/ledgerId，合法零额也有账本。已有canonical时额外业务事件DUPLICATE_QUALIFICATION，自身非计费；没有canonical的迟到/释放只EXPIRED/NOT_HELD。失败全回滚。
-- B外部入口尚未安装；默认conversions-enabled/conversion-settlement-enabled关闭。暂停新增用conversion-preparation-admission-enabled，紧急停新条件用conversion-receipt-admission-enabled，不能关owner遗留held。到期工作器单线程fixed-delay、每轮<=100、SKIP LOCKED和失败退避。
-- C1捕获事件AdConversionCapturedV1 / ad-conversion-captured-v1，需携带内部outcomeId和广告主作用域conversionEventId、原日/金额/发生/捕获时间。投影按event/qualification/visible/outcome及(advertiser,conversionEvent)去重；跨广告主同event合法。VISIBLE与内部outcome属于不同命名空间，不能照搬点击的跨种类共同receipt索引。
-- AdvertiserAuthz旧disabled/shadow会放行，C2必须专用强制方法；既有AuthzEngine SDK本地javap确认Consistency.fullyConsistent()存在。新回调每次认证/查询/恢复判advertiser edit，缺引擎或故障503、deny403、匿名401；网络授权在资金事务外。RPC仅独立advertiser caller，展示engine不能提交转化。旧AdPipeline.recordConversion/AdOutcomeService多次独立写不拼成新原子钱链路。
-- S11C2显式Qualifier("deliveryOperationService")已与旧fixture对齐；新旧同类型bean仍须显式Qualifier。测试依赖只复用既有engine test-support + Testcontainers test scope；没有新依赖版本。
-- 现有C1点击事件文件（ClickEventCodec/Configuration/ProjectionRepository/Service、ClickEventsFixture/PostgresTest/KafkaTest）可参考有界传输；CPA新增字段/身份语义必须适配，不能机械把clickReceipt改名就宣称正确。
-- 测试只能使用独占临时PG/Kafka，不修改共享dev_infra。真实锁/事务验证不等于宿主kill或灾备；跨午夜测试时钟为参数化DB查询模拟，不能声称RTO/RPO。
+- 已批准：SANDBOX、共享硬预算、CNY六位HALF_UP、Asia/Shanghai原预占预算日；跨日不改日；预算不得低于held+charged。图文50%连续1秒、hidden重置；自然natural-text-v1=5000/1000/300000。
+- Q-03 CPC和Q-04 CPA已批准统一签发起5分钟、资格最多一次收费、先点击/转化持久化等可见、窗口外/释放后非计费。Q-04本轮用户回答“按照你的建议来”，已落PLAN/CONTRACTS，不再询问。
+- CPA资格purpose=conversion-qualification，quoteId=qualificationId；业务键(SANDBOX,advertiserId,eventId UUID)，occurredAt UTC至微秒。actor来自当前授权，原actor只审计不参与内容幂等摘要。
+- ad资金事务保持quote→命令唯一键→原预算日账户，持齐锁后读DB时间，双条件与ledger/Outbox/结果一起提交。额外事件DUPLICATE_QUALIFICATION自身false/null；原WAITING可随资格捕获显示自身实收但原status不变。
+- 新能力默认关闭；停新增资格用conversion-preparation-admission-enabled，停新条件用conversion-receipt-admission-enabled，保留owner查询/到期与事件排空。三族relay/projection独立开关。
+- CPA RPC展示组只接受独立engine，业务组只接受独立advertiser；HTTP每次强制edit/fullyConsistent，disabled/shadow/ADMIN不能绕过，依赖失败503、deny403、匿名401。内部caller沿现有受控凭据，不宣称共享凭据泄露后的强隔离。
+- C2真实HTTP采用MockMvc+真实Controller/Authz/Client，TCP与PG真实；权限SDK/候选/实验替身不证明真实SpiceDB或JWT签发。测试只能使用独占PG/Kafka，不改共享dev_infra。
+- S13拟沿ad owner聚合三类账户日权威/投影；offline通过契约驱动。快照必须一致、零元仍对账笔数、缺依赖不转0；任务检查点/fence/重放审计，不能改账本或跨服务写库。细节先正式冻结，不直接把临时笔记当代码规格。
+
+## 验证日志
+
+`/tmp/recsys-s12c2-{money,nonmoney,targeted,browser-ad,browser-natural,browser-feed}.log`、`/tmp/recsys-er-s12c2-hygiene.json`。首次窄测试还有persistence/online-final/authz日志。最终专项在hygiene修正后执行，最终源指纹见上。
 
 ## 恢复 Prompt
 
-读取CODEX_PROGRESS.md、IMPLEMENTATION_SLICES和原PLAN，从真实Git状态继续。S12A已交付2f5c3dab且CI全绿；S12B已完成290钱链路验证，B已交付2d107e28且C1已310钱链路验证，先完成/核对C1本批Git交付，然后立即执行C2严格广告主认证与稳定交付，再继续S13～S25。Q-04五分钟/一次收费/先转化等待/迟到非计费已批准，不再询问。保护七项用户文件和本地数据，不重开已完成规划、不停下来要求“继续”，不启用真实收费或生产部署。
+读取CODEX_PROGRESS.md、IMPLEMENTATION_SLICES和原PLAN，从真实Git状态继续。S12完整本地验收已完成，先核对/完成S12C2本批Git交付与CI，然后执行原S13～S25。CPA五分钟/一次收费/先转化等待/迟到非计费已批准，不再询问。保护七项用户文件与本地数据，不重开已完成规划、不等用户反复输入继续，不启用真实收费或生产部署。

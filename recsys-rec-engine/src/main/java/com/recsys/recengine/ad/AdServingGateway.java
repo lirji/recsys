@@ -55,6 +55,19 @@ public interface AdServingGateway {
     /** 资格仍有效与否以owner当前状态为准。 */
     Optional<com.recsys.common.ad.billing.ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject);
 
+    /** CPA展示边界；广告主转化只经独立advertiser适配器进入owner。 */
+    List<Candidate> sandboxConversionCandidates(Query query);
+    /** 原子检查点恢复使用原childId，不能重新签发资格。 */
+    Prepared prepareSandboxConversion(Prepare request);
+    /** 只查首次准备结果，不重新报价或占用资金。 */
+    Optional<Prepared> findSandboxConversionPreparation(UUID id,String subject);
+    /** 原子接受可见条件，转化须经广告主边界；等待不代表已收费。 */
+    com.recsys.common.ad.billing.ConversionSettlement.VisibleResult acceptSandboxConversionVisible(com.recsys.common.ad.billing.ConversionSettlement.VisibleCommand command);
+    /** 原回执决定和当前状态一起查询。 */
+    Optional<com.recsys.common.ad.billing.ConversionSettlement.VisibleResult> findSandboxConversionVisible(UUID id,String subject);
+    /** 资格仍有效与否以owner当前状态为准。 */
+    Optional<com.recsys.common.ad.billing.ConversionSettlement.Snapshot> findSandboxConversionSettlement(UUID id,String subject);
+
     /** 搜索广告:召回→竞价→GSP→曝光埋点,返回竞得赞助广告。 */
     SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,
                                 String scene, String adBucket, double reserve);

@@ -79,6 +79,11 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- CPA跨服务验收使用真实广告主HTTP与授权边界，限定test scope。 -->
+        <dependency>
+            <groupId>com.recsys</groupId><artifactId>recsys-advertiser</artifactId><version>${project.version}</version>
+            <classifier>test-support</classifier><scope>test</scope>
+        </dependency>
         <!-- 点击双模式验收复用engine普通类测试包，生产依赖仍保持ad-serving独立。 -->
         <dependency>
             <groupId>com.recsys</groupId>

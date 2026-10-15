@@ -45,3 +45,6 @@ ER-S06：复用宿主已有 Spring Kafka 3.1.4 / Kafka client 3.6.2（Spring Boo
 
 
 ER-S11C2测试装配补充：为验证同一真实资金owner在in-process和TCP gRPC下的行为，ad-serving新增**仅test scope**的现有engine `test-support`普通类包依赖（版本`${project.version}`）、仓库已选Testcontainers `junit-jupiter`/`postgresql`（沿现有Boot BOM，不指定新版本）。这是C02已批准真实PostgreSQL验收技术的跨模块复用，不增加生产依赖边、第三方组件或版本，也不改变应用可执行包。engine测试支持包生成方式沿已交付S09修复；当前原依赖扫描仍为报告模式，不宣称清除历史漏洞。Code Hygiene ChangeSet `approvedDependencies=[recsys-rec-engine,junit-jupiter,postgresql]`只覆盖这三条测试边；不授予新增运行基础设施或格式化工具。
+
+
+ER-S12C2测试装配：ad-serving增加现有advertiser的`test-support`普通类包（`${project.version}`，仅test scope）；沿engine既有process-classes打包到target/test-support的方案，验证真实SandboxConversionController、AdvertiserAuthz与GrpcSandboxConversionClient跨TCP调用资金owner。没有新增第三方组件/版本或生产依赖边；权限SDK仍为项目既有版本，调用其已有fullyConsistent能力，测试替身不证明真实权限关系数据。Code Hygiene本批`approvedDependencies=[recsys-advertiser,maven-jar-plugin]`仅覆盖该测试边与同项目既有打包插件的显式执行，原安全扫描报告模式的限制保持。

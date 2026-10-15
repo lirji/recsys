@@ -76,6 +76,28 @@ public class AdvertiserAuthz {
         decide(permission, ResourceRef.of("advertiser", String.valueOf(advertiserId)));
     }
 
+    /**
+     * CPA资金入口与查询每次强制最新归属判读，不继承旧管理面disabled/shadow放行。
+     * 返回本次已授权主体供业务审计；调用方必须在网络判权完成后才进入资金用例。
+     */
+    public String requireConversionSubmission(long advertiserId) {
+        if (advertiserId <= 0) throw new IllegalArgumentException("advertiserId须为正整数");
+        String subject = currentSubject();
+        if (subject == null || subject.isBlank() || subject.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "转化操作需要有效认证主体");
+        }
+        boolean allowed;
+        try {
+            allowed = engine().check(SubjectRef.user(subject), "edit",
+                    ResourceRef.of("advertiser", Long.toString(advertiserId)), Consistency.fullyConsistent());
+        } catch (RuntimeException error) {
+            // 不泄漏SDK响应、凭据或底层异常，也不能把依赖失败当成无权限或放行。
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "转化归属判权服务不可用");
+        }
+        if (!allowed) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作该广告主的转化事件");
+        return subject;
+    }
+
     /** 判当前主体的平台级权限(administrate=开户/全量管理,review=创意人审)。 */
     public void requirePlatform(String permission) {
         decide(permission, ResourceRef.of("platform", PLATFORM_ID));

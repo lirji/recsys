@@ -448,3 +448,18 @@ FROM ad_conversion_outbox GROUP BY delivery_state;
 ~~~
 
 这里仅CPA子账本投影核对；共享预算必须合计三类账本和未决义务。未测容量/RTO/RPO/保留期不承诺达标。验证在隔离PG和临时Kafka进行，暂停/恢复仅操作测试拥有的broker；没有共享环境启用。公开CPA接收与稳定交付仍待S12C2。
+
+
+## CPA稳定交付与广告主业务回调（S12C2）
+
+默认关闭。具备C12A/B/C1的ad V012–V014后，显式追加adDb V015及engine primary V005；保留旧迁移与历史，应用只校验摘要，不自动迁移。四项安装开关sandbox-enabled、conversions-enabled、conversion-settlement-enabled、conversion-delivery-enabled同时true才安装新HTTP/RPC；原事件relay/projection与到期排空分别控制。需要原签名密钥环、广告主AuthzEngine以及明确的内部caller配置，缺少权限引擎时新回调503，不允许用disabled/shadow绕过。
+
+engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser caller（可由既有配置替换但不能相同或通用recsys）。内部认证沿现有受控凭据和deadline机制；此处caller区分不宣称共用凭据泄露后的服务级强隔离。公网请求仍须有效认证，展示API要求ADMIN，业务回调要求ADVERTISER/ADMIN加当前advertiser edit授权。
+
+1. 用稳定UUID `PUT /api/sandbox/conversion-ad-deliveries/{operationId}`，输入沿C04，取得CPA/PER_CONVERSION准备结果。202或503保留原operationId；GET只查询，不续签、不重排或重新预占。
+2. 原展示主体 `PUT /api/sandbox/conversion-impressions/{receiptId}`，输入qualificationToken、visibleDurationMs、minVisibleRatioBps、pageVisible；图文50%连续1秒，窗口仍为签发起5分钟。GET同路径或conversion-settlements/{qualificationId}查当前状态。
+3. 当前有权广告主主体 `PUT /api/advertiser/{advertiserId}/sandbox-conversions/{eventId}`，body仅qualificationToken和UTC occurredAt字符串（最多微秒）；广告主/事件ID来自路径，actor由认证上下文注入。每次PUT/GET都重新判权，原调用人被撤权不能恢复；另一当前有权成员可恢复同业务内容，原actor审计不变。
+4. 转化先到返回ACCEPTED_WAITING，曝光完成后原status不变，chargedForThisOutcome变true。另一事件复用资格为DUPLICATE_QUALIFICATION，自身chargedForThisOutcome=false/chargedAmount=null；附带资格的实收不能当作该重复事件收费。窗口或释放拒绝422，格式400、权限/证明403、同业务键改内容409、未观察到404、依赖未知503；未知保留原ID查询/重试。
+5. 暂停新增资格使用conversion-preparation-admission-enabled=false，停止新条件使用conversion-receipt-admission-enabled=false；保持owner/查询、到期工作器和可靠事件排空，不能关整个sandbox遗弃held。回滚按既有expand-only迁移保留新表，先停止新增并排空；旧程序无法继续新CPA义务，不能仅回退镜像就宣称业务恢复。
+
+本片验证使用独占PG schema、真实TCP RPC和HTTP边界；候选/实验与权限引擎为隔离替身，不声称真实SpiceDB、生产收费、容量或灾备验证。未修改共享dev_infra、既有运行配置或真实账户。

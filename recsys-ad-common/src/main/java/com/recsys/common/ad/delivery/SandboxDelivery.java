@@ -14,7 +14,7 @@ public final class SandboxDelivery {
     private SandboxDelivery() {}
 
     /** 仅供服务端装配选择独立检查点和owner，不作为客户端任意路由参数。 */
-    public enum ChargeMode { IMPRESSION, CLICK }
+    public enum ChargeMode { IMPRESSION, CLICK, CONVERSION }
 
     /** 已经由 engine 解析的纯查询上下文，subject 与模拟用户分离。 */
     public record Query(UUID operationId, String subject, long userId, StructuredQuery query,

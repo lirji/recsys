@@ -106,6 +106,31 @@ public class InProcessAdServingGateway implements AdServingGateway {
     @Override public Optional<com.recsys.common.ad.billing.ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject) {
         return clickSettlements().find(id,subject);
     }
+    @Autowired private ObjectProvider<com.recsys.ad.billing.ConversionPreparationService> conversionPreparations;
+    @Autowired private ObjectProvider<com.recsys.ad.billing.ConversionSettlementService> conversionSettlements;
+    private com.recsys.ad.billing.ConversionPreparationService conversionPreparations() {
+        var service=conversionPreparations==null?null:conversionPreparations.getIfAvailable();
+        if(service==null)throw new IllegalStateException("CPA交付未启用");
+        return service;
+    }
+    private com.recsys.ad.billing.ConversionSettlementService conversionSettlements() {
+        var service=conversionSettlements==null?null:conversionSettlements.getIfAvailable();
+        if(service==null)throw new IllegalStateException("CPA结算未启用");
+        return service;
+    }
+    /** 新能力缺失直接失败，不转旧RedisCPA路径。 */
+    @Override public List<Candidate> sandboxConversionCandidates(Query query) { return conversionPreparations().candidates(query); }
+    @Override public Prepared prepareSandboxConversion(Prepare request) { return conversionPreparations().prepare(request); }
+    @Override public Optional<Prepared> findSandboxConversionPreparation(UUID id,String subject) { return conversionPreparations().find(id,subject); }
+    @Override public com.recsys.common.ad.billing.ConversionSettlement.VisibleResult acceptSandboxConversionVisible(com.recsys.common.ad.billing.ConversionSettlement.VisibleCommand command) {
+        return conversionSettlements().acceptVisible(command);
+    }
+    @Override public Optional<com.recsys.common.ad.billing.ConversionSettlement.VisibleResult> findSandboxConversionVisible(UUID id,String subject) {
+        return conversionSettlements().findVisible(id,subject);
+    }
+    @Override public Optional<com.recsys.common.ad.billing.ConversionSettlement.Snapshot> findSandboxConversionSettlement(UUID id,String subject) {
+        return conversionSettlements().find(id,subject);
+    }
 
     @Override
     public SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,

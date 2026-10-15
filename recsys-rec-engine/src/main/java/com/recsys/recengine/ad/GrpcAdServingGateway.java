@@ -8,6 +8,9 @@ import java.util.Optional;
 import java.util.UUID;
 import com.recsys.proto.DeliveryProtoMapper;
 import com.recsys.proto.ClickProtoMapper;
+import com.recsys.proto.ConversionProtoMapper;
+import com.recsys.proto.conversion.v1.*;
+import com.recsys.common.ad.billing.ConversionSettlement;
 import com.recsys.proto.click.v1.*;
 import com.recsys.common.ad.billing.ClickSettlement;
 import com.recsys.proto.delivery.v1.SandboxDeliveryServiceGrpc;
@@ -148,6 +151,60 @@ public class GrpcAdServingGateway implements AdServingGateway {
             case ALREADY_EXISTS -> receipt?new ClickSettlement.Conflict():new com.recsys.common.ad.delivery.SandboxDelivery.Conflict();
             case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
             case INVALID_ARGUMENT -> new IllegalArgumentException("点击请求格式非法");
+            default -> ex;
+        };
+    }
+
+    @GrpcClient("ad-serving")
+    private SandboxConversionServiceGrpc.SandboxConversionServiceBlockingStub conversionStub;
+
+    /** CPA RPC不使用旧Retry/fallback，超时保留原ID恢复；公共拦截器仍限制deadline。 */
+    @Override public List<Candidate> sandboxConversionCandidates(Query query) {
+        try { return conversionReply(()->{
+            var values=conversionStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList();
+            if(values.stream().anyMatch(c->!com.recsys.common.ad.BidType.CPA.name().equals(c.ad().bidType())))throw new IllegalArgumentException("CPA候选类型不一致");
+            return values;
+        }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,false); }
+    }
+    @Override public Prepared prepareSandboxConversion(Prepare request) {
+        try { return conversionReply(()->{
+            var result=DeliveryProtoMapper.fromProto(conversionStub.prepare(DeliveryProtoMapper.toProto(request)));
+            if(!request.childId().equals(result.childId()))throw new IllegalArgumentException("CPA准备身份不一致");return result;
+        }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,false); }
+    }
+    @Override public Optional<Prepared> findSandboxConversionPreparation(UUID id,String subject) {
+        try { return Optional.of(conversionReply(()->{
+            var result=DeliveryProtoMapper.fromProto(conversionStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build()));
+            if(!id.equals(result.childId()))throw new IllegalArgumentException("CPA准备身份不一致");return result;
+        })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,false); }
+    }
+    @Override public ConversionSettlement.VisibleResult acceptSandboxConversionVisible(ConversionSettlement.VisibleCommand command) {
+        try { return conversionReply(()->{
+            var result=ConversionProtoMapper.fromProto(conversionStub.acceptVisible(ConversionProtoMapper.toProto(command)));
+            if(!command.receiptId().equals(result.receipt().receiptId()))throw new IllegalArgumentException("CPA可见身份不一致");return result;
+        }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,true); }
+    }
+    @Override public Optional<ConversionSettlement.VisibleResult> findSandboxConversionVisible(UUID id,String subject) {
+        try { return Optional.of(conversionReply(()->{
+            var result=ConversionProtoMapper.fromProto(conversionStub.getVisible(GetConversionVisibleRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build()));
+            if(!id.equals(result.receipt().receiptId()))throw new IllegalArgumentException("CPA可见身份不一致");return result;
+        })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,true); }
+    }
+    @Override public Optional<ConversionSettlement.Snapshot> findSandboxConversionSettlement(UUID id,String subject) {
+        try { return Optional.of(conversionReply(()->{
+            var result=ConversionProtoMapper.fromProto(conversionStub.getSettlement(GetConversionSettlementRequest.newBuilder().setQualificationId(id.toString()).setSubject(subject).build()));
+            if(!id.equals(result.prepared().qualificationId()))throw new IllegalArgumentException("CPA结算身份不一致");return result;
+        })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,true); }
+    }
+    /** owner响应损坏属于依赖未知，不把它误报成客户端400或成功空结果。 */
+    private <T> T conversionReply(java.util.function.Supplier<T> call) {
+        try {return call.get();}catch(IllegalArgumentException ex){throw new IllegalStateException("CPA响应无法验证，请按原ID查询");}
+    }
+    private RuntimeException conversionFailure(StatusRuntimeException ex,boolean receipt) {
+        return switch(ex.getStatus().getCode()) {
+            case ALREADY_EXISTS -> receipt?new ConversionSettlement.Conflict():new com.recsys.common.ad.delivery.SandboxDelivery.Conflict();
+            case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
+            case INVALID_ARGUMENT -> new IllegalArgumentException("CPA请求格式非法");
             default -> ex;
         };
     }

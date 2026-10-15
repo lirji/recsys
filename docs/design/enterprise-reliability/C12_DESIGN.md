@@ -65,7 +65,7 @@ engine ADMIN HTTP：PUT/GET /api/sandbox/conversion-ad-deliveries/{operationId}�
 
 advertiser HTTP：PUT/GET /api/advertiser/{advertiserId}/sandbox-conversions/{eventId}，body={qualificationToken,occurredAt}，eventId UUID、occurredAt为UTC ISO文本至微秒。角色必须已认证ADVERTISER或ADMIN；主体取认证上下文。AdvertiserAuthz增加独立强制入口，所有模式都调用AuthzEngine.check(user主体,edit,advertiser:id,fullyConsistent)，不允许disabled/shadow bypass或ADMIN硬编码绕过；每次PUT/GET/恢复都判权。权限拒绝403、引擎缺失/故障503、匿名401；依赖错误不泄漏内部消息。
 
-回调返回原OutcomeView（ID均字符串、原status/occurredAt/receivedAt/decidedAt/canonicalOutcomeId）及脱敏当前settlement，另有chargedForThisOutcome和该事件自身chargedAmount：只有该outcome就是canonical且当前CAPTURED才为true/金额；重复业务事件虽然引用已收费资格，自身也必须false/null。原WAITING事件后来捕获时该字段可变true，而原status不变。200包括等待/捕获/重复资格，422为持久化窗口/状态拒绝；400格式/证明、409同业务键变内容、404未观察到、503结果未知。
+回调返回原OutcomeView（ID均字符串、原status/occurredAt/receivedAt/decidedAt/canonicalOutcomeId）及脱敏当前settlement，另有chargedForThisOutcome和该事件自身chargedAmount：只有该outcome就是canonical且当前CAPTURED才为true/金额；重复业务事件虽然引用已收费资格，自身也必须false/null。原WAITING事件后来捕获时该字段可变true，而原status不变。200包括等待/捕获/重复资格，422为持久化窗口/状态拒绝；400格式、403权限或证明、409同业务键变内容、404未观察到、503结果未知。
 
 新conversion.v1 SandboxConversionService包括候选/准备/原结果、可见接收/查询/结算查询，以及广告主转化接收/查询。前一组只接受独立engine caller，后一组只接受独立advertiser caller，nosec/通用recsys或错caller不能绕过。actor在可信advertiser边界认证授权后传递；不能允许engine任意声明广告主。gateway的gRPC/in-process展示路径指向同一owner，失败不退回旧recordConversion/Redis/outcome。金额字符串、UUID规范、显式枚举、发生时间微秒及结果身份严格校验，原命令可恢复但新调用仍须当前授权。
 

@@ -117,3 +117,6 @@ CPA精确候选复用GspPrice计算，独立ConversionPrice/FrozenConversionQuot
 ### S12C1增量事实（2026-10-15）
 
 AdConversionCapturedV1独立序列化契约与V014投影，固定EventFamily.CONVERSION复用现有有界投递、fence及消费确认机制。Inbox同时守住资格、可见、内部outcome和广告主作用域业务eventId唯一，两个身份命名空间分别约束；原事实逐笔累加，不按账户最大版本丢弃乱序金额。发送/消费开关独立于新增收费，暂停后可排空历史；投影不参与预算判断。C12C2外部授权和稳定交付仍是父S12必需工作。
+
+
+ER-S12C2：CPA交付沿固定ChargeMode.CONVERSION，engine primary V005保存不可变整页和领取fence，adDb V015保存准备原请求/结果；RPC/报价/预占不跨owner事务。engine仅生成CPA交付与可见观测，advertiser通过每次edit/fullyConsistent判权提交或查询业务转化，再以独立advertiser caller进入资金owner。ADMIN和旧authz disabled/shadow均不能绕过新转化守卫；内部engine caller不能提交业务转化。回调区分自身实收和资格实收，返回原决定及最新资金状态。两种展示模式共用同一owner，异常无旧outcome/Redis回退；CPA与CPM/CPC可同时装配，所有同类型仓储/交付服务显式Qualifier。

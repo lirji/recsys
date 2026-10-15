@@ -86,13 +86,13 @@ public class DeliveryOperationService {
     }
 
     private List<Candidate> candidates(Query query) {
-        return repository.mode()==ChargeMode.CLICK?gateway.sandboxClickCandidates(query):gateway.sandboxCandidates(query);
+        return switch(repository.mode()){case IMPRESSION->gateway.sandboxCandidates(query);case CLICK->gateway.sandboxClickCandidates(query);case CONVERSION->gateway.sandboxConversionCandidates(query);};
     }
     private Optional<Prepared> findPreparation(UUID id,String subject) {
-        return repository.mode()==ChargeMode.CLICK?gateway.findSandboxClickPreparation(id,subject):gateway.findSandboxPreparation(id,subject);
+        return switch(repository.mode()){case IMPRESSION->gateway.findSandboxPreparation(id,subject);case CLICK->gateway.findSandboxClickPreparation(id,subject);case CONVERSION->gateway.findSandboxConversionPreparation(id,subject);};
     }
     private Prepared prepare(Prepare command) {
-        return repository.mode()==ChargeMode.CLICK?gateway.prepareSandboxClick(command):gateway.prepareSandbox(command);
+        return switch(repository.mode()){case IMPRESSION->gateway.prepareSandbox(command);case CLICK->gateway.prepareSandboxClick(command);case CONVERSION->gateway.prepareSandboxConversion(command);};
     }
 
     /** GET 只读进度，不冒充未完成请求为成功空结果。 */

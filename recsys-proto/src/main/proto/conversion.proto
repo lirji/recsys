@@ -1,0 +1,79 @@
+syntax = "proto3";
+package recsys.conversion.v1;
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.conversion.v1";
+option java_outer_classname = "ConversionProto";
+import "delivery.proto";
+import "google/protobuf/timestamp.proto";
+
+// 展示方法只接受engine，转化方法只接受已完成广告主授权的advertiser服务。
+service SandboxConversionService {
+  rpc Candidates(recsys.delivery.v1.CandidateQuery) returns (recsys.delivery.v1.CandidateReply);
+  rpc Prepare(recsys.delivery.v1.PrepareDelivery) returns (recsys.delivery.v1.PreparedDelivery);
+  rpc GetPreparation(recsys.delivery.v1.GetPreparationRequest) returns (recsys.delivery.v1.PreparedDelivery);
+  rpc AcceptVisible(ConversionVisibleCommand) returns (ConversionVisibleResult);
+  rpc GetVisible(GetConversionVisibleRequest) returns (ConversionVisibleResult);
+  rpc GetSettlement(GetConversionSettlementRequest) returns (ConversionSettlementSnapshot);
+  rpc AcceptConversion(ConversionEventCommand) returns (ConversionOutcomeResult);
+  rpc GetOutcome(GetConversionOutcomeRequest) returns (ConversionOutcomeResult);
+}
+message ConversionVisibleCommand {
+  string receipt_id = 1;
+  string subject = 2;
+  string qualification_token = 3;
+  int64 visible_duration_ms = 4;
+  int32 min_visible_ratio_bps = 5;
+  bool page_visible = 6;
+}
+message GetConversionVisibleRequest { string receipt_id = 1; string subject = 2; }
+message GetConversionSettlementRequest { string qualification_id = 1; string subject = 2; }
+message ConversionEventCommand {
+  int64 advertiser_id = 1;
+  string event_id = 2;
+  string actor = 3;
+  string qualification_token = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+message GetConversionOutcomeRequest { int64 advertiser_id = 1; string event_id = 2; string actor = 3; }
+message ConversionPrepared {
+  string qualification_id = 1;
+  string decision = 2;
+  string budget_date = 3;
+  string amount = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.Timestamp prepared_at = 7;
+  optional string qualification_token = 8;
+}
+message ConversionSettlementSnapshot {
+  ConversionPrepared prepared = 1;
+  string state = 2;
+  int64 version = 3;
+  string visible_receipt_id = 4;
+  string outcome_id = 5;
+  string ledger_id = 6;
+  optional string charged_amount = 7;
+  google.protobuf.Timestamp closed_at = 8;
+  string close_reason = 9;
+}
+message ConversionVisibleReceipt {
+  string receipt_id = 1;
+  string qualification_id = 2;
+  string status = 3;
+  string canonical_receipt_id = 4;
+  google.protobuf.Timestamp accepted_at = 5;
+  google.protobuf.Timestamp decided_at = 6;
+}
+message ConversionVisibleResult { ConversionVisibleReceipt receipt = 1; ConversionSettlementSnapshot settlement = 2; }
+message ConversionOutcome {
+  string outcome_id = 1;
+  int64 advertiser_id = 2;
+  string event_id = 3;
+  string qualification_id = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  google.protobuf.Timestamp received_at = 6;
+  string status = 7;
+  string canonical_outcome_id = 8;
+  google.protobuf.Timestamp decided_at = 9;
+}
+message ConversionOutcomeResult { ConversionOutcome outcome = 1; ConversionSettlementSnapshot settlement = 2; }
