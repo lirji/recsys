@@ -924,6 +924,19 @@ export const errorCodes = {
     message: 'oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试',
     httpStatus: 0,
   },
+  JOB_MULTIMODAL_NO_INPUT: {
+    message: '没有可融合的多模态输入，未更新向量；请检查海报目录与文本向量',
+    httpStatus: 0,
+  },
+  JOB_MULTIMODAL_UNSUPPORTED: {
+    message:
+      '当前模型不支持所需的图像向量，回填未完成；部分物品可能已更新，请检查模型后核对回填范围',
+    httpStatus: 0,
+  },
+  JOB_MULTIMODAL_PARTIAL_FAILED: {
+    message: '多模态回填未完整完成，部分物品可能已更新；请检查图像、向量结果及数据源后核对回填范围',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

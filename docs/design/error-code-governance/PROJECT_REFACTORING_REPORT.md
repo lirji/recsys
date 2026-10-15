@@ -55,3 +55,5 @@ EC06c1 DONE/PASS（本地）：巡检三项显式状态、缺数据/故障不假
 EC06c2 DONE/PASS（本地）：巡检页面三项显式状态和有效数值联合判断，缺数据/失败/未知与旧报表不假绿，安全目录提示、有效图表/明细/文件切换保留；修复实际截图发现的图表零宽与窄屏溢出。71前端/3文件、2 Chromium、build、5文件格式/ESLint、目录/SQL/hygiene通过，3张截图已查看。见EC06C2_DESIGN/RESULT；无后端/SQL/依赖修改。C1已ff/push b1ecff9b，CI四门成功/build运行。父EC06余Ocpc/Multimodal/Bandit/FTRL及EC07/08继续。
 
 EC06d DONE/PASS（本地）：oCPC缺失/损坏/依赖故障区分，缺λ安全降级、坏值/参数/非有限计算受控失败，部分更新准确提示；原合法保持/聚合/权重/ID/clamp保持。230目录，45后端/5类、57FE、24compile/守卫/hygiene通过，见EC06D_DESIGN/RESULT。c2已ff/push6f5c1b8f，CI38820005105运行；剩Multimodal/Bandit/FTRL及EC07/08。
+
+EC06e DONE/PASS（本地）：多模态部分更新/unsupported/非法向量/影响行数如实报告；原融合/limit/事务保持。233目录，33后端/4类、57FE、24compile/守卫/hygiene通过；已提取常量PROGRESS_INTERVAL的advisory判误报。见EC06E_DESIGN/RESULT。D已ff/push7a492716；父EC06剩Bandit/FTRL和EC07/08继续。

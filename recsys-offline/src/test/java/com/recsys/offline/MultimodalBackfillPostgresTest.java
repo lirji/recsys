@@ -1,6 +1,12 @@
 package com.recsys.offline;
 
 import com.recsys.common.embedding.EmbeddingClient;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.*;
 import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -35,6 +41,7 @@ class MultimodalBackfillPostgresTest {
     @TempDir Path posters;
     EmbeddingClient client;
     MultimodalBackfillJob job;
+    final ListAppender<ILoggingEvent> logs = new ListAppender<>();
 
     @BeforeAll static void prepare() throws Exception {
         admin = new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
@@ -50,9 +57,15 @@ class MultimodalBackfillPostgresTest {
     }
 
     @BeforeEach void reset() {
+        logs.start(); ((Logger) LoggerFactory.getLogger(MultimodalBackfillJob.class)).addAppender(logs);
         db.execute("TRUNCATE item_embedding; INSERT INTO item_embedding VALUES(1,'[1,0,0]','old'),(2,'[0,1,0]','old'),(3,NULL,NULL),(4,'[0,0,1]','old')");
         client = mock(EmbeddingClient.class); when(client.modelName()).thenReturn("test'模型");
         job = new MultimodalBackfillJob(sessions.getMapper(ItemEmbeddingMapper.class), client);
+    }
+
+    @AfterEach void closeLoggingAndVerifyConnections() {
+        ((Logger) LoggerFactory.getLogger(MultimodalBackfillJob.class)).detachAppender(logs); logs.stop();
+        source.assertClosed(admin, "multimodal-backfill-writer");
     }
 
     @Test void fuseUsesFirstPosterExtensionAndLeavesMissingPosterOrNullVectorUntouched() throws Exception {
@@ -72,7 +85,7 @@ class MultimodalBackfillPostgresTest {
         poster("1.jpg", 1); poster("2.jpeg", 2); poster("4.png", 4);
         when(client.embedImage(new byte[]{1})).thenReturn(new float[]{1, 0});
         when(client.embedImage(new byte[]{2})).thenReturn(new float[]{1, 0, 0});
-        job.run(args("--limit=1", "--alpha=0"));
+        rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED,"--limit=1", "--alpha=0");
         assertEquals("old", db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1", String.class));
         assertEquals("[1,0,0]", db.queryForObject("SELECT embedding::text FROM item_embedding WHERE item_id=2", String.class));
         verify(client, never()).embedImage(new byte[]{4});
@@ -83,23 +96,23 @@ class MultimodalBackfillPostgresTest {
         poster("1.jpg", 1); poster("2.jpg", 2); poster("4.jpg", 4);
         var before = db.queryForList("SELECT * FROM item_embedding ORDER BY item_id");
         when(client.embedImage(any())).thenThrow(new UnsupportedOperationException("test unsupported"));
-        job.run(args());
+        rejected(ErrorCode.JOB_MULTIMODAL_UNSUPPORTED);
         assertEquals(before, db.queryForList("SELECT * FROM item_embedding ORDER BY item_id"));
         org.mockito.Mockito.reset(client); when(client.modelName()).thenReturn("supported-first");
         when(client.embedImage(new byte[]{1})).thenReturn(new float[]{0, 1, 0});
         when(client.embedImage(new byte[]{2})).thenThrow(new UnsupportedOperationException("late unsupported"));
-        job.run(args());
+        rejected(ErrorCode.JOB_MULTIMODAL_UNSUPPORTED);
         assertEquals("supported-first+img", db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1", String.class));
         assertEquals("old", db.queryForObject("SELECT model FROM item_embedding WHERE item_id=2", String.class));
         verify(client, never()).embedImage(new byte[]{4});
         source.assertClosed(admin, "multimodal-backfill-writer");
     }
 
-    @Test void databaseFailurePropagatesAfterPriorAutocommitUpdate() throws Exception {
+    @Test void invalidVectorFailsAfterPriorAutocommitUpdate() throws Exception {
         poster("1.jpg", 1); poster("2.jpg", 2);
         when(client.embedImage(new byte[]{1})).thenReturn(new float[]{0, 1, 0});
         when(client.embedImage(new byte[]{2})).thenReturn(new float[]{Float.NaN, 1, 0});
-        assertThrows(DataAccessException.class, () -> job.run(args()));
+        rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED);
         assertEquals("test'模型+img", db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1", String.class));
         assertEquals("old", db.queryForObject("SELECT model FROM item_embedding WHERE item_id=2", String.class));
         source.assertClosed(admin, "multimodal-backfill-writer");
@@ -126,17 +139,66 @@ class MultimodalBackfillPostgresTest {
             db.update("DELETE FROM item_embedding WHERE item_id=1");
             return new float[]{0, 1, 0};
         });
-        job.run(args());
+        rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED);
         assertEquals(0, db.queryForObject("SELECT count(*) FROM item_embedding WHERE item_id=1", Integer.class));
         source.assertClosed(admin, "multimodal-backfill-writer");
     }
 
     @Test void missingDirectoryAndEmptyTableDoNotCallImageProvider() throws Exception {
-        job.run(new DefaultApplicationArguments("--poster-dir=" + posters.resolve("missing")));
+        var absent=assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--poster-dir=" + posters.resolve("missing"))));
+        assertEquals(ErrorCode.JOB_MULTIMODAL_NO_INPUT,absent.errorCode());
         db.execute("TRUNCATE item_embedding");
-        job.run(args());
+        rejected(ErrorCode.JOB_MULTIMODAL_NO_INPUT);
         verify(client, never()).embedImage(any());
         source.assertClosed(admin, "multimodal-backfill-writer");
+    }
+
+    @Test void badParametersOrNoPostersLeaveExistingVectors() {
+        var before=db.queryForList("SELECT * FROM item_embedding ORDER BY item_id");
+        for (String option : List.of("--alpha=NaN","--alpha=-0.1","--alpha=1.1","--limit=-1","--limit","--limit=bad")) {
+            rejected(ErrorCode.JOB_INVALID_ARGUMENT,option);
+        }
+        rejected(ErrorCode.JOB_MULTIMODAL_NO_INPUT);
+        assertEquals(before,db.queryForList("SELECT * FROM item_embedding ORDER BY item_id"));
+        verify(client,never()).embedImage(any());
+    }
+
+    @Test void invalidVectorsAndProviderFailureHaveSafeCodesAndRecover() throws Exception {
+        poster("1.jpg",1);
+        for (float[] invalid : new float[][]{null,new float[]{1,2},new float[]{Float.NaN,0,0},new float[]{Float.POSITIVE_INFINITY,0,0}}) {
+            when(client.embedImage(any())).thenReturn(invalid);
+            rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED);
+            assertEquals("old",db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1",String.class));
+        }
+        when(client.embedImage(any())).thenThrow(new IllegalStateException("PRIVATE_PROVIDER_DETAIL"));
+        assertInstanceOf(IllegalStateException.class,rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED).getCause());
+        doReturn(new float[]{0,1,0}).when(client).embedImage(any());
+        job.run(args());
+        assertEquals("test'模型+img",db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1",String.class));
+    }
+
+    @Test void databaseRejectsSecondUpdateWhileFirstRemainsAndRecoveryWorks() throws Exception {
+        poster("1.jpg",1); poster("2.jpg",2);
+        when(client.embedImage(any())).thenReturn(new float[]{0,0,1});
+        db.execute("ALTER TABLE item_embedding ADD CONSTRAINT reject_second CHECK(item_id<>2 OR model='old')");
+        try {
+            assertInstanceOf(DataAccessException.class,rejected(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED).getCause());
+            assertEquals("test'模型+img",db.queryForObject("SELECT model FROM item_embedding WHERE item_id=1",String.class));
+            assertEquals("old",db.queryForObject("SELECT model FROM item_embedding WHERE item_id=2",String.class));
+        } finally { db.execute("ALTER TABLE item_embedding DROP CONSTRAINT reject_second"); }
+        job.run(args()); assertEquals("test'模型+img",db.queryForObject("SELECT model FROM item_embedding WHERE item_id=2",String.class));
+    }
+
+    private PublicErrorException rejected(ErrorCode expected,String... extra) {
+        logs.list.clear();
+        var failure=assertThrows(PublicErrorException.class,()->job.run(args(extra)));
+        assertEquals(expected,failure.errorCode()); assertEquals(expected.message(),failure.getMessage());
+        for (var event : logs.list) {
+            String message=event.getFormattedMessage();
+            assertFalse(message.contains("backfill-multimodal 完成"));
+            assertFalse(message.contains("未改动任何数据")); assertFalse(message.contains("PRIVATE_"));
+        }
+        return failure;
     }
 
     private void poster(String name, int value) throws Exception { Files.write(posters.resolve(name), new byte[]{(byte) value}); }

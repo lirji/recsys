@@ -2,6 +2,8 @@ package com.recsys.offline;
 
 import com.pgvector.PGvector;
 import com.recsys.common.embedding.EmbeddingClient;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -9,6 +11,7 @@ import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
 
@@ -23,7 +26,7 @@ import java.util.List;
  * <p><b>海报来源</b>:本地目录 {@code --poster-dir},文件名 {@code {itemId}.jpg|jpeg|png}(MovieLens 可用 links.csv
  * 的 tmdbId 拉 TMDB 海报,另行准备)。无海报的物品保持纯文本向量不变。
  * <b>降级</b>:当前 EmbeddingClient 不支持多模态(如 gemini-embedding-001 纯文本)→ 首个即抛
- * UnsupportedOperationException,作业提示换多模态模型后退出,不动任何数据。
+ * UnsupportedOperationException,作业提示换多模态模型后失败退出；之前成功融合的物品可能已更新。
  *
  * <p>参数:--poster-dir(默认 posters)、--alpha(文本权重,默认 0.5)、--limit(0=全部)。
  */
@@ -31,6 +34,7 @@ import java.util.List;
 public class MultimodalBackfillJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(MultimodalBackfillJob.class);
+    private static final int PROGRESS_INTERVAL = 200;
     private static final String[] EXTS = {"jpg", "jpeg", "png"};
 
     private final ItemEmbeddingMapper mapper;
@@ -50,28 +54,37 @@ public class MultimodalBackfillJob implements OfflineJob {
 
     /** 保持成功融合计数与逐物品停止边界，不引入整作业事务。 */
     @Override
-    public void run(ApplicationArguments args) throws Exception {
-        String posterDir = strArg(args, "poster-dir", "posters");
-        double alpha = doubleArg(args, "alpha", 0.5);
-        int limit = intArg(args, "limit", 0);
+    public void run(ApplicationArguments args) {
+        try {
+            backfill(args);
+        } catch (PublicErrorException failure) {
+            throw failure;
+        } catch (IOException | RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED, failure);
+        }
+    }
+
+    private void backfill(ApplicationArguments args) throws IOException {
+        String posterDir = JobArguments.text(args, "poster-dir", "posters");
+        double alpha = JobArguments.decimal(args, "alpha", 0.5);
+        int limit = JobArguments.integer(args, "limit", 0);
+        if (alpha < 0 || alpha > 1 || limit < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
 
         File dir = new File(posterDir);
         if (!dir.isDirectory()) {
-            log.warn("海报目录不存在:{}(放入 {{itemId}}.jpg/png 后重跑;MovieLens 用 tmdbId 拉 TMDB 海报)",
-                    dir.getAbsolutePath());
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_NO_INPUT);
         }
         // 只处理有文本向量的物品(融合的另一半),避免给无向量物品凭空造多模态向量
         List<Long> withText = mapper.itemIds();
         if (withText.isEmpty()) {
-            log.warn("item_embedding 为空,先跑 backfill-embedding");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_NO_INPUT);
         }
         log.info("backfill-multimodal 开始:海报目录={}, α(文本)={}, 有文本向量物品={}",
                 dir.getAbsolutePath(), alpha, withText.size());
 
-        int fused = 0, noPoster = 0, done = 0;
-        boolean multimodalOk = true;
+        int fused = 0, noPoster = 0, failed = 0;
         for (long itemId : withText) {
             File poster = findPoster(dir, itemId);
             if (poster == null) {
@@ -85,30 +98,40 @@ public class MultimodalBackfillJob implements OfflineJob {
             float[] imageVec;
             try {
                 imageVec = embeddingClient.embedImage(Files.readAllBytes(poster.toPath()));
-            } catch (UnsupportedOperationException e) {
-                multimodalOk = false;
-                log.warn("当前 EmbeddingClient({}) 不支持多模态 embedding —— 换用多模态模型/provider 后重跑;"
-                        + "本作业未改动任何数据。", embeddingClient.modelName());
-                break;
+            } catch (UnsupportedOperationException failure) {
+                throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_UNSUPPORTED, failure);
             }
-            if (imageVec.length != textVec.length) {
-                log.warn("图像向量维度 {} 与文本 {} 不一致,跳过 item {}", imageVec.length, textVec.length, itemId);
+            // 非法响应不能按正常跳过结束；仍允许后续物品产出，最终显式报告部分失败。
+            if (!compatibleVectors(textVec, imageVec)) {
+                failed++;
                 continue;
             }
             float[] merged = fuse(textVec, imageVec, alpha);
-            upsert(itemId, merged);
+            if (upsert(itemId, merged) != 1) {
+                // 图像计算期间该行可能被删除；不重新创建，也不能虚增融合数量。
+                failed++;
+                continue;
+            }
             fused++;
-            if (++done % 200 == 0) {
+            if (fused % PROGRESS_INTERVAL == 0) {
                 log.info("  已融合 {} 个物品向量...", fused);
             }
             if (limit > 0 && fused >= limit) {
                 break;
             }
         }
-        if (multimodalOk) {
-            log.info("backfill-multimodal 完成:融合 {} 个(无海报跳过 {});item_embedding 已更新为多模态向量。",
-                    fused, noPoster);
+        if (failed > 0) throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_PARTIAL_FAILED);
+        if (fused == 0) throw new PublicErrorException(ErrorCode.JOB_MULTIMODAL_NO_INPUT);
+        log.info("backfill-multimodal 完成:融合 {} 个(无海报跳过 {});item_embedding 已更新为多模态向量。",
+                fused, noPoster);
+    }
+
+    private static boolean compatibleVectors(float[] text, float[] image) {
+        if (image == null || text.length == 0 || image.length != text.length) return false;
+        for (int i = 0; i < text.length; i++) {
+            if (!Float.isFinite(text[i]) || !Float.isFinite(image[i])) return false;
         }
+        return true;
     }
 
     private static float[] fuse(float[] text, float[] image, double alpha) {
@@ -154,22 +177,11 @@ public class MultimodalBackfillJob implements OfflineJob {
         return v;
     }
 
-    private void upsert(long itemId, float[] vec) {
+    private int upsert(long itemId, float[] vec) {
         PGvector pv = new PGvector(vec);
         String model = embeddingClient.modelName() + "+img";
         // 原操作仅UPDATE：图像计算期间若该行被删除，不能重新创建已退出的向量。
-        mapper.updateExisting(itemId, pv, model);
+        return mapper.updateExisting(itemId, pv, model);
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static String strArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) ? a.getOptionValues(k).get(0) : def;
-    }
 }

@@ -231,7 +231,10 @@ public enum ErrorCode {
     JOB_NO_OCPC_TARGET("JOB_NO_OCPC_TARGET", "未找到可校准的 oCPC 广告目标，请补齐广告配置后重试", 0),
     JOB_OCPC_DELAY_MISSING("JOB_OCPC_DELAY_MISSING", "延迟转化模型缺失，本次使用原始转化计数；可先生成延迟模型再重新校准", 0),
     JOB_OCPC_INVALID_DATA("JOB_OCPC_INVALID_DATA", "oCPC 校准数据或模型无效；部分广告主系数可能已更新，请修复数据后重新运行", 0),
-    JOB_OCPC_FAILED("JOB_OCPC_FAILED", "oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试", 0);
+    JOB_OCPC_FAILED("JOB_OCPC_FAILED", "oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试", 0),
+    JOB_MULTIMODAL_NO_INPUT("JOB_MULTIMODAL_NO_INPUT", "没有可融合的多模态输入，未更新向量；请检查海报目录与文本向量", 0),
+    JOB_MULTIMODAL_UNSUPPORTED("JOB_MULTIMODAL_UNSUPPORTED", "当前模型不支持所需的图像向量，回填未完成；部分物品可能已更新，请检查模型后核对回填范围", 0),
+    JOB_MULTIMODAL_PARTIAL_FAILED("JOB_MULTIMODAL_PARTIAL_FAILED", "多模态回填未完整完成，部分物品可能已更新；请检查图像、向量结果及数据源后核对回填范围", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
