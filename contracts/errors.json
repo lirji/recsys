@@ -938,6 +938,20 @@
       "httpStatus": 0,
       "message": "用户偏好保存结果未知",
       "httpDefault": false
+    },
+    {
+      "name": "AD_WRITE_RESULT_UNKNOWN",
+      "code": "AD_WRITE_RESULT_UNKNOWN",
+      "httpStatus": 503,
+      "message": "广告回传结果未知，请核查原业务记录，避免重复提交",
+      "httpDefault": false
+    },
+    {
+      "name": "USER_INTEREST_WRITE_RESULT_UNKNOWN",
+      "code": "USER_INTEREST_WRITE_RESULT_UNKNOWN",
+      "httpStatus": 503,
+      "message": "兴趣保存结果未知，请稍后核查",
+      "httpDefault": false
     }
   ],
   "families": [

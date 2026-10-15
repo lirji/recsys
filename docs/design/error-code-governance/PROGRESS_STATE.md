@@ -13,3 +13,5 @@ EC04a DONE/PASS：五个sandbox gRPC服务与内部认证接入115项目录；�
 EC04b DONE/PASS（本地验证）：三个sandbox客户端、四服务caller码、预算wireCode上下文与前端精确安全选择器；127项目录，原115项保持。内部服务身份失败有意纠正为依赖503，业务拒绝保持403；损坏CPM/CPC/曝光回复保持未知。47项基线、72项专项、406资金、76自然、149前端、24模块编译、广告4/自然5/混排5真实浏览器及目录/SQL守卫全过，详见EC04B_RESULT。24源指纹740d83f1dd96302d6c1b994734518aaab82de822eb71d8236cd13b7cfa052343。Hygiene无阻断，Java工具限制保持。基线bf078299 CI38795249788五门SUCCESS，当前片新提交CI另核验。父EC04其余普通RPC/HTTP/正常对象内错误继续，整体IN_PROGRESS。
 
 EC04c DONE/PASS（本地）：三普通服务8方法与四类客户端8入口目录化，总133码。真实TCP证实旧Runtime异常统一UNKNOWN并保持，避免误触发读重试；正常ACK/重复false及fallback保持，后续EC04d修复HTTP假成功。13项基线、83项专项、149前端、24模块编译、生成与SQL守卫通过；Hygiene无阻断、Java工具限制保持。见EC04C_RESULT。EC04b已正常ff/push ba09172f，新CI38798495615尚运行，非最终全绿。
+
+EC04d DONE/PASS：普通广告/兴趣写入的RPC失败、丢应答、熔断及非成功ACK返回受控503；正常outcome重复false保持，无写重试。总135码。44旧专项、8旧HTTP刻画、69新专项、426资金/74类、151前端及build、24模块compile、目录/SQL守卫通过。Hygiene无阻断，Java工具限制保持。见EC04D_DESIGN/RESULT。EC04c 1a61da1b已ff/push，CI38799881069四门SUCCESS、build仍运行；EC04b CI38798495615终态CANCELLED（钱与build取消，另外三门成功），不称五门通过。父EC04e及EC05～08继续。

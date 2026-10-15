@@ -532,6 +532,14 @@ export const errorCodes = {
     message: '用户偏好保存结果未知',
     httpStatus: 0,
   },
+  AD_WRITE_RESULT_UNKNOWN: {
+    message: '广告回传结果未知，请核查原业务记录，避免重复提交',
+    httpStatus: 503,
+  },
+  USER_INTEREST_WRITE_RESULT_UNKNOWN: {
+    message: '兴趣保存结果未知，请稍后核查',
+    httpStatus: 503,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

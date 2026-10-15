@@ -1,0 +1,17 @@
+# EC04d 普通RPC写入未知不能显示成功
+
+基线1a61da1bd3362eb1efa86b22eefc2e9e59ec7a7d，继续父EC04。范围：GrpcAdServingGateway的普通点击/转化/outcome写入，GrpcUserGateway的兴趣写入，统一HTTP目录与必要的端到端测试。不改sandbox、资金算法、SQL/事务或内部服务协议状态。
+
+## 证据与决定
+
+四个旧写fallback吞异常（outcome返回false），经SearchAdsController/UserInterestController会成为HTTP成功；前端在HTTP完成后显示回传/保存成功。outcome正常false表示重复，不能与结果未知混同。点击/转化/兴趣成功ACK固定true，客户端却忽略false/default ACK。
+
+新增AD_WRITE_RESULT_UNKNOWN、USER_INTEREST_WRITE_RESULT_UNKNOWN两项HTTP503目录码。普通写入口捕获已安全化的StatusRuntimeException并抛PublicErrorException；不依赖AOP是否启用才能报告错误。点击/转化/兴趣收到非成功ACK也返回未知；outcome正常true/false保持。现有CircuitBreaker保留，fallback（包括熔断快速失败）改为抛受控错误，已有PublicErrorException原样保留，不再吞错。写入不添加Retry，不把未知称为确定未写、回滚或可重复扣费。
+
+有意变化：远程失败/超时/熔断/无有效成功ACK从HTTP200变503及安全目录提示；直接调用RPC网关的写方法从StatusRuntimeException变PublicErrorException（内部cause仍为安全化RPC异常），读方法继续保留RPC状态。HTTP成功字段/空体/outcome重复false、请求ID、输入绑定400、内联模式现有错误分类和成功行为保持。内部身份错误也属于依赖失败，不误导为终端用户403。
+
+不改普通读fallback，避免移除推荐的空hydrate/冷启动/无广告策略。严格用户查询/报表与允许推荐降级的边界、console正常对象内错误在后续EC04e继续；本片不将它们称完成。当前前端共用错误解析已经按状态和目录展示，这两类503通过该入口显示，不新增页面框架。
+
+## 验证
+
+改前保留成功ACK、正常重复false、HTTP绑定与旧fallback/客户端状态基线。新增真实TCP→真实Spring AOP CircuitBreaker/Retry代理→真实Controller/GlobalExceptionHandler验证：正常成功、失败、内部认证、丢响应但服务端已执行、非成功ACK、强制熔断、输入绑定失败。断言写入次数，确认无自动重试；检查代理实际存在，不以直接调用fallback代替真实切面证明。前端目录展示与不泄漏原文。完整资金链路及影响内验证、全仓compile、前端测试/build、生成与持久边界检查；若出现相邻流程回归继续修复。

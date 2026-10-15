@@ -2,6 +2,8 @@ package com.recsys.recengine.user;
 
 import com.recsys.proto.user.v1.Ack;
 import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+import io.grpc.StatusRuntimeException;
 import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.user.v1.Interests;
 import com.recsys.proto.user.v1.UpdateInterestsRequest;
@@ -43,13 +45,20 @@ public class GrpcUserGateway implements UserGateway {
         return new ArrayList<>(reply.getCategoriesList());
     }
 
+    /** 保存结果必须有owner成功确认，不能由网络失败或熔断fallback伪造。 */
     @Override
     @CircuitBreaker(name = "user-grpc", fallbackMethod = "updateInterestsFallback")
     public void updateInterests(long userId, List<String> categories) {
-        Ack ignored = GrpcErrors.call(ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN, () -> stub.updateInterests(UpdateInterestsRequest.newBuilder()
-                .setUserId(userId)
-                .addAllCategories(categories == null ? List.of() : categories)
-                .build()));
+        try {
+            Ack reply = GrpcErrors.call(ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN, () -> stub.updateInterests(UpdateInterestsRequest.newBuilder()
+                    .setUserId(userId)
+                    .addAllCategories(categories == null ? List.of() : categories)
+                    .build()));
+            if (!reply.getOk()) throw new PublicErrorException(ErrorCode.USER_INTEREST_WRITE_RESULT_UNKNOWN);
+        } catch (StatusRuntimeException failure) {
+            // 不依赖fallback切面才暴露失败，直接调用同样不能返回保存成功。
+            throw new PublicErrorException(ErrorCode.USER_INTEREST_WRITE_RESULT_UNKNOWN, failure);
+        }
     }
 
     /** 读兴趣降级(P1):user-service 不可达时返回空(视为冷启动),推荐照常走冷启动兜底。 */
@@ -58,8 +67,9 @@ public class GrpcUserGateway implements UserGateway {
         return List.of();
     }
 
-    /** 保留旧降级返回；应答失败不代表写入一定丢失，必须记录未知而非未落库。 */
+    /** 写入未知不能继续返回ok=true；熔断快速拒绝也走同一安全错误。 */
     void updateInterestsFallback(long userId, List<String> categories, Throwable t) {
         log.warn("{} userId={} failureType={}", ErrorCode.RPC_USER_WRITE_RESULT_UNKNOWN.displayMessage(), userId, t.getClass().getSimpleName());
+        throw t instanceof PublicErrorException known ? known : new PublicErrorException(ErrorCode.USER_INTEREST_WRITE_RESULT_UNKNOWN, t);
     }
 }

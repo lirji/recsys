@@ -2,6 +2,7 @@ package com.recsys.adserving.grpc;
 
 import com.recsys.advertiser.GrpcAdReportReader;
 import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import com.recsys.proto.ad.v1.AdServingServiceGrpc;
 import com.recsys.proto.content.v1.ContentServiceGrpc;
 import com.recsys.proto.user.v1.UserProfileServiceGrpc;
@@ -46,7 +47,7 @@ class OrdinaryRpcClientErrorTest {
             doThrow(upstream).when(content).batchGetItems(any());
             doThrow(upstream).when(user).getInterests(any());
             doThrow(upstream).when(user).updateInterests(any());
-            var result = assertThrows(StatusRuntimeException.class, () -> {
+            var observed = assertThrows(RuntimeException.class, () -> {
                 switch (operation) {
                     case "search" -> adGateway.searchAds(1, null, 1, "search", "b", .1);
                     case "click" -> adGateway.recordClick("request", 1, 1);
@@ -59,6 +60,13 @@ class OrdinaryRpcClientErrorTest {
                     default -> fail("unhandled test operation");
                 }
             });
+            StatusRuntimeException result;
+            if (List.of("click", "conversion", "outcome", "user-write").contains(operation)) {
+                var publicError = assertInstanceOf(PublicErrorException.class, observed);
+                assertEquals(operation.equals("user-write") ? ErrorCode.USER_INTEREST_WRITE_RESULT_UNKNOWN
+                        : ErrorCode.AD_WRITE_RESULT_UNKNOWN, publicError.errorCode());
+                result = assertInstanceOf(StatusRuntimeException.class, publicError.getCause());
+            } else result = assertInstanceOf(StatusRuntimeException.class, observed);
             assertEquals(status, result.getStatus().getCode());
             assertEquals(new GrpcRetryablePredicate().test(upstream), new GrpcRetryablePredicate().test(result));
             assertNull(result.getCause());

@@ -24,6 +24,16 @@ function responseError(status: number, data: unknown) {
 
 describe('统一安全错误展示', () => {
   it.each([
+    ['AD_WRITE_RESULT_UNKNOWN', '广告回传结果未知，请核查原业务记录，避免重复提交'],
+    ['USER_INTEREST_WRITE_RESULT_UNKNOWN', '兴趣保存结果未知，请稍后核查'],
+  ])('写入未知%s展示目录码和未知语义，不采用远端的成功或内部详情', (code, message) => {
+    const error = toApiError(responseError(503, { code, message: '保存成功 private SQL token' }));
+    expect(error.status).toBe(503);
+    expect(error.code).toBe(code);
+    expect(error.message).toBe(`[${code}] ${message}`);
+    expect(error.cancelled).toBe(false);
+  });
+  it.each([
     [503, 'SERVICE_UNAVAILABLE', '账务结果未知，请保留原 commandId 查询或重试'],
     [503, 'SERVICE_UNAVAILABLE', '账务服务暂不可用，请保留原 commandId 查询或重试'],
     [502, 'BAD_GATEWAY', '账务响应无法验证，请保留原 commandId 查询'],
