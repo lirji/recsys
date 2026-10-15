@@ -108,3 +108,8 @@ flowchart LR
 ### S12A增量事实（2026-10-15）
 
 CPA精确候选复用GspPrice计算，独立ConversionPrice/FrozenConversionQuote和ad_conversion_quote(V012)保持单次转化单位与不可变五分钟身份。该路径最终选择前无预算/曝光/旧outcome效果。conversions-enabled默认关闭，仅ad owner可装配；广告主认证、业务eventId与结算尚待S12B/C，不能仅由报价组件存在宣称CPA完整交付。
+
+
+### S12B增量事实（2026-10-15）
+
+内部CPA资金owner沿quote→命令→原预算日账户锁序，用adDb原事务同时持久化业务事件、双条件状态、完整金额捕获、唯一账本和捕获Outbox。展示主体和广告主回调actor分离，业务键(advertiserId,eventId)受唯一约束；原actor审计，原决定不可变，当前进度另查。独立CPA表/用途与既有CPM/CPC共用账户，并未将旧outcome写入当作已完成资金幂等。到期回收与新增准入分离，真实临时PG验证。B仅接受内部已授权命令，外部认证适配与可靠投递仍是S12C必需工作，不能据此宣称父S12完成。

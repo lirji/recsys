@@ -37,10 +37,21 @@ common-ad ConversionPrice/FrozenConversionQuote及纯测试；ad实际竞价和�
 
 接收边界必须先认证并检查该advertiser的edit权限，使用已有AuthzEngine fullyConsistent；disabled/shadow不能跳过，缺引擎/故障503，拒绝403，匿名401，ADMIN也需显式归属或平台关系授权。每次原结果恢复和GET也重新授权；RPC只接受独立advertiser服务caller，engine不能提交转化。授权网络调用在资金事务外完成，不宣称权限撤销能撤回已经开始的合法事务。
 
-转化原事实独立于资金状态：首次合法业务键持久化occurredAt、接收DB时间、原actor与原决定；原决定不随后到曝光改写，查询同时返回当前结算。可见/转化任意先到皆可等待，第二条件在持有quote及原账户锁后重读DB时钟，严格早于issuedAt+5min才捕获。occurredAt必须>=issuedAt、<expiresAt且<=当前DB时刻；否则持久化OUTSIDE_ATTRIBUTION非计费事实。新转化在到期/释放后记录EXPIRED/NOT_HELD，不能恢复预占；同资格另一业务事件记录DUPLICATE_QUALIFICATION，引用原事件但不能视为它自身计费。合法零元仍产生唯一账本。
+转化原事实独立于资金状态：首次合法业务键持久化occurredAt、接收DB时间、原actor与原决定；原决定不随后到曝光改写，查询同时返回当前结算。可见/转化任意先到皆可等待，第二条件在持有quote及原账户锁后重读DB时钟，严格早于issuedAt+5min才捕获。occurredAt必须>=issuedAt、<expiresAt且<=当前DB时刻；否则持久化OUTSIDE_ATTRIBUTION非计费事实。没有canonical的资格在到期/释放后收到新转化记录EXPIRED/NOT_HELD，不能恢复预占；已有canonical时，同资格另一业务事件优先记录DUPLICATE_QUALIFICATION，引用原事件但不能视为它自身计费。合法零元仍产生唯一账本。
 
 锁序quote→命令唯一键→原日账户；每命令仅引用一个资格，不跨资格取第二把父锁。原命令优先恢复并比对摘要，签名key退出后仍可查已提交事实；新事件必须验签且匹配保存的原token/报价/广告主。两条件齐备同事务完成held减、charged加、唯一账本、捕获Outbox和当前状态；任一步失败全部回滚。不调用旧recordConversion/AdOutcomeService，不用旧成功结果掩盖资金未知。
 
 V013数据库唯一键约束每广告主事件、每资格账本及canonical可见/转化；外键绑定同一资格。准备字段/原决定/已接受条件不可变；事务结束不能残留PENDING命令。终态不能再捕获，期限回收SKIP LOCKED每轮<=100、固定延迟和失败退避，暂停新增与到期回收独立。所有表列中文注释；增量迁移不修改V001～V012。
 
 B验证：真实PG两种到达顺序、重复/并发/跨资格同eventId/跨广告主同eventId、金额和原日、跨主体/错用途/篡改、未来或窗口外转化、捕获与释放/到期竞争、持锁等待越期、账本/Outbox/命令落库失败全回滚、零额、不可变/默认关闭/错数据源、CPM/CPC共享账户不超额。B只验证内部已授权命令与归属绑定，完整外部认证、HTTP/RPC及Kafka/投影属于C的必需验收；父S12在C通过前保持IN_PROGRESS。
+
+
+## C12C1 可靠捕获事件与投影
+
+承接B的AdConversionCapturedV1，独立topic ad-conversion-captured-v1，包含ledger eventId、qualificationId、visibleReceiptId、内部outcomeId和广告主作用域conversionEventId，以及原预算日/金额/账户版本/发生时间/捕获时间。载荷固定CPA/PER_CONVERSION/CPA_GSP_CNY6_V1、CNY6字符串、大ID字符串，不含actor/展示主体/token；发生时间不得晚于捕获时间。未知新增字段兼容，已知字段类型、重复JSON键、尾随内容、大小上限与标识严格检查。
+
+复用既有BillingOutboxRepository固定EventFamily扩展CONVERSION、ACK后带fence标记、20次有界重试/审计重放、单线程调度和消费事务后offset+1。新增V014重放审计与Inbox明细/日投影，无新中间件或依赖。独立conversion-events.relay-enabled/projection-enabled默认false，停止新收费后仍可续发消费，不依赖资格签名密钥。
+
+投影按eventId、qualificationId、visibleReceiptId、outcomeId及(advertiserId,conversionEventId)约束唯一；不同广告主可有同业务eventId，VISIBLE UUID与内部outcome UUID属于不同命名空间，不能误用CPC的跨种类回执索引限制它们。相同事件原负载重复可ACK，换事件重用任一业务身份或同ID改负载拒绝；账户低版本独立事实仍累加conversion_count和精确金额，不拿最大版本丢弃事实。明细与汇总同本地事务，不访问权威账户/账本。
+
+验收复用真实隔离PG/Kafka覆盖：提交后未发、ACK后未标记、投影提交后未提交offset、重复/乱序与同业务身份冲突、同UUID跨广告主合法、领取fence/耗尽/审计恢复、依赖故障与毒消息不跳过；独立配置及旧CPM/CPC回归。外部授权与稳定交付仍属于C2，C1完成不完成父S12。

@@ -395,3 +395,27 @@ ORDER BY updated_at,operation_id LIMIT 100;
 Q-04已确认签发起统一五分钟、一资格最多一次收费、先到转化等待可见曝光、窗口外或释放后仅非计费。当前A片只包含精确CPA竞价与V012不可变报价，没有转化HTTP/RPC、预占或收费入口。金额单位PER_CONVERSION，完整单次转化价，不按pCTR/pCVR折小预算义务。
 
 后续需启用时，在adDb追加V012 `db/ad-billing/V012__conversion_quote.sql`，沿前述显式迁移及摘要登记流程；应用不自动迁移。`recsys.ad.billing.conversions-enabled`默认false，另须sandbox和正确ad owner才装配报价。此开关只安装报价组件，不代表CPA已可用。当前不在共享环境开启；回退关闭新报价配置并保留历史，原CPM/CPC不受影响。
+
+
+## S12B：内部CPA义务与恢复
+
+V013 `db/ad-billing/V013__conversion_settlement.sql`增加CPA结算、可见回执、广告主业务转化事实、账本和捕获Outbox，沿原显式迁移/摘要流程；不能修改已执行V001～V012。当前没有公开转化HTTP/RPC入口，广告主外部授权和可靠事件投递由S12C验收后接入。不要用旧recordConversion调用代替新内部用例。
+
+安装须同时显式开启`recsys.ad.billing.sandbox-enabled`、`conversions-enabled`、`conversion-settlement-enabled`，默认关闭。暂停新增用`conversion-preparation-admission-enabled=false`；紧急暂停新条件接收用`conversion-receipt-admission-enabled=false`，保留查询、原已提交请求恢复及到期工作器。不能关闭整个owner而遗留held。回收沿现有expiry-interval-ms/expiry-batch-size的有界配置，每轮<=100，SKIP LOCKED多实例分工，故障退避；指标ad.billing.conversion.expired / ad.billing.conversion.expiry.failures。
+
+可见原决定和转化原决定均不可变，当前进度由结算状态解释。只有CAPTURED有ledgerId及chargedAmount，零元同样必须有账本。DUPLICATE_QUALIFICATION引用canonical outcome但该新业务事件自身非计费；EXPIRED/NOT_HELD/OUTSIDE_ATTRIBUTION保留事实，不重占或补扣。业务事件按advertiserId+eventId稳定恢复，不能因503换ID。授权边界必须每次重新判权，不能靠知道业务键或资格token就视为广告主有权。
+
+对账总账必须同时包括CPM ad_billing_ledger、点击ad_click_ledger、转化ad_conversion_ledger；总held也须加三种未决义务。本片Outbox仅落库，尚未发送到Kafka，READY积压是未安装续发路径的真实状态，不代表已投影。只读诊断：
+
+~~~sql
+SELECT s.qualification_id,s.advertiser_id,s.state,s.budget_date,q.amount,q.expires_at,s.visible_receipt_id,s.outcome_id
+FROM ad_conversion_settlement s JOIN ad_conversion_quote q ON q.quote_id=s.qualification_id
+WHERE s.state='HELD' ORDER BY q.expires_at,s.qualification_id LIMIT 100;
+
+SELECT advertiser_id,event_id,qualification_id,status,occurred_at,received_at,canonical_outcome_id
+FROM ad_conversion_outcome ORDER BY received_at,event_id LIMIT 100;
+
+SELECT delivery_state,count(*),min(created_at) FROM ad_conversion_outbox GROUP BY delivery_state;
+~~~
+
+诊断不导出qualification_token/actor/payload_hash。签名key覆盖在途未提交请求；已完成请求原ID恢复不重验旧key，新业务键或可见回执必须仍可验签。回退保留事实，不删除历史或回滚资金效果；本轮没有共享环境启用或生产部署。

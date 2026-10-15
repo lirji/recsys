@@ -15,3 +15,5 @@ Hygiene=/tmp/recsys-er-s12a-hygiene.json：IMPLEMENTATION_COMPLETE_WITH_LIMITATI
 验证源指纹b2aa077745b5fd3cd8b6129776c559eb9c346359366482224b9381aec4d773bf；11源文件清单/tmp/recsys-s12a-source-paths.json。同步C12_DESIGN、CONTRACTS、BACKEND_ARCHITECTURE、运行手册、IMPLEMENTATION_SLICES及CODEX_PROGRESS。七项用户文件指纹未变，console/test-results及忽略文件保留；只有原目录工作树。
 
 SKILL_HANDOFF: backend-implementation → implementation-validation → project-documentation → update-progress-docs → task-git-delivery；slice=ER-S12A，validation=PASS，gate=PASS_WITH_LIMITATIONS。按已有授权正常提交/合并/push main，随后执行S12B；无真实收费切换或生产部署。
+
+Git/CI事实：2f5c3dabbd9697a91d522c3c14df3371d10f8cbc已正常合并推送origin/main；CI38699749896全部SUCCESS，包含旧浏览器装配修复。前序修复专属CI38699358192被新main运行按并发策略取消，不是新失败。
