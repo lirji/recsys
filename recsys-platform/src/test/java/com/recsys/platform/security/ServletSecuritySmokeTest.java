@@ -4,6 +4,7 @@ import com.recsys.platform.web.GlobalExceptionHandler;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -54,7 +55,24 @@ class ServletSecuritySmokeTest {
 
     @Test
     void protectedPath_anonymous_401() throws Exception {
-        mvc.perform(get("/api/secure/ping")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/secure/ping")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+                .andExpect(jsonPath("$.message").value("需要有效身份"))
+                .andExpect(jsonPath("$.path").value("/api/secure/ping"))
+                .andExpect(jsonPath("$.timestamp").isNumber());
+    }
+
+    @Test
+    void securityJsonEscapesControlCharactersAndKeepsTraceMetadata() throws Exception {
+        String traceId = "trace\"\\\n\t\u0001";
+        MDC.put("traceId", traceId);
+        try {
+            mvc.perform(get("/api/secure/ping")).andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.traceId").value(traceId))
+                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        } finally {
+            MDC.clear();
+        }
     }
 
     @Test
@@ -66,13 +84,15 @@ class ServletSecuritySmokeTest {
     @Test
     void protectedPath_wrongRole_403() throws Exception {
         mvc.perform(get("/api/secure/ping").header("X-Internal-Auth", header("bob", "USER")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
     void protectedPath_tamperedToken_401() throws Exception {
         mvc.perform(get("/api/secure/ping").header("X-Internal-Auth", "garbage.token"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     @Test

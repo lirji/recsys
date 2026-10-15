@@ -1,5 +1,8 @@
 package com.recsys.platform.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.platform.web.ApiError;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -12,6 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 各 Servlet 服务复用的安全链(P0)。用 {@code @ConditionalOnClass} 守卫:只有具备 webmvc + security 的
@@ -30,7 +34,8 @@ import java.io.IOException;
 public class InternalSecurityConfig {
 
     @Bean
-    public SecurityFilterChain recsysSecurityFilterChain(HttpSecurity http, AuthProperties props) throws Exception {
+    public SecurityFilterChain recsysSecurityFilterChain(HttpSecurity http, AuthProperties props,
+                                                        ObjectMapper objectMapper) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .cors(cors -> {
                 })
@@ -49,40 +54,18 @@ public class InternalSecurityConfig {
                 .addFilterBefore(new InternalTokenAuthFilter(props), UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) ->
-                                writeError(res, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHENTICATED",
-                                        "需要有效身份", req.getRequestURI()))
+                                writeError(res, ErrorCode.UNAUTHENTICATED, req.getRequestURI(), objectMapper))
                         .accessDeniedHandler((req, res, e) ->
-                                writeError(res, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN",
-                                        "无权访问该资源", req.getRequestURI())));
+                                writeError(res, ErrorCode.FORBIDDEN, req.getRequestURI(), objectMapper)));
         return http.build();
     }
 
-    /** 手写紧凑 JSON(与 {@link com.recsys.platform.web.ApiError} 同构),避免为过滤器链引入 Jackson 编译依赖。 */
-    private static void writeError(HttpServletResponse res, int status, String code, String message, String path)
+    /** 复用服务序列化配置，确保trace/path中的控制字符也被正确转义，响应结构与Controller一致。 */
+    private static void writeError(HttpServletResponse res, ErrorCode error, String path, ObjectMapper objectMapper)
             throws IOException {
-        res.setStatus(status);
-        res.setContentType("application/json;charset=UTF-8");
-        String json = "{\"traceId\":" + jsonStr(mdcTraceId())
-                + ",\"code\":" + jsonStr(code)
-                + ",\"message\":" + jsonStr(message)
-                + ",\"path\":" + jsonStr(path)
-                + ",\"fields\":null"
-                + ",\"timestamp\":" + System.currentTimeMillis() + "}";
-        res.getWriter().write(json);
-    }
-
-    private static String mdcTraceId() {
-        try {
-            return org.slf4j.MDC.get("traceId");
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static String jsonStr(String s) {
-        if (s == null) {
-            return "null";
-        }
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        res.setStatus(error.httpStatus());
+        res.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        res.setContentType(org.springframework.http.MediaType.APPLICATION_JSON_VALUE);
+        res.getWriter().write(objectMapper.writeValueAsString(ApiError.of(error, path, null)));
     }
 }

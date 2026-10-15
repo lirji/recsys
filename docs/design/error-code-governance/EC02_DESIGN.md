@@ -1,0 +1,15 @@
+# EC02 安全链与网关错误边界
+
+依赖EC01已交付ca62a933；本片分两批有界实现，EC02a为Servlet安全链，EC02b为Reactive网关。EC02整体只有两批与集成验收均完成才DONE。保持JWT校验、角色/租户拒绝、令牌传播、关闭安全时permit-all、401续期和限流语义。
+
+## EC02a
+
+InternalSecurityConfig当前手写JSON仅转义反斜线/引号，没有处理控制字符。改用承载服务现有ObjectMapper序列化ApiError，401仍UNAUTHENTICATED、403仍FORBIDDEN，状态/字段/traceId/path保持。POM显式声明原已由logstash传递的jackson-databind，沿用既有Boot版本管理，不新增Web依赖或升级版本。common仍保持纯契约。验证真实Servlet安全链的匿名/篡改/越权/正常访问，含MDC引号、反斜线、换行、制表符往返；gateway装配仍须通过。
+
+## EC02b
+
+复用ApiError与目录，单独实现网关响应式错误适配，不把Servlet Advice搬到WebFlux。安全入口覆盖匿名、无效令牌与角色不足；保留WWW-Authenticate中的Bearer协议和机器错误分类，剔除可能携带JWT/配置详情的error_description。特别核验Bearer invalid_request的400与invalid_token的401，不能一律强改401。
+
+网关ErrorWebExceptionHandler需覆盖ErrorResponse状态/必要响应头、400/404/405/415/429/5xx，未知异常记录内部诊断且对外固定安全提示；已提交响应不重写。RequestRateLimiter的429可能直接setComplete而不抛异常，需要真实过滤器测试确定空body补全方式，不改限流算法或吞下游既有业务错误体。AuthController登录失败与签发失败使用安全业务码；IdentityPropagationFilter签名失败不能向下游放行或泄漏内部令牌。
+
+新测试通过实际WebFlux安全链/路由或错误处理链验证，不能仅断言字符串存在。已知底层JWT与组映射测试保持；后续必要浏览器与全仓门禁汇总在EC08。若有额外依赖只允许显式声明已存在的传递组件，先记录再实施。
