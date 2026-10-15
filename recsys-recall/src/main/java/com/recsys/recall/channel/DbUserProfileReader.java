@@ -4,7 +4,7 @@ import com.recsys.common.user.UserProfileReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -19,18 +19,16 @@ public class DbUserProfileReader implements UserProfileReader {
 
     private static final Logger log = LoggerFactory.getLogger(DbUserProfileReader.class);
 
-    private final JdbcTemplate jdbc;
+    private final RecallInputMapper mapper;
 
-    public DbUserProfileReader(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public DbUserProfileReader(RecallInputMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
     public List<String> categories(long userId) {
         try {
-            return jdbc.queryForList(
-                    "SELECT jsonb_array_elements_text(profile->'categories') FROM app_user WHERE user_id=?",
-                    String.class, userId);
+            return mapper.categories(userId);
         } catch (Exception e) {
             log.debug("读取用户偏好类目失败(app_user): {}", e.getMessage());
             return List.of();

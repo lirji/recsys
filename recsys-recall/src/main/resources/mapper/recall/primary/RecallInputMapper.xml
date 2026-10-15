@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.recall.persistence.mapper.primary.RecallInputMapper">
+    <select id="latestPositiveSequence" resultType="long">
+        SELECT item_id FROM (
+            SELECT item_id, max(ts) AS last_ts FROM user_behavior
+            WHERE user_id=#{userId}
+                AND (action IN ('CLICK','LIKE','PLAY') OR (action='RATING' AND value>=4))
+            GROUP BY item_id
+        ) s ORDER BY last_ts DESC LIMIT #{limit}
+    </select>
+    <select id="recentPositiveItems" resultType="long">
+        SELECT DISTINCT item_id FROM user_behavior WHERE user_id=#{userId}
+        AND action IN ('CLICK','LIKE','PLAY','RATING') ORDER BY item_id DESC LIMIT #{limit}
+    </select>
+    <select id="categories" resultType="string">
+        SELECT jsonb_array_elements_text(profile->'categories') FROM app_user WHERE user_id=#{userId}
+    </select>
+</mapper>

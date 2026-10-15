@@ -1,6 +1,6 @@
 package com.recsys.recall.channel;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -20,10 +20,10 @@ import java.util.List;
 @Component
 public class RecentPositiveItemsSource {
 
-    private final JdbcTemplate jdbc;
+    private final RecallInputMapper mapper;
 
-    public RecentPositiveItemsSource(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public RecentPositiveItemsSource(RecallInputMapper mapper) {
+        this.mapper = mapper;
     }
 
     /**
@@ -31,9 +31,6 @@ public class RecentPositiveItemsSource {
      * 与 I2I/SWING/GENERATIVE 原 {@code recentItems} 的 SQL 逐字对齐(动作集、去重、排序、limit)。
      */
     public List<Long> recentPositiveItems(long userId, int limit) {
-        return jdbc.queryForList(
-                "SELECT DISTINCT item_id FROM user_behavior WHERE user_id=? " +
-                "AND action IN ('CLICK','LIKE','PLAY','RATING') ORDER BY item_id DESC LIMIT ?",
-                Long.class, userId, limit);
+        return mapper.recentPositiveItems(userId, limit);
     }
 }

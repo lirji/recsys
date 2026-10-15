@@ -5,7 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -21,22 +21,12 @@ import java.util.Set;
 public class BehaviorSequenceSource {
 
     private static final Logger log = LoggerFactory.getLogger(BehaviorSequenceSource.class);
-    private static final String SQL = """
-            SELECT item_id FROM (
-              SELECT item_id, max(ts) AS last_ts
-              FROM user_behavior
-              WHERE user_id=?
-                AND (action IN ('CLICK','LIKE','PLAY') OR (action='RATING' AND value>=4))
-              GROUP BY item_id
-            ) s ORDER BY last_ts DESC LIMIT ?
-            """;
-
-    private final JdbcTemplate jdbc;
+    private final RecallInputMapper mapper;
     private final ObjectProvider<StringRedisTemplate> redisProvider;
 
-    public BehaviorSequenceSource(JdbcTemplate jdbc,
+    public BehaviorSequenceSource(RecallInputMapper mapper,
                                   ObjectProvider<StringRedisTemplate> redisProvider) {
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.redisProvider = redisProvider;
     }
 
@@ -59,7 +49,7 @@ public class BehaviorSequenceSource {
             }
         }
         try {
-            List<Long> newestFirst = jdbc.query(SQL, (rs, n) -> rs.getLong(1), userId, bounded);
+            List<Long> newestFirst = mapper.latestPositiveSequence(userId, bounded);
             Collections.reverse(newestFirst);
             return List.copyOf(newestFirst);
         } catch (Exception e) {

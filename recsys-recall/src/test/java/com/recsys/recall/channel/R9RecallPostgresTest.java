@@ -6,6 +6,9 @@ import com.recsys.common.recall.RecallChannel;
 import com.recsys.common.recall.RecallContext;
 import com.recsys.common.recall.RecallItem;
 import com.recsys.recall.BehaviorSequenceSource;
+import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
+import com.recsys.persistence.spring.SpringSqlSessions;
+import org.mybatis.spring.SqlSessionTemplate;
 import com.recsys.recall.RecallProperties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,7 @@ class R9RecallPostgresTest {
             .withPassword("recsys");
 
     static JdbcTemplate jdbc;
+    static RecallInputMapper inputMapper;
     static String version;
 
     @BeforeAll
@@ -54,6 +58,8 @@ class R9RecallPostgresTest {
         DriverManagerDataSource ds = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
+        inputMapper = new SqlSessionTemplate(SpringSqlSessions.create(ds,
+                "classpath*:mapper/recall/primary/**/*.xml")).getMapper(RecallInputMapper.class);
         jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
         jdbc.execute("CREATE TABLE graph_user_embedding(" +
                 "model_version text NOT NULL,user_id bigint NOT NULL,embedding vector(64) NOT NULL," +
@@ -103,7 +109,7 @@ class R9RecallPostgresTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<StringRedisTemplate> redis = mock(ObjectProvider.class);
         when(redis.getIfAvailable()).thenReturn(null);
-        List<Long> sequence = new BehaviorSequenceSource(jdbc, redis).sequence(9L, 50);
+        List<Long> sequence = new BehaviorSequenceSource(inputMapper, redis).sequence(9L, 50);
         assertEquals(List.of(2L, 1L, 3L), sequence,
                 "DB 序列应过滤弱反馈、按 item 最后正反馈去重并返回 oldest→newest");
         RecallProperties props = new RecallProperties();

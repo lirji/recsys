@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a DONE/PASS，旧/新33项及宿主6项通过；交付后进入MP03b。
+`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b DONE/PASS，旧/新39项及宿主10项通过；交付后进入MP03c。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -14,6 +14,7 @@
 
 ## 已完成
 
+- MP03b召回输入完成，见MP03B_RESULT。
 - MP03a词形查询完成，见MP03A_RESULT。
 - MP02b目录/FTS迁移及双来源回归完成，见MP02B_RESULT。
 - MP02a内容CRUD与共享源clean宿主19项全通过，见MP02A_RESULT。
@@ -33,7 +34,7 @@
 
 ## 已修改文件
 
-MP01、MP02a/b已交付。当前MP03a：query依赖/IdfWeighter/Mapper/XML/record/配置/单元及真实PG测试、本目录证据。历史SQL和原用户文件未修改。
+MP01～MP03a已交付。当前MP03b：recall依赖/五个读取者/Mapper/XML/配置/真实PG与R9测试、本目录证据。历史SQL和原用户文件未修改。
 
 ## 保护内容
 
@@ -52,8 +53,8 @@ MP01、MP02a/b已交付。当前MP03a：query依赖/IdfWeighter/Mapper/XML/recor
 
 ## 下一步
 
-1. 显式路径交付MP03a，记录当前CI实际结论。
-2. 执行MP03b召回输入、MP03c向量/语义、MP03d排序SQL迁移。
+1. 显式路径交付MP03b，记录当前CI实际结论。
+2. 执行MP03c向量/语义、MP03d排序SQL迁移。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt

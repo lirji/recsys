@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -27,12 +26,12 @@ public class I2iRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(I2iRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final RecentPositiveItemsSource recentItemsSource;
     private final StringRedisTemplate redis;
     private final RecallProperties props;
 
-    public I2iRecaller(JdbcTemplate jdbc, StringRedisTemplate redis, RecallProperties props) {
-        this.jdbc = jdbc;
+    public I2iRecaller(RecentPositiveItemsSource recentItemsSource, StringRedisTemplate redis, RecallProperties props) {
+        this.recentItemsSource = recentItemsSource;
         this.redis = redis;
         this.props = props;
     }
@@ -83,9 +82,6 @@ public class I2iRecaller implements ChannelRecaller {
     }
 
     private List<Long> recentItems(long userId, int n) {
-        return jdbc.queryForList(
-                "SELECT DISTINCT item_id FROM user_behavior WHERE user_id=? " +
-                "AND action IN ('CLICK','LIKE','PLAY','RATING') ORDER BY item_id DESC LIMIT ?",
-                Long.class, userId, n);
+        return recentItemsSource.recentPositiveItems(userId, n);
     }
 }
