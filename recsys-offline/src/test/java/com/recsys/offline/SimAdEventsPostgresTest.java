@@ -11,7 +11,6 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -31,6 +30,7 @@ class SimAdEventsPostgresTest {
     @Container static final PostgreSQLContainer<?> ZERO = new PostgreSQLContainer<>("postgres:16-alpine");
     @Container static final PostgreSQLContainer<?> ONE = new PostgreSQLContainer<>("postgres:16-alpine");
     static JdbcTemplate zero, one, events;
+    static TrackedDriverDataSource eventSource;
     static DataSource sharded;
     static SimAdEventsJob job;
     static SqlSessionTemplate eventSessions;
@@ -47,7 +47,8 @@ class SimAdEventsPostgresTest {
         zero.execute("CREATE SCHEMA simulation");
         String url = ZERO.getJdbcUrl() + (ZERO.getJdbcUrl().contains("?") ? "&" : "?")
                 + "currentSchema=simulation&ApplicationName=simulation-writer";
-        events = new JdbcTemplate(new DriverManagerDataSource(url, ZERO.getUsername(), ZERO.getPassword()));
+        eventSource = new TrackedDriverDataSource(url, ZERO.getUsername(), ZERO.getPassword());
+        events = new JdbcTemplate(eventSource);
         create(events, "ad_event", "id BIGSERIAL PRIMARY KEY,request_id TEXT,query TEXT,user_id BIGINT,ad_id BIGINT,position INT,event_type TEXT,pctr DOUBLE PRECISION,pctr_calib DOUBLE PRECISION,charged_price DOUBLE PRECISION,ts TIMESTAMP,creative_id BIGINT");
         String yaml;
         try (var in = SimAdEventsPostgresTest.class.getResourceAsStream("/sharding.yaml")) {
@@ -149,12 +150,20 @@ class SimAdEventsPostgresTest {
         assertWriterClosed();
     }
 
+    @Test void connectionProbeStillRejectsAnActuallyOpenJdbcConnection() throws Exception {
+        try (var connection = eventSource.getConnection()) {
+            assertFalse(connection.isClosed());
+            assertThrows(AssertionError.class, () -> eventSource.assertClosed(zero, "simulation-writer"));
+        }
+        assertWriterClosed();
+    }
+
     private static int count(String type) {
         return events.queryForObject("SELECT count(*) FROM ad_event WHERE event_type=?", Integer.class, type);
     }
 
     private static void assertWriterClosed() {
-        assertEquals(0, zero.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE application_name='simulation-writer'", Integer.class));
+        eventSource.assertClosed(zero, "simulation-writer");
     }
 
     private static HikariDataSource shardSource(PostgreSQLContainer<?> pg) {

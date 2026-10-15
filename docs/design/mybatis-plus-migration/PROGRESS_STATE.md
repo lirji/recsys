@@ -360,3 +360,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## 正反馈可空ID检查点
 
 见OFFLINE_NULL_ID_RESULT。旧JDBC对照已通过，迁移路径先复现全NULL行NPE，再经两ID投影COALESCE修复；全离线99/21类、全仓24 reactor测试编译通过。前序CI38749329611四门禁成功但build连接退出瞬时断言失败，先独立核实该观察时序再继续b7。
+
+## 广告模拟连接观察修正
+
+前序CI38749329611唯一失败为关闭后瞬时pg_stat_activity检查。新增真实Connection.isClosed立即检查与服务端5秒有界观察，故意打开连接的反向测试证明不掩盖泄漏；专项8项通过，见SIM_AD_CLOSE_PROBE_RESULT。产品未改；新CI实际结果待提交后核验。
