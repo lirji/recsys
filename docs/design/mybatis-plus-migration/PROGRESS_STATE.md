@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP05全部已交付，MP05b=4f928ebe。MP06a已交付63ae139b；MP06b DONE/PASS，30项测试及自然/混排各5项浏览器通过，准备交付后继续MP06c。
+`IN_PROGRESS`。整体计划已批准；MP00～MP05已交付，MP06a/b已交付，MP06c DONE/PASS（22项测试）。MP06整体完成，准备Git交付后继续MP07a。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP06c控制台查询完成，MP06整体DONE，见MP06C_RESULT。
 
 - MP06b自然回执事务迁移完成，见MP06B_RESULT。
 
@@ -46,13 +48,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP05已完成；MP06～MP15及追加统一错误码目标未完成。
+- MP00～MP06已完成；MP07～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP06b：自然回执Mapper/XML、Repository/配置、UUID类型处理及测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP06c：console依赖、画像/报表服务、Mapper/XML/配置及真实PG测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -71,8 +73,8 @@ MP01～MP03已交付。当前MP06b：自然回执Mapper/XML、Repository/配置�
 
 ## 下一步
 
-1. MP06a已交付63ae139b，MP06b已完成，准备Git交付。
-2. 继续MP06c～MP15，全部SQL完成后处理统一错误码。
+1. MP06b已交付0249ae19，MP06c已完成，准备Git交付。
+2. 继续MP07～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -116,3 +118,7 @@ DONE/PASS，见MP06A_RESULT。继续MP06b NaturalReceiptRepository/Configuration
 ## MP06b检查点
 
 DONE/PASS，见MP06B_RESULT；30项后端与自然/混排共10项真实浏览器验收通过。MP06c控制台UserProfileService有6组查询及逐项失败降级，ReportService有2组查询及JSON/CSV回退；应替换为可选具名Mapper，保留无数据库时空画像/CSV和NULL字段、毫秒时间语义。content已传递引入MP与共享主源配置，console需显式声明直接依赖及精确扫描；新增真实PG测试先保护旧实现。
+
+## MP06c检查点
+
+DONE/PASS，见MP06C_RESULT；旧8、新22测试及24 reactor编译通过。MP07a涉及DbSeenItemsSource、ColdStartDetector、PersonalizationScorer、ExposureLogger：主源行为，派生源用户/物品向量；现有ExposureLoggerTest只校验同步Redis归因，需真实PG保护批次约束失败整批不落、value/position一基与异步排空。与MP05a同类批处理迁移可用foreach多VALUES，但必须先验证旧行为。复用现有主/派生工厂，精确引擎Mapper扫描；RecommendIntegrationTest提供真实pgvector+Redis宿主验证。

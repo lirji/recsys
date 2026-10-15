@@ -4,11 +4,10 @@ import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.console.persistence.mapper.primary.UserProfileMapper;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,7 +18,7 @@ import java.util.Set;
  * 用户 360:从主库(app_user / user_behavior / user_embedding,console 已连的 recsys 库)聚合静态画像 + 行为,
  * 并从 Redis 补在线实时态(rt:user / rt:user:seq / seen / cache:rec)。
  *
- * <p>优雅降级:{@code jdbc==null} 或查询异常 → DB 部分返回空、exists=false;Redis 不可达 → realtime.available=false。
+ * <p>优雅降级:Mapper缺失或单项查询异常时该部分为空，其他已取得结果保留；Redis不可达时realtime.available=false。
  * 全部只读,不写任何存储。
  */
 @Service
@@ -30,15 +29,17 @@ public class UserProfileService {
     private static final int SEQ_LIMIT = 20;
 
     @Nullable
-    private final JdbcTemplate jdbc;
+    private final UserProfileMapper mapper;
     @Nullable
     private final StringRedisTemplate redis;
 
-    public UserProfileService(@Nullable JdbcTemplate jdbc, @Nullable StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 保持数据库和Redis依赖可选，独立使用服务时也能返回完整降级视图。 */
+    public UserProfileService(@Nullable UserProfileMapper mapper, @Nullable StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 各数据源独立降级，画像存在性不受其他可选查询失败影响。 */
     public UserProfileView get(long userId) {
         String profileJson = null;
         Long profileUpdatedAt = null;
@@ -49,31 +50,21 @@ public class UserProfileService {
         List<String> buckets = List.of();
         List<UserProfileView.BehaviorRow> recent = List.of();
 
-        if (jdbc != null) {
+        if (mapper != null) {
             try {
-                Object[] pr = jdbc.query(
-                        "SELECT profile::text AS profile, updated_at FROM app_user WHERE user_id = ?",
-                        rs -> rs.next()
-                                ? new Object[]{rs.getString("profile"), rs.getTimestamp("updated_at")}
-                                : null,
-                        userId);
-                if (pr != null) {
+                var profile = mapper.profile(userId);
+                if (profile != null) {
                     profileFound = true;
-                    profileJson = (String) pr[0];
-                    Timestamp ts = (Timestamp) pr[1];
-                    profileUpdatedAt = ts != null ? ts.getTime() : null;
+                    profileJson = profile.profile();
+                    profileUpdatedAt = profile.updatedAt() == null ? null : profile.updatedAt().getTime();
                 }
             } catch (Exception e) {
                 log.debug("查 app_user {} 失败: {}", userId, e.getMessage());
             }
-            hasEmbedding = queryBool("SELECT EXISTS(SELECT 1 FROM user_embedding WHERE user_id = ?)", userId);
+            hasEmbedding = queryHasEmbedding(userId);
             actionCounts = queryActionCounts(userId);
-            distinctCategories = queryInt(
-                    "SELECT count(DISTINCT i.category) FROM user_behavior b "
-                            + "JOIN item i ON i.item_id = b.item_id WHERE b.user_id = ?", userId);
-            buckets = queryStrings(
-                    "SELECT DISTINCT bucket FROM user_behavior "
-                            + "WHERE user_id = ? AND bucket IS NOT NULL AND bucket <> '' ORDER BY bucket", userId);
+            distinctCategories = queryDistinctCategories(userId);
+            buckets = queryBuckets(userId);
             recent = queryRecent(userId);
         }
 
@@ -88,29 +79,27 @@ public class UserProfileService {
 
     // ---------- DB ----------
 
-    private boolean queryBool(String sql, long userId) {
+    private boolean queryHasEmbedding(long userId) {
         try {
-            Boolean b = jdbc.queryForObject(sql, Boolean.class, userId);
-            return Boolean.TRUE.equals(b);
+            return mapper.hasEmbedding(userId);
         } catch (Exception e) {
             log.debug("bool 查询失败: {}", e.getMessage());
             return false;
         }
     }
 
-    private int queryInt(String sql, long userId) {
+    private int queryDistinctCategories(long userId) {
         try {
-            Integer n = jdbc.queryForObject(sql, Integer.class, userId);
-            return n == null ? 0 : n;
+            return mapper.distinctCategories(userId);
         } catch (Exception e) {
             log.debug("int 查询失败: {}", e.getMessage());
             return 0;
         }
     }
 
-    private List<String> queryStrings(String sql, long userId) {
+    private List<String> queryBuckets(long userId) {
         try {
-            return jdbc.query(sql, (rs, i) -> rs.getString(1), userId);
+            return mapper.buckets(userId);
         } catch (Exception e) {
             log.debug("字符串列查询失败: {}", e.getMessage());
             return List.of();
@@ -120,11 +109,10 @@ public class UserProfileService {
     private Map<String, Long> queryActionCounts(long userId) {
         Map<String, Long> out = new LinkedHashMap<>();
         try {
-            jdbc.query("SELECT action, count(*) AS c FROM user_behavior WHERE user_id = ? GROUP BY action ORDER BY c DESC",
-                    rs -> {
-                        String action = rs.getString("action");
-                        out.put(action == null ? "unknown" : action, rs.getLong("c"));
-                    }, userId);
+            mapper.actionCounts(userId, context -> {
+                var row = context.getResultObject();
+                out.put(row.action() == null ? "unknown" : row.action(), row.count());
+            });
         } catch (Exception e) {
             log.debug("action 聚合失败: {}", e.getMessage());
         }
@@ -133,24 +121,10 @@ public class UserProfileService {
 
     private List<UserProfileView.BehaviorRow> queryRecent(long userId) {
         try {
-            return jdbc.query(
-                    "SELECT item_id, action, ts, bucket, position, scene, value FROM user_behavior "
-                            + "WHERE user_id = ? ORDER BY ts DESC LIMIT " + RECENT_LIMIT,
-                    (rs, i) -> {
-                        Timestamp ts = rs.getTimestamp("ts");
-                        int pos = rs.getInt("position");
-                        Integer position = rs.wasNull() ? null : pos;
-                        double val = rs.getDouble("value");
-                        Double value = rs.wasNull() ? null : val;
-                        return new UserProfileView.BehaviorRow(
-                                rs.getLong("item_id"),
-                                rs.getString("action"),
-                                ts != null ? ts.getTime() : 0L,
-                                rs.getString("bucket"),
-                                position,
-                                rs.getString("scene"),
-                                value);
-                    }, userId);
+            return mapper.recent(userId, RECENT_LIMIT).stream().map(row ->
+                    new UserProfileView.BehaviorRow(row.itemId(), row.action(),
+                            row.ts() == null ? 0L : row.ts().getTime(), row.bucket(), row.position(), row.scene(), row.value()))
+                    .toList();
         } catch (Exception e) {
             log.debug("近期行为查询失败: {}", e.getMessage());
             return List.of();

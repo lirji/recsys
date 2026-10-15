@@ -103,8 +103,8 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/console/report/ReportService.java](../../../recsys-console/src/main/java/com/recsys/console/report/ReportService.java) | 12 | 2 | TODO |
-| [com/recsys/console/user/UserProfileService.java](../../../recsys-console/src/main/java/com/recsys/console/user/UserProfileService.java) | 7 | 7 | TODO |
+| [com/recsys/console/report/ReportService.java](../../../recsys-console/src/main/java/com/recsys/console/report/ReportService.java) | 12 | 2 | DONE MP06c |
+| [com/recsys/console/user/UserProfileService.java](../../../recsys-console/src/main/java/com/recsys/console/user/UserProfileService.java) | 7 | 7 | DONE MP06c |
 
 ### recsys-content
 
@@ -291,3 +291,5 @@
 机械关键词扫描只能发现遗漏；最终还需调用链、Mapper 实际注册/资源打包和真实业务测试共同证明覆盖。
 
 MP06b：NaturalReceiptRepository/Configuration → `behavior.persistence.mapper.primary.NaturalReceiptMapper` + `mapper/behavior/primary/NaturalReceiptMapper.xml`；共享UUID handler；证据见MP06B_RESULT。
+
+MP06c：UserProfileService/ReportService → `console.persistence.mapper.primary.{UserProfileMapper,ReportMapper}` + `mapper/console/primary/*Mapper.xml`；console生产Java SQL已核销，证据见MP06C_RESULT。

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.console.persistence.mapper.primary.UserProfileMapper">
+    <resultMap id="profile" type="com.recsys.console.persistence.mapper.primary.UserProfileMapper$Profile">
+        <constructor><arg column="user_id" javaType="_long"/><arg column="profile" javaType="string"/>
+            <arg column="updated_at" javaType="java.sql.Timestamp"/></constructor>
+    </resultMap>
+    <resultMap id="count" type="com.recsys.console.persistence.mapper.primary.UserProfileMapper$ActionCount">
+        <constructor><arg column="action" javaType="string"/><arg column="c" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="behavior" type="com.recsys.console.persistence.mapper.primary.UserProfileMapper$Behavior">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="action" javaType="string"/>
+            <arg column="ts" javaType="java.sql.Timestamp"/><arg column="bucket" javaType="string"/>
+            <arg column="position" javaType="java.lang.Integer"/><arg column="scene" javaType="string"/>
+            <arg column="value" javaType="java.lang.Double"/></constructor>
+    </resultMap>
+    <select id="profile" resultMap="profile">
+        SELECT user_id, profile::text AS profile, updated_at FROM app_user WHERE user_id=#{userId}
+    </select>
+    <select id="hasEmbedding" resultType="boolean">SELECT EXISTS(SELECT 1 FROM user_embedding WHERE user_id=#{userId})</select>
+    <select id="distinctCategories" resultType="int">
+        SELECT count(DISTINCT i.category) FROM user_behavior b JOIN item i ON i.item_id=b.item_id WHERE b.user_id=#{userId}
+    </select>
+    <select id="buckets" resultType="string">
+        SELECT DISTINCT bucket FROM user_behavior WHERE user_id=#{userId} AND bucket IS NOT NULL AND bucket &lt;&gt; '' ORDER BY bucket
+    </select>
+    <select id="actionCounts" resultMap="count">
+        SELECT action, count(*) AS c FROM user_behavior WHERE user_id=#{userId} GROUP BY action ORDER BY c DESC
+    </select>
+    <select id="recent" resultMap="behavior">
+        <!-- item_id原getLong(NULL)=0；保留该兼容语义，也避免全NULL行为被映射为null对象。 -->
+        SELECT COALESCE(item_id,0) AS item_id, action, ts, bucket, position, scene, value
+        FROM user_behavior WHERE user_id=#{userId} ORDER BY ts DESC LIMIT #{limit}
+    </select>
+</mapper>

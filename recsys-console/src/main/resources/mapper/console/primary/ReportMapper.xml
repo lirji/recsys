@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.console.persistence.mapper.primary.ReportMapper">
+    <resultMap id="directory" type="com.recsys.console.persistence.mapper.primary.ReportMapper$DirectoryEntry">
+        <constructor><arg column="category" javaType="string"/><arg column="name" javaType="string"/>
+            <arg column="ts" javaType="string"/><arg column="size_bytes" javaType="_long"/>
+            <arg column="created_at" javaType="java.sql.Timestamp"/></constructor>
+    </resultMap>
+    <resultMap id="content" type="com.recsys.console.persistence.mapper.primary.ReportMapper$Content">
+        <constructor><arg column="category" javaType="string"/><arg column="columns_json" javaType="string"/>
+            <arg column="rows_json" javaType="string"/></constructor>
+    </resultMap>
+    <select id="list" resultMap="directory">
+        SELECT category, name, ts, COALESCE(size_bytes,0) AS size_bytes, created_at FROM eval_report ORDER BY created_at DESC
+    </select>
+    <select id="read" resultMap="content">
+        SELECT category, columns_json, rows_json FROM eval_report WHERE name=#{name}
+    </select>
+</mapper>

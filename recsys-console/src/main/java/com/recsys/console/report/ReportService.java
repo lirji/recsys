@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.console.persistence.mapper.primary.ReportMapper;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -56,18 +56,20 @@ public class ReportService {
 
     private final Path evalDir;
     @Nullable
-    private final JdbcTemplate jdbc;
+    private final ReportMapper reports;
     private final ObjectMapper mapper;
 
+    /** 报表Mapper可选，未装配数据库时仍支持原CSV读取入口。 */
     public ReportService(@Value("${recsys.console.eval-dir:../recsys-offline/eval}") String evalDir,
-                         @Nullable JdbcTemplate jdbc,
+                         @Nullable ReportMapper reports,
                          ObjectMapper mapper) {
         this.evalDir = Path.of(evalDir).toAbsolutePath().normalize();
-        this.jdbc = jdbc;
+        this.reports = reports;
         this.mapper = mapper;
         log.info("离线报表: DB(eval_report)优先, 回退目录 {}", this.evalDir);
     }
 
+    /** 数据库有报表时优先返回，缺失或失败时沿用本地CSV目录。 */
     public List<ReportFileInfo> list() {
         List<ReportFileInfo> fromDb = listDb();
         if (fromDb != null && !fromDb.isEmpty()) {
@@ -94,6 +96,7 @@ public class ReportService {
         return null;
     }
 
+    /** 文件名先经过允许列表校验，数据库JSON不可用时回退同名CSV。 */
     public ReportTable read(String name) {
         if (name == null || !SAFE_NAME.matcher(name).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "非法文件名");
@@ -109,16 +112,13 @@ public class ReportService {
 
     @Nullable
     private List<ReportFileInfo> listDb() {
-        if (jdbc == null) {
+        if (reports == null) {
             return null;
         }
         try {
-            return jdbc.query(
-                    "SELECT category, name, ts, size_bytes, created_at FROM eval_report ORDER BY created_at DESC",
-                    (rs, i) -> new ReportFileInfo(
-                            rs.getString("category"), rs.getString("name"), rs.getString("ts"),
-                            rs.getLong("size_bytes"),
-                            rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").getTime() : 0L));
+            return reports.list().stream().map(row -> new ReportFileInfo(
+                    row.category(), row.name(), row.ts(), row.sizeBytes(),
+                    row.createdAt() == null ? 0L : row.createdAt().getTime())).toList();
         } catch (Exception e) {
             log.debug("eval_report 读取失败,回退 CSV: {}", e.getMessage());
             return null;
@@ -127,24 +127,19 @@ public class ReportService {
 
     @Nullable
     private ReportTable readDb(String name) {
-        if (jdbc == null) {
+        if (reports == null) {
             return null;
         }
         try {
-            return jdbc.query(
-                    "SELECT category, columns_json, rows_json FROM eval_report WHERE name = ?",
-                    rs -> {
-                        if (!rs.next()) {
-                            return null;
-                        }
-                        try {
-                            List<String> columns = mapper.readValue(rs.getString("columns_json"), COLS);
-                            List<List<String>> rows = mapper.readValue(rs.getString("rows_json"), ROWS);
-                            return new ReportTable(name, rs.getString("category"), columns, rows);
-                        } catch (IOException je) {
-                            throw new IllegalStateException("解析 eval_report JSON 失败", je);
-                        }
-                    }, name);
+            var row = reports.read(name);
+            if (row == null) return null;
+            try {
+                List<String> columns = mapper.readValue(row.columnsJson(), COLS);
+                List<List<String>> rows = mapper.readValue(row.rowsJson(), ROWS);
+                return new ReportTable(name, row.category(), columns, rows);
+            } catch (IOException ex) {
+                throw new IllegalStateException("解析 eval_report JSON 失败", ex);
+            }
         } catch (Exception e) {
             log.debug("eval_report 单条读取失败,回退 CSV: {}", e.getMessage());
             return null;
