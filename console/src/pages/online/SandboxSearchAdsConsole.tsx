@@ -336,11 +336,24 @@ function SandboxPage() {
             </Form.Item>
           </Space>
           <Space wrap>
-            <Button type="primary" htmlType="submit" loading={busy} disabled={!identity || pending}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              aria-label="新交付"
+              aria-busy={busy}
+              loading={busy}
+              disabled={!identity || pending}
+            >
               新交付
             </Button>
             {intent && (
-              <Button loading={busy} disabled={!identity} onClick={() => execute(intent)}>
+              <Button
+                aria-label="恢复原操作"
+                aria-busy={busy}
+                loading={busy}
+                disabled={!identity}
+                onClick={() => execute(intent)}
+              >
                 恢复原操作
               </Button>
             )}
