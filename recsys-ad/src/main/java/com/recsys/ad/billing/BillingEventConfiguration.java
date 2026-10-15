@@ -12,7 +12,6 @@ import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
@@ -60,9 +59,9 @@ public class BillingEventConfiguration {
     @Conditional(SandboxOwnerCondition.class)
     @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.events.projection-enabled"},havingValue="true")
     static class Projection {
-        @Bean BillingProjectionService billingProjectionService(@Qualifier("adDbJdbc") JdbcTemplate jdbc,
+        @Bean BillingProjectionService billingProjectionService(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,
                 @Qualifier("adDbDataSource") DataSource ds,BillingEventCodec codec,@Qualifier("billingOutboxRepository") BillingOutboxRepository verifiedSchema) {
-            return new BillingProjectionService(new BillingProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
+            return new BillingProjectionService(new BillingProjectionRepository(sessions),codec,BudgetConfiguration.transactions(ds,5));
         }
         @Bean(initMethod="start",destroyMethod="stop") BillingProjectionConsumer billingProjectionConsumer(BillingProjectionService service,Environment env,MeterRegistry metrics) {
             var properties=consumerProperties(env);

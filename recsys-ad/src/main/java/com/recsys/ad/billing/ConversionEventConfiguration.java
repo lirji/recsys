@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
@@ -59,9 +58,9 @@ public class ConversionEventConfiguration {
     @Conditional(SandboxOwnerCondition.class)
     @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.conversion-events.projection-enabled"},havingValue="true")
     static class Projection {
-        @Bean ConversionProjectionService conversionProjectionService(@Qualifier("adDbJdbc") JdbcTemplate jdbc,
+        @Bean ConversionProjectionService conversionProjectionService(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,
                 @Qualifier("adDbDataSource") DataSource ds,ConversionEventCodec codec,@Qualifier("conversionOutboxRepository") BillingOutboxRepository verifiedSchema) {
-            return new ConversionProjectionService(new ConversionProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
+            return new ConversionProjectionService(new ConversionProjectionRepository(sessions),codec,BudgetConfiguration.transactions(ds,5));
         }
         @Bean(initMethod="start",destroyMethod="stop") BillingProjectionConsumer conversionProjectionConsumer(ConversionProjectionService service,Environment env,MeterRegistry metrics) {
             var properties=consumerProperties(env);

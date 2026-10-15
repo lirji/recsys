@@ -89,7 +89,7 @@ class BillingEventsPostgresTest {
     @Test void failureAfterInboxOrAggregateRollsBackBothAndCanResume() {
         var e=f.event(f.capture(1,"0.345678"));
         for(boolean afterAggregate:List.of(false,true)) {
-            var broken=new BillingProjectionRepository(f.jdbc) {
+            var broken=new BillingProjectionRepository(f.sessions) {
                 @Override public void accumulate(BillingEventCodec.Validated value) {
                     if(afterAggregate)super.accumulate(value);
                     throw new IllegalStateException("injected");
@@ -100,7 +100,7 @@ class BillingEventsPostgresTest {
             assertEquals(0,f.count());assertEquals(0,f.total().signum());
         }
         assertTrue(f.projection.apply(e.key(),e.payload()));assertEquals("0.345678",f.total().toPlainString());
-        var restart=new BillingProjectionService(new BillingProjectionRepository(f.jdbc),f.codec,BudgetConfiguration.transactions(f.ds,5));
+        var restart=new BillingProjectionService(new BillingProjectionRepository(f.sessions),f.codec,BudgetConfiguration.transactions(f.ds,5));
         assertFalse(restart.apply(e.key(),e.payload()));
     }
     @Test void changedPayloadAndAlternativeEventIdentityFailWithoutChangingTotals() throws Exception {

@@ -56,7 +56,7 @@ class BillingEventsFixture {
         receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),preparations,reservations,quotes,tokens,
                 BudgetConfiguration.transactions(ds,5),true);
         outbox=new BillingOutboxRepository(sessions);outbox.verifySchema();
-        projection=new BillingProjectionService(new BillingProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
+        projection=new BillingProjectionService(new BillingProjectionRepository(sessions),codec,BudgetConfiguration.transactions(ds,5));
     }
     LocalDate today(){return reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();}
     UUID capture(long advertiser,String amount) {

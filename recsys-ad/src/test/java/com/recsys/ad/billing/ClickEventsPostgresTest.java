@@ -83,7 +83,7 @@ class ClickEventsPostgresTest {
     @Test void failureAfterInboxOrAggregateRollsBackBothAndCanResume() {
         var e=f.event(f.capture(1,"0.345678"));
         for(boolean afterAggregate:List.of(false,true)) {
-            var broken=new ClickProjectionRepository(f.jdbc) {
+            var broken=new ClickProjectionRepository(f.cpm.sessions) {
                 @Override public void accumulate(ClickEventCodec.Validated value) {
                     if(afterAggregate)super.accumulate(value);
                     throw new IllegalStateException("injected");
@@ -94,7 +94,7 @@ class ClickEventsPostgresTest {
             assertEquals(0,f.count());assertEquals(0,f.total().signum());
         }
         assertTrue(f.projection.apply(e.key(),e.payload()));assertEquals("0.345678",f.total().toPlainString());
-        var restart=new ClickProjectionService(new ClickProjectionRepository(f.jdbc),f.codec,BudgetConfiguration.transactions(f.ds,5));
+        var restart=new ClickProjectionService(new ClickProjectionRepository(f.cpm.sessions),f.codec,BudgetConfiguration.transactions(f.ds,5));
         assertFalse(restart.apply(e.key(),e.payload()));
     }
     @Test void changedPayloadAndAlternativeEventIdentityFailWithoutChangingTotals() throws Exception {

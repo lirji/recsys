@@ -187,7 +187,7 @@ class SandboxExposureBrowserFixtureTest {
             scheduler.setPoolSize(1);scheduler.setThreadNamePrefix("browser-outbox-");scheduler.initialize();
             relay=new BillingOutboxJob(outbox,new BillingOutboxRelay(outbox,publisher,codec,metrics),scheduler,metrics);
             consumer=new BillingProjectionConsumer(()->new KafkaConsumer<>(BillingEventConfiguration.consumerProperties(env)),
-                    new BillingProjectionService(new BillingProjectionRepository(ad),codec,BudgetConfiguration.transactions(adDs,5)),topic,metrics);
+                    new BillingProjectionService(new BillingProjectionRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml"))),codec,BudgetConfiguration.transactions(adDs,5)),topic,metrics);
         }
         void startEvents(){relay.start();consumer.start();}
         @Override public void close(){consumer.stop();relay.stop();scheduler.shutdown();publisher.close();}

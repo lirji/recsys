@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
@@ -59,9 +58,9 @@ public class ClickEventConfiguration {
     @Conditional(SandboxOwnerCondition.class)
     @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.click-events.projection-enabled"},havingValue="true")
     static class Projection {
-        @Bean ClickProjectionService clickProjectionService(@Qualifier("adDbJdbc") JdbcTemplate jdbc,
+        @Bean ClickProjectionService clickProjectionService(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,
                 @Qualifier("adDbDataSource") DataSource ds,ClickEventCodec codec,@Qualifier("clickOutboxRepository") BillingOutboxRepository verifiedSchema) {
-            return new ClickProjectionService(new ClickProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
+            return new ClickProjectionService(new ClickProjectionRepository(sessions),codec,BudgetConfiguration.transactions(ds,5));
         }
         @Bean(initMethod="start",destroyMethod="stop") BillingProjectionConsumer clickProjectionConsumer(ClickProjectionService service,Environment env,MeterRegistry metrics) {
             var properties=consumerProperties(env);

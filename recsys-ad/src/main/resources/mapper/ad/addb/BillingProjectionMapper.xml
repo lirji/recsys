@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.BillingProjectionMapper">
+    <insert id="insert">
+        INSERT INTO ad_billing_projection_fact(event_id,qualification_id,receipt_id,advertiser_id,budget_date,amount,payload_hash,payload_json)
+        VALUES(#{eventId},#{qualificationId},#{receiptId},#{advertiserId},#{budgetDate},#{amount},#{payloadHash},#{payloadJson}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="hashes" resultType="string">
+        SELECT payload_hash FROM ad_billing_projection_fact WHERE event_id=#{eventId}
+    </select>
+    <insert id="accumulate">
+        INSERT INTO ad_billing_projection_daily(advertiser_id,budget_date,impression_count,charged_amount)
+        VALUES(#{advertiserId},#{budgetDate},1,#{amount})
+        ON CONFLICT(advertiser_id,budget_date) DO UPDATE SET
+            impression_count=ad_billing_projection_daily.impression_count+1,
+            charged_amount=ad_billing_projection_daily.charged_amount+excluded.charged_amount,
+            updated_at=clock_timestamp()
+    </insert>
+</mapper>

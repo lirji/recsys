@@ -45,7 +45,7 @@ class ConversionEventsFixture {
         settlement=new ConversionSettlementService(new ConversionSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true);
         outbox=new BillingOutboxRepository(cpm.sessions,BillingOutboxRepository.EventFamily.CONVERSION);outbox.verifySchema();
-        projection=new ConversionProjectionService(new ConversionProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
+        projection=new ConversionProjectionService(new ConversionProjectionRepository(cpm.sessions),codec,BudgetConfiguration.transactions(ds,5));
     }
     UUID capture(long advertiser,String amount) { return capture(advertiser,amount,UUID.randomUUID()); }
     UUID capture(long advertiser,String amount,UUID businessEvent) {

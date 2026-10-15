@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a DONE/PASS；原生页签故障修复并通过14项浏览器，准备正常Git交付后继续MP11b。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b DONE/PASS，准备Git交付后继续MP11c只读对账。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -224,3 +224,15 @@ MP10b CI38734120451资金链/自然/security成功，但混排原生hidden场景
 三Repository改用SqlSessionTemplate，从实际factory取DataSource供Service同事务身份校验；Billing/Click原来没有单句超时，保持XML不另加默认；Conversion原单句5秒要保留。三个EventConfiguration的Projection装配改sessions后可移除JdbcTemplate引用。引用：三EventsFixture（共享cpm.sessions已MP11a引入）、三EventsPostgresTest故障子类/restart、SandboxExposureBrowserFixtureTest；原PG测试已覆盖Inbox/汇总前后失败回滚、并发重复、反序版本和身份冲突，三族Kafka测试涵盖ACK/位点窗口和重启。新增同URL不同DataSource拒绝保护应在旧实现先跑，可放ConversionEventsPostgresTest一次覆盖三族；构造测试fixture仍用实际同一DataSource。之后MP11c ReconciliationRepository 只读RR与实际资源/超时独立验证，不更改V016。
 
 原生页签修复本地DONE/PASS，独立提交34a2a7a7，三套真实浏览器混排5/自然5/sandbox4均通过；类型/Prettier/ESLint及联合hygiene通过。MP11a产品迁移全部验证完成，随后独立提交并与修复一起ff推main，继续MP11b。
+
+## MP11b迁移前保护
+
+MP11a=b8e01cc218f450842b6328cf9f415fed7aa37239和原生页签修复34a2a7a7已正常合并/push main。ConversionEventsPostgresTest新增三族投影实际DataSource身份检查：同URL不同实例的事务管理器都拒绝；旧路径运行/tmp/recsys-mp11b-before.log。尚未改投影产品代码。
+
+MP11b旧路径14项PG保护通过；三族共10条SQL已迁移独立Mapper/XML，所有构造调用已适配；当前专项（含对账）/tmp/recsys-mp11b-after.log运行中。19源文件指纹fbc94a42c07d74a00da3d4adca642b715f25b79754839ccbf2c7bd849a56a2ac，清单/tmp/recsys-mp11b-source-paths.json。Billing/Click无单句timeout、Conversion 5秒差异已静态核对；真实事务身份以实际工厂DataSource为准。
+
+## MP11b最终验证
+
+DONE/PASS，见MP11B_RESULT；19源文件指纹fbc94a42c07d74a00da3d4adca642b715f25b79754839ccbf2c7bd849a56a2ac。旧14项、新三族事件与对账72项/11类、推荐宿主3项和全仓24 reactor编译全部通过；hygiene无阻塞，45历史SQL/8保护文件不变。MP11a CI38735452724浏览器/自然/security均SUCCESS，build/money仍在运行；console-ci38735452734全部SUCCESS，原生页签修复已通过远程浏览器。
+
+下一片MP11c：ReconciliationRepository/Configuration及ReconciliationPostgresTest所有构造入口改实际sessions；现有11项真实PG已在本片72项中通过，可作为旧基线。FamilySummary的20个原始字段使用显式record/resultMap，BigDecimal再由原decimal函数转文本，两个可空时间保留。固定三族表与obligations选择进入XML，CPM无ledgerId核验、CPC按quote.advertiser过滤、CPA按settlement.advertiser过滤差异保留；scope绑定、全量身份/零金额笔数及缺行检查不变。observedAt保持transaction_timestamp，所有查询5秒、STATEMENT缓存，Service强制同源/只读/RR/REQUIRES_NEW/5秒配置不改；绝不恢复暂停的S13B任务或重写V016。全部SQL迁移后跑本片PG与完整资金链（预期378项），宿主/compile/hygiene按实际结果记录。

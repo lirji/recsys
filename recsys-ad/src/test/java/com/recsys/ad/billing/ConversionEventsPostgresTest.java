@@ -13,6 +13,17 @@ class ConversionEventsPostgresTest {
     @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
     ConversionEventsFixture f;
     @BeforeEach void setup() throws Exception {f=new ConversionEventsFixture(PG);}
+    /** 相同URL不等于同一事务资源，三族投影都必须拒绝另一个DataSource实例。 */
+    @Test void everyProjectionUsesActualDataSourceIdentityForItsTransaction() {
+        var other=new org.springframework.jdbc.datasource.DriverManagerDataSource(f.ds.getUrl(),PG.getUsername(),PG.getPassword());
+        var wrong=BudgetConfiguration.transactions(other,5);
+        var cpm=new BillingProjectionRepository(f.cpm.sessions);var click=new ClickProjectionRepository(f.cpm.sessions);
+        var conversion=new ConversionProjectionRepository(f.cpm.sessions);
+        assertSame(f.ds,cpm.dataSource());assertSame(f.ds,click.dataSource());assertSame(f.ds,conversion.dataSource());
+        assertThrows(IllegalArgumentException.class,()->new BillingProjectionService(cpm,f.cpm.codec,wrong));
+        assertThrows(IllegalArgumentException.class,()->new ClickProjectionService(click,f.clicks.codec,wrong));
+        assertThrows(IllegalArgumentException.class,()->new ConversionProjectionService(conversion,f.codec,wrong));
+    }
     @Test void threeEventFamiliesShareAccountButKeepIndependentProjectionAndOutbox() {
         var cpm=f.cpm.event(f.cpm.capture(1,"0.200000")); var conversion=f.event(f.capture(1,"0.123456"));
         var oldClick=f.clicks.event(f.clicks.capture(1,"0.050000"));
@@ -97,7 +108,7 @@ class ConversionEventsPostgresTest {
     @Test void failureAfterInboxOrAggregateRollsBackBothAndCanResume() {
         var e=f.event(f.capture(1,"0.345678"));
         for(boolean afterAggregate:List.of(false,true)) {
-            var broken=new ConversionProjectionRepository(f.jdbc) {
+            var broken=new ConversionProjectionRepository(f.cpm.sessions) {
                 @Override public void accumulate(ConversionEventCodec.Validated value) {
                     if(afterAggregate)super.accumulate(value);
                     throw new IllegalStateException("injected");
@@ -108,7 +119,7 @@ class ConversionEventsPostgresTest {
             assertEquals(0,f.count());assertEquals(0,f.total().signum());
         }
         assertTrue(f.projection.apply(e.key(),e.payload()));assertEquals("0.345678",f.total().toPlainString());
-        var restart=new ConversionProjectionService(new ConversionProjectionRepository(f.jdbc),f.codec,BudgetConfiguration.transactions(f.ds,5));
+        var restart=new ConversionProjectionService(new ConversionProjectionRepository(f.cpm.sessions),f.codec,BudgetConfiguration.transactions(f.ds,5));
         assertFalse(restart.apply(e.key(),e.payload()));
     }
     @Test void changedPayloadAndAlternativeEventIdentityFailWithoutChangingTotals() throws Exception {
