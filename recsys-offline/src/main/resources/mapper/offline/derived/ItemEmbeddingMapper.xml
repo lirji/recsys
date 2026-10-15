@@ -13,4 +13,15 @@
                #{model,jdbcType=VARCHAR})
         ON CONFLICT(item_id) DO UPDATE SET embedding=EXCLUDED.embedding,model=EXCLUDED.model
     </insert>
+    <select id="itemIds" resultType="java.lang.Long" useCache="false">
+        SELECT item_id FROM item_embedding
+    </select>
+    <select id="vectorText" resultType="java.lang.String" useCache="false">
+        SELECT embedding::text FROM item_embedding WHERE item_id=#{itemId}
+    </select>
+    <update id="updateExisting">
+        UPDATE item_embedding
+        SET embedding=#{vector,jdbcType=OTHER,typeHandler=org.apache.ibatis.type.ObjectTypeHandler},model=#{model,jdbcType=VARCHAR}
+        WHERE item_id=#{itemId}
+    </update>
 </mapper>

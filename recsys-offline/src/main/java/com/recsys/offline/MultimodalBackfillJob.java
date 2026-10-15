@@ -5,7 +5,7 @@ import com.recsys.common.embedding.EmbeddingClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -33,20 +33,22 @@ public class MultimodalBackfillJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(MultimodalBackfillJob.class);
     private static final String[] EXTS = {"jpg", "jpeg", "png"};
 
-    private final JdbcTemplate jdbc;
+    private final ItemEmbeddingMapper mapper;
     private final EmbeddingClient embeddingClient;
 
-    public MultimodalBackfillJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                 JdbcTemplate jdbc, EmbeddingClient embeddingClient) {   // #3:item_embedding 走派生库
-        this.jdbc = jdbc;
+    /** 复用派生库向量Mapper，图像计算仍由原EmbeddingClient负责。 */
+    public MultimodalBackfillJob(ItemEmbeddingMapper mapper, EmbeddingClient embeddingClient) {
+        this.mapper = mapper;
         this.embeddingClient = embeddingClient;
     }
 
+    /** 保持原多模态回填命令名。 */
     @Override
     public String name() {
         return "backfill-multimodal";
     }
 
+    /** 保持成功融合计数与逐物品停止边界，不引入整作业事务。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String posterDir = strArg(args, "poster-dir", "posters");
@@ -60,7 +62,7 @@ public class MultimodalBackfillJob implements OfflineJob {
             return;
         }
         // 只处理有文本向量的物品(融合的另一半),避免给无向量物品凭空造多模态向量
-        List<Long> withText = jdbc.queryForList("SELECT item_id FROM item_embedding", Long.class);
+        List<Long> withText = mapper.itemIds();
         if (withText.isEmpty()) {
             log.warn("item_embedding 为空,先跑 backfill-embedding");
             return;
@@ -139,9 +141,7 @@ public class MultimodalBackfillJob implements OfflineJob {
     }
 
     private float[] loadEmbedding(long itemId) {
-        List<String> rows = jdbc.query(
-                "SELECT embedding::text FROM item_embedding WHERE item_id=?",
-                (rs, n) -> rs.getString(1), itemId);
+        List<String> rows = mapper.vectorText(itemId);
         if (rows.isEmpty() || rows.get(0) == null) {
             return null;
         }
@@ -157,14 +157,8 @@ public class MultimodalBackfillJob implements OfflineJob {
     private void upsert(long itemId, float[] vec) {
         PGvector pv = new PGvector(vec);
         String model = embeddingClient.modelName() + "+img";
-        jdbc.update(con -> {
-            var ps = con.prepareStatement(
-                    "UPDATE item_embedding SET embedding=?, model=? WHERE item_id=?");
-            ps.setObject(1, pv);
-            ps.setString(2, model);
-            ps.setLong(3, itemId);
-            return ps;
-        });
+        // 原操作仅UPDATE：图像计算期间若该行被删除，不能重新创建已退出的向量。
+        mapper.updateExisting(itemId, pv, model);
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {

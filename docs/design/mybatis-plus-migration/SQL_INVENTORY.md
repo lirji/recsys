@@ -147,7 +147,7 @@
 | [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | TODO |
 | [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
-| [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | DONE MP13c2：derived仅UPDATE融合；见MP13C2_RESULT |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
 | [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1/b5：四源工厂/Mapper扫描及真实种子路由完成，旧JdbcTemplate待其余作业退出 |
 | [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
