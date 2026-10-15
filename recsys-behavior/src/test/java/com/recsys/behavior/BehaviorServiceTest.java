@@ -10,11 +10,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.behavior.persistence.mapper.primary.BehaviorMapper;
+import com.recsys.behavior.persistence.model.BehaviorWrite;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
@@ -25,19 +25,15 @@ class BehaviorServiceTest {
 
     @SuppressWarnings("unchecked")
     private Fixture fixture() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        BehaviorMapper behavior = mock(BehaviorMapper.class);
         ObjectProvider<KafkaTemplate<String, String>> kafka = mock(ObjectProvider.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         ValueOperations<String, String> values = mock(ValueOperations.class);
         when(redis.opsForValue()).thenReturn(values);
-        when(jdbc.update(anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(1);
+        when(behavior.insert(org.mockito.ArgumentMatchers.any(BehaviorWrite.class))).thenReturn(1);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        BehaviorService service = new BehaviorService(jdbc, kafka, redis, registry);
-        return new Fixture(service, jdbc, values, registry);
+        BehaviorService service = new BehaviorService(behavior, kafka, redis, registry);
+        return new Fixture(service, behavior, values, registry);
     }
 
     @Test
@@ -48,9 +44,9 @@ class BehaviorServiceTest {
 
         f.service.record(new BehaviorEvent(7, 42, ActionType.CLICK, 1.0, "home", null, 1234));
 
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(f.jdbc).update(anyString(), args.capture());
-        assertEquals(attributed, args.getValue()[5]);
+        ArgumentCaptor<BehaviorWrite> args = ArgumentCaptor.forClass(BehaviorWrite.class);
+        verify(f.behavior).insert(args.capture());
+        assertEquals(attributed, args.getValue().bucket());
     }
 
     @Test
@@ -62,9 +58,9 @@ class BehaviorServiceTest {
 
         f.service.record(new BehaviorEvent(7, 42, ActionType.LIKE, 1.0, "home", clientBucket, 1234));
 
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(f.jdbc).update(anyString(), args.capture());
-        assertEquals(attributed, args.getValue()[5]);
+        ArgumentCaptor<BehaviorWrite> args = ArgumentCaptor.forClass(BehaviorWrite.class);
+        verify(f.behavior).insert(args.capture());
+        assertEquals(attributed, args.getValue().bucket());
         verify(f.values).get(RedisKeys.exposureBucket(7, 42));
     }
 
@@ -75,21 +71,17 @@ class BehaviorServiceTest {
         String bucket = "recall:plus;rank:onnx;rerank:mmr";
         when(f.values.get(RedisKeys.exposure(exposureId)))
                 .thenReturn(new ExposureAttribution(7, 42, bucket).encode());
-        when(f.jdbc.update(anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(1, 0);
+        when(f.behavior.insert(org.mockito.ArgumentMatchers.any(BehaviorWrite.class))).thenReturn(1, 0);
 
         BehaviorEvent click = new BehaviorEvent(
                 7, 42, ActionType.CLICK, 1.0, "home", "forged", 1234, exposureId);
         f.service.record(click);
         f.service.record(click);
 
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(f.jdbc, times(2)).update(anyString(), args.capture());
-        assertEquals(bucket, args.getAllValues().getFirst()[5]);
-        assertEquals(exposureId, args.getAllValues().getFirst()[6]);
+        ArgumentCaptor<BehaviorWrite> args = ArgumentCaptor.forClass(BehaviorWrite.class);
+        verify(f.behavior, times(2)).insert(args.capture());
+        assertEquals(bucket, args.getAllValues().getFirst().bucket());
+        assertEquals(exposureId, args.getAllValues().getFirst().exposureId());
         assertEquals(1.0, f.registry.get("recsys.click").counter().count());
     }
 
@@ -100,13 +92,13 @@ class BehaviorServiceTest {
         f.service.record(new BehaviorEvent(
                 7, 42, ActionType.CLICK, 1.0, "home", "forged", 1234, "client-fixed-id"));
 
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(f.jdbc).update(anyString(), args.capture());
-        assertEquals(null, args.getValue()[5]);
-        assertEquals(null, args.getValue()[6]);
+        ArgumentCaptor<BehaviorWrite> args = ArgumentCaptor.forClass(BehaviorWrite.class);
+        verify(f.behavior).insert(args.capture());
+        assertEquals(null, args.getValue().bucket());
+        assertEquals(null, args.getValue().exposureId());
     }
 
-    private record Fixture(BehaviorService service, JdbcTemplate jdbc,
+    private record Fixture(BehaviorService service, BehaviorMapper behavior,
                            ValueOperations<String, String> values, SimpleMeterRegistry registry) {
     }
 }

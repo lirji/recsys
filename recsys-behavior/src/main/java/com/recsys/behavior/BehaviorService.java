@@ -12,7 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.behavior.persistence.mapper.primary.BehaviorMapper;
+import com.recsys.behavior.persistence.model.BehaviorWrite;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -43,7 +44,7 @@ public class BehaviorService {
     private static final Set<ActionType> CLICK_ACTIONS =
             EnumSet.of(ActionType.CLICK, ActionType.LIKE, ActionType.PLAY);
 
-    private final JdbcTemplate jdbc;
+    private final BehaviorMapper behavior;
     private final ObjectProvider<KafkaTemplate<String, String>> kafkaProvider;
     private final StringRedisTemplate redis;
     private final MeterRegistry meterRegistry;
@@ -59,11 +60,12 @@ public class BehaviorService {
     @Value("${recsys.behavior.publish-events:false}")
     private boolean publishEvents;
 
-    public BehaviorService(JdbcTemplate jdbc,
+    /** 数据库Mapper仍使用原主源，Kafka/Redis/指标处理顺序保持。 */
+    public BehaviorService(BehaviorMapper behavior,
                            ObjectProvider<KafkaTemplate<String, String>> kafkaProvider,
                            StringRedisTemplate redis,
                            MeterRegistry meterRegistry) {
-        this.jdbc = jdbc;
+        this.behavior = behavior;
         this.kafkaProvider = kafkaProvider;
         this.redis = redis;
         this.meterRegistry = meterRegistry;
@@ -204,13 +206,9 @@ public class BehaviorService {
 
     private boolean insert(BehaviorEvent ev) {
         // action 存大写枚举名,与召回侧查询口径一致
-        int updated = jdbc.update(
-                "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,exposure_id,ts) " +
-                "VALUES(?,?,?,?,?,?,?,?) " +
-                "ON CONFLICT (exposure_id) WHERE action='CLICK' AND exposure_id IS NOT NULL DO NOTHING",
-                ev.userId(), ev.itemId(),
-                ev.action() == null ? null : ev.action().name(),
-                ev.value(), ev.scene(), ev.bucket(), ev.exposureId(), new Timestamp(ev.ts()));
+        int updated = behavior.insert(new BehaviorWrite(ev.userId(), ev.itemId(),
+                ev.action() == null ? null : ev.action().name(), ev.value(), ev.scene(),
+                ev.bucket(), ev.exposureId(), new Timestamp(ev.ts())));
         return updated > 0;
     }
 
@@ -242,20 +240,9 @@ public class BehaviorService {
             return java.util.Optional.empty();
         }
         try {
-            java.util.Optional<ExposureAttribution> result = jdbc.query("""
-                            SELECT bucket FROM user_behavior
-                            WHERE exposure_id=? AND user_id=? AND item_id=? AND action='IMPRESSION'
-                            ORDER BY id DESC LIMIT 1
-                            """,
-                    ps -> {
-                        ps.setString(1, exposureId);
-                        ps.setLong(2, userId);
-                        ps.setLong(3, itemId);
-                    },
-                    rs -> rs.next()
-                            ? java.util.Optional.of(new ExposureAttribution(userId, itemId, rs.getString("bucket")))
-                            : java.util.Optional.empty());
-            return result == null ? java.util.Optional.empty() : result;
+            var rows = behavior.attributedBuckets(exposureId, userId, itemId);
+            return rows.isEmpty() ? java.util.Optional.empty()
+                    : java.util.Optional.of(new ExposureAttribution(userId, itemId, rows.get(0)));
         } catch (Exception e) {
             log.debug("DB 校验曝光失败(按未验证处理) exposure={}: {}", exposureId, e.getMessage());
             return java.util.Optional.empty();

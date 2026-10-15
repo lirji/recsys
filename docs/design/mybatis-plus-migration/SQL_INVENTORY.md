@@ -95,7 +95,7 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/behavior/BehaviorService.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/BehaviorService.java) | 15 | 2 | TODO |
+| [com/recsys/behavior/BehaviorService.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/BehaviorService.java) | 15 | 2 | DONE MP06a |
 | [com/recsys/behavior/exposure/NaturalReceiptConfiguration.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptConfiguration.java) | 11 | 0 | TODO |
 | [com/recsys/behavior/exposure/NaturalReceiptRepository.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptRepository.java) | 9 | 14 | TODO |
 
