@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.billing.*;
 import org.junit.jupiter.api.*;
@@ -106,11 +108,13 @@ class ClickQuotePostgresTest {
         assertEquals("1.000000",q.price().amount().toPlainString());
         assertEquals(q,cpm.find(q.quoteId()).orElseThrow());
     }
-    @Test void defaultOffOwnerAndMigrationGatesAreIndependentOfOldCpm() {
+    @Test void defaultOffOwnerAndMigrationGatesAreIndependentOfOldCpm() throws Exception {
+        var sessions=new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"));
         new ApplicationContextRunner().withUserConfiguration(ClickQuoteConfiguration.class).run(c->assertThat(c).hasNotFailed().doesNotHaveBean(ClickQuoteRepository.class));
         var runner = new ApplicationContextRunner().withUserConfiguration(ClickQuoteConfiguration.class)
                 .withPropertyValues("recsys.ad.billing.sandbox-enabled=true","recsys.ad.billing.clicks-enabled=true")
-                .withBean("adDbJdbc",JdbcTemplate.class,()->jdbc);
+                .withBean("adDbJdbc",JdbcTemplate.class,()->jdbc)
+                .withBean("adDbSqlSessionTemplate",SqlSessionTemplate.class,()->sessions);
         runner.run(c->assertThat(c).hasNotFailed().hasSingleBean(ClickQuoteRepository.class));
         runner.withPropertyValues("recsys.ad.serving.mode=grpc","spring.application.name=recsys-rec-engine")
                 .run(c->assertThat(c).hasNotFailed().doesNotHaveBean(ClickQuoteRepository.class));

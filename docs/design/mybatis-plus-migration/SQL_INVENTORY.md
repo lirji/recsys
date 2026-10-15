@@ -54,8 +54,8 @@
 | [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | TODO |
 | [com/recsys/ad/billing/BillingOutboxRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingOutboxRepository.java) | 3 | 12 | TODO |
 | [com/recsys/ad/billing/BillingProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingProjectionRepository.java) | 3 | 3 | TODO |
-| [com/recsys/ad/billing/BudgetConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetConfiguration.java) | 8 | 0 | TODO |
-| [com/recsys/ad/billing/BudgetRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetRepository.java) | 7 | 11 | TODO |
+| [com/recsys/ad/billing/BudgetConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetConfiguration.java) | 8 | 0 | DONE MP08a |
+| [com/recsys/ad/billing/BudgetRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetRepository.java) | 7 | 11 | DONE MP08a |
 | [com/recsys/ad/billing/ClickEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickEventConfiguration.java) | 13 | 0 | TODO |
 | [com/recsys/ad/billing/ClickPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickPreparationConfiguration.java) | 10 | 0 | TODO |
 | [com/recsys/ad/billing/ClickProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickProjectionRepository.java) | 3 | 5 | TODO |
@@ -297,3 +297,5 @@ MP06c：UserProfileService/ReportService → `console.persistence.mapper.primary
 MP07a：推荐输入与曝光 → `recengine.persistence.mapper.{primary.EngineBehaviorMapper,derived.EngineEmbeddingMapper}` + `mapper/recengine/{primary,derived}/*.xml`；证据见MP07A_RESULT。
 
 MP07b：MmrReranker/DppReranker → 派生EngineEmbeddingMapper.itemVectors + XML；算法SQL已核销，证据见MP07B_RESULT。
+
+MP08a：BudgetRepository/Configuration → addb BudgetMapper/XML；实际SqlSessionTemplate资源身份，UPDATE RETURNING写标记，证据见MP08A_RESULT。Click/ConversionQuote及三族Event仅同步预算schema验证构造，其他SQL仍属于后续工作包。

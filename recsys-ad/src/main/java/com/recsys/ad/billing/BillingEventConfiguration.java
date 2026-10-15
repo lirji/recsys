@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
 import java.util.*;
@@ -28,8 +29,8 @@ public class BillingEventConfiguration {
     @ConditionalOnExpression("${recsys.ad.billing.events.relay-enabled:false} or ${recsys.ad.billing.events.projection-enabled:false}")
     static class Shared {
         /** 事件能力可在停止新回执后单独续办，仍核验全部迁移历史。 */
-        @Bean BillingOutboxRepository billingOutboxRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-            new BudgetRepository(jdbc).verifySchema();new CpmQuoteRepository(jdbc).verifySchema();
+        @Bean BillingOutboxRepository billingOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
+            new BudgetRepository(sessions).verifySchema();new CpmQuoteRepository(jdbc).verifySchema();
             new ReservationRepository(jdbc).verifySchema();new PreparationRepository(jdbc,json).verifySchema();
             new ImpressionReceiptRepository(jdbc,json).verifySchema();
             var repository=new BillingOutboxRepository(jdbc);repository.verifySchema();return repository;

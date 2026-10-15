@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.*;
 import com.recsys.ad.AdPipeline;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -43,7 +45,7 @@ class BillingEventsFixture {
                 ScriptUtils.executeSqlScript(c,new ClassPathResource(path));
             }
         }
-        budgets=new BudgetAccountService(new BudgetRepository(jdbc),BudgetConfiguration.transactions(ds,5));
+        budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         quotes=new CpmQuoteRepository(jdbc);reservations=new ReservationRepository(jdbc);
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         var preparations=new PreparationRepository(jdbc,JSON);

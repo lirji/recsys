@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.billing.CnyAmount;
 import com.recsys.common.ad.billing.CpmPrice;
 import com.recsys.common.ad.billing.FrozenCpmQuote;
@@ -46,7 +48,7 @@ class CpmQuotePostgresTest {
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(migration));
             }
         }
-        new BudgetRepository(jdbc).verifySchema();
+        new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema();
         repository = new CpmQuoteRepository(jdbc);
         repository.verifySchema();
     }

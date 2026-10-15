@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -19,8 +19,8 @@ import javax.sql.DataSource;
 public class BudgetConfiguration {
     /** 开启前强制校验 owner 迁移，缺表或历史漂移直接启动失败。 */
     @Bean
-    public BudgetRepository budgetRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc) {
-        BudgetRepository repository = new BudgetRepository(jdbc);
+    public BudgetRepository budgetRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions) {
+        BudgetRepository repository = new BudgetRepository(sessions);
         repository.verifySchema();
         return repository;
     }

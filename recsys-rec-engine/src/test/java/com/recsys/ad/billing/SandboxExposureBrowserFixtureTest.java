@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.*;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.recsys.ad.*;
@@ -168,7 +170,7 @@ class SandboxExposureBrowserFixtureTest {
                         var item=new SponsoredAd(id,id,1,0,rs.getString("title"),AdChannel.KW_EXACT,1,1,1,1,1,1,1,1,id,"CPM");
                         return new BiddingService.QuotedAd(item,new CpmPrice(rs.getBigDecimal("amount"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE));
                     },(int)invocation.getArgument(2)));
-            var budgets=new BudgetAccountService(new BudgetRepository(ad),BudgetConfiguration.transactions(adDs,5));
+            var budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(adDs,5));
             budgets.setLimit(BudgetCommand.parse(1,UUID.randomUUID().toString(),LocalDate.now(ZoneId.of("Asia/Shanghai")).toString(),"CNY","100",0,"fixture"));
             var quotes=new CpmQuoteRepository(ad);var reservations=new ReservationRepository(ad);var prepared=new PreparationRepository(ad,JSON);
             var tokens=new DeliveryTokenCodec(JSON,"browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));

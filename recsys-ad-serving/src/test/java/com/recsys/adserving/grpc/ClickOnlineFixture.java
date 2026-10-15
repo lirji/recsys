@@ -1,5 +1,7 @@
 package com.recsys.adserving.grpc;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.*;
 import com.recsys.ad.billing.*;
@@ -58,7 +60,7 @@ class ClickOnlineFixture implements AutoCloseable {
         settlements=new ClickSettlementService(new ClickSettlementRepository(ad,JSON),quotes,new ReservationRepository(ad),tokens,
                 transactions(adDs),true,true,new ClickSettlementService.FraudPolicy(true,20));
         preparations=new ClickPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
-        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(ad),adDs,5);
+        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adDs,5);
         var day=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
         when(pipeline.sandboxClickCandidates(anyLong(),any(),anyInt(),anyString(),anyDouble())).thenAnswer(i->{

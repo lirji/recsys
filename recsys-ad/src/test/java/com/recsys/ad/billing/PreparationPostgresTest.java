@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.AdPipeline;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -47,7 +49,7 @@ class PreparationPostgresTest {
         quotes = new CpmQuoteRepository(jdbc); repository = new PreparationRepository(jdbc, JSON); repository.verifySchema();
         reservations = new ReservationService(new ReservationRepository(jdbc), quotes, BudgetConfiguration.transactions(ds, 5), true);
         tokens = new DeliveryTokenCodec(JSON, "test", Map.of("test", Base64.getEncoder().encodeToString(new byte[32])));
-        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(jdbc), ds, 5);
+        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         service = fresh(repository);
     }
     static SandboxPreparationService fresh(PreparationRepository repo) {

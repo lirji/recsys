@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.AdPipeline;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -50,7 +52,7 @@ class ImpressionReceiptPostgresTest {
                 ScriptUtils.executeSqlScript(c, new ClassPathResource(script));
             }
         }
-        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(jdbc), ds, 5);
+        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         quotes = new CpmQuoteRepository(jdbc); reservations = new ReservationRepository(jdbc);
         reservationService = new ReservationService(reservations, quotes, BudgetConfiguration.transactions(ds,5), true);
         preparations = new PreparationRepository(jdbc,JSON); receipts = new ImpressionReceiptRepository(jdbc,JSON); receipts.verifySchema();

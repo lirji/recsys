@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP06与MP07a已交付，MP07a=b686c38f。MP07b DONE/PASS（19项联合测试），MP07整体完成，准备Git交付后继续MP08a。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07已交付，MP07b=e2b4b572。MP08a预算迁移DONE/PASS：完整资金链路368项、sandbox4/混排5浏览器、推荐宿主3项通过；准备Git交付后继续MP08b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP08a预算账户/命令完成，见MP08A_RESULT。
 
 - MP07b MMR/DPP向量查询完成，MP07整体DONE，见MP07B_RESULT。
 
@@ -58,7 +60,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP07b：MMR/DPP、派生Mapper/XML及对照测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP08a：预算Mapper/XML、Repository/配置、各依赖配置及跨模块测试宿主、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -77,8 +79,8 @@ MP01～MP03已交付。当前MP07b：MMR/DPP、派生Mapper/XML及对照测试�
 
 ## 下一步
 
-1. MP07a已交付b686c38f，MP07b已完成，准备Git交付。
-2. 继续MP08～MP15，全部SQL完成后处理统一错误码。
+1. MP07b已交付e2b4b572，MP08a已完成，准备Git交付。
+2. 继续MP08b～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -134,3 +136,7 @@ DONE/PASS，见MP07A_RESULT；旧8、新12及24 reactor编译通过。MP07b MmrR
 ## MP07b检查点
 
 DONE/PASS，见MP07B_RESULT。MP08a BudgetRepository/Configuration有schema校验、命令唯一键/摘要、账户插入锁定、UPDATE RETURNING、完成条件更新和原快照读取。多配置（Click/ConversionQuote及三族Event）临时new BudgetRepository做迁移校验；多模块测试/浏览器fixture也手工构造，须完整更新。建议Repository从明确的adDbSqlSessionTemplate获取Mapper及实际DataSource，避免声明DataSource与Mapper真实连接源不一致；不新建池/不改默认关闭条件。真实BudgetAccountPostgresTest已有11项（含并发16、约束失败回滚、迁移漂移、错误池），BudgetConfigurationTest2项；先跑旧实现，新增RETURNING事务/无缓存检查。官方MyBatis XML文档已核验affectData支持自3.5.12，本项目3.5.19满足。
+
+## MP08a检查点
+
+DONE/PASS，见MP08A_RESULT；27源文件，最终指纹cb8cf4cb62e62a84158e5da2ae4a3058956bc581ea1ae962c4916d8c203b7e3f。旧13、新预算PG13+配置2与完整资金链路368/68类均通过，sandbox4/feed5浏览器及宿主3通过，24 reactor编译/hygiene通过。当前预算Repository从实际SqlSessionTemplate取得Mapper/DataSource，相关配置只变V001探针的装配；其他Repository尚未迁移。MP08b继续CpmQuoteRepository/Configuration、ReservationRepository/Configuration，真实money-chain刚通过，可复用其中CPM5、预占12/回收5作为旧实现基线。保持报价clock_timestamp CTE/五分钟期限/threshold与bill_factor文本精度、冻结摘要与冲突恢复；预占统一锁序、SKIP LOCKED、有界到期扫描、held条件更新/捕获/释放与原预算日不变。需同步全部new构造引用及浏览器fixture（同MP08a）；不改历史V002/V003。最新已观察MP07b CI38725073212全部SUCCESS。首次Hygiene沿用PENDING字面量未过，已改具名私有常量，最终15项预算测试、24 reactor编译及Hygiene均复验通过。

@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.*;
@@ -48,6 +50,7 @@ class ConversionEventsKafkaTest {
             admin.createTopics(List.of(new NewTopic(cpmTopic,2,(short)1),new NewTopic(clickTopic,2,(short)1))).all().get(15,TimeUnit.SECONDS);
         }
         var oldClick=f.clicks.capture(1,"0.050000");var cpmId=f.cpm.capture(1,"0.200000");var conversionId=f.capture(1,"0.100001");
+        var sessions=new SqlSessionTemplate(SpringSqlSessions.create(f.ds, "classpath*:mapper/ad/addb/**/*.xml"));
         new org.springframework.boot.test.context.runner.ApplicationContextRunner()
                 .withUserConfiguration(BillingEventConfiguration.class,ClickEventConfiguration.class,ConversionEventConfiguration.class)
                 .withPropertyValues("recsys.ad.billing.sandbox-enabled=true","recsys.ad.billing.receipts-enabled=false",
@@ -62,6 +65,7 @@ class ConversionEventsKafkaTest {
                         "recsys.ad.billing.click-events.relay-enabled=true","recsys.ad.billing.click-events.projection-enabled=true",
                         "recsys.ad.billing.click-events.topic="+clickTopic,"recsys.ad.billing.click-events.group="+group+"-click")
                 .withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.jdbc)
+                .withBean("adDbSqlSessionTemplate",SqlSessionTemplate.class,()->sessions)
                 .withBean("adDbDataSource",javax.sql.DataSource.class,()->f.ds)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ConversionEventsFixture.JSON)
                 .withBean(io.micrometer.core.instrument.MeterRegistry.class,SimpleMeterRegistry::new)

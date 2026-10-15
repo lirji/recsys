@@ -1,5 +1,7 @@
 package com.recsys.behavior.exposure;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.ad.*;
 import com.recsys.ad.billing.*;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -109,7 +111,7 @@ class FeedExposureBrowserAcceptanceTest {
                 adDb.update("INSERT INTO browser_feed_seed VALUES (?,9007199254740993,?,'action · 重复候选不能投放',1,?),(?,9007199254740996,?,'action · 企业协作方案',2,?),(?,9007199254740997,?,'action · 数据服务方案',3,?)",
                         group*100+1,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+2,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+3,group,group==1?"NORMAL":"BUDGET_DENIED");
             }
-            var budget=new BudgetConfiguration().budgetAccountService(new BudgetRepository(adDb),ds,5);
+            var budget=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),ds,5);
             var reservations=new ReservationRepository(adDb);var quotes=new CpmQuoteRepository(adDb);var preparations=new PreparationRepository(adDb,JSON);
             var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);tx.setTimeout(5);
             for(long advertiser:List.of(1L,2L)) budget.setLimit(BudgetCommand.parse(advertiser,UUID.randomUUID().toString(),reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().toString(),"CNY",advertiser==1?"100":"0",0,"browser-admin"));

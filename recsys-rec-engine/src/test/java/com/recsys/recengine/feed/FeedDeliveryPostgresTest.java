@@ -1,5 +1,7 @@
 package com.recsys.recengine.feed;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.*;
 import com.recsys.ad.billing.*;
@@ -70,7 +72,7 @@ class FeedDeliveryPostgresTest {
         for(String script:List.of(BudgetRepository.MIGRATION,CpmQuoteRepository.MIGRATION,ReservationRepository.MIGRATION,
                 PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,"db/ad-billing/V006__billing_event_delivery.sql",FeedCandidateRepository.MIGRATION)) migrate(adSource,script);
         repository=new FeedDeliveryRepository(engine,JSON); repository.verifySchema();
-        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(adDb),adSource,5);
+        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adSource,5);
         reservations=new ReservationRepository(adDb); quotes=new CpmQuoteRepository(adDb);
         reservationService=new ReservationService(reservations,quotes,transactions(),true);
         preparations=new PreparationRepository(adDb,JSON); receipts=new ImpressionReceiptRepository(adDb,JSON);

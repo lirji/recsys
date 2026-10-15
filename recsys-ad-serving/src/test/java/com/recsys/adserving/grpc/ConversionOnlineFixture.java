@@ -1,5 +1,7 @@
 package com.recsys.adserving.grpc;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.*;
 import com.recsys.ad.billing.*;
@@ -60,7 +62,7 @@ class ConversionOnlineFixture implements AutoCloseable {
         settlements=new ConversionSettlementService(new ConversionSettlementRepository(ad,JSON),quotes,new ReservationRepository(ad),tokens,
                 transactions(adDs),true,true);
         preparations=new ConversionPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
-        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(ad),adDs,5);
+        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adDs,5);
         var day=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
         when(pipeline.sandboxConversionCandidates(anyLong(),any(),anyInt(),anyString(),anyDouble())).thenAnswer(i->{

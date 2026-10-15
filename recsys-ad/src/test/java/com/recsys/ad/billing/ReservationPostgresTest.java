@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.billing.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -47,7 +49,7 @@ class ReservationPostgresTest {
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(migration));
             }
         }
-        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(jdbc), ds, 5);
+        budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         quotes = new CpmQuoteRepository(jdbc);
         repository = new ReservationRepository(jdbc);
         repository.verifySchema();

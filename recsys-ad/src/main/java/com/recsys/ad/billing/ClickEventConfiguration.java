@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.*;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
 import java.util.Map;
@@ -26,8 +27,8 @@ public class ClickEventConfiguration {
     @ConditionalOnExpression("${recsys.ad.billing.click-events.relay-enabled:false} or ${recsys.ad.billing.click-events.projection-enabled:false}")
     static class Shared {
         /** 无需启用新收费或签名密钥即可续发，但必须具备已交付的原事实及投影迁移。 */
-        @Bean BillingOutboxRepository clickOutboxRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-            new BudgetRepository(jdbc).verifySchema(); new ClickQuoteRepository(jdbc).verifySchema();
+        @Bean BillingOutboxRepository clickOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
+            new BudgetRepository(sessions).verifySchema(); new ClickQuoteRepository(jdbc).verifySchema();
             new ClickSettlementRepository(jdbc,json).verifySchema();
             var repository=new BillingOutboxRepository(jdbc,EventFamily.CLICK);repository.verifySchema();return repository;
         }

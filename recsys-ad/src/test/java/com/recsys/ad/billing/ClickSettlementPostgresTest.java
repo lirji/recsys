@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.ad.AdProperties;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -63,7 +65,7 @@ class ClickSettlementPostgresTest {
                 CREATE TRIGGER test_click_clock BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_clock();
                 """);
         accounts=new ReservationRepository(jdbc); quotes=new ClickQuoteRepository(jdbc);
-        budgets=new BudgetAccountService(new BudgetRepository(jdbc),BudgetConfiguration.transactions(ds,5));
+        budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         repository=new ClickSettlementRepository(jdbc,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         service=fresh(repository,accounts,true,true,20,tokens);

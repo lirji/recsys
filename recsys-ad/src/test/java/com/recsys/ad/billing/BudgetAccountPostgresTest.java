@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.billing.BudgetCommand;
 import com.recsys.common.ad.billing.BudgetCommandResult;
 import org.junit.jupiter.api.BeforeAll;
@@ -50,9 +52,44 @@ class BudgetAccountPostgresTest {
             stmt.execute("SET recsys.migration_sha256 = '" + BudgetRepository.migrationSha256() + "'");
             ScriptUtils.executeSqlScript(connection, new ClassPathResource(BudgetRepository.MIGRATION));
         }
-        repository = new BudgetRepository(jdbc);
+        repository = new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         repository.verifySchema();
         service = new BudgetConfiguration().budgetAccountService(repository, ds, 5);
+    }
+
+    @Test
+    void returningCommitsOutsideTransactionAndRollsBackWithUncachedReadsInside() {
+        long advertiser = IDS.incrementAndGet();
+        service.setLimit(command(advertiser, "10", 0));
+        var applied = repository.apply(command(advertiser, "20", 1));
+        assertEquals("20.000000", applied.limitAmount().toPlainString());
+        assertEquals(2, jdbc.queryForObject("SELECT version FROM ad_budget_account WHERE advertiser_id=?", Long.class, advertiser));
+        var transactions = BudgetConfiguration.transactions(ds, 5);
+        transactions.executeWithoutResult(tx -> {
+            assertEquals(2, repository.findAccount(advertiser, DAY).orElseThrow().version());
+            var changed = repository.apply(command(advertiser, "30", 2));
+            assertEquals(3, changed.version());
+            assertEquals(changed, repository.findAccount(advertiser, DAY).orElseThrow());
+            // JdbcTemplate独立写入用于证明Mapper不重用首次SELECT的会话缓存。
+            jdbc.update("UPDATE ad_budget_account SET held_amount=1 WHERE advertiser_id=?", advertiser);
+            assertEquals("1.000000", repository.findAccount(advertiser, DAY).orElseThrow().heldAmount().toPlainString());
+            tx.setRollbackOnly();
+        });
+        assertEquals(applied, repository.findAccount(advertiser, DAY).orElseThrow());
+    }
+
+    @Test
+    void incompleteCommandStillFailsBeforeConstructingANullAmountSnapshot() {
+        long advertiser = IDS.incrementAndGet();
+        var command = command(advertiser, "10", 0);
+        // 原V001允许PENDING，恢复查询必须拒绝半成品，而非把NULL结果当成零元快照。
+        jdbc.update("""
+                INSERT INTO ad_budget_command(traffic_class,advertiser_id,command_id,budget_date,currency,
+                    requested_limit,expected_version,actor,payload_hash,status)
+                VALUES('SANDBOX',?,?,?,'CNY',10,0,'test',?,'PENDING')
+                """, advertiser, command.commandId(), DAY, command.payloadHash());
+        var failure = assertThrows(IllegalStateException.class, () -> repository.findCommand(advertiser, command.commandId()));
+        assertEquals("发现未完成预算命令，需核查事务边界", failure.getMessage());
     }
 
     @Test
@@ -79,7 +116,7 @@ class BudgetAccountPostgresTest {
     }
 
     @Test
-    void canonicalPayloadAndRestartKeepOriginalSnapshot() {
+    void canonicalPayloadAndRestartKeepOriginalSnapshot() throws Exception {
         long advertiser = IDS.incrementAndGet();
         var first = command(advertiser, "1", 0);
         var original = service.setLimit(first);
@@ -87,7 +124,7 @@ class BudgetAccountPostgresTest {
                 "CNY", "1.000000", 0, "admin:test");
         assertEquals(original, service.setLimit(equivalent));
         service.setLimit(command(advertiser, "20", 1));
-        var restarted = new BudgetConfiguration().budgetAccountService(new BudgetRepository(jdbc), ds, 5);
+        var restarted = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         assertEquals(original, restarted.findCommand(advertiser, first.commandId()).orElseThrow());
         assertEquals(original, restarted.setLimit(first));
         assertEquals(2, restarted.findAccount(advertiser, DAY).orElseThrow().version());
@@ -156,24 +193,26 @@ class BudgetAccountPostgresTest {
         String url = POSTGRES.getJdbcUrl();
         other.setUrl(url + (url.contains("?") ? "&" : "?") + "currentSchema=missing_billing_schema");
         assertThrows(org.springframework.dao.DataAccessException.class,
-                () -> new BudgetRepository(new JdbcTemplate(other)).verifySchema());
+                () -> new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(other, "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema());
     }
 
     @Test
-    void realSpringAssemblyRejectsWrongPoolAndMigrationDrift() {
+    void realSpringAssemblyRejectsWrongPoolAndMigrationDrift() throws Exception {
+        var sessions = new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/ad/addb/**/*.xml"));
+        var otherSessions = new SqlSessionTemplate(SpringSqlSessions.create(source(), "classpath*:mapper/ad/addb/**/*.xml"));
         var context = new ApplicationContextRunner().withUserConfiguration(BudgetConfiguration.class)
                 .withPropertyValues("recsys.ad.billing.sandbox-enabled=true")
                 .withBean("adDbDataSource", javax.sql.DataSource.class, () -> ds);
-        context.withBean("adDbJdbc", JdbcTemplate.class, () -> jdbc).run(app -> {
+        context.withBean("adDbSqlSessionTemplate", SqlSessionTemplate.class, () -> sessions).run(app -> {
             assertThat(app).hasNotFailed().hasSingleBean(BudgetAccountService.class);
         });
-        context.withBean("adDbJdbc", JdbcTemplate.class, () -> new JdbcTemplate(source())).run(app -> {
+        context.withBean("adDbSqlSessionTemplate", SqlSessionTemplate.class, () -> otherSessions).run(app -> {
             assertThat(app).hasFailed();
             assertThat(app.getStartupFailure()).hasRootCauseMessage("预算事务与 Repository 必须绑定同一个 adDb DataSource");
         });
         jdbc.update("UPDATE ad_billing_schema_history SET script_sha256 = ? WHERE version = 1", "0".repeat(64));
         try {
-            context.withBean("adDbJdbc", JdbcTemplate.class, () -> jdbc).run(app -> {
+            context.withBean("adDbSqlSessionTemplate", SqlSessionTemplate.class, () -> sessions).run(app -> {
                 assertThat(app).hasFailed();
                 assertThat(app.getStartupFailure()).hasRootCauseMessage("adDb 预算迁移缺失或脚本摘要不一致");
             });

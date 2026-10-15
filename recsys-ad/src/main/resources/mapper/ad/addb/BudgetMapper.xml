@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.BudgetMapper">
+    <resultMap id="account" type="com.recsys.common.ad.billing.BudgetAccount">
+        <constructor><arg column="advertiser_id" javaType="_long"/><arg column="budget_date" javaType="java.time.LocalDate"/>
+            <arg column="limit_amount" javaType="java.math.BigDecimal"/><arg column="held_amount" javaType="java.math.BigDecimal"/>
+            <arg column="charged_amount" javaType="java.math.BigDecimal"/><arg column="version" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="command" type="com.recsys.ad.persistence.mapper.addb.BudgetMapper$CommandRow">
+        <constructor><arg column="command_id" javaType="java.util.UUID"/><arg column="status" javaType="string"/>
+            <arg column="advertiser_id" javaType="_long"/><arg column="budget_date" javaType="java.time.LocalDate"/>
+            <arg column="result_limit" javaType="java.math.BigDecimal"/><arg column="result_held" javaType="java.math.BigDecimal"/>
+            <arg column="result_charged" javaType="java.math.BigDecimal"/><arg column="result_version" javaType="java.lang.Long"/></constructor>
+    </resultMap>
+    <sql id="accountColumns">advertiser_id,budget_date,limit_amount,held_amount,charged_amount,version</sql>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=1</select>
+    <select id="verifyAccount" resultType="map">SELECT limit_amount,held_amount,charged_amount,version FROM ad_budget_account LIMIT 0</select>
+    <select id="verifyCommand" resultType="map">SELECT payload_hash,status,result_version FROM ad_budget_command LIMIT 0</select>
+    <insert id="claim">
+        INSERT INTO ad_budget_command(traffic_class,advertiser_id,command_id,budget_date,currency,
+            requested_limit,expected_version,actor,payload_hash,status)
+        VALUES('SANDBOX',#{command.advertiserId},#{command.commandId},#{command.budgetDate},'CNY',
+            #{command.limitAmount},#{command.expectedVersion},#{command.actor},#{payloadHash},'PENDING')
+        ON CONFLICT(traffic_class,advertiser_id,command_id) DO NOTHING
+    </insert>
+    <select id="payloadHashes" resultType="string">
+        SELECT payload_hash FROM ad_budget_command WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND command_id=#{commandId}
+    </select>
+    <insert id="insertAccount">
+        INSERT INTO ad_budget_account(traffic_class,advertiser_id,budget_date,currency,limit_amount,held_amount,charged_amount,version)
+        VALUES('SANDBOX',#{advertiserId},#{budgetDate},'CNY',0,0,0,0) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="lockAccount" resultMap="account" useCache="false">
+        SELECT <include refid="accountColumns"/> FROM ad_budget_account
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND budget_date=#{budgetDate} AND currency='CNY' FOR UPDATE
+    </select>
+    <!-- 返回行的写操作必须标记affectData，避免被当作普通只读SELECT管理事务。 -->
+    <select id="apply" resultMap="account" affectData="true" flushCache="true" useCache="false">
+        UPDATE ad_budget_account SET limit_amount=#{limitAmount},version=version+1,updated_at=clock_timestamp()
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND budget_date=#{budgetDate} AND currency='CNY'
+            AND version=#{expectedVersion} AND held_amount+charged_amount &lt;= #{limitAmount}
+        RETURNING <include refid="accountColumns"/>
+    </select>
+    <update id="complete">
+        UPDATE ad_budget_command SET status=#{status},result_limit=#{result.account.limitAmount},result_held=#{result.account.heldAmount},
+            result_charged=#{result.account.chargedAmount},result_version=#{result.account.version},completed_at=clock_timestamp()
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{result.account.advertiserId} AND command_id=#{result.commandId} AND status='PENDING'
+    </update>
+    <select id="accounts" resultMap="account">
+        SELECT <include refid="accountColumns"/> FROM ad_budget_account
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND budget_date=#{budgetDate} AND currency='CNY'
+    </select>
+    <select id="commands" resultMap="command">
+        SELECT command_id,status,advertiser_id,budget_date,result_limit,result_held,result_charged,result_version FROM ad_budget_command
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND command_id=#{commandId}
+    </select>
+</mapper>
