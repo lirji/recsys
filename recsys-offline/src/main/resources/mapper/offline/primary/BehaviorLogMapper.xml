@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.BehaviorLogMapper">
+    <sql id="columns">id,user_id,item_id,action,value,scene,bucket,ts,position,exposure_id</sql>
+    <update id="truncate">TRUNCATE behavior_log</update>
+    <select id="watermark" resultType="long" useCache="false">SELECT COALESCE(MAX(id),0) FROM behavior_log</select>
+    <insert id="copyLocal">
+        INSERT INTO behavior_log(<include refid="columns"/>) SELECT <include refid="columns"/>
+        FROM user_behavior WHERE id &gt; #{since} ON CONFLICT(id) DO NOTHING
+    </insert>
+    <insert id="insertRows">
+        INSERT INTO behavior_log(<include refid="columns"/>) VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.id},#{row.userId,jdbcType=BIGINT},#{row.itemId,jdbcType=BIGINT},
+             #{row.action,jdbcType=VARCHAR},#{row.value,jdbcType=DOUBLE},#{row.scene,jdbcType=VARCHAR},
+             #{row.bucket,jdbcType=VARCHAR},#{row.timestamp,jdbcType=TIMESTAMP},
+             #{row.position,jdbcType=INTEGER},#{row.exposureId,jdbcType=VARCHAR})
+        </foreach>
+        ON CONFLICT(id) DO NOTHING
+    </insert>
+    <select id="count" resultType="long" useCache="false">SELECT count(*) FROM behavior_log</select>
+</mapper>

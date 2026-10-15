@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1本地提交6b96d0d3；MP13b2本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -328,3 +328,7 @@ DONE/PASS，见MP13A2_RESULT。旧PG3项、新专项4项、全部离线68项/15�
 ## MP13b1最终验证
 
 DONE/PASS，见MP13B1_RESULT。旧PG4项、新全离线72项/16类、全仓24 reactor编译、hygiene通过；4源指纹78c4ed9aec461c6f854e70febe6b288ad0c200184c33ed23232d8f99ca73bb14。1000条批次/失败批无部分行/前批已提交/外层事务整体回滚/来源隔离保持；没有历史SQL变更。ae9ec1c4远程CI38744006253当前运行中，不能记全绿。下一片SyncBehaviorLogJob保持原同库快路径和跨库1000批次、增量水位与full语义，DDL迁到独立bootstrap资源并补字段注释。
+
+## MP13b2最终验证
+
+DONE/PASS，见MP13B2_RESULT。旧PG5项、新离线77项/17类、24 reactor编译、hygiene通过；9源指纹39784ef7f2698bd34de679e57dbc36bf66813b3c8eff8ea5c4f7253429e377f4。原MAX水位/1000批次/full/跨源NULL微秒/失败连接关闭/外层回滚/旧列升级保持，新增bootstrap列注释齐全。继续SyncItemCatalogJob；原历史SQL与用户文件保护不变。

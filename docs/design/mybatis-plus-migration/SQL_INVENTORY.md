@@ -159,7 +159,7 @@
 | [com/recsys/offline/SimRecEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimRecEventsJob.java) | 7 | 4 | TODO |
 | [com/recsys/offline/SwingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SwingJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/SyncAdEventLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncAdEventLogJob.java) | 6 | 9 | TODO |
-| [com/recsys/offline/SyncBehaviorLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncBehaviorLogJob.java) | 6 | 10 | TODO |
+| [com/recsys/offline/SyncBehaviorLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncBehaviorLogJob.java) | 6 | 10 | DONE MP13b2；见MP13B2_RESULT |
 | [com/recsys/offline/SyncItemCatalogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncItemCatalogJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/TuneFusionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/TuneFusionJob.java) | 11 | 1 | TODO |
 | [com/recsys/offline/UserCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |

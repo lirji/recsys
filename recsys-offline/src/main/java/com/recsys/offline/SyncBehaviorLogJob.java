@@ -3,11 +3,16 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import com.recsys.offline.persistence.OfflineSourceSessions;
+import com.recsys.offline.persistence.mapper.primary.BehaviorLogMapper;
+import com.recsys.offline.persistence.mapper.source.BehaviorCopySourceMapper;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import javax.sql.DataSource;
 
 /**
  * 作业 sync-behavior-log(#2 离线读侧解耦 + #3 跨库):把行为上下文的 {@code user_behavior} 增量幂等复制到
@@ -29,12 +34,14 @@ public class SyncBehaviorLogJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SyncBehaviorLogJob.class);
 
-    private static final String COLS = "id,user_id,item_id,action,value,scene,bucket,ts,position,exposure_id";
+    private static final int COPY_BATCH_SIZE = 1000;
+    private final BehaviorLogMapper persistence;
+    private final DataSource dataSource;
 
-    private final JdbcTemplate jdbc;
-
-    public SyncBehaviorLogJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 目标写入和bootstrap严格复用同一个原主数据源及事务资源。 */
+    public SyncBehaviorLogJob(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions) {
+        this.persistence = sessions.getMapper(BehaviorLogMapper.class);
+        this.dataSource = sessions.getSqlSessionFactory().getConfiguration().getEnvironment().getDataSource();
     }
 
     @Override
@@ -46,76 +53,43 @@ public class SyncBehaviorLogJob implements OfflineJob {
     public void run(ApplicationArguments args) {
         ensureTable();
         if (args.containsOption("full")) {
-            jdbc.update("TRUNCATE behavior_log");
+            persistence.truncate();
             log.info("sync-behavior-log: --full 全量重灌,已清空 behavior_log");
         }
         String sourceDb = args.containsOption("source-db")
                 ? args.getOptionValues("source-db").get(0).trim() : null;
-        Long since = jdbc.queryForObject("SELECT COALESCE(MAX(id),0) FROM behavior_log", Long.class);
+        Long since = persistence.watermark();
 
         int n;
         if (sourceDb == null) {
             // 同库快路径(#2):INSERT...SELECT
-            n = jdbc.update("INSERT INTO behavior_log(" + COLS + ") SELECT " + COLS
-                    + " FROM user_behavior WHERE id > ? ON CONFLICT (id) DO NOTHING", since);
+            n = persistence.copyLocal(since);
         } else {
             // 跨库(#3):从 behavior 独立库读 → 批量写主库 behavior_log(CDC 式)
             n = crossDbCopy(sourceDb, since);
         }
-        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM behavior_log", Long.class);
+        Long total = persistence.count();
         log.info("sync-behavior-log: source={} 从 id>{} 复制 {} 行 → behavior_log(总 {} 行)",
                 sourceDb == null ? "(主库同库)" : sourceDb, since, n, total);
     }
 
-    /** 跨库复制:源库(behavior-db)读 user_behavior 新行 → 主库 behavior_log 批量 upsert。 */
+    /** 源会话先完成读取并关闭连接，再按原1000行边界写目标，避免跨库事务混淆。 */
     private int crossDbCopy(String sourceDb, long since) {
-        JdbcTemplate source = buildSourceJdbc(sourceDb);
-        List<Object[]> rows = source.query(
-                "SELECT " + COLS + " FROM user_behavior WHERE id > ? ORDER BY id",
-                ps -> ps.setLong(1, since),
-                (rs, i) -> new Object[]{
-                        rs.getLong("id"), rs.getObject("user_id"), rs.getObject("item_id"),
-                        rs.getString("action"), rs.getObject("value"), rs.getString("scene"),
-                        rs.getString("bucket"), rs.getTimestamp("ts"), rs.getObject("position"),
-                        rs.getString("exposure_id")});
-        if (rows.isEmpty()) {
-            return 0;
+        var source = buildSourceSessions(sourceDb).getMapper(BehaviorCopySourceMapper.class);
+        var rows = source.since(since);
+        for (int offset = 0; offset < rows.size(); offset += COPY_BATCH_SIZE) {
+            persistence.insertRows(rows.subList(offset, Math.min(offset + COPY_BATCH_SIZE, rows.size())));
         }
-        jdbc.batchUpdate(
-                "INSERT INTO behavior_log(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING",
-                rows, Math.min(rows.size(), 1000),
-                (ps, r) -> {
-                    for (int c = 0; c < r.length; c++) {
-                        ps.setObject(c + 1, r[c]);
-                    }
-                });
         return rows.size();
     }
 
-    /** 从 PG_HOST/PORT/USER/PASSWORD + 目标 db 名建一个源读数据源(behavior 独立库)。 */
-    private JdbcTemplate buildSourceJdbc(String sourceDb) {
-        DriverManagerDataSource ds = new DriverManagerDataSource(
-                "jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + sourceDb,
-                env("PG_USER", "recsys"), env("PG_PASSWORD", "recsys"));
-        ds.setDriverClassName("org.postgresql.Driver");
-        return new JdbcTemplate(ds);
+    /** 保留原PG环境来源；包内入口允许隔离测试替换源，不接触共享库。 */
+    SqlSessionTemplate buildSourceSessions(String sourceDb) {
+        return OfflineSourceSessions.create(sourceDb, "classpath*:mapper/offline/source/BehaviorCopySourceMapper.xml");
     }
 
-    private static String env(String k, String def) {
-        String v = System.getenv(k);
-        return v == null || v.isBlank() ? def : v;
-    }
-
-    /** 防御性自建(已建库实例无需重跑 09_behavior_log.sql)。 */
+    /** 原防御性建表和旧列升级提取为资源；执行顺序与外层事务参与方式保持。 */
     private void ensureTable() {
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS behavior_log (
-                    id BIGINT PRIMARY KEY, user_id BIGINT, item_id BIGINT, action TEXT,
-                    value DOUBLE PRECISION, scene TEXT, bucket TEXT, ts TIMESTAMP, position INT,
-                    exposure_id TEXT)""");
-        jdbc.execute("COMMENT ON TABLE behavior_log IS '供离线数据平台使用的用户行为事件读仓'");
-        jdbc.execute("ALTER TABLE behavior_log ADD COLUMN IF NOT EXISTS exposure_id TEXT");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_behavior_log_user_action ON behavior_log(user_id, action)");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_behavior_log_item ON behavior_log(item_id)");
+        new ResourceDatabasePopulator(new ClassPathResource("db/bootstrap/behavior-log.sql")).execute(dataSource);
     }
 }
