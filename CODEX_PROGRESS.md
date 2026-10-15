@@ -34,7 +34,7 @@ ER-S08A 本片：
 
 ## 未完成
 
-- 当前 `feat/natural-exposure-receipts`，基线 `b9a6d8dc`；S07 主提交 `8b84b468` 及可访问性修复 `b9a6d8dc` 均已正常合并推送 main。S08A 不依赖政策数值的机制已验证，当前待完成 Git 交付；C08-C 已确认，待 Git 后进入 S09。不要重复实施 S01～S07。
+- 当前 `feat/natural-exposure-console`，基线 `a8701bf8`；S07 主提交 `8b84b468` 及可访问性修复 `b9a6d8dc` 均已正常合并推送 main。S08 全部后端机制与政策已验证，提交 `a8701bf88a02023ab0252e698ee3d2de59e1112e` 已正常合并推送 main；正在进入 S09。不要重复实施 S01～S07。
 - ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S09～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
 - ER-S02～ER-S07 的最小 sandbox 曝光资金闭环已完成；继续自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
 - CPA 归因/迟到窗口、正式来源与期初账务、容量和恢复目标仍待确定；不阻碍无关切片，不重复询问已确定 CPM 政策。
@@ -49,7 +49,7 @@ ER-S08A 本片：
 
 ## 下一步建议
 
-1. 当前 `feat/natural-exposure-receipts` 的 S08A 机制验证已通过；完成文档/用户文件哈希检查，限定本任务路径提交，正常合并推送 main，核对远程 CI。不要夹带六个用户文件。
+1. S08 提交 `a8701bf8` 已正常合并推送 main；主 CI run `38677748671` 后端四门禁 PASS，浏览器业务通过但临时目录清理 ENOTEMPTY 导致失败。独立 `fix/browser-fixture-cleanup` 已修有界退出/清理，4 项浏览器 + PG/Kafka 对账、typecheck/lint/format PASS，补丁交付后核对 CI。已创建原目录任务分支 `feat/natural-exposure-console`，开始 S09。六个用户文件哈希不变，勿纳入提交。
 2. 自然图文已确认沿用 50%/1s/hidden 重置/5min，C08-C 已冻结并通过正式政策真实 PG 验收，不再重复问。Git 后继续 S09，复用 S07 测量/队列边界接自然推荐/搜索页面。
 3. S09 按既有前端规划核对 API/队列/页面及隔离浏览器联调；随后 S10 接 feed。真实收费及生产部署保持关闭。
 
@@ -68,10 +68,22 @@ S06 恢复要点：
 
 ## S08 恢复检查点
 
-- 任务分支 `feat/natural-exposure-receipts`，基线 `b9a6d8dc`；C08-A/B/C 已冻结并实现，ER-S08 与子片 ER-S08A DONE。用户明确自然推荐/搜索沿用 50%/1s/hidden 重置/5min，稳定版本 natural-text-v1；正式装配要求完整显式元组相等，拒绝测试政策和漂移。
+- S08 已交付 `a8701bf8`；当前 S09 分支 `feat/natural-exposure-console`；C08-A/B/C 已冻结并实现，ER-S08 与子片 ER-S08A DONE。用户明确自然推荐/搜索沿用 50%/1s/hidden 重置/5min，稳定版本 natural-text-v1；正式装配要求完整显式元组相等，拒绝测试政策和漂移。
 - 最终 /tmp/recsys-er-s08-approved-policy.log：50 项专项全部 PASS（common 10、gateway 2、engine 18、behavior 20；真实 PG 9+14），包含正式政策签发五分钟与临界接受/阈值不足/hidden 拒绝；12 项旧回归 PASS（/tmp/recsys-er-s08-legacy.log）。底层测试政策 6000/1200/120000 仅 test-only，正式装配只能使用已批准元组。
 - engine 原请求/政策→30s DB lease/fence→纯候选/内容→最终去重位置/资格→完整冻结提交；默认关闭，不写旧曝光。真实 PG 已证原结果恢复、丢 ACK、旧 fence 拒写、不同操作不复用资格。
 - behavior receipt 唯一键→qualification guard 锁→锁后 DB 时间→唯一自然事实+Outbox+原决定，REQUIRES_NEW/READ_COMMITTED/5s；锁4s、statement5s；延迟完整性/FK/不可变约束。真实 PG 已证 4 写点回滚、同/异 ID 并发一事实一事件、锁等待过期拒绝、重建和 key/政策/开关变更后原结果恢复。
 - Outbox 仅可靠落表，S15 才发布；当前禁止改 payload/published_at，未来版本迁移演进。engine V002 与 behavior V001 均未迁移共享库，独立 owner，完整表/字段中文注释与 SHA 校验。
 - HTTP 异常响应曾在无 Accept 时协商为 XML，已显式 JSON 并保留断言；两端自身 ADMIN 校验和 strict JSON，大 ID 十进制字符串。gateway 两模式 natural-impressions 路由先于 engine 通配。
 - Code Hygiene 只有根 Maven 未配 formatter 的限制；事务与资源数值 advisory 已源码+真实数据库复核。没有新依赖、没有跨服务表写入，没有 S08 浏览器/跨进程联调证据（S09 再做）。运行说明与限制已写 NATURAL_EXPOSURE_RUNBOOK / ER-S08_RESULT。
+
+## S09 起步检查点
+
+- 尚未修改 S09 产品代码或冻结 C09；先读真实前端与既有 PLAN 前端章节。`REVIEW.md` 已记录五类只读 agent 输入及独立审查，覆盖 /recommend、/search、/search-ads、/feed；总体计划已获实施授权，不重做规划或重复要求确认。
+- 已读 frontend-implementation 及 adaptation / visual / interaction 指引，沿用现有 Ant Design、紧凑页面、桌面和窄屏；实现后必须浏览器截图实际查看。Scope 只 S09，不把 feed 或点击/转化一起做。
+- 当前 RecommendConsole/SearchConsole 走旧 GET/useQuery、useItemMeta 数字 ID、手动 IMPRESSION/CLICK。建议沿 S07 模式加默认 false 的自然 sandbox 分支，保留旧分支；新显式操作使用 C08 PUT/GET，string user/item ID，不自动 GET 当新交付；推荐页原可选 query 需明确有 query 用 SEARCH、无 query 用 RECOMMEND，搜索页 query 必填。
+- S07 已有 useVisibleExposure（50%/1s/hidden/pagehide、实际 DOM ref）、receiptQueue（100/512KiB/1h/2并发/6轮/同键恢复）、ExposureScope（真实 Bearer scope/epoch）与身份撤销、Trace/history 递归脱敏。自然政策相同，可复用测量；自然 Result 没有钱/ledger，不能塞假 chargedAmount 适配广告队列。
+- 拟评估把有界恢复算法抽为类型化队列 core，广告/自然提供独立结果校验、已知字段复制、transport/storage key；保留广告 ReceiptQueue 接口及测试，NaturalReceiptStatus 不显示资金。共享身份撤销与 storage 恢复仍要验证；是否共用/隔离队列资源上限须在 C09 明确，不无界扩张。
+- ExposureScope 目前硬引用广告 singleton，需最小组合参数支持自然队列。纯 ItemCard 目前绑定旧数字 ID/详情来源；新自然卡片必须用 C08 已冻结 title/category/description/contentHash，避免后取详情替换签名内容。历史/对比只读且无测量。
+- 下一步读完整 SandboxSearchAdsConsole、两个自然页、ItemCard/ResultDiff、identity.ts，以及 S07 浏览器 fixture/runner；冻结 C09 的范围、组件/恢复状态/文件/验证后实施。真实自然端点 /api/sandbox/natural-deliveries 与 /api/sandbox/natural-impressions 已存在，不编造接口；采用隔离 PG 种子做浏览器联调（S08 尚无跨进程浏览器证据）。
+
+- S08 CI 修复检查点：`console/e2e-sandbox/nativeBrowser.ts` 等待独占进程 close 后有界清理专用目录；不改产品逻辑。证据 `/tmp/recsys-browser-cleanup-validation.log`，四项浏览器和宿主最终对账 PASS。交付修复后回到既有 `feat/natural-exposure-console`（正常 ff 合入修复），继续 S09。

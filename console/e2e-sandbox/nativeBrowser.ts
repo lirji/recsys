@@ -15,6 +15,40 @@ export async function nativeBrowser() {
     '--user-data-dir=' + profile,
     'about:blank',
   ]);
+  // close 等待 stdio 和子进程退出；exit 事件后 Chromium 仍可能有收尾写盘。
+  let closed = false;
+  const closedPromise = new Promise<void>((resolve) => {
+    process.once('close', () => {
+      closed = true;
+      resolve();
+    });
+  });
+  const waitClosed = async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closedPromise,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 3000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    return closed;
+  };
+  const cleanup = async () => {
+    // 先给正常 Browser.close 留出退出时间；只终止本函数启动的独占进程。
+    if (!(await waitClosed())) {
+      process.kill('SIGTERM');
+      if (!(await waitClosed())) {
+        process.kill('SIGKILL');
+        if (!(await waitClosed())) throw new Error('独占 Chromium 未退出，保留临时配置目录');
+      }
+    }
+    // Chromium 后代进程的最终写盘存在短窗口；有界重试仅覆盖 mkdtemp 专用目录。
+    await rm(profile, { recursive: true, maxRetries: 5, retryDelay: 100 });
+  };
   let socket: WebSocket | undefined;
   try {
     const endpoint = await new Promise<string>((resolve, reject) => {
@@ -94,19 +128,14 @@ export async function nativeBrowser() {
           await send('Browser.close');
         } finally {
           ws.close();
-          process.kill();
-          await new Promise<void>((resolve) => {
-            if (process.exitCode !== null) resolve();
-            else process.once('exit', () => resolve());
-          });
-          await rm(profile, { recursive: true }); // 只清理本函数 mkdtemp 创建的专用浏览器配置。
+          await cleanup();
         }
       },
     };
   } catch (error) {
     socket?.close();
     process.kill();
-    await rm(profile, { recursive: true });
+    await cleanup();
     throw error;
   }
 }

@@ -32,6 +32,12 @@ HTTP 测试发现异常 handler 在无 Accept 请求下可能协商 XML，现明
 
 自然政策已经用户确认，正式装配只允许 natural-text-v1 的 5000bps/1000ms/300000ms；底层机制测试使用的 6000/1200/120000 明确 test-only，不得用于启用配置。S09 继续自然推荐/搜索浏览器。本片没有 UI 变动，因此视觉验证 N/A；engine→behavior 跨进程浏览器联调尚未执行，不能用分 owner 的 PG/HTTP 测试冒充该证据。
 
-Outbox 已可靠落表，尚未投递 Kafka；自然事实尚未进入正式实验/训练样本。原旧链路风险仍存在，父计划未完成。独立 CI 新增 natural-exposure-gate，远程结果在正常 Git 交付后核对。运行/迁移/未知结果/暂停与保留说明见 [runbook](NATURAL_EXPOSURE_RUNBOOK.md)。继续原 DAG 的 S09 主路径，不因本片完成停止整个任务。
+Outbox 已可靠落表，尚未投递 Kafka；自然事实尚未进入正式实验/训练样本。原旧链路风险仍存在，父计划未完成。独立 CI 新增 natural-exposure-gate，远程 run 38677748671 的 natural-exposure、money-chain、build、security 均成功；sandbox browser 的四项业务断言完成，但原生 Chromium 临时目录清理出现 ENOTEMPTY，整体 CI 失败，不能标为全绿。运行/迁移/未知结果/暂停与保留说明见 [runbook](NATURAL_EXPOSURE_RUNBOOK.md)。继续原 DAG 的 S09 主路径，不因本片完成停止整个任务。
 
 SKILL_HANDOFF: backend-implementation → implementation-validation → update-progress-docs；slice ER-S08 / ER-S08A；status=COMPLETED，gate=PASS；父 ER-S08 政策门禁已满足。Git 交付只涵盖默认关闭、已验证的机制和对应文档，不以此授权开启采集。
+
+## 浏览器门禁收尾修复
+
+`fix/browser-fixture-cleanup` 仅修独占测试浏览器生命周期：正常 Browser.close 后等待 close 事件；超时才逐级终止本函数子进程，等待有界；退出后仅对 mkdtemp 的专用目录有界重试，避免后代最终写盘窗口导致 ENOTEMPTY。启动异常路径也等待退出再清理。未修改曝光/资金业务、用户目录或共享环境。
+
+`/tmp/recsys-browser-cleanup-validation.log`：4 项 Playwright 全通过，隔离 PG/Kafka 宿主最终资金对账 PASS；typecheck、该文件 ESLint、Prettier 与 diff 检查 PASS。Code Hygiene 有根级无 formatter 限制（前端文件实际已用既有 Prettier 校验）。补丁推送后继续核验远程 CI；S09 沿原计划推进。
