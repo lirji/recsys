@@ -51,3 +51,5 @@ EC06a DONE/PASS（本地）：广告校准无效数值/样本不足/坏参数不
 EC06b DONE/PASS（本地）：归因全程long身份/具名触点/显式模型，三模型原SHA保持；质量/归因无输入或发布失败不假完成，NaN质量不再round成0，成功部分保留。223目录旧216/8族保持；59后端/7类、57FE、24compile/守卫/hygiene过，见EC06B_DESIGN/RESULT。A已ff/push c6921b8f，CI38816279798仍运行。EC06余5作业、EC07/08继续。
 
 EC06c1 DONE/PASS（本地）：巡检三项显式状态、缺数据/故障不假通过，CSV保留原数值追加状态；后台Diagnosis/Alerts识别完整性与PSI有效性，旧报表显示未知。226目录旧223/8族保持；71后端/7类（首68+最终Diagnosis25替代22）、57FE、24compile/守卫/hygiene过，见EC06C1_DESIGN/RESULT。B已ff/push70c1d0e9。c2巡检页面尚未修改，随后完成可见展示和浏览器；EC06其余四Job及EC07/08继续。
+
+EC06c2 DONE/PASS（本地）：巡检页面三项显式状态和有效数值联合判断，缺数据/失败/未知与旧报表不假绿，安全目录提示、有效图表/明细/文件切换保留；修复实际截图发现的图表零宽与窄屏溢出。71前端/3文件、2 Chromium、build、5文件格式/ESLint、目录/SQL/hygiene通过，3张截图已查看。见EC06C2_DESIGN/RESULT；无后端/SQL/依赖修改。C1已ff/push b1ecff9b，CI四门成功/build运行。父EC06余Ocpc/Multimodal/Bandit/FTRL及EC07/08继续。

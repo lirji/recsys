@@ -81,20 +81,30 @@ export default function ReportViewer() {
       <PageHeader title={`报表 · ${category}`} accent={ACCENTS.rank} />
       <Breadcrumb items={[{ title: <Link to="/reports">报表总览</Link> }, { title: category }]} />
       {!fileAllowed ? (
-        <Alert type="warning" showIcon message="文件不在当前分类索引中,已拒绝请求(防路径穿越/错链)。" />
+        <Alert
+          type="warning"
+          showIcon
+          message="文件不在当前分类索引中,已拒绝请求(防路径穿越/错链)。"
+        />
       ) : null}
       <Space wrap>
         <span>选择文件</span>
         <Select
-          style={{ minWidth: 320 }}
+          aria-label="报表文件"
+          style={{ width: 'min(320px, calc(100vw - 64px))' }}
           value={selected || undefined}
           placeholder="该分类暂无文件"
           onChange={(v) => setSearch({ file: v })}
-          options={filesOfCat.map((f) => ({ value: f.fileName, label: `${f.timestamp} (${f.fileName})` }))}
+          options={filesOfCat.map((f) => ({
+            value: f.fileName,
+            label: `${f.timestamp} (${f.fileName})`,
+          }))}
         />
       </Space>
 
-      {index.isError ? <Alert type="error" showIcon message={toApiError(index.error).message} /> : null}
+      {index.isError ? (
+        <Alert type="error" showIcon message={toApiError(index.error).message} />
+      ) : null}
 
       {filesOfCat.length >= 2 ? (
         <CollapsibleCard

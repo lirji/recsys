@@ -1,0 +1,9 @@
+# EC06c2 巡检报表真实状态展示
+
+基线b1ecff9b1f0f0b25eb8379408b7da5c0e445a2cf（c1已交付）。这是现有DataQualityViz局部状态修复，沿用已批准错误治理和当前Ant Design组件、路由、主题与布局；不做中大型前端重规划。按frontend-design局部判断、frontend-implementation受治理切片落实。
+
+运维用户在/reports/data-quality读取现有ReportTable接口，必须知道三项是否完成、哪些没有数据或失败、哪些数值仍可用于排查。消费c1三个check_*_status，不回显未知状态；完整PASSED/BREACHED且指标有效时才能显示已完成。缺状态的旧CSV、NO_DATA/FAILED、坏指标或坏越阈值计数不能显示绿色“无越阈值项”。逐项状态用固定中文标签和语义色；失败/未知完整性复用JOB_DATA_QUALITY_CHECK_FAILED/INCOMPLETE，实际越阈值复用JOB_DATA_QUALITY_BREACHED。无数据/失败项不展示健康仪表，其原始数值仍在CSV明细中。已有效的其他检查仍可显示。
+
+保持原文件索引、Select与URL参数、明细折叠、CLI提示、正常仪表及比较入口；不发明在线重跑按钮。继续通过已有离线命令补齐/修复后选择新报告。PSI需唯一且非负有限、coverage/ECE需可解释有效范围、计数需非负整数；空白不转0。任意旧breach自由文本不作为新的公开错误提示，按已知数量与目录给出安全说明，明细保留原CSV。数据只来自正式接口，fixture仅在测试网络隔离中。
+
+文件范围：DataQualityViz、局部解析助手、组件测试、单个现有Playwright目录中的状态spec及必要文档。浏览器截图发现仪表flex子项宽度0及长文件名撑出窄屏，范围内修复仪表容器，并最小调整ReportViewer文件Select的宽度/可访问标签；不改共享图表或全局卡片。测试覆盖完整/阈值/部分失败/全空/旧报表/未知状态/非法数值，真实浏览器走文件选择、明细展开、桌面和既有窄屏，截图实际查看。接口fixture按c1真实CSV协议，不声称真实后端浏览器联调；c1已独立验证真实PG和后台HTTP。构建/类型/格式/ESLint、必要前端回归、hygiene通过后正常交付。无Java或SQL修改，无需重复Maven；剩余4个EC06作业和EC07/08继续。
