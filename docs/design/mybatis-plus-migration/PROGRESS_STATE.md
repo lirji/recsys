@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b已交付50b2febd；MP03c1已交付0ee47314；MP03c2已交付1fd57823；MP03c3已交付a98fceba；MP03d DONE/PASS，rank29项及最终宿主11项通过；交付后进入MP04。
+`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b已交付50b2febd；MP03c1已交付0ee47314；MP03c2已交付1fd57823；MP03c3已交付a98fceba；MP03d已交付1bc4c0b2；MP04a DONE/PASS，旧6项、新8项真实测试及最终18项宿主全通过；当前继续MP04b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP04a广告目录/召回三源Mapper完成，见MP04A_RESULT。
 
 - MP03d评分序列完成，MP03整体DONE，见MP03D_RESULT。
 - MP03c3语义ID/TIGER完成，召回生产Java SQL全部核销，见MP03C3_RESULT。
@@ -38,7 +40,7 @@
 
 ## 已修改文件
 
-MP01～MP03c3已交付。当前MP03d：rank依赖/两个排序器/主源Mapper及XML/行模型/配置/可复现ONNX及PG测试/gitignore，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP04a：ad依赖、目录/召回Repository、三源Mapper/XML/配置、共享adDb/sharded会话工厂及真实PG测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -57,8 +59,8 @@ MP01～MP03c3已交付。当前MP03d：rank依赖/两个排序器/主源Mapper�
 
 ## 下一步
 
-1. 显式路径交付MP03d；核对最新CI，不将被取消的运行当成功。
-2. 执行MP04广告目录、多源与真实分片迁移，再连续完成MP05～MP15。
+1. MP04a已完成，准备Git交付。
+2. 继续MP04b/c及MP05～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -72,3 +74,9 @@ SQL全量完成后统一错误码及错误提示展示，并减少相关魔法�
 ## 根恢复入口说明
 
 为长任务恢复，按用户AGENTS要求在CODEX_PROGRESS.md头部追加当前活跃任务入口，原暂停交接字节完整保留在后方（原文SHA仍为保护表中的09ca9b…）。该文件包含原任务未提交内容，仍不stage；其他保护文件未改。运行时保护指纹中仅根文件更新为追加后的指纹，不能用旧摘要强制覆盖它。
+
+## MP04a当前检查点
+
+DONE/PASS，详见MP04A_RESULT。最终18项宿主通过，全仓编译通过，源指纹已冻结。继续MP04b广告主；广告主主源仍由Boot自动配置，派生源原来藏在derivedJdbc内，不能随意新增DataSource bean导致Boot主源退避。优先让派生工厂复用derivedJdbc.getDataSource()，精确绑定XML；测试需验证同一实例和主源仍创建。
+
+最近已观察CI：MP03d 38716894284 SUCCESS；MP03c3/c2被后续并发策略取消。

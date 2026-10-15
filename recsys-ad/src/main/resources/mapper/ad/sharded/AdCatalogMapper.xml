@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper">
+    <resultMap id="title" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$TitleRow">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="title" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="optimization" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$OptimizationRow">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="optimization_type" javaType="string"/><arg column="target_cpa" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="detail" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$DetailRow">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="item_id" javaType="_long"/><arg column="advertiser_id" javaType="_long"/><arg column="quality_score" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="bid" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$BidRow">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="bid" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="audience" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$AudienceRow">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="audience_id" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="keywordHit" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$KeywordHit">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="bidword_id" javaType="_long"/><arg column="keyword" javaType="string"/><arg column="bid" javaType="java.lang.Double"/></constructor>
+    </resultMap>
+    <select id="titles" resultMap="title">
+        SELECT ad_id, title FROM ad WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="optimizations" resultMap="optimization">
+        SELECT ad_id, COALESCE(optimization_type,'CPC') AS optimization_type, COALESCE(target_cpa,0) AS target_cpa
+        FROM ad WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="activeDetails" resultMap="detail">
+        SELECT a.ad_id, COALESCE(a.item_id,0) AS item_id, a.advertiser_id, COALESCE(a.quality_score,0) AS quality_score
+        FROM ad a JOIN advertiser adv ON adv.advertiser_id=a.advertiser_id AND adv.status &lt;> 'paused'
+        WHERE a.status='active' AND a.review_status='approved'
+        <if test="ids != null">AND a.ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})</if>
+    </select>
+    <select id="bids" resultMap="bid">
+        SELECT ad_id, COALESCE(MAX(bid),0) AS bid FROM bidword
+        <if test="ids != null">WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})</if>
+        GROUP BY ad_id
+    </select>
+    <select id="audiences" resultMap="audience">
+        SELECT ad_id, audience_id FROM ad WHERE audience_id IS NOT NULL
+        AND ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="keywordHits" resultMap="keywordHit">
+        SELECT ad_id, id AS bidword_id, keyword, bid FROM bidword
+        WHERE keyword = ANY(#{keywords,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}) ORDER BY bid DESC LIMIT #{limit}
+    </select>
+</mapper>

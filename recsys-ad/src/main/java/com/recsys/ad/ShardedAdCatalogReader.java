@@ -2,9 +2,8 @@ package com.recsys.ad;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -16,7 +15,7 @@ import java.util.Map;
  * 与 P1b 之前完全等价,是绞杀者迁移的安全默认与回滚落点
  * ({@code recsys.ad.catalog.source} 缺省或 = {@code sharded} 时生效)。
  *
- * <p>本类<b>拥有全部广告目录 SQL</b>(自 {@link AdRepository} 抽出),不依赖 {@code AdRepository} —— 从而
+ * <p>本类负责广告目录结果映射，SQL集中在 {@link AdCatalogMapper},不依赖 {@code AdRepository} —— 从而
  * {@code AdRepository} 反过来可注入本接口做召回回填(activeAdDetails/bidMap)而无环。口径:只取
  * 广告 active + 审核 approved + 广告主非 paused。
  */
@@ -26,10 +25,10 @@ public class ShardedAdCatalogReader implements AdCatalogReader {
 
     private static final Logger log = LoggerFactory.getLogger(ShardedAdCatalogReader.class);
 
-    private final JdbcTemplate sharded;
+    private final AdCatalogMapper mapper;
 
-    public ShardedAdCatalogReader(@Qualifier("adShardingJdbc") JdbcTemplate sharded) {
-        this.sharded = sharded;
+    public ShardedAdCatalogReader(AdCatalogMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
@@ -40,9 +39,10 @@ public class ShardedAdCatalogReader implements AdCatalogReader {
         }
         Long[] ids = adIds.toArray(new Long[0]);
         try {
-            sharded.query("SELECT ad_id, title FROM ad WHERE ad_id = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                    rs -> { out.put(rs.getLong("ad_id"), rs.getString("title")); });
+            mapper.titles(ids, context -> {
+                var row = context.getResultObject();
+                out.put(row.adId(), row.title());
+            });
         } catch (Exception e) {
             log.warn("取广告标题失败: {}", e.getMessage());
         }
@@ -57,14 +57,10 @@ public class ShardedAdCatalogReader implements AdCatalogReader {
         }
         Long[] ids = adIds.toArray(new Long[0]);
         try {
-            sharded.query("SELECT ad_id, optimization_type, target_cpa FROM ad WHERE ad_id = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                    rs -> {
-                        String type = rs.getString("optimization_type");
-                        double cpa = rs.getDouble("target_cpa");
-                        out.put(rs.getLong("ad_id"),
-                                new AdRepository.OcpcParams(type == null ? "CPC" : type, rs.wasNull() ? 0.0 : cpa));
-                    });
+            mapper.optimizations(ids, context -> {
+                var row = context.getResultObject();
+                out.put(row.adId(), new AdRepository.OcpcParams(row.type(), row.targetCpa()));
+            });
         } catch (Exception e) {
             log.warn("取广告 oCPC 参数失败,退 CPC: {}", e.getMessage());
         }
@@ -74,51 +70,27 @@ public class ShardedAdCatalogReader implements AdCatalogReader {
     @Override
     public Map<Long, AdDetail> activeAdDetails(Collection<Long> adIds) {
         Map<Long, AdDetail> out = new HashMap<>();
-        // A2:只取 审核 approved 的广告 —— 与倒排"可服务集"口径一致。
-        String base =
-                "SELECT a.ad_id, a.item_id, a.advertiser_id, a.quality_score " +
-                "FROM ad a JOIN advertiser adv ON adv.advertiser_id = a.advertiser_id AND adv.status <> 'paused' " +
-                "WHERE a.status = 'active' AND a.review_status = 'approved'";
         try {
-            if (adIds == null) {
-                sharded.query(base, rs -> { putDetail(out, rs); });
-            } else {
-                if (adIds.isEmpty()) {
-                    return out;
-                }
-                Long[] ids = adIds.toArray(new Long[0]);
-                sharded.query(base + " AND a.ad_id = ANY(?)",
-                        ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                        rs -> { putDetail(out, rs); });
-            }
+            if (adIds != null && adIds.isEmpty()) return out;
+            mapper.activeDetails(adIds == null ? null : adIds.toArray(Long[]::new), context -> {
+                var row = context.getResultObject();
+                out.put(row.adId(), new AdDetail(row.itemId(), row.advertiserId(), row.quality()));
+            });
         } catch (Exception e) {
             log.warn("取广告详情失败: {}", e.getMessage());
         }
         return out;
     }
 
-    private static void putDetail(Map<Long, AdDetail> out, java.sql.ResultSet rs) throws java.sql.SQLException {
-        out.put(rs.getLong("ad_id"), new AdDetail(
-                rs.getLong("item_id"), rs.getLong("advertiser_id"), rs.getDouble("quality_score")));
-    }
-
     @Override
     public Map<Long, Double> bidMap(Collection<Long> adIds) {
         Map<Long, Double> out = new HashMap<>();
         try {
-            if (adIds == null) {
-                sharded.query("SELECT ad_id, COALESCE(MAX(bid),0) AS bid FROM bidword GROUP BY ad_id",
-                        rs -> { out.put(rs.getLong("ad_id"), rs.getDouble("bid")); });
-            } else {
-                if (adIds.isEmpty()) {
-                    return out;
-                }
-                Long[] ids = adIds.toArray(new Long[0]);
-                sharded.query(
-                        "SELECT ad_id, COALESCE(MAX(bid),0) AS bid FROM bidword WHERE ad_id = ANY(?) GROUP BY ad_id",
-                        ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                        rs -> { out.put(rs.getLong("ad_id"), rs.getDouble("bid")); });
-            }
+            if (adIds != null && adIds.isEmpty()) return out;
+            mapper.bids(adIds == null ? null : adIds.toArray(Long[]::new), context -> {
+                var row = context.getResultObject();
+                out.put(row.adId(), row.bid());
+            });
         } catch (Exception e) {
             log.warn("取广告出价失败: {}", e.getMessage());
         }
@@ -133,10 +105,10 @@ public class ShardedAdCatalogReader implements AdCatalogReader {
         }
         Long[] ids = adIds.toArray(new Long[0]);
         try {
-            sharded.query(
-                    "SELECT ad_id, audience_id FROM ad WHERE audience_id IS NOT NULL AND ad_id = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                    rs -> { out.put(rs.getLong("ad_id"), rs.getLong("audience_id")); });
+            mapper.audiences(ids, context -> {
+                var row = context.getResultObject();
+                out.put(row.adId(), row.audienceId());
+            });
         } catch (Exception e) {
             log.warn("取广告定向人群失败(退不定向): {}", e.getMessage());
         }

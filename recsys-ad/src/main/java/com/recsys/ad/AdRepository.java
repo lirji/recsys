@@ -5,9 +5,10 @@ import com.recsys.common.ad.AdCandidate;
 import com.recsys.common.ad.AdChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.AdEmbeddingMapper;
+import com.recsys.ad.persistence.mapper.derived.AdUserEmbeddingMapper;
+import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 广告召回读取(JDBC)。负责<b>向量 ANN(ad_embedding,主库不分片)+ user_embedding</b> 的真源访问,
+ * 广告召回读取(Mapper/XML)。负责<b>向量 ANN(ad_embedding,主库不分片)+ user_embedding</b> 的真源访问,
  * 以及关键词 DB 兜底召回;广告<b>目录详情/出价</b>的读则委托 {@link AdCatalogReader}
  * (sharded 直读分片库 / replica 读事件副本,P1b)。
  *
@@ -36,11 +37,11 @@ public class AdRepository {
     private static final Logger log = LoggerFactory.getLogger(AdRepository.class);
 
     /** #3:user_embedding(rec-serving 派生读模型)走派生库 derivedJdbc(默认 recsys,DERIVED_PG_DB 设则拆库)。 */
-    private final JdbcTemplate jdbc;
+    private final AdUserEmbeddingMapper userEmbeddings;
     /** #3:ad_embedding(ad-serving 自有)专用源 —— 默认 recsys,AD_PG_DB 设则拆库。 */
-    private final JdbcTemplate adDb;
+    private final AdEmbeddingMapper adEmbeddings;
     /** 次数据源:ShardingSphere —— 仅 kwByDb 的 bidword 关键词扫描仍用。 */
-    private final JdbcTemplate sharded;
+    private final AdCatalogMapper catalogMapper;
     /** 目录读(标题/oCPC/详情/出价/定向):sharded 或 replica。 */
     private final AdCatalogReader catalog;
 
@@ -53,11 +54,11 @@ public class AdRepository {
     private volatile long hotCacheExpiresAt;
     private final Object hotLock = new Object();
 
-    public AdRepository(@Qualifier("derivedJdbc") JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
-                        @Qualifier("adShardingJdbc") JdbcTemplate sharded, AdCatalogReader catalog) {
-        this.jdbc = jdbc;
-        this.adDb = adDb;
-        this.sharded = sharded;
+    public AdRepository(AdUserEmbeddingMapper userEmbeddings, AdEmbeddingMapper adEmbeddings,
+                        AdCatalogMapper catalogMapper, AdCatalogReader catalog) {
+        this.userEmbeddings = userEmbeddings;
+        this.adEmbeddings = adEmbeddings;
+        this.catalogMapper = catalogMapper;
         this.catalog = catalog;
     }
 
@@ -69,37 +70,22 @@ public class AdRepository {
         if (keywords.isEmpty()) {
             return List.of();
         }
-        String[] kws = keywords.toArray(new String[0]);
         try {
-            List<long[]> hits = new ArrayList<>();          // [adId, bidwordId]
-            List<String> hitKw = new ArrayList<>();
-            List<Double> hitBid = new ArrayList<>();
-            sharded.query(
-                    "SELECT ad_id, id AS bidword_id, keyword, bid FROM bidword " +
-                    "WHERE keyword = ANY(?) ORDER BY bid DESC LIMIT ?",
-                    ps -> {
-                        ps.setArray(1, ps.getConnection().createArrayOf("text", kws));
-                        ps.setInt(2, limit);
-                    },
-                    rs -> {
-                        hits.add(new long[]{rs.getLong("ad_id"), rs.getLong("bidword_id")});
-                        hitKw.add(rs.getString("keyword"));
-                        hitBid.add(rs.getDouble("bid"));
-                    });
+            List<AdCatalogMapper.KeywordHit> hits = catalogMapper.keywordHits(new ArrayList<>(keywords), limit);
             if (hits.isEmpty()) {
                 return List.of();
             }
             Map<Long, AdCatalogReader.AdDetail> details = catalog.activeAdDetails(adIdSet(hits));
             List<AdCandidate> out = new ArrayList<>(hits.size());
             for (int i = 0; i < hits.size(); i++) {
-                long adId = hits.get(i)[0];
+                long adId = hits.get(i).adId();
                 AdCatalogReader.AdDetail d = details.get(adId);
                 if (d == null) {
                     continue; // 广告/广告主非可服务
                 }
-                double bid = hitBid.get(i);
-                AdChannel ch = exactTerms.contains(hitKw.get(i)) ? AdChannel.KW_EXACT : AdChannel.KW_BROAD;
-                out.add(new AdCandidate(adId, d.itemId(), d.advertiserId(), hits.get(i)[1],
+                double bid = hits.get(i).bidOrZero();
+                AdChannel ch = exactTerms.contains(hits.get(i).keyword()) ? AdChannel.KW_EXACT : AdChannel.KW_BROAD;
+                out.add(new AdCandidate(adId, d.itemId(), d.advertiserId(), hits.get(i).bidwordId(),
                         bid, ch, bid, d.quality()));
             }
             return out;
@@ -128,15 +114,7 @@ public class AdRepository {
         try {
             PGvector pv = new PGvector(vec);
             LinkedHashMap<Long, Double> sims = new LinkedHashMap<>(); // adId → sim(保序)
-            adDb.query(
-                    "SELECT ad_id, 1 - (embedding <=> ?) AS sim FROM ad_embedding " +
-                    "ORDER BY embedding <=> ? LIMIT ?",
-                    ps -> {
-                        ps.setObject(1, pv);
-                        ps.setObject(2, pv);
-                        ps.setInt(3, limit);
-                    },
-                    rs -> { sims.put(rs.getLong("ad_id"), rs.getDouble("sim")); });
+            adEmbeddings.nearestAds(pv, limit).forEach(row -> sims.put(row.adId(), row.similarity()));
             if (sims.isEmpty()) {
                 return List.of();
             }
@@ -215,10 +193,10 @@ public class AdRepository {
         return Collections.unmodifiableList(all);   // 缓存共享,置不可变防下游误改
     }
 
-    private static Set<Long> adIdSet(List<long[]> hits) {
+    private static Set<Long> adIdSet(List<AdCatalogMapper.KeywordHit> hits) {
         Set<Long> s = new java.util.HashSet<>();
-        for (long[] h : hits) {
-            s.add(h[0]);
+        for (var hit : hits) {
+            s.add(hit.adId());
         }
         return s;
     }
@@ -237,9 +215,7 @@ public class AdRepository {
      */
     private float[] loadUserVector(long userId) {
         try {
-            List<String> rows = jdbc.query(
-                    "SELECT embedding::text FROM user_embedding WHERE user_id=?",
-                    (rs, n) -> rs.getString(1), userId);
+            List<String> rows = userEmbeddings.userEmbedding(userId);
             if (rows.isEmpty() || rows.get(0) == null) {
                 return null;
             }
