@@ -19,6 +19,8 @@
     </description>
 
     <dependencies>
+        <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>
+        <dependency><groupId>com.recsys</groupId><artifactId>recsys-persistence</artifactId></dependency>
         <!-- 广告领域库:传递带来 rank/content/feature/common/ad-common + redis/jdbc/pgvector/shardingsphere/onnxruntime -->
         <dependency>
             <groupId>com.recsys</groupId>

@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b已交付50b2febd；MP03c1已交付0ee47314；MP03c2已交付1fd57823；MP03c3已交付a98fceba；MP03d已交付1bc4c0b2；MP04a已交付1f000266；MP04b DONE/PASS，旧6项、新8项真实测试及模块49项通过，继续MP04c。
+`IN_PROGRESS`。用户已批准整体计划；MP00～MP03已交付，MP04a=1f000266、MP04b=d8ad16eb已交付；MP04c DONE/PASS，联合29项真实/契约/宿主测试通过，MP04整体完成。继续MP05，不等待重复确认。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP04c目录副本/报表/DDL资源提取完成，MP04整体DONE，见MP04C_RESULT。
 
 - MP04b广告主写库/报表完成，见MP04B_RESULT。
 
@@ -36,13 +38,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP03已完成；MP04～MP15及追加统一错误码目标未完成。
+- MP00～MP04已完成；MP05～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP04b：advertiser依赖、两个Repository/Reader、primary/derived Mapper/XML、GeneratedId、配置及双分片测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP04c：ad-serving两个Repository、adDb Mapper/XML/配置、DDL资源、真实PG测试及依赖、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -61,8 +63,8 @@ MP01～MP03已交付。当前MP04b：advertiser依赖、两个Repository/Reader�
 
 ## 下一步
 
-1. MP04a已交付1f000266，MP04b已完成，准备Git交付。
-2. 继续MP04c及MP05～MP15，全部SQL完成后处理统一错误码。
+1. MP04b已交付d8ad16eb，MP04c已完成，准备Git交付。
+2. 继续MP05～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -86,3 +88,7 @@ DONE/PASS，详见MP04A_RESULT。最终18项宿主通过，全仓编译通过，
 ## MP04b检查点
 
 DONE/PASS，见MP04B_RESULT；AdvertiserDataSourceConfig连接装配原样保留，工厂仅借用JdbcTemplate.getDataSource()，Java业务SQL已全部核销。继续MP04c，需要提取AdServableRepository运行时DDL到新资源并补全表/列注释，保留降级、JSON、upsert/delete和统计口径；不能修改历史08_ad_servable.sql等资源。
+
+## MP04c检查点
+
+DONE/PASS，见MP04C_RESULT；29项联合验证全通过。下一片MP05a：AdEventLogger、AdOutcomeService、UpliftAssignmentService；原Jdbc batch曝光写入需保留参数/创意NULL、异步及异常降级，新增真实PG验证批量失败语义；uplift advisory lock+条件插入、转换事实ON CONFLICT幂等、开关关闭不建表及运行时DDL资源提取。已有两个纯Mock测试需随构造器迁移并以真实PG补证。

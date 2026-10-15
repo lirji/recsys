@@ -34,8 +34,8 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/adserving/catalog/AdServableRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/catalog/AdServableRepository.java) | 12 | 14 | TODO |
-| [com/recsys/adserving/report/AdReportStatsRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/report/AdReportStatsRepository.java) | 4 | 1 | TODO |
+| [com/recsys/adserving/catalog/AdServableRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/catalog/AdServableRepository.java) | 12 | 14 | DONE MP04c |
+| [com/recsys/adserving/report/AdReportStatsRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/report/AdReportStatsRepository.java) | 4 | 1 | DONE MP04c |
 
 ### recsys-ad
 

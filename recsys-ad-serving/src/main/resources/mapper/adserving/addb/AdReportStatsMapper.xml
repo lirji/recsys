@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.adserving.persistence.mapper.addb.AdReportStatsMapper">
+    <resultMap id="stat" type="com.recsys.adserving.report.AdReportStatsRepository$Stat">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="impr" javaType="_long"/>
+            <arg column="clk" javaType="_long"/><arg column="conv" javaType="_long"/><arg column="spend" javaType="_double"/></constructor>
+    </resultMap>
+    <select id="stats" resultMap="stat">
+        SELECT ad_id,SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS impr,
+            SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk,
+            SUM(CASE WHEN event_type='CONVERSION' THEN 1 ELSE 0 END) AS conv,
+            COALESCE(SUM(CASE WHEN event_type='CLICK' THEN charged_price ELSE 0 END),0) AS spend
+        FROM ad_event WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler}) GROUP BY ad_id
+    </select>
+</mapper>

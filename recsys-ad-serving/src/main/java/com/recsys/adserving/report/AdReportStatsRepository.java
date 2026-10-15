@@ -1,7 +1,6 @@
 package com.recsys.adserving.report;
 
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.adserving.persistence.mapper.addb.AdReportStatsMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -18,12 +17,14 @@ import java.util.List;
 @Repository
 public class AdReportStatsRepository {
 
-    private final JdbcTemplate jdbc;
+    private final AdReportStatsMapper mapper;
 
-    public AdReportStatsRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 报表只经广告自有源查询，保持原读取所有权。 */
+    public AdReportStatsRepository(AdReportStatsMapper mapper) {
+        this.mapper = mapper;
     }
 
+    /** 跨服务报表传输前的聚合结果行。 */
     public record Stat(long adId, long impressions, long clicks, long conversions, double spend) {
     }
 
@@ -33,15 +34,6 @@ public class AdReportStatsRepository {
             return List.of();
         }
         Long[] ids = adIds.toArray(new Long[0]);
-        return jdbc.query(
-                "SELECT ad_id, " +
-                "  SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS impr, " +
-                "  SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk, " +
-                "  SUM(CASE WHEN event_type='CONVERSION' THEN 1 ELSE 0 END) AS conv, " +
-                "  COALESCE(SUM(CASE WHEN event_type='CLICK' THEN charged_price ELSE 0 END),0) AS spend " +
-                "FROM ad_event WHERE ad_id = ANY(?) GROUP BY ad_id",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                (rs, n) -> new Stat(rs.getLong("ad_id"), rs.getLong("impr"), rs.getLong("clk"),
-                        rs.getLong("conv"), rs.getDouble("spend")));
+        return mapper.stats(ids);
     }
 }

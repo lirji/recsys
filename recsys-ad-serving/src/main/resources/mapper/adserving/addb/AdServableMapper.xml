@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.adserving.persistence.mapper.addb.AdServableMapper">
+    <resultMap id="title" type="com.recsys.adserving.persistence.mapper.addb.AdServableMapper$Title">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="title" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="optimization" type="com.recsys.adserving.persistence.mapper.addb.AdServableMapper$Optimization">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="optimization_type" javaType="string"/><arg column="target_cpa" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="detail" type="com.recsys.adserving.persistence.mapper.addb.AdServableMapper$Detail">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="item_id" javaType="_long"/><arg column="advertiser_id" javaType="_long"/><arg column="quality_score" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="bid" type="com.recsys.adserving.persistence.mapper.addb.AdServableMapper$Bid">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="max_bid" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="audience" type="com.recsys.adserving.persistence.mapper.addb.AdServableMapper$Audience">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="audience_id" javaType="_long"/></constructor>
+    </resultMap>
+    <insert id="upsertEmbedding">
+        INSERT INTO ad_embedding(ad_id,embedding,model) VALUES(#{adId},CAST(#{vector} AS vector),'catalog-event')
+        ON CONFLICT (ad_id) DO UPDATE SET embedding=EXCLUDED.embedding,model=EXCLUDED.model
+    </insert>
+    <delete id="deleteEmbedding">DELETE FROM ad_embedding WHERE ad_id=#{adId}</delete>
+    <insert id="upsert">
+        INSERT INTO ad_servable(ad_id,advertiser_id,item_id,title,landing_url,quality_score,
+            status,review_status,optimization_type,target_cpa,audience_id,max_bid,servable,
+            bidwords_json,creatives_json,updated_at)
+        VALUES(#{event.adId},#{event.advertiserId},#{event.itemId},#{event.title},#{event.landingUrl},#{event.qualityScore},
+            #{event.status},#{event.reviewStatus},#{event.optimizationType},#{event.targetCpa},#{event.audienceId},#{maxBid},TRUE,
+            #{bidwordsJson},#{creativesJson},now())
+        ON CONFLICT (ad_id) DO UPDATE SET
+            advertiser_id=EXCLUDED.advertiser_id,item_id=EXCLUDED.item_id,title=EXCLUDED.title,
+            landing_url=EXCLUDED.landing_url,quality_score=EXCLUDED.quality_score,status=EXCLUDED.status,
+            review_status=EXCLUDED.review_status,optimization_type=EXCLUDED.optimization_type,
+            target_cpa=EXCLUDED.target_cpa,audience_id=EXCLUDED.audience_id,max_bid=EXCLUDED.max_bid,
+            servable=TRUE,bidwords_json=EXCLUDED.bidwords_json,creatives_json=EXCLUDED.creatives_json,updated_at=now()
+    </insert>
+    <select id="bidwords" resultType="string">SELECT bidwords_json FROM ad_servable WHERE ad_id=#{adId}</select>
+    <delete id="delete">DELETE FROM ad_servable WHERE ad_id=#{adId}</delete>
+    <select id="count" resultType="long">SELECT COUNT(*) FROM ad_servable</select>
+    <select id="titles" resultMap="title">
+        SELECT ad_id,title FROM ad_servable WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="optimizations" resultMap="optimization">
+        SELECT ad_id,COALESCE(optimization_type,'CPC') AS optimization_type,COALESCE(target_cpa,0) AS target_cpa
+        FROM ad_servable WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="details" resultMap="detail">
+        SELECT ad_id,item_id,advertiser_id,COALESCE(quality_score,0) AS quality_score FROM ad_servable
+        <if test="ids != null">WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})</if>
+    </select>
+    <select id="bids" resultMap="bid">
+        SELECT ad_id,COALESCE(max_bid,0) AS max_bid FROM ad_servable
+        <if test="ids != null">WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})</if>
+    </select>
+    <select id="audiences" resultMap="audience">
+        SELECT ad_id,audience_id FROM ad_servable WHERE audience_id IS NOT NULL
+        AND ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+</mapper>
