@@ -39,3 +39,5 @@ EC05e DONE/PASS（本地）：种子/模拟参数先于清理校验，清理部�
 EC05f DONE/PASS（本地）：三评估Job部分失败最终受控失败，正常/原部分CSV与曲线完整摘要保持；非法参数先于发布，缺head与空候选区分，Eval中断和Error不吞。目录202原194/8族保持；41后端/5类、57前端、24compile与目录/SQL/hygiene通过，详见EC05F_DESIGN/RESULT。E已ff/push b8638f28，CI38812115409四门SUCCESS/build运行；EC05报表/投影/共享CLI及EC06～08继续。
 
 EC05g DONE/PASS（本地）：报表空输入/非法统计参数、延迟样本不足/无效模型、人群缺向量最终失败明确码；合法空探索快照与仅种子包保持。209目录旧202/8族保持；84后端/10类（83首轮+AdSignals最终13替代12）、57前端、24compile与守卫/hygiene过。见EC05G_DESIGN/RESULT。F已ff/push 56465b38，CI38813384975运行；E CI已取消。EC05h共享来源参数后审计剩余作业，EC06～08继续。
+
+EC05h DONE/PASS（本地），父EC05本地验收完成：三共享来源与max-ts安全参数、三Sync校验先于DDL/full清除、Uplift严格参数且0 no-op保持。35个EC05 Job与9个待EC06 Job的44项清单见EC05H_RESULT。212目录旧209/8族保持；完整offline依赖477/84类0失败错误、1个CI环境探针skip（实际集成运行），57FE/24compile/守卫/hygiene过。G已ff/push2717c956，CI38814199492运行，F/E已取消。EC06～08继续。

@@ -85,7 +85,7 @@ class SimRecEventsPostgresTest {
         assertEquals(0, simulationRows());
         assertEquals(38, db.queryForObject("SELECT count(*) FROM user_behavior", Integer.class));
         db.execute("INSERT INTO user_behavior(scene) VALUES('sim-rec')");
-        assertThrows(IllegalArgumentException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=item;DROP TABLE item_local")));
+        assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=item;DROP TABLE item_local")));
         assertEquals(1, simulationRows());
         assertEquals(2, db.queryForObject("SELECT count(*) FROM item_local", Integer.class));
         assertWriterClosed();

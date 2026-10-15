@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.BeforeEach;
@@ -116,6 +119,26 @@ class SyncBehaviorLogPostgresTest {
         assertEquals(10, target.queryForObject("SELECT count(*) FROM pg_attribute WHERE attrelid='behavior_log'::regclass AND attnum>0 AND NOT attisdropped AND col_description(attrelid,attnum) IS NOT NULL", Integer.class));
         assertEquals("legacy-upgrade", target.queryForObject("SELECT exposure_id FROM behavior_log WHERE id=1", String.class));
         assertEquals(2, target.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname='target_store' AND indexname IN('idx_behavior_log_user_action','idx_behavior_log_item')", Integer.class));
+    }
+
+    @Test void invalidSourceOptionCannotCreateOrClearReadModelEvenWithFull() {
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertNull(target.queryForObject("SELECT to_regclass('behavior_log')::text", String.class));
+        }
+        target.execute("INSERT INTO user_behavior(id) VALUES(1)");
+        job.run(new DefaultApplicationArguments());
+        var original = target.queryForList("SELECT * FROM behavior_log");
+        target.execute("INSERT INTO user_behavior(id) VALUES(2)");
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertEquals(original, target.queryForList("SELECT * FROM behavior_log"));
+        }
+        job.run(new DefaultApplicationArguments("--full"));assertEquals(2, count());
     }
 
     private JdbcTemplate jdbc(String schema) {

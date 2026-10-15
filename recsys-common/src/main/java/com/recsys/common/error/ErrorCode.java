@@ -210,7 +210,10 @@ public enum ErrorCode {
     JOB_DELAY_MODEL_INVALID("JOB_DELAY_MODEL_INVALID", "转化延迟均值或模型参数无效，原延迟模型保持不变；请检查延迟样本后重试", 0),
     JOB_NO_AUDIENCE_SEEDS("JOB_NO_AUDIENCE_SEEDS", "没有种子人群，未更新人群包；请先写入种子用户后重试", 0),
     JOB_AUDIENCE_VECTORS_UNAVAILABLE("JOB_AUDIENCE_VECTORS_UNAVAILABLE", "有人群缺少可用种子向量，未完整更新；成功人群可能已更新，缺失人群原包保留，请补齐向量后重试", 0),
-    JOB_EXPLORATION_EMPTY_SNAPSHOT("JOB_EXPLORATION_EMPTY_SNAPSHOT", "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口", 0);
+    JOB_EXPLORATION_EMPTY_SNAPSHOT("JOB_EXPLORATION_EMPTY_SNAPSHOT", "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口", 0),
+    JOB_BEHAVIOR_SOURCE_INVALID("JOB_BEHAVIOR_SOURCE_INVALID", "行为数据来源不支持，请使用 user_behavior 或 behavior_log", 0),
+    JOB_ITEM_SOURCE_INVALID("JOB_ITEM_SOURCE_INVALID", "物品数据来源不支持，请使用 item 或 item_local", 0),
+    JOB_AD_EVENT_SOURCE_INVALID("JOB_AD_EVENT_SOURCE_INVALID", "广告事件来源不支持，请使用 ad_event 或 ad_event_log", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

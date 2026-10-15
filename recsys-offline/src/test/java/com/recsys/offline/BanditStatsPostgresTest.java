@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.bandit.BanditModelDto;
 import com.recsys.common.constant.RedisKeys;
@@ -103,7 +105,7 @@ class BanditStatsPostgresTest {
     @Test void emptyInputAndInvalidSourceKeepExistingModel() {
         redis.opsForValue().set(RedisKeys.BANDIT_MODEL,"keep");
         job.run(new DefaultApplicationArguments());
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
         assertEquals("keep",redis.opsForValue().get(RedisKeys.BANDIT_MODEL));verifyNoInteractions(features,content);
         source.assertClosed(admin,"bandit-stats-reader");
     }

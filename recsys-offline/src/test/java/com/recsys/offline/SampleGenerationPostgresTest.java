@@ -77,7 +77,7 @@ class SampleGenerationPostgresTest {
     }
     @Test void invalidSourceAndLateCatalogSqlFailurePreserveOldOutput() throws Exception {
         seed();Files.createDirectories(output.resolve("train"));Files.writeString(csv("ctr"),"keep-ctr");Files.writeString(csv("mt"),"keep-mt");
-        for(String kind:List.of("ctr","mt","impr"))fail(kind,"IllegalArgumentException","--item-table=item;DROP TABLE item_local");
+        for(String kind:List.of("ctr","mt","impr"))fail(kind,"JOB_ITEM_SOURCE_INVALID","--item-table=item;DROP TABLE item_local");
         db.execute("ALTER TABLE item RENAME COLUMN popularity TO hidden_popularity");
         try {for(String kind:List.of("ctr","mt"))fail(kind,"BadSqlGrammarException");}
         finally {db.execute("ALTER TABLE item RENAME COLUMN hidden_popularity TO popularity");}

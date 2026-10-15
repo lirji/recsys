@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.feature.RedisFeatureService;
 import com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper;
@@ -110,8 +112,8 @@ class BuildFeaturesPostgresTest {
 
     @Test void invalidSourceIsRejectedBeforePublishingAnyFeature() {
         features.writeItemFeatures(1,Map.of("old",7.0));
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE item")));
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE item")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
         assertEquals(Map.of("old",7.0),features.itemFeatures(1));source.assertClosed(admin,"feature-builder");
     }
 

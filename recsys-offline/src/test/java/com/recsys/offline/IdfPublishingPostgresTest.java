@@ -93,7 +93,7 @@ class IdfPublishingPostgresTest {
     }
 
     @Test void invalidSourceAndMissingTsvFailBeforeRedisChanges() {
-        oldSnapshot();assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
+        oldSnapshot();assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
         db.execute("INSERT INTO item(item_id,title) VALUES(1,'movie');ALTER TABLE item RENAME COLUMN title_tsv TO hidden_tsv");
         try{
             assertThrows(BadSqlGrammarException.class,()->job.run(new DefaultApplicationArguments()));assertOldSnapshot();source.assertClosed(admin,"idf-reader");

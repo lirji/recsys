@@ -182,7 +182,7 @@ class SeedAdsPostgresTest {
     }
 
     @Test void catalogSourceRejectsUntrustedIdentifierBeforeAnyWrite() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(PublicErrorException.class,
                 () -> job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE ad")));
         assertTrue(ads().isEmpty());
         assertTrue(invertedIndex().isEmpty());
@@ -196,7 +196,7 @@ class SeedAdsPostgresTest {
             assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () ->
                     job.run(new DefaultApplicationArguments("--clear", option))).errorCode());
         }
-        assertThrows(IllegalArgumentException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=private")));
+        assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=private")));
         assertEquals(original, ads());assertEquals(originalRedis, invertedIndex());
         assertEquals(1, adDb.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
     }

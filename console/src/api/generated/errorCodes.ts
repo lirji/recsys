@@ -840,6 +840,18 @@ export const errorCodes = {
       '本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口',
     httpStatus: 0,
   },
+  JOB_BEHAVIOR_SOURCE_INVALID: {
+    message: '行为数据来源不支持，请使用 user_behavior 或 behavior_log',
+    httpStatus: 0,
+  },
+  JOB_ITEM_SOURCE_INVALID: {
+    message: '物品数据来源不支持，请使用 item 或 item_local',
+    httpStatus: 0,
+  },
+  JOB_AD_EVENT_SOURCE_INVALID: {
+    message: '广告事件来源不支持，请使用 ad_event 或 ad_event_log',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.springframework.boot.ApplicationArguments;
 
 import com.recsys.offline.persistence.model.BehaviorSource;
@@ -21,15 +24,17 @@ final class BehaviorQuery {
 
     /** 解析 {@code --max-ts}(epoch 秒);未传返回 null(= 全量,默认行为)。 */
     static Long maxTs(ApplicationArguments args) {
-        return args.containsOption("max-ts")
-                ? Long.valueOf(args.getOptionValues("max-ts").get(0))
-                : null;
+        return args.containsOption("max-ts") ? JobArguments.longInteger(args, "max-ts", 0) : null;
     }
 
     /** 只解析封闭来源枚举，业务调用方不再取得可拼接的表名。 */
     static BehaviorSource source(ApplicationArguments args) {
-        String t = args.containsOption("behavior-table")
-                ? args.getOptionValues("behavior-table").get(0) : "user_behavior";
-        return BehaviorSource.fromCode(t);
+        String value = JobArguments.text(args, "behavior-table", "user_behavior");
+        try {
+            return BehaviorSource.fromCode(value);
+        } catch (IllegalArgumentException invalid) {
+            // 枚举保留内部校验语义，CLI只公开固定目录，不反射用户输入。
+            throw new PublicErrorException(ErrorCode.JOB_BEHAVIOR_SOURCE_INVALID, invalid);
+        }
     }
 }

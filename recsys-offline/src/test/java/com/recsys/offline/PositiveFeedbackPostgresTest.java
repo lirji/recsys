@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.PublicErrorException;
+
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -70,7 +72,7 @@ class PositiveFeedbackPostgresTest {
         assertEquals(BehaviorSource.USER_BEHAVIOR,BehaviorQuery.source(defaults));assertNull(BehaviorQuery.maxTs(defaults));
         var replica=new DefaultApplicationArguments("--behavior-table=behavior_log","--max-ts=100");
         assertEquals(BehaviorSource.BEHAVIOR_LOG,BehaviorQuery.source(replica));assertEquals(100L,BehaviorQuery.maxTs(replica));
-        assertThrows(IllegalArgumentException.class,()->BehaviorQuery.source(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
+        assertThrows(PublicErrorException.class,()->BehaviorQuery.source(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
     }
 
     @Test void failedRowConsumerClosesConnectionAndNextScanStillWorks() {

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.springframework.boot.ApplicationArguments;
 
 import com.recsys.offline.persistence.model.AdEventSource;
@@ -19,8 +22,11 @@ final class AdEventQuery {
 
     /** 单次执行只解析一次来源，避免可变表名字段跨调用残留。 */
     static AdEventSource source(ApplicationArguments args) {
-        String t = args.containsOption("ad-event-table")
-                ? args.getOptionValues("ad-event-table").get(0) : "ad_event";
-        return AdEventSource.fromCode(t);
+        String value = JobArguments.text(args, "ad-event-table", "ad_event");
+        try {
+            return AdEventSource.fromCode(value);
+        } catch (IllegalArgumentException invalid) {
+            throw new PublicErrorException(ErrorCode.JOB_AD_EVENT_SOURCE_INVALID, invalid);
+        }
     }
 }

@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -100,7 +102,7 @@ class FtrlTrainPostgresTest {
     }
 
     @Test void missingOrInvalidCatalogAndNullSamplePoolDoNotReplaceModel() {
-        oldModel();assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
+        oldModel();assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
         db.execute("ALTER TABLE item RENAME TO hidden_item");
         try{assertThrows(BadSqlGrammarException.class,()->job.run(new DefaultApplicationArguments()));assertOldModel();source.assertClosed(admin,"ftrl-reader");}
         finally{db.execute("ALTER TABLE hidden_item RENAME TO item");}

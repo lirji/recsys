@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper;
 import com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper;
@@ -134,7 +136,7 @@ class OcpcCalibratePostgresTest {
     }
     @Test void queryAndArgumentFailuresPreserveExistingRedisValues() {
         singleAd(); trip("simple",20,4,-86400,0); redis.opsForValue().set(RedisKeys.adOcpc(2),"old");
-        assertThrows(IllegalArgumentException.class,()->run(redis,"--ad-event-table=ad_event;DROP TABLE ad"));
+        assertThrows(PublicErrorException.class,()->run(redis,"--ad-event-table=ad_event;DROP TABLE ad"));
         events.execute("ALTER TABLE ad_event RENAME COLUMN charged_price TO hidden_price");
         try { assertThrows(DataAccessException.class,()->run(redis)); assertEquals("old",k(2)); }
         finally { events.execute("ALTER TABLE ad_event RENAME COLUMN hidden_price TO charged_price"); }

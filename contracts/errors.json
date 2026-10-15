@@ -1470,6 +1470,27 @@
       "httpStatus": 0,
       "message": "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口",
       "httpDefault": false
+    },
+    {
+      "name": "JOB_BEHAVIOR_SOURCE_INVALID",
+      "code": "JOB_BEHAVIOR_SOURCE_INVALID",
+      "httpStatus": 0,
+      "message": "行为数据来源不支持，请使用 user_behavior 或 behavior_log",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_ITEM_SOURCE_INVALID",
+      "code": "JOB_ITEM_SOURCE_INVALID",
+      "httpStatus": 0,
+      "message": "物品数据来源不支持，请使用 item 或 item_local",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_AD_EVENT_SOURCE_INVALID",
+      "code": "JOB_AD_EVENT_SOURCE_INVALID",
+      "httpStatus": 0,
+      "message": "广告事件来源不支持，请使用 ad_event 或 ad_event_log",
+      "httpDefault": false
     }
   ],
   "families": [

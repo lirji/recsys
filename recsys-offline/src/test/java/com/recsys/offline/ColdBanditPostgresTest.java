@@ -87,8 +87,8 @@ class ColdBanditPostgresTest {
 
     @Test void rejectsUntrustedSourceNamesBeforeRedisMutation() {
         redis.opsForValue().set(RedisKeys.COLD_CAT_TOTAL,"99");
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE item")));
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE item")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
         assertEquals("99",redis.opsForValue().get(RedisKeys.COLD_CAT_TOTAL));source.assertClosed(admin,"cold-bandit-reader");
     }
 

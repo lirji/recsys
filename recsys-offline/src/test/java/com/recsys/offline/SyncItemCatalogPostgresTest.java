@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,6 +105,26 @@ class SyncItemCatalogPostgresTest {
         });
         assertEquals(1, count());
         assertEquals("old", target.queryForObject("SELECT title FROM item_local WHERE item_id=1", String.class));
+    }
+
+    @Test void invalidSourceOptionCannotCreateOrClearReadModelEvenWithFull() {
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertNull(target.queryForObject("SELECT to_regclass('item_local')::text", String.class));
+        }
+        target.execute("INSERT INTO item(item_id) VALUES(1)");
+        job.run(new DefaultApplicationArguments());
+        var original = target.queryForList("SELECT * FROM item_local");
+        target.execute("INSERT INTO item(item_id) VALUES(2)");
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertEquals(original, target.queryForList("SELECT * FROM item_local"));
+        }
+        job.run(new DefaultApplicationArguments("--full"));assertEquals(2, count());
     }
 
     private void assertSourceClosed() {

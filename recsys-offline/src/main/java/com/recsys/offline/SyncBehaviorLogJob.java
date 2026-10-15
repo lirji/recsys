@@ -51,13 +51,13 @@ public class SyncBehaviorLogJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
+        // 错误参数须先拒绝，不能在--full已清空读模型后才发现来源缺值。
+        String sourceDb = JobArguments.text(args, "source-db", null);
         ensureTable();
         if (args.containsOption("full")) {
             persistence.truncate();
             log.info("sync-behavior-log: --full 全量重灌,已清空 behavior_log");
         }
-        String sourceDb = args.containsOption("source-db")
-                ? args.getOptionValues("source-db").get(0).trim() : null;
         Long since = persistence.watermark();
 
         int n;

@@ -102,7 +102,7 @@ class AdSignalsPostgresTest {
         seedCalibration(100);db.execute("INSERT INTO ad_event_log SELECT * FROM ad_event;TRUNCATE ad_event");
         calibrate.run(args("--ad-event-table=ad_event_log"));assertNotNull(value(RedisKeys.adCalib("deepfm")));explore.run(args("--ad-event-table=ad_event_log"));assertEquals("100",value(RedisKeys.AD_STATS_TOTAL));
         db.execute("TRUNCATE ad_event_log");seedDelay();db.execute("INSERT INTO ad_event_log SELECT * FROM ad_event;TRUNCATE ad_event");delay.run(args("--ad-event-table=ad_event_log","--min-samples=6"));assertEquals("1.5",value(RedisKeys.AD_DELAY_MEAN_DAYS));
-        for(var job:List.of(calibrate,explore,delay))assertThrows(IllegalArgumentException.class,()->job.run(args("--ad-event-table=ad_event;DROP TABLE ad_event")));
+        for(var job:List.of(calibrate,explore,delay))assertThrows(PublicErrorException.class,()->job.run(args("--ad-event-table=ad_event;DROP TABLE ad_event")));
         assertEquals("100",value(RedisKeys.AD_STATS_TOTAL));
     }
     @Test void missingSourceFailsBeforePublishingAnyOfTheThreeSignals() {

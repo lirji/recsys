@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +117,26 @@ class SyncAdEventLogPostgresTest {
         });
         assertEquals(2, count());
         assertEquals("IMPRESSION", target.queryForObject("SELECT event_type FROM ad_event_log WHERE id=3", String.class));
+    }
+
+    @Test void invalidSourceOptionCannotCreateOrClearReadModelEvenWithFull() {
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertNull(target.queryForObject("SELECT to_regclass('ad_event_log')::text", String.class));
+        }
+        target.execute("INSERT INTO ad_event(id) VALUES(1)");
+        job.run(new DefaultApplicationArguments());
+        var original = target.queryForList("SELECT * FROM ad_event_log");
+        target.execute("INSERT INTO ad_event(id) VALUES(2)");
+        for (String[] options : new String[][]{{"--full", "--source-db"}, {"--full", "--source-db= "},
+                {"--full", "--source-db=one", "--source-db=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+            assertEquals(original, target.queryForList("SELECT * FROM ad_event_log"));
+        }
+        job.run(new DefaultApplicationArguments("--full"));assertEquals(2, count());
     }
 
     private void seed(JdbcTemplate db) {

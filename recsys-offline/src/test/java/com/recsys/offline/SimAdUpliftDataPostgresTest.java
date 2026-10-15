@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+
+import com.recsys.common.error.PublicErrorException;
+
 import org.junit.jupiter.api.*;
 import com.recsys.offline.persistence.UpliftSimulationWriter;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -101,7 +105,11 @@ class SimAdUpliftDataPostgresTest {
     @Test void emptyAndInvalidCountsDoNotWriteData() {
         job.run(new DefaultApplicationArguments("--users=0"));
         assertEquals(0, assignments()); assertEquals(0, facts());
-        assertThrows(IllegalArgumentException.class, () -> job.run(new DefaultApplicationArguments("--users=-1")));
+        for (String[] options : new String[][]{{"--users=-1"}, {"--users"}, {"--users=private"},
+                {"--run-id"}, {"--run-id= "}, {"--run-id=one", "--run-id=two"}}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(options))).errorCode());
+        }
         assertEquals(0, assignments()); assertEquals(0, facts());
         source.assertClosed(db, "uplift-simulation-writer");
     }

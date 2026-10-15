@@ -75,7 +75,7 @@ class EvaluationJobsPostgresTest {
     }
     @Test void invalidSourceMissingBehaviorAndCatalogFailBeforePublication() throws Exception {
         seed();redis.opsForValue().set(RedisKeys.recCalib("rec"),"keep");
-        for(String kind:List.of("eval","tune","calibrate"))fail(kind,"IllegalArgumentException","--behavior-table=user_behavior;DROP TABLE item");
+        for(String kind:List.of("eval","tune","calibrate"))fail(kind,"JOB_BEHAVIOR_SOURCE_INVALID","--behavior-table=user_behavior;DROP TABLE item");
         db.execute("ALTER TABLE user_behavior RENAME TO hidden_behavior");
         try {for(String kind:List.of("eval","tune","calibrate"))fail(kind,"BadSqlGrammarException");}
         finally{db.execute("ALTER TABLE hidden_behavior RENAME TO user_behavior");}

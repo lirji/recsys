@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -31,6 +34,7 @@ public class SimAdUpliftDataJob implements OfflineJob {
     public void run(ApplicationArguments args) {
         int users = intArg(args,"users",5000); long seed = intArg(args,"seed",42);
         String run = arg(args,"run-id","qa-" + System.currentTimeMillis());
+        if (users < 0) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         Random random = new Random(seed); Instant base = Instant.now().minus(10, ChronoUnit.DAYS);
         List<UpliftSimulationMapper.Assignment> assignments = new ArrayList<>(users);
         List<UpliftSimulationMapper.Fact> facts = new ArrayList<>();
@@ -52,6 +56,6 @@ public class SimAdUpliftDataJob implements OfflineJob {
         writer.facts(facts);
         log.info("模拟 uplift 数据 run={} users={} treatment={} control={} outcome={}",run,users,treated,control,positive);
     }
-    private static String arg(ApplicationArguments a,String k,String d){List<String>v=a.getOptionValues(k);return v==null||v.isEmpty()?d:v.get(0);}
-    private static int intArg(ApplicationArguments a,String k,int d){return Integer.parseInt(arg(a,k,String.valueOf(d)));}
+    private static String arg(ApplicationArguments a,String k,String d){return JobArguments.text(a,k,d);}
+    private static int intArg(ApplicationArguments a,String k,int d){return JobArguments.integer(a,k,d);}
 }

@@ -84,7 +84,7 @@ class HotPostgresTest {
         db.execute("INSERT INTO user_behavior VALUES(1,'LIKE',1,now())");
         assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--topn=0"))).errorCode());
         assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--topn=-1"))).errorCode());
-        assertThrows(IllegalArgumentException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
+        assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
         assertEquals(Map.of("old",7.0),scores());source.assertClosed(admin,"hot-reader");
     }
 
