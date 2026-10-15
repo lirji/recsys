@@ -47,3 +47,17 @@ common-ad billing 的 GspPrice/ClickPrice/FrozenClickQuote 与CpmPrice委托；a
 `click-settlement-enabled=false`是安装/owner开关，须同时sandbox-enabled/clicks-enabled及V009；`click-preparation-admission-enabled`和`click-receipt-admission-enabled`分别控制新增，默认true但受安装开关约束。回退先关闭新增准备，保留在途回执到期、查询及回收；紧急停止回执仍保留原结果查询/重试和释放。不得关闭整个owner或回滚到无点击回收的版本而遗留held。沿用同源REQUIRES_NEW/READ_COMMITTED、1～30秒事务；单线程有界回收/退避/失败指标。长期保留和归档政策沿原项目待治理，当前不自动清理任何事实/去重数据。
 
 允许改动：common-ad点击契约；ad点击Repository/Service/Configuration/ExpiryJob、V009及专项测试；本设计/契约/切片/验收/运行文档。无前端/新中间件/旧Behavior范围变更。验收覆盖双顺序与并发、同/异ID、跨主体/用途隔离、反作弊并发/回滚、共享CPM账户硬上限、到期账户等待/释放竞争、原预算日、故障恢复、原结果查询、不可变账本及注释/迁移/开关。S11C具体RPC/HTTP/投递协议随后单独细化。
+
+## C11C1 正式可靠事件契约（S11C内部第一验证单元）
+
+S11C仍须完成可靠事件和双模式交付/API；将其按数据库事件闭环C1、在线交付/API闭环C2顺序实施，未改变原范围或重排父DAG。C1消费C11B已固定AdClickCapturedV1，不提前增加HTTP入口。新增ad V010：点击Outbox人工重放审计、逐事件Inbox事实及跨种类回执唯一索引、按广告主/原预算日累计click_count/charged_amount投影；点击投影和CPM投影独立，组合账目才与共享账户总消费比较，不把点击当impression_count。
+
+发送复用S06有界领取/DB租约/fence/20次领取/退避/ACK后标记，固定namespace只允许IMPRESSION或CLICK，不接受调用方表名。共享publisher/worker/consumer的有限回调适配只隔离事件校验、指标和投影，不泛化业务结算。新旧默认构造器与CPM事件保持原行为；Spring装配显式qualifier避免两族歧义，两个能力同时开启必须验证。
+
+点击codec严格字段类型、CPC/OCPC、PER_CLICK/CLICK_GSP_CNY6_V1、SANDBOX/CNY、规范UUID/日期/字符串ID/六位金额、slot1～10/accountVersion正数，两个canonical回执不同；payload≤16KiB。未知新增字段可忽略，已知字段的规范载荷参与摘要，重复字段/尾随JSON/错误版本/错partition key拒绝，不能默认为零或当CPM解码。
+
+Inbox对eventId、qualificationId、visibleReceiptId、clickReceiptId唯一，重复仅当同eventId同已知负载时成功，不丢弃较低accountVersion的另一独立事实。Inbox与日投影同本地事务，提交后才确认offset+1；提交后ACK丢失可重放，投影写失败回滚Inbox。消费者错格式/版本停止且不跳过位点；其余故障单条最多3次，停止后由原group恢复。DEAD只按原eventId/负载受控重放并记录actor/reason/replayId，不直接修改账本。
+
+`recsys.ad.billing.click-events.relay-enabled`与`projection-enabled`默认false，仅需sandbox owner，独立于新报价/预占/回执admission；暂停新收费仍可发送已提交事实。topic默认ad-click-captured-v1，group默认recsys-sandbox-click-projection-v1；新命名空间独立配置及指标ad.billing.click.outbox/projection，沿既有Kafka受控连接配置和有界参数，无新依赖。V009/10兼容旧CPM实例，回退保留支持点击续发/投影的owner和历史，保留策略不擅定自动删除。
+
+验收：真实PG唯一冲突、乱序、两种回执交叉重用、Inbox失败回滚、租约过期/旧fence拒绝、耗尽及人工重放；真实Kafka+PG发送ACK后DB失败重投、消费提交后ACK失败重放、未知版本不提交、原CPM/点击配置共存与回归。C1完成后继续C2，父S11保持IN_PROGRESS。

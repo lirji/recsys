@@ -12,13 +12,23 @@ public class BillingOutboxRelay {
     private static final Logger log=LoggerFactory.getLogger(BillingOutboxRelay.class);
     private final BillingOutboxRepository repository;
     private final BillingKafkaPublisher publisher;
-    private final BillingEventCodec codec;
+    private final java.util.function.Consumer<BillingOutboxRepository.Pending> validate;
     private final Counter published,failed,stale;
     public BillingOutboxRelay(BillingOutboxRepository repository,BillingKafkaPublisher publisher,BillingEventCodec codec,MeterRegistry metrics) {
-        this.repository=repository;this.publisher=publisher;this.codec=codec;
-        published=metrics.counter("ad.billing.outbox.published");
-        failed=metrics.counter("ad.billing.outbox.failed");
-        stale=metrics.counter("ad.billing.outbox.stale");
+        this(repository,publisher,event->{
+            var value=codec.decode(event.key(),event.payload());
+            if (!CapturedEvent.TOPIC.equals(event.destination()) || !value.event().eventId().equals(event.eventId().toString())) {
+                throw new BillingEventCodec.InvalidEvent();
+            }
+        },metrics,BillingOutboxRepository.EventFamily.IMPRESSION);
+    }
+    /** 两种资金事实共用ACK/fence算法，严格校验仍由各自版本化codec负责。 */
+    public BillingOutboxRelay(BillingOutboxRepository repository,BillingKafkaPublisher publisher,
+            java.util.function.Consumer<BillingOutboxRepository.Pending> validate,MeterRegistry metrics,BillingOutboxRepository.EventFamily family) {
+        this.repository=repository;this.publisher=publisher;this.validate=validate;
+        published=metrics.counter(family.metrics()+".outbox.published");
+        failed=metrics.counter(family.metrics()+".outbox.failed");
+        stale=metrics.counter(family.metrics()+".outbox.stale");
     }
     /** 不允许外层事务持锁穿过网络；false 只表示当下没有可领取行。 */
     public boolean relayOne() {
@@ -27,10 +37,7 @@ public class BillingOutboxRelay {
         if (claimed.isEmpty()) return false;
         var event=claimed.get();
         try {
-            var value=codec.decode(event.key(),event.payload());
-            if (!CapturedEvent.TOPIC.equals(event.destination()) || !value.event().eventId().equals(event.eventId().toString())) {
-                throw new BillingEventCodec.InvalidEvent();
-            }
+            validate.accept(event);
             publisher.publish(event);
         } catch (Exception ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();

@@ -14,22 +14,28 @@ public class BillingProjectionConsumer {
     private static final Logger log=LoggerFactory.getLogger(BillingProjectionConsumer.class);
     private static final int MAX_ATTEMPTS=3;
     private final Supplier<Consumer<String,String>> factory;
-    private final BillingProjectionService projection;
+    private final java.util.function.BiPredicate<String,String> projection;
+    private final BillingOutboxRepository.EventFamily family;
     private final String topic;
     private final Counter applied,duplicates,failures;
     private volatile Consumer<String,String> consumer;
     private volatile boolean stopping,running;
     private Thread thread;
     public BillingProjectionConsumer(Supplier<Consumer<String,String>> factory,BillingProjectionService projection,String topic,MeterRegistry metrics) {
-        this.factory=factory;this.projection=projection;this.topic=topic;
-        applied=metrics.counter("ad.billing.projection.applied");duplicates=metrics.counter("ad.billing.projection.duplicate");
-        failures=metrics.counter("ad.billing.projection.failures");
-        metrics.gauge("ad.billing.projection.running",this,c->c.running?1:0);
+        this(factory,projection::apply,topic,metrics,BillingOutboxRepository.EventFamily.IMPRESSION);
+    }
+    /** 只抽取事务后确认的真实变化点，具体Inbox和金额投影仍由对应owner实现。 */
+    public BillingProjectionConsumer(Supplier<Consumer<String,String>> factory,java.util.function.BiPredicate<String,String> projection,
+            String topic,MeterRegistry metrics,BillingOutboxRepository.EventFamily family) {
+        this.factory=factory;this.projection=projection;this.topic=topic;this.family=family;
+        applied=metrics.counter(family.metrics()+".projection.applied");duplicates=metrics.counter(family.metrics()+".projection.duplicate");
+        failures=metrics.counter(family.metrics()+".projection.failures");
+        metrics.gauge(family.metrics()+".projection.running",this,c->c.running?1:0);
     }
     /** 专用线程仅消费一个工作循环，不创建无界异步任务。 */
     public synchronized void start() {
         if(thread!=null) throw new IllegalStateException("消费者不可重复启动");
-        thread=new Thread(this::run,"ad-billing-projection");thread.setDaemon(true);thread.start();
+        thread=new Thread(this::run,family.metrics()+"-projection");thread.setDaemon(true);thread.start();
     }
     /** wakeup 是 Kafka 允许的跨线程动作；关闭和位点操作仍留在消费线程。 */
     public void stop() {
@@ -92,7 +98,7 @@ public class BillingProjectionConsumer {
     /** 每条 offset+1 仅在本地事务返回后提交；后续失败不能确认尚未处理的记录。 */
     void process(Consumer<String,String> owned,ConsumerRecord<String,String> record) {
         if(!topic.equals(record.topic()))throw new BillingEventCodec.InvalidEvent();
-        if(projection.apply(record.key(),record.value()))applied.increment();else duplicates.increment();
+        if(projection.test(record.key(),record.value()))applied.increment();else duplicates.increment();
         owned.commitSync(Map.of(new TopicPartition(record.topic(),record.partition()),new OffsetAndMetadata(record.offset()+1)),Duration.ofSeconds(5));
     }
     private void pause(int seconds) throws InterruptedException {

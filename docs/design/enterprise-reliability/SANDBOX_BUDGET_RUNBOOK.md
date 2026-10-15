@@ -323,4 +323,34 @@ ORDER BY a.budget_date,a.advertiser_id LIMIT 100;
 SELECT delivery_state,count(*),min(created_at) FROM ad_click_outbox GROUP BY delivery_state;
 ~~~
 
-S11B的点击Outbox只有原子落库，READY积压是尚未接入S11C发布的预期状态，不能报告投递完成；不运行CPM relay来尝试发送点击。S11C需接独立事件、Inbox/投影及受控重放，之后才能验收父S11。保留期限仍待治理，当前不自动删除任何账本、回执、计数或Outbox，不承诺生产容量或灾备目标。
+S11B只完成点击Outbox原子落库；S11C1现已实现下节的独立可靠事件/Inbox。双模式在线API/稳定交付仍属于S11C2，父S11尚未完成。保留期限仍待治理，当前不自动删除任何账本、回执、计数或Outbox，不承诺生产容量或灾备目标。
+
+
+## S11C1：点击事件续发与投影
+
+V010 `db/ad-billing/V010__click_event_delivery.sql`在V001～V009之后按原迁移SHA256程序执行；新增点击重放审计、逐事件Inbox/事实、跨种类回执身份索引及点击日投影。不修改已执行迁移、不在应用启动时隐式执行。没有本轮共享环境迁移或部署。
+
+`recsys.ad.billing.click-events.relay-enabled`和`projection-enabled`默认false，启用需要sandbox owner、adDb的V008/V009/V010校验及原Kafka连接配置。点击事件不依赖`clicks-enabled`或准备/接收admission，停止新增后仍可续发已有资金事实。两个业务族共享有界传输实现，数据库表、验证器、消费组和指标独立；CPM老构造和默认值保持兼容。用独立的显式Qualifier避免Spring多bean歧义。
+
+点击逻辑目的地固定`ad-click-captured-v1`；物理topic由`recsys.ad.billing.click-events.topic`指定，必须按原Kafka手册预建，不依赖自动建topic。默认group为`recsys-sandbox-click-projection-v1`，用`recsys.ad.billing.click-events.group`覆盖；与CPM分开配置。两者不可指向同一业务topic/group。消息key仍为`advertiserId:budgetDate`，不能据此假定多relay严格按账户版本发出。
+
+发送前验证AdClickCapturedV1完整已知字段及账本ID/逻辑目的地。领取租约30秒、最多20次、退避上限60秒；发送拿到broker ACK后才按fence标记。发送成功但标记失败由原事件重发。毒消息/DB失败不提交位点，消费最多3次失败后停机，修复原因后用原group恢复，不能跳过金额事实。Inbox每笔事实、共同回执身份索引和click_count/charged_amount同事务，随后才提交offset+1；低账户版本但不同的合法账本仍计入。重复事件幂等，不同ID复用资格/任一种类回执或同ID变负载则失败。
+
+指标在`ad.billing.click.outbox.*`、`ad.billing.click.projection.*`，与原CPM同名后缀有相同诊断语义。READY/SENDING最老年龄持续升高先查broker、schema和连接；DEAD使用`BillingOutboxRepository(..., EventFamily.CLICK).replay(replayId,eventId,actor,reason)`在受控工具中恢复，保留原ID/payload和审计；没有公开无鉴权重放HTTP端点。不得直接更改金额或payload。
+
+只读对账：
+
+~~~sql
+WITH ledger AS (
+  SELECT advertiser_id,budget_date,count(*) AS click_count,sum(amount) AS charged_amount
+  FROM ad_click_ledger GROUP BY advertiser_id,budget_date
+)
+SELECT l.*,p.click_count AS projected_clicks,p.charged_amount AS projected_amount
+FROM ledger l FULL JOIN ad_click_projection_daily p USING(advertiser_id,budget_date)
+WHERE l.click_count IS DISTINCT FROM p.click_count
+   OR l.charged_amount IS DISTINCT FROM p.charged_amount;
+
+SELECT delivery_state,count(*),min(created_at) FROM ad_click_outbox GROUP BY delivery_state;
+~~~
+
+未排空前投影可有延迟；归零差额需同时核对Outbox已发布及消费位点追平。总账户金额仍按前节CPM+点击账本合计核对，不能把click_count计入impression_count。关闭新收费的回退保留两类事件续发/消费，代码回退不撤销已记账的事实。

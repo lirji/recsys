@@ -43,14 +43,14 @@ public class BillingEventConfiguration {
         @Bean(destroyMethod="close") BillingKafkaPublisher billingKafkaPublisher(Environment env) {
             return new BillingKafkaPublisher(new KafkaProducer<>(producerProperties(env)),topic(env));
         }
-        @Bean BillingOutboxRelay billingOutboxRelay(BillingOutboxRepository repo,BillingKafkaPublisher publisher,BillingEventCodec codec,MeterRegistry metrics) {
+        @Bean BillingOutboxRelay billingOutboxRelay(@Qualifier("billingOutboxRepository") BillingOutboxRepository repo,@Qualifier("billingKafkaPublisher") BillingKafkaPublisher publisher,BillingEventCodec codec,MeterRegistry metrics) {
             return new BillingOutboxRelay(repo,publisher,codec,metrics);
         }
         @Bean(destroyMethod="shutdown") ThreadPoolTaskScheduler billingOutboxScheduler() {
             var scheduler=new ThreadPoolTaskScheduler();scheduler.setPoolSize(1);scheduler.setThreadNamePrefix("ad-billing-outbox-");
             scheduler.setRemoveOnCancelPolicy(true);scheduler.setWaitForTasksToCompleteOnShutdown(false);return scheduler;
         }
-        @Bean(initMethod="start",destroyMethod="stop") BillingOutboxJob billingOutboxJob(BillingOutboxRepository repo,BillingOutboxRelay relay,
+        @Bean(initMethod="start",destroyMethod="stop") BillingOutboxJob billingOutboxJob(@Qualifier("billingOutboxRepository") BillingOutboxRepository repo,@Qualifier("billingOutboxRelay") BillingOutboxRelay relay,
                 @Qualifier("billingOutboxScheduler") ThreadPoolTaskScheduler scheduler,MeterRegistry metrics) {
             return new BillingOutboxJob(repo,relay,scheduler,metrics);
         }
@@ -60,7 +60,7 @@ public class BillingEventConfiguration {
     @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.events.projection-enabled"},havingValue="true")
     static class Projection {
         @Bean BillingProjectionService billingProjectionService(@Qualifier("adDbJdbc") JdbcTemplate jdbc,
-                @Qualifier("adDbDataSource") DataSource ds,BillingEventCodec codec,BillingOutboxRepository verifiedSchema) {
+                @Qualifier("adDbDataSource") DataSource ds,BillingEventCodec codec,@Qualifier("billingOutboxRepository") BillingOutboxRepository verifiedSchema) {
             return new BillingProjectionService(new BillingProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
         }
         @Bean(initMethod="start",destroyMethod="stop") BillingProjectionConsumer billingProjectionConsumer(BillingProjectionService service,Environment env,MeterRegistry metrics) {
@@ -84,6 +84,10 @@ public class BillingEventConfiguration {
     }
     /** 手动位点、有限 poll、独立 group；连接秘密不会写到应用日志。 */
     static Map<String,Object> consumerProperties(Environment env) {
+        return consumerProperties(env,env.getProperty("recsys.ad.billing.events.group","recsys-sandbox-billing-projection-v1"));
+    }
+    /** 连接及安全参数共用，消费组由有限业务族的配置入口独立选择。 */
+    static Map<String,Object> consumerProperties(Environment env,String group) {
         var properties=new HashMap<String,Object>(kafka(env).buildConsumerProperties(null));
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class);
@@ -93,7 +97,6 @@ public class BillingEventConfiguration {
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,false);
         properties.put(ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG,false);
         properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG,10);properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
-        String group=env.getProperty("recsys.ad.billing.events.group","recsys-sandbox-billing-projection-v1");
         if(!group.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,200}"))throw new IllegalArgumentException("无效账务 consumer group");
         properties.put(ConsumerConfig.GROUP_ID_CONFIG,group);
         properties.put(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG,10000);properties.put(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG,5000);

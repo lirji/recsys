@@ -18,11 +18,16 @@ public class BillingOutboxJob {
     private ScheduledFuture<?> task;
     private long retryAtNanos,observeAtNanos;
     public BillingOutboxJob(BillingOutboxRepository repository,BillingOutboxRelay relay,TaskScheduler scheduler,MeterRegistry metrics) {
+        this(repository,relay,scheduler,metrics,BillingOutboxRepository.EventFamily.IMPRESSION);
+    }
+    /** 有界任务机制复用，业务族的指标互不覆盖。 */
+    public BillingOutboxJob(BillingOutboxRepository repository,BillingOutboxRelay relay,TaskScheduler scheduler,MeterRegistry metrics,
+            BillingOutboxRepository.EventFamily family) {
         this.repository=repository;this.relay=relay;this.scheduler=scheduler;
-        failures=metrics.counter("ad.billing.outbox.worker.failures");dead=metrics.counter("ad.billing.outbox.exhausted");
-        metrics.gauge("ad.billing.outbox.pending",this,j->j.backlog.pending());
-        metrics.gauge("ad.billing.outbox.dead",this,j->j.backlog.dead());
-        metrics.gauge("ad.billing.outbox.oldest.seconds",this,j->j.backlog.oldestSeconds());
+        failures=metrics.counter(family.metrics()+".outbox.worker.failures");dead=metrics.counter(family.metrics()+".outbox.exhausted");
+        metrics.gauge(family.metrics()+".outbox.pending",this,j->j.backlog.pending());
+        metrics.gauge(family.metrics()+".outbox.dead",this,j->j.backlog.dead());
+        metrics.gauge(family.metrics()+".outbox.oldest.seconds",this,j->j.backlog.oldestSeconds());
     }
     /** 停新增收费不停止该任务，已提交事实仍须续发。 */
     public void start() { task=scheduler.scheduleWithFixedDelay(this::tick,Duration.ofSeconds(1)); }
