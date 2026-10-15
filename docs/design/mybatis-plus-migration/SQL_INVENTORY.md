@@ -189,8 +189,8 @@
 | [com/recsys/recengine/delivery/DeliveryOperationConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationConfiguration.java) | 12 | 0 | DONE MP12b：见MP12B_RESULT |
 | [com/recsys/recengine/delivery/DeliveryOperationRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationRepository.java) | 11 | 8 | DONE MP12b：见MP12B_RESULT |
 | [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | DONE MP07a |
-| [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | TODO |
-| [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | TODO |
+| [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | DONE MP12c：见MP12C_RESULT |
+| [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | DONE MP12c：见MP12C_RESULT |
 | [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | TODO |
 | [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | TODO |
 | [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | DONE MP07a |

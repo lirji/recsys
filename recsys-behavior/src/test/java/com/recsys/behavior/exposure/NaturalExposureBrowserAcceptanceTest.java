@@ -146,7 +146,8 @@ class NaturalExposureBrowserAcceptanceTest {
                 var result=new HashMap<Long,Item>();all.stream().filter(i->ids.contains(i.itemId())).forEach(i->result.put(i.itemId(),i));return result;
             };
             tokens=new NaturalQualificationToken("browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
-            var operations=new NaturalDeliveryRepository(engine,JSON);operations.verifySchema();
+            var operations=new NaturalDeliveryRepository(new SqlSessionTemplate(
+                    SpringSqlSessions.create(engineDs,"classpath*:mapper/recengine/primary/**/*.xml")),JSON);operations.verifySchema();
             // 会话模板每次调用关闭会话，工厂不拥有连接池；事务仍绑定原behaviorDs。
             var receiptMapper=new SqlSessionTemplate(SpringSqlSessions.create(behaviorDs,"classpath*:mapper/behavior/primary/**/*.xml")).getMapper(NaturalReceiptMapper.class);
             var receipts=new NaturalReceiptRepository(receiptMapper,behaviorDs,JSON);receipts.verifySchema();

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b本地DONE/PASS，待Git交付；下一片MP12c自然交付。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c本地DONE/PASS，待Git交付；下一片MP12d混排交付。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -272,3 +272,15 @@ MP12b首次迁移后45项中2项在线Spring装配失败，原因是测试上下
 ## MP12b最终验证
 
 DONE/PASS，见MP12B_RESULT；14源指纹dd9a818a8f68a834f644b1a52a87da3bd77c9aa1a6dd57f489e383f634fed08c。旧24、新45项/6类、sandbox浏览器4项、全仓24 reactor编译全部通过；hygiene无阻塞，45历史SQL/8保护文件不变。下一片MP12c自然Repository的8条SQL及实际DataSource的REQUIRES_NEW/READ_COMMITTED/5秒事务保持；新增外层回滚仍保留独立领取/冻结保护后先跑旧路径，再迁移。
+
+## MP12c迁移前保护
+
+MP12b已正常提交/ff合并/push main=2a02851a。NaturalDeliveryPostgresTest新增外层回滚后独立create/acquire/freeze仍保存完整结果，验证REQUIRES_NEW及真实factory的DataSource绑定；旧实现PG/配置测试/tmp/recsys-mp12c-before.log运行中。MP12a CI38737890572钱链/自然/浏览器/security成功，build仍运行。
+
+MP12c旧12项（真实PG10+配置2）通过；8条SQL迁入NaturalDeliveryMapper/XML，JSON/毫秒截断/4MiB限制保持，事务资源取实际SqlSessionFactory，REQUIRES_NEW/READ_COMMITTED/5秒不变。6源指纹ba1837cab3d2ae55770a2351f4a49d3788003844b2ce18a1f2fac95d3aea577a，清单/tmp/recsys-mp12c-source-paths.json；迁移后专项/tmp/recsys-mp12c-after.log运行中。
+
+MP12c迁移后15项全部通过（PG10+配置2+宿主3），hygiene无阻塞；事务REVIEW_REQUIRED已通过实际factory同源、REQUIRES_NEW/RC/timeout源码审查及PG外层回滚保护确认。自然浏览器/tmp/recsys-mp12c-natural-browser.log运行中，随后全仓编译。
+
+## MP12c最终验证
+
+DONE/PASS，见MP12C_RESULT；6源指纹ba1837cab3d2ae55770a2351f4a49d3788003844b2ce18a1f2fac95d3aea577a。旧12、新15、自然浏览器5项及全仓24 reactor编译全部通过；hygiene无阻塞，事务人工审查完成，45历史SQL/8保护文件不变。下一片MP12d混排9条SQL：实际engine primary会话与同源REQUIRES_NEW/RC/5秒、JSON及MAX_SNAPSHOT_BYTES保持；测试FeedDeliveryPostgresTest和FeedExposureBrowserAcceptanceTest需独立engine sessions，不能误用addb。新增独立检查点不随外层回滚保护后跑旧路径，再迁移并跑完整钱链/自然门禁和混排浏览器完成MP12闭环。

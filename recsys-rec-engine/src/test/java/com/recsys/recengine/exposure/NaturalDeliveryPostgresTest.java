@@ -11,6 +11,8 @@ import com.recsys.recengine.exposure.NaturalDelivery.*;
 import org.junit.jupiter.api.*;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.*;
@@ -30,18 +32,20 @@ class NaturalDeliveryPostgresTest {
     static final NaturalQualification.Policy POLICY=new NaturalQualification.Policy("test-only",6000,1200,120000);
     static final NaturalQualificationToken TOKENS=new NaturalQualificationToken("test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static NaturalDeliveryRepository repository;
     RecommendOrchestrator recommender;
     ContentGateway content;
     @BeforeAll static void migrate() throws Exception {
         var ds=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(ds);
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(ds,"classpath*:mapper/recengine/primary/**/*.xml"));
         for(var path:List.of(DeliveryOperationRepository.MIGRATION,NaturalDeliveryRepository.MIGRATION)) {
             String sha=path.equals(DeliveryOperationRepository.MIGRATION)?DeliveryOperationRepository.migrationSha256():NaturalDeliveryRepository.migrationSha256();
             try(var c=ds.getConnection();var stmt=c.createStatement();var in=new ClassPathResource(path).getInputStream()) {
                 stmt.execute("SET recsys.migration_sha256 = '"+sha+"'");stmt.execute(new String(in.readAllBytes(),StandardCharsets.UTF_8));
             }
         }
-        repository=new NaturalDeliveryRepository(jdbc,JSON);repository.verifySchema();
+        repository=new NaturalDeliveryRepository(sessions,JSON);repository.verifySchema();
     }
     @BeforeEach void setup() {
         recommender=mock(RecommendOrchestrator.class);content=mock(ContentGateway.class);
@@ -84,19 +88,19 @@ class NaturalDeliveryPostgresTest {
     }
     @Test void committedButLostResponseRestoresExactSnapshotAcrossCandidateContentAndPolicyChanges() {
         var request=request();
-        var lost=new NaturalDeliveryRepository(jdbc,JSON) {
+        var lost=new NaturalDeliveryRepository(sessions,JSON) {
             @Override public boolean freeze(Operation o,View r) { assertTrue(super.freeze(o,r));throw new IllegalStateException("reply lost after commit"); }
         };
         assertThrows(IllegalStateException.class,()->service(lost).deliver(request));
         var frozen=repository.find(request.operationId(),"admin").orElseThrow().result();
         candidates(99);when(content.findByIds(anyList())).thenThrow(new IllegalStateException("changed source"));
-        var rebuilt=new NaturalDeliveryService(new NaturalDeliveryRepository(jdbc,JSON),recommender,content,TOKENS,new NaturalQualification.Policy("later-test",1,1,1000),false);
+        var rebuilt=new NaturalDeliveryService(new NaturalDeliveryRepository(sessions,JSON),recommender,content,TOKENS,new NaturalQualification.Policy("later-test",1,1,1000),false);
         assertEquals(frozen,rebuilt.deliver(request));assertEquals(frozen,rebuilt.find(request.operationId(),"admin").orElseThrow());
         verify(recommender,times(1)).naturalCandidates(any());verify(content,times(1)).findByIds(anyList());
     }
     @Test void failedFreezeOrContentLookupCannotDeliverUncommittedQualifications() {
         var request=request();
-        var fail=new NaturalDeliveryRepository(jdbc,JSON) { @Override public boolean freeze(Operation o,View v) { throw new IllegalStateException("before commit"); } };
+        var fail=new NaturalDeliveryRepository(sessions,JSON) { @Override public boolean freeze(Operation o,View v) { throw new IllegalStateException("before commit"); } };
         assertThrows(IllegalStateException.class,()->service(fail).deliver(request));
         assertEquals(State.PREPARING,service(repository).find(request.operationId(),"admin").orElseThrow().state());
         assertTrue(service(repository).find(request.operationId(),"admin").orElseThrow().items().isEmpty());
@@ -104,6 +108,24 @@ class NaturalDeliveryPostgresTest {
         var missing=request();when(content.findByIds(anyList())).thenReturn(Map.of());
         assertThrows(IllegalStateException.class,()->service(repository).deliver(missing));
         assertEquals(State.PREPARING,service(repository).find(missing.operationId(),"admin").orElseThrow().state());
+    }
+    /** 独立短事务必须提交检查点；调用方随后回滚不能抹掉已确认的冻结结果。 */
+    @Test void outerRollbackDoesNotUndoIndependentLeaseAndFreeze() {
+        var r=request();var result=empty(r);
+        var outer=new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
+        outer.setTimeout(5);
+        outer.executeWithoutResult(status->{
+            repository.create(r,POLICY);
+            var owned=repository.acquire(r.operationId(),r.subject()).orElseThrow();
+            assertEquals(1,owned.fence());
+            assertTrue(repository.acquire(r.operationId(),r.subject()).isEmpty());
+            assertTrue(repository.freeze(owned,result));
+            status.setRollbackOnly();
+        });
+        var stored=repository.find(r.operationId(),r.subject()).orElseThrow();
+        assertEquals(State.COMPLETE,stored.state());assertEquals(result,stored.result());
+        assertTrue(repository.acquire(r.operationId(),r.subject()).isEmpty());
     }
     @Test void staleLeaseCannotFreezeOrReleaseNewOwner() {
         var r=request();repository.create(r,POLICY);var stale=repository.acquire(r.operationId(),r.subject()).orElseThrow();

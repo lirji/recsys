@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import java.util.Map;
 import java.util.Objects;
 
@@ -27,8 +27,8 @@ public class NaturalDeliveryConfiguration {
         @Override public String toString() { return "NaturalDeliveryProperties[policyConfigured=" + (policy != null) + "]"; }
     }
     /** 明确 primary 数据库，避免多数据源应用中误把交付表写进 adDb。 */
-    @Bean public NaturalDeliveryRepository naturalDeliveryRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbc,ObjectMapper json) {
-        var repository=new NaturalDeliveryRepository(jdbc,json); repository.verifySchema(); return repository;
+    @Bean public NaturalDeliveryRepository naturalDeliveryRepository(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
+        var repository=new NaturalDeliveryRepository(sessions,json); repository.verifySchema(); return repository;
     }
     /** 当前签发 key 必填，验证端单独使用 verifier-only 的装配。 */
     @Bean public NaturalDeliveryService naturalDeliveryService(NaturalDeliveryRepository repository,RecommendOrchestrator recommender,ContentGateway content,Properties props) {
