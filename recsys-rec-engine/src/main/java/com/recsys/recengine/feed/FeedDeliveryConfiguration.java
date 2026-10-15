@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import java.util.Objects;
 
 /** feed 默认关闭，复用自然显式政策和签名密钥，不能因存在旧配置自动接新流量。 */
@@ -22,8 +22,8 @@ import java.util.Objects;
 @EnableConfigurationProperties(NaturalDeliveryConfiguration.Properties.class)
 public class FeedDeliveryConfiguration {
     /** engine 主库持有整次操作，绝不与 ad owner 的资金数据源混用。 */
-    @Bean public FeedDeliveryRepository feedDeliveryRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbc,ObjectMapper json) {
-        var repository=new FeedDeliveryRepository(jdbc,json); repository.verifySchema(); return repository;
+    @Bean public FeedDeliveryRepository feedDeliveryRepository(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
+        var repository=new FeedDeliveryRepository(sessions,json); repository.verifySchema(); return repository;
     }
     /** 两种广告模式共享编排；关闭新建仍允许恢复已经持久化的操作。 */
     @Bean public FeedDeliveryService feedDeliveryService(FeedDeliveryRepository repository,RecommendOrchestrator recommender,

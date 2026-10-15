@@ -43,6 +43,7 @@ class FeedDeliveryPostgresTest {
     static final ObjectMapper JSON=new ObjectMapper().findAndRegisterModules();
     static final AtomicLong IDS=new AtomicLong(100000);
     static JdbcTemplate engine,adDb;
+    static SqlSessionTemplate engineSessions;
     static DriverManagerDataSource adSource;
     static FeedDeliveryRepository repository;
     static BudgetAccountService budgets;
@@ -68,10 +69,11 @@ class FeedDeliveryPostgresTest {
         admin.execute("CREATE SCHEMA feed_engine"); admin.execute("CREATE SCHEMA feed_ad");
         var engineSource=source("feed_engine"); adSource=source("feed_ad");
         engine=new JdbcTemplate(engineSource); adDb=new JdbcTemplate(adSource);
+        engineSessions=new SqlSessionTemplate(SpringSqlSessions.create(engineSource,"classpath*:mapper/recengine/primary/**/*.xml"));
         for(String script:List.of("db/engine-delivery/V001__delivery_operation.sql","db/engine-delivery/V002__natural_delivery.sql",FeedDeliveryRepository.MIGRATION)) migrate(engineSource,script);
         for(String script:List.of(BudgetRepository.MIGRATION,CpmQuoteRepository.MIGRATION,ReservationRepository.MIGRATION,
                 PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,"db/ad-billing/V006__billing_event_delivery.sql",FeedCandidateRepository.MIGRATION)) migrate(adSource,script);
-        repository=new FeedDeliveryRepository(engine,JSON); repository.verifySchema();
+        repository=new FeedDeliveryRepository(engineSessions,JSON); repository.verifySchema();
         budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adSource,5);
         reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         reservationService=new ReservationService(reservations,quotes,transactions(),true);
@@ -167,7 +169,7 @@ class FeedDeliveryPostgresTest {
         properties.getAdLoad().setSlots(List.of(1)); properties.getAdLoad().setMaxAds(1);
         when(gateway.sandboxFeedCandidates(any())).thenReturn(List.of(candidate(r,888,"10")));
         doThrow(new IllegalStateException("content changed")).when(content).findByIds(any());
-        var restored=service(new FeedDeliveryRepository(engine,JSON),false).deliver(r);
+        var restored=service(new FeedDeliveryRepository(engineSessions,JSON),false).deliver(r);
         assertEquals(State.COMPLETE,restored.state()); assertEquals(frozen,restored.plan().entries().stream().filter(e->e.natural()!=null).toList());
         assertEquals(2,ads(restored).getFirst().slot()); assertEquals(a.childId(),ads(restored).getFirst().preparation().childId());
         assertEquals(restored,service().deliver(r)); verify(gateway,times(1)).sandboxFeedCandidates(any()); verify(gateway,times(1)).prepareSandbox(any());
@@ -191,13 +193,30 @@ class FeedDeliveryPostgresTest {
     }
     @Test void failedFreezeOrMissingContentCannotPrepareUncommittedEntries() {
         var r=request(); doReturn(List.of(candidate(r,99,"10"))).when(gateway).sandboxFeedCandidates(any());
-        var broken=new FeedDeliveryRepository(engine,JSON) {
+        var broken=new FeedDeliveryRepository(engineSessions,JSON) {
             @Override public boolean freeze(Operation operation,Plan plan) { throw new IllegalStateException("PG failure"); }
         };
         assertThrows(IllegalStateException.class,()->service(broken,true).deliver(r));
         assertNull(repository.find(r.operationId(),r.subject()).orElseThrow().plan()); verify(gateway,never()).prepareSandbox(any());
         doReturn(Map.of()).when(content).findByIds(any());
         assertThrows(IllegalStateException.class,()->service().deliver(r)); verify(gateway,never()).prepareSandbox(any());
+    }
+    /** 外层回滚不能撤销已独立提交的最终位置，避免恢复时重复生成资格。 */
+    @Test void outerRollbackKeepsIndependentFrozenPlan() {
+        var r=request();var settings=new Settings(false,List.of(),0,"b",.1,NaturalQualification.TEXT_POLICY_V1);
+        var plan=new Plan("b","t",AdDisposition.NOT_REQUESTED,List.of());
+        var outer=new TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(engine.getDataSource()));
+        outer.setTimeout(5);
+        outer.executeWithoutResult(status->{
+            repository.create(r,settings);
+            var owned=repository.acquire(r.operationId(),r.subject()).orElseThrow();
+            assertEquals(1,owned.fence());assertTrue(repository.acquire(r.operationId(),r.subject()).isEmpty());
+            assertTrue(repository.freeze(owned,plan));status.setRollbackOnly();
+        });
+        var stored=repository.find(r.operationId(),r.subject()).orElseThrow();
+        assertEquals(State.COMPLETE,stored.state());assertEquals(plan,stored.plan());
+        assertTrue(repository.acquire(r.operationId(),r.subject()).isEmpty());
+        verifyNoInteractions(gateway);
     }
     @Test void concurrentClaimAndStaleFenceCannotReplaceOrReleaseFrozenPlan() throws Exception {
         var r=request(); var c=candidate(r,99,"10"); var settings=new Settings(true,List.of(2),1,"b",.1,NaturalQualification.TEXT_POLICY_V1);

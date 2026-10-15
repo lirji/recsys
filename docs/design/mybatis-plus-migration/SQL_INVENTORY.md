@@ -51,36 +51,36 @@
 | [com/recsys/ad/PacingService.java](../../../recsys-ad/src/main/java/com/recsys/ad/PacingService.java) | 9 | 1 | DONE MP05b |
 | [com/recsys/ad/ShardedAdCatalogReader.java](../../../recsys-ad/src/main/java/com/recsys/ad/ShardedAdCatalogReader.java) | 7 | 6 | DONE MP04a |
 | [com/recsys/ad/UpliftAssignmentService.java](../../../recsys-ad/src/main/java/com/recsys/ad/UpliftAssignmentService.java) | 9 | 5 | DONE MP05a |
-| [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | TODO |
+| [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | DONE 装配已迁移：见MP11A_RESULT/MP11B_RESULT |
 | [com/recsys/ad/billing/BillingOutboxRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingOutboxRepository.java) | 3 | 12 | DONE MP11a：见MP11A_RESULT |
 | [com/recsys/ad/billing/BillingProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingProjectionRepository.java) | 3 | 3 | DONE MP11b：见MP11B_RESULT |
 | [com/recsys/ad/billing/BudgetConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetConfiguration.java) | 8 | 0 | DONE MP08a |
 | [com/recsys/ad/billing/BudgetRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetRepository.java) | 7 | 11 | DONE MP08a |
-| [com/recsys/ad/billing/ClickEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickEventConfiguration.java) | 13 | 0 | TODO |
-| [com/recsys/ad/billing/ClickPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickPreparationConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ClickEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickEventConfiguration.java) | 13 | 0 | DONE 装配已迁移：见MP11A_RESULT/MP11B_RESULT |
+| [com/recsys/ad/billing/ClickPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickPreparationConfiguration.java) | 10 | 0 | DONE 装配已迁移：见MP08C_RESULT |
 | [com/recsys/ad/billing/ClickProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickProjectionRepository.java) | 3 | 5 | DONE MP11b：见MP11B_RESULT |
-| [com/recsys/ad/billing/ClickQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ClickQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteConfiguration.java) | 6 | 0 | DONE 装配已迁移：见MP09A_RESULT |
 | [com/recsys/ad/billing/ClickQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteRepository.java) | 5 | 9 | DONE MP09a：见MP09A_RESULT |
-| [com/recsys/ad/billing/ClickSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementConfiguration.java) | 11 | 0 | TODO |
+| [com/recsys/ad/billing/ClickSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementConfiguration.java) | 11 | 0 | DONE 装配已迁移：见MP09B_RESULT |
 | [com/recsys/ad/billing/ClickSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementRepository.java) | 6 | 22 | DONE MP09b：见MP09B_RESULT |
-| [com/recsys/ad/billing/ConversionEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionEventConfiguration.java) | 13 | 0 | TODO |
-| [com/recsys/ad/billing/ConversionPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionPreparationConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionEventConfiguration.java) | 13 | 0 | DONE 装配已迁移：见MP11A_RESULT/MP11B_RESULT |
+| [com/recsys/ad/billing/ConversionPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionPreparationConfiguration.java) | 10 | 0 | DONE 装配已迁移：见MP08C_RESULT |
 | [com/recsys/ad/billing/ConversionProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionProjectionRepository.java) | 3 | 3 | DONE MP11b：见MP11B_RESULT |
-| [com/recsys/ad/billing/ConversionQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteConfiguration.java) | 6 | 0 | DONE 装配已迁移：见MP10A_RESULT |
 | [com/recsys/ad/billing/ConversionQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteRepository.java) | 5 | 9 | DONE MP10a：见MP10A_RESULT |
-| [com/recsys/ad/billing/ConversionSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementConfiguration.java) | 10 | 0 | DONE 装配已迁移：见MP10B_RESULT |
 | [com/recsys/ad/billing/ConversionSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementRepository.java) | 6 | 24 | DONE MP10b：见MP10B_RESULT |
-| [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | TODO |
+| [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | DONE 装配已迁移：见MP08B_RESULT |
 | [com/recsys/ad/billing/CpmQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteRepository.java) | 5 | 8 | DONE MP08b：见MP08B_RESULT |
-| [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | TODO |
+| [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | DONE 装配已迁移：见MP12A_RESULT |
 | [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | DONE MP12a：见MP12A_RESULT |
-| [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | TODO |
+| [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | DONE 装配已迁移：见MP08C_RESULT |
 | [com/recsys/ad/billing/ImpressionReceiptRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptRepository.java) | 7 | 10 | DONE MP08c：见MP08C_RESULT |
-| [com/recsys/ad/billing/PreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationConfiguration.java) | 14 | 0 | TODO |
+| [com/recsys/ad/billing/PreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationConfiguration.java) | 14 | 0 | DONE 装配已迁移：见MP08C_RESULT |
 | [com/recsys/ad/billing/PreparationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationRepository.java) | 6 | 8 | DONE MP08c：见MP08C_RESULT |
-| [com/recsys/ad/billing/ReconciliationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ReconciliationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationConfiguration.java) | 6 | 0 | DONE 装配已迁移：见MP11C_RESULT |
 | [com/recsys/ad/billing/ReconciliationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationRepository.java) | 6 | 36 | DONE MP11c：见MP11C_RESULT |
-| [com/recsys/ad/billing/ReservationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationConfiguration.java) | 9 | 0 | TODO |
+| [com/recsys/ad/billing/ReservationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationConfiguration.java) | 9 | 0 | DONE 装配已迁移：见MP08B_RESULT |
 | [com/recsys/ad/billing/ReservationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationRepository.java) | 6 | 14 | DONE MP08b：见MP08B_RESULT |
 
 ### recsys-advertiser
@@ -191,8 +191,8 @@
 | [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | DONE MP07a |
 | [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | DONE MP12c：见MP12C_RESULT |
 | [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | DONE MP12c：见MP12C_RESULT |
-| [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | TODO |
-| [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | TODO |
+| [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | DONE MP12d：见MP12D_RESULT |
+| [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | DONE MP12d：见MP12D_RESULT |
 | [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | DONE MP07a |
 | [com/recsys/recengine/rerank/DppReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/DppReranker.java) | 7 | 1 | DONE MP07b |
 | [com/recsys/recengine/rerank/MmrReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/MmrReranker.java) | 7 | 1 | DONE MP07b |

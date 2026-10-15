@@ -143,7 +143,8 @@ class FeedExposureBrowserAcceptanceTest {
             gateway=local;
             var properties=new AdProperties();properties.getAdLoad().setSlots(List.of(2,4));
             var queries=mock(QueryUnderstandingService.class);when(queries.parse(anyString(),anyLong())).thenAnswer(c->new StructuredQuery(c.getArgument(0),c.getArgument(0),null,null,null,null));
-            var repository=new FeedDeliveryRepository(engine,JSON);repository.verifySchema();
+            var repository=new FeedDeliveryRepository(new SqlSessionTemplate(
+                    SpringSqlSessions.create(engineDs,"classpath*:mapper/recengine/primary/**/*.xml")),JSON);repository.verifySchema();
             feed=new FeedDeliveryService(repository,recommender,content,queries,mock(ExperimentService.class),gateway,properties,tokens,NaturalQualification.TEXT_POLICY_V1,true);
         }
     }

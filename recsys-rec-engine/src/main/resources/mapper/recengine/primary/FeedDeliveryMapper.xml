@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.recengine.persistence.mapper.primary.FeedDeliveryMapper">
+    <resultMap id="operation" type="com.recsys.recengine.persistence.mapper.primary.FeedDeliveryMapper$OperationRow">
+        <constructor>
+            <arg name="subjectKey" column="subject_key" javaType="java.lang.String"/>
+            <arg name="requestJson" column="request_json" javaType="java.lang.String"/>
+            <arg name="settingsJson" column="settings_json" javaType="java.lang.String"/>
+            <arg name="state" column="state" javaType="java.lang.String"/>
+            <arg name="fence" column="fence" javaType="_long"/>
+            <arg name="planJson" column="plan_json" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <sql id="columns">subject_key, request_json, settings_json, state, fence, plan_json</sql>
+    <select id="migrationHashes" resultType="string" timeout="5">
+        SELECT script_sha256 FROM engine_delivery_schema_history WHERE version=3
+    </select>
+    <select id="verifyOperation" resultType="java.util.UUID" timeout="5">
+        SELECT operation_id,settings_json,plan_json FROM engine_feed_delivery LIMIT 0
+    </select>
+    <insert id="create" timeout="5">
+        INSERT INTO engine_feed_delivery(operation_id,subject_key,request_json,settings_json)
+        VALUES (#{id},#{subject},#{requestJson},#{settingsJson}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="find" resultMap="operation" timeout="5" useCache="false">
+        SELECT <include refid="columns"/> FROM engine_feed_delivery WHERE operation_id=#{id}
+    </select>
+    <select id="acquire" resultMap="operation" timeout="5" affectData="true" flushCache="true" useCache="false">
+        UPDATE engine_feed_delivery SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+        WHERE operation_id=#{id} AND subject_key=#{subject} AND state='PREPARING'
+            AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp()) RETURNING <include refid="columns"/>
+    </select>
+    <select id="databaseNow" resultType="java.time.OffsetDateTime" timeout="5" useCache="false">
+        SELECT clock_timestamp()
+    </select>
+    <update id="freeze" timeout="5">
+        UPDATE engine_feed_delivery SET plan_json=#{planJson},state=#{state},updated_at=clock_timestamp(),
+            lease_until=CASE WHEN #{complete} THEN NULL ELSE clock_timestamp()+interval '30 seconds' END
+        WHERE operation_id=#{id} AND subject_key=#{subject} AND fence=#{fence} AND state='PREPARING'
+            AND plan_json IS NULL AND lease_until&gt;clock_timestamp()
+    </update>
+    <update id="progress" timeout="5">
+        UPDATE engine_feed_delivery SET plan_json=#{planJson},state=#{state},updated_at=clock_timestamp(),
+            lease_until=CASE WHEN #{complete} THEN NULL ELSE clock_timestamp()+interval '30 seconds' END
+        WHERE operation_id=#{id} AND subject_key=#{subject} AND fence=#{fence} AND state='PREPARING'
+            AND plan_json=#{oldPlanJson} AND lease_until&gt;clock_timestamp()
+    </update>
+    <update id="relinquish" timeout="5">
+        UPDATE engine_feed_delivery SET lease_until=NULL WHERE operation_id=#{id} AND fence=#{fence} AND state='PREPARING'
+    </update>
+</mapper>

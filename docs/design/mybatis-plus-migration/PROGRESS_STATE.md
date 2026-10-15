@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c本地DONE/PASS，待Git交付；下一片MP12d混排交付。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d本地DONE/PASS，原生窗口夹具修复验证后共同Git交付；下一包MP13离线。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -284,3 +284,27 @@ MP12c迁移后15项全部通过（PG10+配置2+宿主3），hygiene无阻塞；�
 ## MP12c最终验证
 
 DONE/PASS，见MP12C_RESULT；6源指纹ba1837cab3d2ae55770a2351f4a49d3788003844b2ce18a1f2fac95d3aea577a。旧12、新15、自然浏览器5项及全仓24 reactor编译全部通过；hygiene无阻塞，事务人工审查完成，45历史SQL/8保护文件不变。下一片MP12d混排9条SQL：实际engine primary会话与同源REQUIRES_NEW/RC/5秒、JSON及MAX_SNAPSHOT_BYTES保持；测试FeedDeliveryPostgresTest和FeedExposureBrowserAcceptanceTest需独立engine sessions，不能误用addb。新增独立检查点不随外层回滚保护后跑旧路径，再迁移并跑完整钱链/自然门禁和混排浏览器完成MP12闭环。
+
+## MP12d迁移前保护
+
+MP12c已正常提交/ff合并/push main=3108245f。FeedDeliveryPostgresTest新增外层回滚不能撤销独立领取/冻结计划保护；旧PG/配置测试/tmp/recsys-mp12d-before.log运行中，尚未改混排产品代码。
+
+MP12d旧16项（真实PG14+配置2）通过；9条SQL已进入FeedDeliveryMapper/XML，Repository和两个fixture使用实际engine主源会话，原REQUIRES_NEW/RC/5秒、subject、fence/旧plan比较与完整快照约束保持。6源指纹ac46ec24001ca0bfcdba2cf6bd664e7fae5b1edcb8531c218d83e0ab10622af7，清单/tmp/recsys-mp12d-source-paths.json；专项/tmp/recsys-mp12d-after.log运行中。初扫engine/ad/behavior/advertiser生产Java只剩SQL关键字注释，无业务SQL；最终全仓核销仍留MP15。
+
+MP12d迁移后19项（PG14/配置2/宿主3）通过，hygiene无阻塞；事务人工审查同源/REQUIRES_NEW/RC/5秒与SQL条件完成。完整资金链/tmp/recsys-mp12d-money.log运行中，之后自然门禁和混排浏览器；所有Maven/浏览器串行。
+
+## MP13入口只读发现（尚未实施）
+
+OfflineAdShardingConfig已有四个DataSource及四个JdbcTemplate；Boot大包扫描已通过content/recall间接加载primary/derived持久配置。可先补offline明确依赖与四源工厂复用，不新建连接池，不改ShardingSphere 5.5.0/环境路由；实际分片验证沿作业路径进行。
+
+BehaviorQuery.positiveFeedbackSql/params共用于ItemCf、Swing、UserCf、BanditStats、FtrlTrain、UserEmbedding，后者另有max(epoch)与带action/value/ts_epoch的流式读取；原Java SQL工具必须在这些调用入口一起迁移后删除，不能只改名字或保留execute(sql)。ItemQuery/BehaviorQuery/AdEventQuery的表选择最终用封闭参数+XML固定choose；未迁移调用方可短暂保持原白名单入口，需在最终核销全部消除拼SQL。不能把RowCallbackHandler扫描改为全量List；Mapper ResultHandler或会话内消费Cursor要结合原事务/抓取行为验证。IdfJob已有真实PG stemming测试可后续复用；其ts_stat内嵌查询也只能固定表分支，raw-token映射每批2000需保持。此节为源码发现，不替代MP13各单路径旧保护与验收，也不提前标记任何离线文件DONE。
+
+MP12d完整资金链382项/68类和全仓24 reactor测试编译全部通过（/tmp/recsys-mp12d-money.log）。自然门禁/tmp/recsys-mp12d-natural.log运行中，之后混排真实浏览器；不再重复全仓compile。
+
+MP12d完整自然门禁75项/13类全部通过（/tmp/recsys-mp12d-natural.log），混排浏览器原夹具5项通过。MP12c CI38739717158却再次混排原生hidden失败（sandbox4/自然5/混排4通过），原因证据及修复见NATIVE_WINDOW_CI_RESULT；不能宣称远程全绿。独立修复nativeBrowser唯一窗口、同窗target校验，12次探针及typecheck/Prettier/ESLint通过，现串行重跑三套浏览器；产品6源指纹不变。
+
+## MP12d最终验证
+
+本地DONE/PASS，MP12本地闭环，见MP12D_RESULT。旧16、新19项，完整钱链382项/68类、自然75项/13类、全仓24 reactor测试编译、混排浏览器5项全部通过；6源指纹ac46ec24001ca0bfcdba2cf6bd664e7fae5b1edcb8531c218d83e0ab10622af7。修复夹具后混排5/自然5也通过，sandbox运行中/tmp/recsys-native-window-sandbox.log；统一hygiene无阻塞，Java工具限制及事务人工审查已记录。不能将MP12c远程失败记为成功，待新提交CI核验。
+
+原生窗口修复三套真实浏览器混排5/自然5/sandbox4全部通过，见NATIVE_WINDOW_CI_RESULT，4源指纹cb0abddb6eb468b7b58c69056cfc8e7ef87578ea1b072c232f05d32d4e69c2f1。分别提交夹具修复和MP12d，随后一起ff/push main。SQL_INVENTORY补齐15个已迁移ad配置的旧TODO：当前源码均显式adDbSqlSessionTemplate且无JdbcTemplate，引用原MP08～MP12证据；未改这些产品文件。
