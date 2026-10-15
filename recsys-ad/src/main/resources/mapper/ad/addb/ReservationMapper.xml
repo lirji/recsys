@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ReservationMapper">
+    <resultMap id="account" type="com.recsys.common.ad.billing.BudgetAccount">
+        <constructor><arg column="advertiser_id" javaType="_long"/><arg column="budget_date" javaType="java.time.LocalDate"/>
+            <arg column="limit_amount" javaType="java.math.BigDecimal"/><arg column="held_amount" javaType="java.math.BigDecimal"/>
+            <arg column="charged_amount" javaType="java.math.BigDecimal"/><arg column="version" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="reservation" type="com.recsys.ad.persistence.mapper.addb.ReservationMapper$Stored">
+        <constructor><arg column="reservation_id" javaType="java.util.UUID"/><arg column="quote_id" javaType="java.util.UUID"/>
+            <arg column="advertiser_id" javaType="_long"/><arg column="ad_id" javaType="_long"/><arg column="subject_key" javaType="string"/>
+            <arg column="budget_date" javaType="java.time.LocalDate"/><arg column="amount" javaType="java.math.BigDecimal"/>
+            <arg column="expires_at" javaType="java.time.OffsetDateTime"/><arg column="decision" javaType="string"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/><arg column="state" javaType="string"/>
+            <arg column="version" javaType="_long"/><arg column="closed_at" javaType="java.time.OffsetDateTime"/><arg column="close_reason" javaType="string"/></constructor>
+    </resultMap>
+    <sql id="columns">reservation_id,quote_id,advertiser_id,ad_id,subject_key,budget_date,amount,expires_at,decision,created_at,state,version,closed_at,close_reason</sql>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=3</select>
+    <select id="verifyReservation" resultType="map">SELECT reservation_id,decision,state,expires_at FROM ad_budget_reservation LIMIT 0</select>
+    <select id="databaseNow" resultType="java.time.OffsetDateTime" useCache="false">SELECT clock_timestamp()</select>
+    <insert id="claim">
+        INSERT INTO ad_budget_reservation(traffic_class,reservation_id,quote_id,advertiser_id,ad_id,subject_key,budget_date,amount,expires_at,state,created_at,updated_at)
+        VALUES('SANDBOX',#{reservationId},#{quoteId},#{advertiserId},#{adId},#{subject},#{day},#{amount},#{expiresAt},'PENDING',#{acceptedAt},#{acceptedAt})
+        ON CONFLICT DO NOTHING
+    </insert>
+    <select id="lockAccount" resultMap="account" useCache="false">
+        SELECT advertiser_id,budget_date,limit_amount,held_amount,charged_amount,version FROM ad_budget_account
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{advertiserId} AND budget_date=#{day} AND currency='CNY' FOR UPDATE
+    </select>
+    <update id="hold">
+        UPDATE ad_budget_account SET held_amount=held_amount+#{amount},version=version+1,updated_at=clock_timestamp()
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{account.advertiserId} AND budget_date=#{account.budgetDate} AND currency='CNY'
+            AND version=#{account.version} AND limit_amount-held_amount-charged_amount &gt;= #{amount}
+    </update>
+    <update id="complete">
+        UPDATE ad_budget_reservation SET decision=#{decision},state=#{state},updated_at=clock_timestamp()
+        WHERE reservation_id=#{reservationId} AND traffic_class='SANDBOX' AND state='PENDING'
+    </update>
+    <select id="find" resultMap="reservation" useCache="false">
+        SELECT <include refid="columns"/> FROM ad_budget_reservation WHERE traffic_class='SANDBOX' AND reservation_id=#{reservationId}
+        <if test="lock">FOR UPDATE</if>
+    </select>
+    <select id="lockOneExpired" resultMap="reservation" useCache="false">
+        SELECT <include refid="columns"/> FROM ad_budget_reservation WHERE traffic_class='SANDBOX' AND state='HELD'
+            AND expires_at &lt;= statement_timestamp()
+        ORDER BY expires_at,reservation_id LIMIT 1 FOR UPDATE SKIP LOCKED
+    </select>
+    <update id="captureAccount">
+        UPDATE ad_budget_account SET held_amount=held_amount-#{amount},charged_amount=charged_amount+#{amount},version=version+1,updated_at=clock_timestamp()
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{account.advertiserId} AND budget_date=#{account.budgetDate} AND currency='CNY'
+            AND version=#{account.version} AND held_amount &gt;= #{amount}
+    </update>
+    <update id="captureReservation">
+        UPDATE ad_budget_reservation SET state='CAPTURED',close_reason='IMPRESSION_CAPTURED',closed_at=#{acceptedAt},updated_at=clock_timestamp(),version=version+1
+        WHERE traffic_class='SANDBOX' AND reservation_id=#{reservationId} AND state='HELD' AND version=#{version}
+    </update>
+    <update id="releaseAccount">
+        UPDATE ad_budget_account SET held_amount=held_amount-#{amount},version=version+1,updated_at=clock_timestamp()
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{account.advertiserId} AND budget_date=#{account.budgetDate} AND currency='CNY'
+            AND version=#{account.version} AND held_amount &gt;= #{amount}
+    </update>
+    <update id="close">
+        UPDATE ad_budget_reservation SET state=#{state},close_reason=#{reason},closed_at=#{now},updated_at=#{now},version=version+1
+        WHERE traffic_class='SANDBOX' AND reservation_id=#{reservationId} AND state='HELD' AND version=#{version}
+    </update>
+</mapper>

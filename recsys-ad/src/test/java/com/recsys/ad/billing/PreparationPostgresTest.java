@@ -46,8 +46,8 @@ class PreparationPostgresTest {
                 ScriptUtils.executeSqlScript(c, new ClassPathResource(migration));
             }
         }
-        quotes = new CpmQuoteRepository(jdbc); repository = new PreparationRepository(jdbc, JSON); repository.verifySchema();
-        reservations = new ReservationService(new ReservationRepository(jdbc), quotes, BudgetConfiguration.transactions(ds, 5), true);
+        quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); repository = new PreparationRepository(jdbc, JSON); repository.verifySchema();
+        reservations = new ReservationService(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), quotes, BudgetConfiguration.transactions(ds, 5), true);
         tokens = new DeliveryTokenCodec(JSON, "test", Map.of("test", Base64.getEncoder().encodeToString(new byte[32])));
         budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         service = fresh(repository);
@@ -117,9 +117,9 @@ class PreparationPostgresTest {
         assertThrows(InvalidProof.class, () -> service.prepare(new Prepare(request.operationId(), "other", 1, request.childId(), 1, request.offerToken())));
         assertThrows(Reservation.AccessDenied.class, () -> service.find(request.childId(), "other"));
     }
-    @Test void failureAfterQuoteThenExpiredRetryCannotRefreshQuoteDeadline() {
+    @Test void failureAfterQuoteThenExpiredRetryCannotRefreshQuoteDeadline() throws Exception {
         var request = request("10", repository.now().plusSeconds(300));
-        var failingReservations = new ReservationService(new ReservationRepository(jdbc), quotes, BudgetConfiguration.transactions(ds, 5), true) {
+        var failingReservations = new ReservationService(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), quotes, BudgetConfiguration.transactions(ds, 5), true) {
             @Override public Reservation.Prepared prepare(UUID id, UUID quoteId, String subject) { throw new IllegalStateException("injected before hold"); }
         };
         var interrupted = new SandboxPreparationService(mock(AdPipeline.class), repository, quotes, failingReservations, tokens);

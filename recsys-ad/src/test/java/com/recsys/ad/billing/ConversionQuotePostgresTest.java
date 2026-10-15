@@ -97,7 +97,7 @@ class ConversionQuotePostgresTest {
             assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(sql,d.quoteId()));
         }
     }
-    @Test void migrationCommentsAndOldClickAndCpmWritersRemainCompatible() {
+    @Test void migrationCommentsAndOldClickAndCpmWritersRemainCompatible() throws Exception {
         assertEquals(0,jdbc.queryForObject("""
                 SELECT count(*) FROM pg_attribute WHERE attrelid='ad_conversion_quote'::regclass AND attnum>0 AND NOT attisdropped
                 AND col_description(attrelid,attnum) IS NULL
@@ -109,7 +109,7 @@ class ConversionQuotePostgresTest {
         var oldClick=clicks.freezeBefore(click,deadline()).orElseThrow();
         var conversion=repository.freezeBefore(d,deadline()).orElseThrow();
         assertEquals(oldClick.quoteId(),conversion.quoteId());assertEquals(BidType.CPC,oldClick.price().bidType());assertEquals(BidType.CPA,conversion.price().bidType());
-        var cpm = new CpmQuoteRepository(jdbc); cpm.verifySchema();
+        var cpm = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); cpm.verifySchema();
         var q = cpm.freeze(UUID.randomUUID(),UUID.randomUUID(),1,2,1,new CpmPrice(BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE));
         assertEquals("1.000000",q.price().amount().toPlainString());
         assertEquals(q,cpm.find(q.quoteId()).orElseThrow());
@@ -132,7 +132,7 @@ class ConversionQuotePostgresTest {
         jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=12","0".repeat(64));
         try {
             runner.run(c->assertThat(c).hasFailed());
-            new CpmQuoteRepository(jdbc).verifySchema();
+            new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema();
         } finally {
             jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=12",BudgetRepository.migrationSha256(ConversionQuoteRepository.MIGRATION));
         }

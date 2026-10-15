@@ -30,8 +30,8 @@ public class BillingEventConfiguration {
     static class Shared {
         /** 事件能力可在停止新回执后单独续办，仍核验全部迁移历史。 */
         @Bean BillingOutboxRepository billingOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-            new BudgetRepository(sessions).verifySchema();new CpmQuoteRepository(jdbc).verifySchema();
-            new ReservationRepository(jdbc).verifySchema();new PreparationRepository(jdbc,json).verifySchema();
+            new BudgetRepository(sessions).verifySchema();new CpmQuoteRepository(sessions).verifySchema();
+            new ReservationRepository(sessions).verifySchema();new PreparationRepository(jdbc,json).verifySchema();
             new ImpressionReceiptRepository(jdbc,json).verifySchema();
             var repository=new BillingOutboxRepository(jdbc);repository.verifySchema();return repository;
         }

@@ -49,7 +49,7 @@ class CpmQuotePostgresTest {
             }
         }
         new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema();
-        repository = new CpmQuoteRepository(jdbc);
+        repository = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         repository.verifySchema();
     }
 
@@ -72,7 +72,7 @@ class CpmQuotePostgresTest {
         FrozenCpmQuote original = results.getFirst();
         assertEquals("0.000001", original.price().amount().toPlainString());
         assertEquals(Duration.ofMinutes(5), Duration.between(original.issuedAt(), original.expiresAt()));
-        assertEquals(original, new CpmQuoteRepository(jdbc).freeze(quote, delivery, 1, 2, 1, price));
+        assertEquals(original, new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).freeze(quote, delivery, 1, 2, 1, price));
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM ad_cpm_quote WHERE quote_id = ?", Integer.class, quote));
     }
 
@@ -99,6 +99,19 @@ class CpmQuotePostgresTest {
     }
 
     @Test
+    void expiredAdmissionDoesNotInsertButExistingQuoteKeepsItsOriginalDeadline() {
+        UUID quote = UUID.randomUUID(), delivery = UUID.randomUUID();
+        var price = price("0.123456789");
+        assertTrue(repository.freezeBefore(quote, delivery, 1, 2, 1, price, java.time.Instant.EPOCH).isEmpty());
+        assertTrue(repository.find(quote).isEmpty());
+        var original = repository.freeze(quote, delivery, 1, 2, 1, price);
+        assertEquals(original, repository.freezeBefore(quote, delivery, 1, 2, 1, price, java.time.Instant.EPOCH).orElseThrow());
+        assertEquals(java.time.Duration.ofMinutes(5), java.time.Duration.between(original.issuedAt(), original.expiresAt()));
+        assertThrows(com.recsys.common.ad.billing.FrozenCpmQuote.Conflict.class,
+                () -> repository.freezeBefore(quote, delivery, 1, 2, 1, price("0.2"), java.time.Instant.EPOCH));
+    }
+
+    @Test
     void databaseConstraintsAndCommentsHold() {
         var quote = repository.freeze(UUID.randomUUID(), UUID.randomUUID(), 1, 2, 1, price("0.1"));
         assertThrows(org.springframework.dao.DataAccessException.class,
@@ -113,11 +126,12 @@ class CpmQuotePostgresTest {
     }
 
     @Test
-    void enabledConfigurationRequiresValidMigrationAndDisabledNeedsNoDb() {
+    void enabledConfigurationRequiresValidMigrationAndDisabledNeedsNoDb() throws Exception {
+        var sessions=new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"));
         new ApplicationContextRunner().withUserConfiguration(CpmQuoteConfiguration.class)
                 .run(context -> assertThat(context).hasNotFailed().doesNotHaveBean(CpmQuoteRepository.class));
         var runner = new ApplicationContextRunner().withUserConfiguration(CpmQuoteConfiguration.class)
-                .withPropertyValues("recsys.ad.billing.sandbox-enabled=true").withBean("adDbJdbc", JdbcTemplate.class, () -> jdbc);
+                .withPropertyValues("recsys.ad.billing.sandbox-enabled=true").withBean("adDbSqlSessionTemplate", SqlSessionTemplate.class, () -> sessions);
         runner.run(context -> assertThat(context).hasNotFailed().hasSingleBean(CpmQuoteRepository.class));
         jdbc.update("UPDATE ad_billing_schema_history SET script_sha256 = ? WHERE version = 2", "0".repeat(64));
         try {

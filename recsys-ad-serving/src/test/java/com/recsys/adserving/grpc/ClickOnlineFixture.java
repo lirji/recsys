@@ -34,6 +34,7 @@ class ClickOnlineFixture implements AutoCloseable {
     static final String SECRET="click-online-fixture-internal-only";
     final DriverManagerDataSource adDs,engineDs;
     final JdbcTemplate ad,engine;
+    final SqlSessionTemplate sessions;
     final AdPipeline pipeline=mock(AdPipeline.class);
     final ClickQuoteRepository quotes;
     final ClickSettlementService settlements;
@@ -47,6 +48,7 @@ class ClickOnlineFixture implements AutoCloseable {
     Server server;ManagedChannel channel;
     ClickOnlineFixture(PostgreSQLContainer<?> pg) throws Exception {
         adDs=schema(pg,"ad");engineDs=schema(pg,"engine");ad=new JdbcTemplate(adDs);engine=new JdbcTemplate(engineDs);
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml"));
         for(String name:List.of("V001__budget_account.sql","V002__cpm_quote.sql","V003__budget_reservation.sql","V004__delivery_preparation.sql",
                 "V005__impression_capture.sql","V006__billing_event_delivery.sql","V007__feed_frequency.sql","V008__click_quote.sql",
                 "V009__click_settlement.sql","V010__click_event_delivery.sql","V011__click_preparation.sql")) migrate(adDs,"db/ad-billing/"+name);
@@ -57,10 +59,10 @@ class ClickOnlineFixture implements AutoCloseable {
                 CREATE TRIGGER test_click_clock BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_clock();
                 """);
         quotes=new ClickQuoteRepository(ad);preparationRepository=new PreparationRepository(ad,JSON,ChargeMode.CLICK);
-        settlements=new ClickSettlementService(new ClickSettlementRepository(ad,JSON),quotes,new ReservationRepository(ad),tokens,
+        settlements=new ClickSettlementService(new ClickSettlementRepository(ad,JSON),quotes,new ReservationRepository(sessions),tokens,
                 transactions(adDs),true,true,new ClickSettlementService.FraudPolicy(true,20));
         preparations=new ClickPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
-        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adDs,5);
+        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(sessions),adDs,5);
         var day=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
         when(pipeline.sandboxClickCandidates(anyLong(),any(),anyInt(),anyString(),anyDouble())).thenAnswer(i->{

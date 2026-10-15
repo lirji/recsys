@@ -50,8 +50,8 @@ class ReservationPostgresTest {
             }
         }
         budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
-        quotes = new CpmQuoteRepository(jdbc);
-        repository = new ReservationRepository(jdbc);
+        quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
+        repository = new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         repository.verifySchema();
         service = freshService(true);
     }
@@ -253,7 +253,7 @@ class ReservationPostgresTest {
     }
 
     @Test
-    void databaseRejectsIncompleteTerminalStateAndAllColumnsAreDocumented() {
+    void databaseRejectsIncompleteTerminalStateAndAllColumnsAreDocumented() throws Exception {
         long advertiser = funded("10");
         UUID id = UUID.randomUUID();
         service.prepare(id, quote(advertiser, "1").quoteId(), SUBJECT);
@@ -268,7 +268,7 @@ class ReservationPostgresTest {
         assertNotNull(jdbc.queryForObject("SELECT obj_description('ad_budget_reservation'::regclass, 'pg_class')", String.class));
         var other = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         assertThrows(IllegalArgumentException.class, () -> new ReservationService(repository,
-                new CpmQuoteRepository(new JdbcTemplate(other)), BudgetConfiguration.transactions(ds, 5), true));
+                new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(other, "classpath*:mapper/ad/addb/**/*.xml"))), BudgetConfiguration.transactions(ds, 5), true));
     }
 
     private static ReservationService freshService(boolean admission) {

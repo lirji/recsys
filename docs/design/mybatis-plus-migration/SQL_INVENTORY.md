@@ -71,7 +71,7 @@
 | [com/recsys/ad/billing/ConversionSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementConfiguration.java) | 10 | 0 | TODO |
 | [com/recsys/ad/billing/ConversionSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementRepository.java) | 6 | 24 | TODO |
 | [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | TODO |
-| [com/recsys/ad/billing/CpmQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteRepository.java) | 5 | 8 | TODO |
+| [com/recsys/ad/billing/CpmQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteRepository.java) | 5 | 8 | DONE MP08b：见MP08B_RESULT |
 | [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | TODO |
 | [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | TODO |
 | [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | TODO |
@@ -81,7 +81,7 @@
 | [com/recsys/ad/billing/ReconciliationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationConfiguration.java) | 6 | 0 | TODO |
 | [com/recsys/ad/billing/ReconciliationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationRepository.java) | 6 | 36 | TODO |
 | [com/recsys/ad/billing/ReservationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationConfiguration.java) | 9 | 0 | TODO |
-| [com/recsys/ad/billing/ReservationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationRepository.java) | 6 | 14 | TODO |
+| [com/recsys/ad/billing/ReservationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationRepository.java) | 6 | 14 | DONE MP08b：见MP08B_RESULT |
 
 ### recsys-advertiser
 

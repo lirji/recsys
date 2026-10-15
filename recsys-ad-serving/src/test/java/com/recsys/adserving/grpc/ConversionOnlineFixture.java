@@ -34,6 +34,7 @@ class ConversionOnlineFixture implements AutoCloseable {
     static final String SECRET="conversion-online-fixture-internal-only";
     final DriverManagerDataSource adDs,engineDs;
     final JdbcTemplate ad,engine;
+    final SqlSessionTemplate sessions;
     final AdPipeline pipeline=mock(AdPipeline.class);
     final ConversionQuoteRepository quotes;
     final ConversionSettlementService settlements;
@@ -47,6 +48,7 @@ class ConversionOnlineFixture implements AutoCloseable {
     Server server;ManagedChannel channel;
     ConversionOnlineFixture(PostgreSQLContainer<?> pg) throws Exception {
         adDs=schema(pg,"ad");engineDs=schema(pg,"engine");ad=new JdbcTemplate(adDs);engine=new JdbcTemplate(engineDs);
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml"));
         for(String name:List.of("V001__budget_account.sql","V002__cpm_quote.sql","V003__budget_reservation.sql","V004__delivery_preparation.sql",
                 "V005__impression_capture.sql","V006__billing_event_delivery.sql","V007__feed_frequency.sql","V008__click_quote.sql",
                 "V009__click_settlement.sql","V010__click_event_delivery.sql","V011__click_preparation.sql","V012__conversion_quote.sql",
@@ -59,10 +61,10 @@ class ConversionOnlineFixture implements AutoCloseable {
                 CREATE TRIGGER test_conversion_clock BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_clock();
                 """);
         quotes=new ConversionQuoteRepository(ad);preparationRepository=new PreparationRepository(ad,JSON,ChargeMode.CONVERSION);
-        settlements=new ConversionSettlementService(new ConversionSettlementRepository(ad,JSON),quotes,new ReservationRepository(ad),tokens,
+        settlements=new ConversionSettlementService(new ConversionSettlementRepository(ad,JSON),quotes,new ReservationRepository(sessions),tokens,
                 transactions(adDs),true,true);
         preparations=new ConversionPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
-        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adDs,5);
+        budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(sessions),adDs,5);
         var day=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
         budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
         when(pipeline.sandboxConversionCandidates(anyLong(),any(),anyInt(),anyString(),anyDouble())).thenAnswer(i->{

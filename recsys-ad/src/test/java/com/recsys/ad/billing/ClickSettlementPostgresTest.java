@@ -64,7 +64,7 @@ class ClickSettlementPostgresTest {
                 IF FOUND THEN NEW.issued_at=t; NEW.expires_at=t+interval '5 minutes'; END IF; RETURN NEW; END; $$;
                 CREATE TRIGGER test_click_clock BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_clock();
                 """);
-        accounts=new ReservationRepository(jdbc); quotes=new ClickQuoteRepository(jdbc);
+        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ClickQuoteRepository(jdbc);
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         repository=new ClickSettlementRepository(jdbc,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -197,7 +197,7 @@ class ClickSettlementPostgresTest {
     @Test void fraudLimitIsAtomicAcrossAdvertisersAndRejectedQualificationNeverRecovers() throws Exception {
         long user=IDS.incrementAndGet(); var fixtures=new ArrayList<Fixture>();
         for(int i=0;i<8;i++) fixtures.add(fixture(IDS.incrementAndGet(),user,"0.123456",298));
-        var fixed=spy(new ReservationRepository(jdbc));
+        var fixed=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))));
         // 固定本组事务的DB决策时刻，避免测试恰跨整分钟把两个合法窗口误判成超限。
         doReturn(accounts.databaseNow()).when(fixed).databaseNow();
         var limited=fresh(repository,fixed,true,true,2,tokens);
@@ -230,10 +230,10 @@ class ClickSettlementPostgresTest {
         assertEquals(Progress.WAITING_FOR_BOTH,service.find(f.id(),"admin").orElseThrow().progress());
         assertEquals(ReceiptStatus.ACCEPTED_WAITING,service.accept(click).receipt().status()); assertEquals(1,rate(f.quote().userId()));
     }
-    @Test void fraudRejectionReleaseAlsoRollsBackIfDecisionCannotCommit() {
+    @Test void fraudRejectionReleaseAlsoRollsBackIfDecisionCannotCommit() throws Exception {
         long user=IDS.incrementAndGet(); var first=fixture(IDS.incrementAndGet(),user,"0.123456",298);
         var denied=fixture(IDS.incrementAndGet(),user,"0.123456",298);
-        var fixed=spy(new ReservationRepository(jdbc)); doReturn(accounts.databaseNow()).when(fixed).databaseNow();
+        var fixed=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")))); doReturn(accounts.databaseNow()).when(fixed).databaseNow();
         fresh(repository,fixed,true,true,1,tokens).accept(first.command(Kind.CLICK));
         var command=denied.command(Kind.CLICK); var failing=spy(new ClickSettlementRepository(jdbc,JSON));
         doAnswer(call->{call.callRealMethod(); throw new IllegalStateException("injected reject save failure");}).when(failing).complete(any());
@@ -306,7 +306,7 @@ class ClickSettlementPostgresTest {
     }
     @Test void sharedCpmAndClickAccountCannotExceedHardBudgetUnderConcurrentHolds() throws Exception {
         long advertiser=IDS.incrementAndGet(); budget(advertiser,today(),"0.500000");
-        var clicks=new ArrayList<FrozenClickQuote>(); var cpms=new ArrayList<FrozenCpmQuote>(); var cpmQuotes=new CpmQuoteRepository(jdbc);
+        var clicks=new ArrayList<FrozenClickQuote>(); var cpms=new ArrayList<FrozenCpmQuote>(); var cpmQuotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         for(int i=0;i<8;i++) {
             clicks.add(quote(advertiser,IDS.incrementAndGet(),"0.1",accounts.databaseNow().minusSeconds(2),BidType.CPC));
             cpms.add(cpmQuotes.freeze(UUID.randomUUID(),UUID.randomUUID(),advertiser,2,1,new CpmPrice(new BigDecimal("0.1"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE)));
@@ -319,11 +319,11 @@ class ClickSettlementPostgresTest {
         for(var q:clicks) service.release(q.quoteId(),"admin"); for(var q:cpms) old.release(q.quoteId(),"admin");
         assertEquals("0.000000",budgets.findAccount(advertiser,today()).orElseThrow().heldAmount().toPlainString());
     }
-    @Test void crossMidnightCapturedFundsUseOriginalBudgetDate() {
+    @Test void crossMidnightCapturedFundsUseOriginalBudgetDate() throws Exception {
         long advertiser=IDS.incrementAndGet(); var day=today().minusDays(1);
         budget(advertiser,day,"1"); budget(advertiser,today(),"1");
         var before=day.atTime(23,59,58).atZone(ZoneId.of("Asia/Shanghai")).toInstant();
-        var clocked=spy(new ReservationRepository(jdbc));
+        var clocked=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))));
         // 模拟两个真实DB时刻的跨午夜边界；资金/锁/约束仍由真实PG执行，不移动或篡改已冻结历史。
         var time=new java.util.concurrent.atomic.AtomicReference<>(before);
         doAnswer(call->jdbc.queryForObject("SELECT ?::timestamptz",OffsetDateTime.class,java.sql.Timestamp.from(time.get())).toInstant()).when(clocked).databaseNow();
@@ -375,7 +375,7 @@ class ClickSettlementPostgresTest {
             assertNotNull(jdbc.queryForObject("SELECT obj_description(?::regclass,'pg_class')",String.class,table));
         }
     }
-    @Test void installationDefaultsOwnerMigrationAndFraudConfigurationFailClosed() {
+    @Test void installationDefaultsOwnerMigrationAndFraudConfigurationFailClosed() throws Exception {
         new ApplicationContextRunner().withUserConfiguration(ClickSettlementConfiguration.class)
                 .run(c->assertThat(c).hasNotFailed().doesNotHaveBean(ClickSettlementService.class));
         var runner=new ApplicationContextRunner().withUserConfiguration(ClickSettlementConfiguration.class)
@@ -388,7 +388,7 @@ class ClickSettlementPostgresTest {
         runner.withPropertyValues("recsys.ad.serving.mode=grpc","spring.application.name=recsys-rec-engine")
                 .run(c->assertThat(c).hasNotFailed().doesNotHaveBean(ClickSettlementService.class));
         jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=9","0".repeat(64));
-        try { runner.run(c->assertThat(c).hasFailed()); new ClickQuoteRepository(jdbc).verifySchema(); new ReservationRepository(jdbc).verifySchema(); }
+        try { runner.run(c->assertThat(c).hasFailed()); new ClickQuoteRepository(jdbc).verifySchema(); new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema(); }
         finally { jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=9",BudgetRepository.migrationSha256(ClickSettlementRepository.MIGRATION)); }
         assertThrows(IllegalArgumentException.class,()->new ClickSettlementService.FraudPolicy(true,0));
     }

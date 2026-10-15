@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07已交付，MP07b=e2b4b572。MP08a预算迁移DONE/PASS：完整资金链路368项、sandbox4/混排5浏览器、推荐宿主3项通过；准备Git交付后继续MP08b。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b报价/预占DONE/PASS，验证完整，待本批Git交付。下一片MP08c。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -60,7 +60,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP08a：预算Mapper/XML、Repository/配置、各依赖配置及跨模块测试宿主、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP08b：报价/预占Mapper/XML、Repository/配置及跨模块测试宿主，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,8 +79,8 @@ MP01～MP03已交付。当前MP08a：预算Mapper/XML、Repository/配置、各�
 
 ## 下一步
 
-1. MP07b已交付e2b4b572，MP08a已完成，准备Git交付。
-2. 继续MP08b～MP15，全部SQL完成后处理统一错误码。
+1. MP08a已交付b7853b47，MP08b已验证通过，正常提交/ff合并/push。
+2. 继续MP08c～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -140,3 +140,11 @@ DONE/PASS，见MP07B_RESULT。MP08a BudgetRepository/Configuration有schema校�
 ## MP08a检查点
 
 DONE/PASS，见MP08A_RESULT；27源文件，最终指纹cb8cf4cb62e62a84158e5da2ae4a3058956bc581ea1ae962c4916d8c203b7e3f。旧13、新预算PG13+配置2与完整资金链路368/68类均通过，sandbox4/feed5浏览器及宿主3通过，24 reactor编译/hygiene通过。当前预算Repository从实际SqlSessionTemplate取得Mapper/DataSource，相关配置只变V001探针的装配；其他Repository尚未迁移。MP08b继续CpmQuoteRepository/Configuration、ReservationRepository/Configuration，真实money-chain刚通过，可复用其中CPM5、预占12/回收5作为旧实现基线。保持报价clock_timestamp CTE/五分钟期限/threshold与bill_factor文本精度、冻结摘要与冲突恢复；预占统一锁序、SKIP LOCKED、有界到期扫描、held条件更新/捕获/释放与原预算日不变。需同步全部new构造引用及浏览器fixture（同MP08a）；不改历史V002/V003。最新已观察MP07b CI38725073212全部SUCCESS。首次Hygiene沿用PENDING字面量未过，已改具名私有常量，最终15项预算测试、24 reactor编译及Hygiene均复验通过。
+
+## MP08b迁移前基线
+
+`/tmp/recsys-mp08b-before.log`：23项/3类全部通过。CPM新增首次签发期限已过不插入、已有同一报价期限已过仍恢复原结果、改负载仍冲突、五分钟TTL保持；预占12/到期调度5原测试通过。此时两个Repository仍为原JDBC，准备整体迁移Mapper/XML并同步其构造引用。
+
+## MP08b最终验证
+
+DONE/PASS，见MP08B_RESULT。25源文件指纹f63df6b52a2bda1dc9f20efaf0e25f3ba8c412a4be76088aa705addbe4893853；旧/新专项23项、完整资金链369项/68类、sandbox浏览器4项、混排5项、推荐宿主3项全部通过，全仓24 reactor编译与hygiene通过。45历史SQL/8保护文件不变。MP08a远程CI38726514355全绿。本批Git后继续MP08c准备/回执：本次money-chain可作为迁移前基线；Preparation的三种固定表、独立提交/5秒查询超时、原ID恢复和首次结果不覆盖必须保持；Receipt的四份事实同事务、可空时间/ID与半成品拒绝需保护。

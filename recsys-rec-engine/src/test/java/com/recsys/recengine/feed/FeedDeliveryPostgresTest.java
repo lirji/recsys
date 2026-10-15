@@ -73,7 +73,7 @@ class FeedDeliveryPostgresTest {
                 PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,"db/ad-billing/V006__billing_event_delivery.sql",FeedCandidateRepository.MIGRATION)) migrate(adSource,script);
         repository=new FeedDeliveryRepository(engine,JSON); repository.verifySchema();
         budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adSource,5);
-        reservations=new ReservationRepository(adDb); quotes=new CpmQuoteRepository(adDb);
+        reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         reservationService=new ReservationService(reservations,quotes,transactions(),true);
         preparations=new PreparationRepository(adDb,JSON); receipts=new ImpressionReceiptRepository(adDb,JSON);
         adTokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -261,7 +261,7 @@ class FeedDeliveryPostgresTest {
         assertTrue(helper.candidates(new Query(r.operationId(),r.subject(),r.userId(),new StructuredQuery("q","q",null,null,null,null),2,"feed","b",.1)).isEmpty());
         assertEquals(before,account(a)); assertTrue(owner.find(sibling.childId(),"admin").isEmpty());
     }
-    @Test void frequencyUsesShanghaiAcceptanceDayEvenWhenReservationBelongsToPreviousDay() {
+    @Test void frequencyUsesShanghaiAcceptanceDayEvenWhenReservationBelongsToPreviousDay() throws Exception {
         var r=request();
         Instant start=reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant();
         var before=candidate(r,101,"10"); var first=candidate(r,102,"10"); var last=candidate(r,103,"10"); var after=candidate(r,104,"10");
@@ -272,7 +272,7 @@ class FeedDeliveryPostgresTest {
         assertEquals(start.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().minusDays(1),day);
     }
     /** 隔离库以显式时钟生成完整历史资金链；不修改已写账本，验证查询的是接受日而非预占日。 */
-    void seedHistoricalCapture(Request request,Candidate candidate,Instant at,int slot) {
+    void seedHistoricalCapture(Request request,Candidate candidate,Instant at,int slot) throws Exception {
         Instant issued=at.minusSeconds(2); LocalDate day=issued.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
         long advertiser=candidate.ad().advertiserId();
         if(budgets.findAccount(advertiser,day).isEmpty()) budgets.setLimit(BudgetCommand.parse(advertiser,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
@@ -280,12 +280,12 @@ class FeedDeliveryPostgresTest {
         quotes.freeze(candidate.childId(),request.operationId(),advertiser,candidate.ad().adId(),slot,offer.price());
         adDb.update("UPDATE ad_cpm_quote SET issued_at=?,expires_at=? WHERE quote_id=?",
                 java.sql.Timestamp.from(issued),java.sql.Timestamp.from(issued.plusSeconds(300)),candidate.childId());
-        var prepareClock=new ReservationRepository(adDb) { @Override public Instant databaseNow() { return issued; } };
+        var prepareClock=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))) { @Override public Instant databaseNow() { return issued; } };
         var preparer=new SandboxPreparationService(mock(AdPipeline.class),preparations,quotes,
                 new ReservationService(prepareClock,quotes,transactions(),true),adTokens);
         var prepared=preparer.prepare(new Prepare(request.operationId(),request.subject(),request.userId(),candidate.childId(),slot,candidate.offerToken()));
         assertEquals(SandboxDelivery.Status.QUALIFIED,prepared.status());
-        var acceptClock=new ReservationRepository(adDb) { @Override public Instant databaseNow() { return at; } };
+        var acceptClock=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))) { @Override public Instant databaseNow() { return at; } };
         var acceptor=new ImpressionReceiptService(receipts,preparations,acceptClock,quotes,adTokens,transactions(),true);
         assertEquals(ImpressionReceipt.Status.ACCEPTED,acceptor.accept(new ImpressionReceipt.Command(UUID.randomUUID(),"admin",prepared.qualificationToken(),1000,5000,true)).status());
     }

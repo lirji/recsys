@@ -65,7 +65,7 @@ class ConversionSettlementPostgresTest {
                 IF FOUND THEN NEW.issued_at=t; NEW.expires_at=t+interval '5 minutes'; END IF; RETURN NEW; END; $$;
                 CREATE TRIGGER test_conversion_clock BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_clock();
                 """);
-        accounts=new ReservationRepository(jdbc); quotes=new ConversionQuoteRepository(jdbc);
+        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ConversionQuoteRepository(jdbc);
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         repository=new ConversionSettlementRepository(jdbc,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -262,9 +262,9 @@ class ConversionSettlementPostgresTest {
         }
         assertEquals("0.000000",account(f).heldAmount().toPlainString());assertEquals(0,ledgerCount(f.id()));
     }
-    @Test void expiredWaitingOutcomeSurvivesWorkerAndLaterVisibleCannotCharge() {
+    @Test void expiredWaitingOutcomeSurvivesWorkerAndLaterVisibleCannotCharge() throws Exception {
         var f=fixture();var c=f.conversion();var first=service.acceptAuthorizedConversion(c);
-        var future=spy(new ReservationRepository(jdbc));doReturn(f.quote().expiresAt().plusSeconds(1)).when(future).databaseNow();
+        var future=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))));doReturn(f.quote().expiresAt().plusSeconds(1)).when(future).databaseNow();
         var expired=fresh(repository,future,true,true,tokens).acceptVisible(f.visible());assertEquals(VisibleStatus.EXPIRED,expired.receipt().status());
         var restored=service.acceptAuthorizedConversion(c);assertEquals(first.outcome(),restored.outcome());assertEquals(State.EXPIRED,restored.settlement().state());
         assertEquals(0,ledgerCount(f.id()));assertEquals("0.000000",account(f).heldAmount().toPlainString());
@@ -313,11 +313,11 @@ class ConversionSettlementPostgresTest {
         assertEquals(OutcomeStatus.EXPIRED,service.acceptAuthorizedConversion(b.conversion()).outcome().status());
         assertEquals(0,ledgerCount(a.id())+ledgerCount(b.id()));
     }
-    @Test void crossMidnightCapturedFundsUseOriginalBudgetDate() {
+    @Test void crossMidnightCapturedFundsUseOriginalBudgetDate() throws Exception {
         long advertiser=IDS.incrementAndGet(); var day=today().minusDays(1);
         budget(advertiser,day,"1"); budget(advertiser,today(),"1");
         var before=day.atTime(23,59,58).atZone(ZoneId.of("Asia/Shanghai")).toInstant();
-        var clocked=spy(new ReservationRepository(jdbc));
+        var clocked=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))));
         // 模拟两个真实DB时刻的跨午夜边界；资金/锁/约束仍由真实PG执行，不移动或篡改已冻结历史。
         var time=new java.util.concurrent.atomic.AtomicReference<>(before);
         doAnswer(call->jdbc.queryForObject("SELECT ?::timestamptz",OffsetDateTime.class,java.sql.Timestamp.from(time.get())).toInstant()).when(clocked).databaseNow();
@@ -332,7 +332,7 @@ class ConversionSettlementPostgresTest {
     @Test void cpaCpcAndCpmConcurrentHoldsShareOneHardLimit() throws Exception {
         long adv=IDS.incrementAndGet();budget(adv,today(),"0.5");
         var conversionQuotes=new ArrayList<FrozenConversionQuote>();var clickQuotes=new ArrayList<FrozenClickQuote>();var cpmQuotes=new ArrayList<FrozenCpmQuote>();
-        var clickRepo=new ClickQuoteRepository(jdbc);var cpmRepo=new CpmQuoteRepository(jdbc);
+        var clickRepo=new ClickQuoteRepository(jdbc);var cpmRepo=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         for(int i=0;i<6;i++) {
             conversionQuotes.add(quote(adv,1,"0.1",accounts.databaseNow().minusSeconds(2)));
             var basis=new GspPrice(new BigDecimal("0.1"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE);

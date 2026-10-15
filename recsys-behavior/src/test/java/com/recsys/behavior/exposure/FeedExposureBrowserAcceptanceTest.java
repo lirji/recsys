@@ -112,7 +112,7 @@ class FeedExposureBrowserAcceptanceTest {
                         group*100+1,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+2,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+3,group,group==1?"NORMAL":"BUDGET_DENIED");
             }
             var budget=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),ds,5);
-            var reservations=new ReservationRepository(adDb);var quotes=new CpmQuoteRepository(adDb);var preparations=new PreparationRepository(adDb,JSON);
+            var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var preparations=new PreparationRepository(adDb,JSON);
             var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);tx.setTimeout(5);
             for(long advertiser:List.of(1L,2L)) budget.setLimit(BudgetCommand.parse(advertiser,UUID.randomUUID().toString(),reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().toString(),"CNY",advertiser==1?"100":"0",0,"browser-admin"));
             var reservationService=new ReservationService(reservations,quotes,tx,true);

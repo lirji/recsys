@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.CpmQuoteMapper">
+    <resultMap id="quote" type="com.recsys.ad.persistence.mapper.addb.CpmQuoteMapper$StoredQuote">
+        <constructor><arg column="quote_id" javaType="java.util.UUID"/><arg column="delivery_id" javaType="java.util.UUID"/>
+            <arg column="advertiser_id" javaType="_long"/><arg column="ad_id" javaType="_long"/><arg column="slot" javaType="_int"/>
+            <arg column="amount" javaType="java.math.BigDecimal"/><arg column="threshold" javaType="string"/><arg column="bill_factor" javaType="string"/>
+            <arg column="increment_amount" javaType="java.math.BigDecimal"/><arg column="floor_amount" javaType="java.math.BigDecimal"/>
+            <arg column="cap_amount" javaType="java.math.BigDecimal"/><arg column="issued_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="expires_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=2</select>
+    <select id="verifyQuote" resultType="map">SELECT quote_id,amount,payload_hash,issued_at,expires_at FROM ad_cpm_quote LIMIT 0</select>
+    <insert id="freeze">
+        WITH issued AS (SELECT clock_timestamp() AS instant)
+        INSERT INTO ad_cpm_quote(traffic_class,quote_id,delivery_id,advertiser_id,ad_id,slot,currency,price_unit,pricing_version,
+            amount,threshold,bill_factor,increment_amount,floor_amount,cap_amount,payload_hash,issued_at,expires_at)
+        SELECT 'SANDBOX',#{quoteId},#{deliveryId},#{advertiserId},#{adId},#{slot},'CNY','PER_IMPRESSION','CPM_GSP_CNY6_V1',
+            #{amount},#{threshold},#{billFactor},#{increment},#{floor},#{cap},#{payloadHash},instant,instant+interval '5 minutes'
+        FROM issued WHERE instant &lt; #{deadline} ON CONFLICT DO NOTHING
+    </insert>
+    <select id="hashes" resultType="string">SELECT payload_hash FROM ad_cpm_quote WHERE traffic_class='SANDBOX' AND quote_id=#{quoteId}</select>
+    <select id="beforeDeadline" resultType="boolean" useCache="false">SELECT clock_timestamp() &lt; #{deadline}</select>
+    <select id="quotes" resultMap="quote">
+        SELECT quote_id,delivery_id,advertiser_id,ad_id,slot,amount,threshold,bill_factor,increment_amount,floor_amount,cap_amount,issued_at,expires_at
+        FROM ad_cpm_quote WHERE traffic_class='SANDBOX' AND quote_id=#{quoteId}
+    </select>
+</mapper>

@@ -124,7 +124,7 @@ class ConversionOnlinePostgresTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void businessCommitLostReplyQueriesOriginalButRevokedActorCannotRestore(boolean remote) throws Exception {
         var fail=new AtomicBoolean(true);
-        var losing=new ConversionSettlementService(new ConversionSettlementRepository(f.ad,ConversionOnlineFixture.JSON),f.quotes,new ReservationRepository(f.ad),f.tokens,
+        var losing=new ConversionSettlementService(new ConversionSettlementRepository(f.ad,ConversionOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
                 ConversionOnlineFixture.transactions(f.adDs),true,true) {
             @Override public OutcomeResult acceptAuthorizedConversion(ConversionCommand c) {
                 var r=super.acceptAuthorizedConversion(c);if(fail.getAndSet(false))throw new IllegalStateException("lost business reply");return r;
@@ -196,9 +196,9 @@ class ConversionOnlinePostgresTest {
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ConversionOnlineFixture.JSON)
                 .withBean(com.recsys.ad.AdPipeline.class,()->f.pipeline).withBean(ClickQuoteRepository.class,()->new ClickQuoteRepository(f.ad))
                 .withBean(ConversionQuoteRepository.class,()->f.quotes).withBean(ConversionSettlementService.class,()->f.settlements)
-                .withBean(ClickSettlementService.class,()->new ClickSettlementService(new ClickSettlementRepository(f.ad,ConversionOnlineFixture.JSON),new ClickQuoteRepository(f.ad),new ReservationRepository(f.ad),f.tokens,ConversionOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20))).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.ad))
-                .withBean(ReservationRepository.class,()->new ReservationRepository(f.ad))
-                .withBean(ReservationService.class,()->new ReservationService(new ReservationRepository(f.ad),new CpmQuoteRepository(f.ad),ConversionOnlineFixture.transactions(f.adDs),true))
+                .withBean(ClickSettlementService.class,()->new ClickSettlementService(new ClickSettlementRepository(f.ad,ConversionOnlineFixture.JSON),new ClickQuoteRepository(f.ad),new ReservationRepository(f.sessions),f.tokens,ConversionOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20))).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.sessions))
+                .withBean(ReservationRepository.class,()->new ReservationRepository(f.sessions))
+                .withBean(ReservationService.class,()->new ReservationService(new ReservationRepository(f.sessions),new CpmQuoteRepository(f.sessions),ConversionOnlineFixture.transactions(f.adDs),true))
                 .run(c->{assertNull(c.getStartupFailure());assertEquals(3,c.getBeansOfType(PreparationRepository.class).size());
                     assertEquals(SandboxDelivery.ChargeMode.CLICK,c.getBean("clickPreparationRepository",PreparationRepository.class).mode());
                     assertEquals(SandboxDelivery.ChargeMode.IMPRESSION,c.getBean("preparationRepository",PreparationRepository.class).mode());

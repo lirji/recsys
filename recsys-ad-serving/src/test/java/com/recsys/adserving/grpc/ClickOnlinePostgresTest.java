@@ -94,7 +94,7 @@ class ClickOnlinePostgresTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void receiptCommitThenLostReplyQueriesOriginalAndChangedBodyConflicts(boolean remote) throws Exception {
         var fail=new AtomicBoolean(true);
-        var losing=new ClickSettlementService(new ClickSettlementRepository(f.ad,ClickOnlineFixture.JSON),f.quotes,new ReservationRepository(f.ad),f.tokens,
+        var losing=new ClickSettlementService(new ClickSettlementRepository(f.ad,ClickOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
                 ClickOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20)) {
             @Override public Result accept(Command c) { var result=super.accept(c);if(fail.getAndSet(false))throw new IllegalStateException("lost receipt reply");return result; }
         };
@@ -117,9 +117,9 @@ class ClickOnlinePostgresTest {
                 .withBean("adDbDataSource",javax.sql.DataSource.class,()->f.adDs)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ClickOnlineFixture.JSON)
                 .withBean(com.recsys.ad.AdPipeline.class,()->f.pipeline).withBean(ClickQuoteRepository.class,()->f.quotes)
-                .withBean(ClickSettlementService.class,()->f.settlements).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.ad))
-                .withBean(ReservationRepository.class,()->new ReservationRepository(f.ad))
-                .withBean(ReservationService.class,()->new ReservationService(new ReservationRepository(f.ad),new CpmQuoteRepository(f.ad),ClickOnlineFixture.transactions(f.adDs),true))
+                .withBean(ClickSettlementService.class,()->f.settlements).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.sessions))
+                .withBean(ReservationRepository.class,()->new ReservationRepository(f.sessions))
+                .withBean(ReservationService.class,()->new ReservationService(new ReservationRepository(f.sessions),new CpmQuoteRepository(f.sessions),ClickOnlineFixture.transactions(f.adDs),true))
                 .run(c->{assertNull(c.getStartupFailure());assertEquals(2,c.getBeansOfType(PreparationRepository.class).size());
                     assertEquals(SandboxDelivery.ChargeMode.CLICK,c.getBean("clickPreparationRepository",PreparationRepository.class).mode());
                     assertEquals(SandboxDelivery.ChargeMode.IMPRESSION,c.getBean("preparationRepository",PreparationRepository.class).mode());

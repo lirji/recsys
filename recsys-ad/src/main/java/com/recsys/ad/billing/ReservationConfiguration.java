@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import javax.sql.DataSource;
@@ -19,8 +19,8 @@ import java.time.Duration;
 public class ReservationConfiguration {
     /** V003 不存在时拒绝启用，不能创建没有恢复索引/约束的半套预占能力。 */
     @Bean
-    public ReservationRepository reservationRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc) {
-        var repository = new ReservationRepository(jdbc);
+    public ReservationRepository reservationRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions) {
+        var repository = new ReservationRepository(sessions);
         repository.verifySchema();
         return repository;
     }

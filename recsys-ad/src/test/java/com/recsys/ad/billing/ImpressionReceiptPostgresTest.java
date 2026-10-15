@@ -53,7 +53,7 @@ class ImpressionReceiptPostgresTest {
             }
         }
         budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
-        quotes = new CpmQuoteRepository(jdbc); reservations = new ReservationRepository(jdbc);
+        quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); reservations = new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         reservationService = new ReservationService(reservations, quotes, BudgetConfiguration.transactions(ds,5), true);
         preparations = new PreparationRepository(jdbc,JSON); receipts = new ImpressionReceiptRepository(jdbc,JSON); receipts.verifySchema();
         tokens = new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -131,7 +131,7 @@ class ImpressionReceiptPostgresTest {
         assertEquals("0.000000",account(fixture).chargedAmount().toPlainString());
         assertEquals(ImpressionReceipt.Status.ACCEPTED,service.accept(fixture.command()).status());
     }
-    @Test void eachFailureBoundaryRollsBackMoneyReservationReceiptLedgerAndOutbox() {
+    @Test void eachFailureBoundaryRollsBackMoneyReservationReceiptLedgerAndOutbox() throws Exception {
         for (int point=0;point<4;point++) {
             var fixture=fixture(); var command=fixture.command(); final int failurePoint=point;
             var faultyReceipts=new ImpressionReceiptRepository(jdbc,JSON) {
@@ -145,7 +145,7 @@ class ImpressionReceiptPostgresTest {
                     super.complete(result); if(failurePoint==3) throw new IllegalStateException("after result"); return result;
                 }
             };
-            var faultyReservations=new ReservationRepository(jdbc) {
+            var faultyReservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))) {
                 @Override public BudgetAccount capture(Reservation r,BudgetAccount a,Instant at) {
                     var result=super.capture(r,a,at); if(failurePoint==0) throw new IllegalStateException("after capture"); return result;
                 }

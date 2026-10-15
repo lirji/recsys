@@ -46,7 +46,7 @@ class BillingEventsFixture {
             }
         }
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
-        quotes=new CpmQuoteRepository(jdbc);reservations=new ReservationRepository(jdbc);
+        quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         var preparations=new PreparationRepository(jdbc,JSON);
         prepare=new SandboxPreparationService(mock(AdPipeline.class),preparations,quotes,
