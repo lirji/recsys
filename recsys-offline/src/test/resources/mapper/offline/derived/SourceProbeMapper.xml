@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="offline.probe.derived">
+    <!-- 只读取独占测试schema，验证XML目录与实际连接归属。 -->
+    <select id="schema" resultType="string">SELECT current_schema()</select>
+</mapper>

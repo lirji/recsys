@@ -1,11 +1,16 @@
 package com.recsys.offline;
 
+import com.recsys.persistence.spring.PrimaryMybatisConfiguration;
+import com.recsys.persistence.spring.AdDbMybatisConfiguration;
+import com.recsys.persistence.spring.DerivedMybatisConfiguration;
+import com.recsys.persistence.spring.ShardedMybatisConfiguration;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
@@ -23,11 +28,14 @@ import javax.sql.DataSource;
  * </ul>
  *
  * <p>定义了自有 DataSource 会让 Spring Boot 自动配置退避,故主、次都显式声明、主标 {@code @Primary}
- * (其它作业注入 {@code JdbcTemplate} 零改动)。
+ * 四路MyBatis会话复用同一个原DataSource对象；JdbcTemplate仅在逐作业迁移期间保留。
  */
 @Configuration
+@Import({PrimaryMybatisConfiguration.class, AdDbMybatisConfiguration.class,
+        DerivedMybatisConfiguration.class, ShardedMybatisConfiguration.class})
 public class OfflineAdShardingConfig {
 
+    /** 保留宿主主库配置来源，避免持久框架自行创建第二套连接池。 */
     @Bean
     @Primary
     @ConfigurationProperties("spring.datasource")
@@ -35,18 +43,21 @@ public class OfflineAdShardingConfig {
         return new DataSourceProperties();
     }
 
+    /** 主库连接池仍归offline宿主管理，MyBatis只复用该资源。 */
     @Bean
     @Primary
     public DataSource dataSource(@Qualifier("dataSourceProperties") DataSourceProperties props) {
         return props.initializeDataSourceBuilder().type(HikariDataSource.class).build();
     }
 
+    /** 未迁移作业继续绑定原主库，避免过渡阶段出现双写入口。 */
     @Bean
     @Primary
     public JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
         return new JdbcTemplate(dataSource);
     }
 
+    /** 保留原ShardingSphere逻辑源与环境占位规则，不能改成直连某个物理分片。 */
     @Bean(name = "adShardingDataSource")
     public DataSource adShardingDataSource() throws Exception {
         SimpleDriverDataSource ds = new SimpleDriverDataSource();
@@ -58,6 +69,7 @@ public class OfflineAdShardingConfig {
         return ds;
     }
 
+    /** 分片作业逐个迁移前继续使用同一逻辑数据源。 */
     @Bean(name = "adShardingJdbc")
     public JdbcTemplate adShardingJdbc(@Qualifier("adShardingDataSource") DataSource ds) {
         return new JdbcTemplate(ds);
@@ -82,6 +94,7 @@ public class OfflineAdShardingConfig {
         return ds;
     }
 
+    /** 保留尚未迁移的广告事件/向量写作业入口。 */
     @Bean(name = "adDbJdbc")
     public JdbcTemplate adDbJdbc(@Qualifier("adDbDataSource") DataSource ds) {
         return new JdbcTemplate(ds);
@@ -105,6 +118,7 @@ public class OfflineAdShardingConfig {
         return ds;
     }
 
+    /** 派生库旧作业与新Mapper在过渡期共享同一连接池。 */
     @Bean(name = "derivedJdbc")
     public JdbcTemplate derivedJdbc(@Qualifier("derivedDbDataSource") DataSource ds) {
         return new JdbcTemplate(ds);

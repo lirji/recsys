@@ -149,7 +149,7 @@
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
-| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | TODO |
+| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1：四源会话完成，旧JdbcTemplate待作业退出；见MP13A1_RESULT |
 | [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
 | [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | TODO |

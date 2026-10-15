@@ -14,6 +14,15 @@
     <description>离线作业:数据导入、灌向量、ItemCF批算、热度、用户向量、样本生成。Track A/E。</description>
 
     <dependencies>
+        <!-- 四路会话复用宿主数据源；框架版本由根dependencyManagement统一冻结。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-persistence</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>

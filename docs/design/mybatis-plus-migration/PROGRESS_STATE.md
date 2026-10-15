@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d本地DONE/PASS，原生窗口夹具修复验证后共同Git交付；下一包MP13离线。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1本地DONE/PASS，待Git交付及MP12d远程CI完成；MP13业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -308,3 +308,15 @@ MP12d完整自然门禁75项/13类全部通过（/tmp/recsys-mp12d-natural.log�
 本地DONE/PASS，MP12本地闭环，见MP12D_RESULT。旧16、新19项，完整钱链382项/68类、自然75项/13类、全仓24 reactor测试编译、混排浏览器5项全部通过；6源指纹ac46ec24001ca0bfcdba2cf6bd664e7fae5b1edcb8531c218d83e0ab10622af7。修复夹具后混排5/自然5也通过，sandbox运行中/tmp/recsys-native-window-sandbox.log；统一hygiene无阻塞，Java工具限制及事务人工审查已记录。不能将MP12c远程失败记为成功，待新提交CI核验。
 
 原生窗口修复三套真实浏览器混排5/自然5/sandbox4全部通过，见NATIVE_WINDOW_CI_RESULT，4源指纹cb0abddb6eb468b7b58c69056cfc8e7ef87578ea1b072c232f05d32d4e69c2f1。分别提交夹具修复和MP12d，随后一起ff/push main。SQL_INVENTORY补齐15个已迁移ad配置的旧TODO：当前源码均显式adDbSqlSessionTemplate且无JdbcTemplate，引用原MP08～MP12证据；未改这些产品文件。
+
+## MP13a1实施入口
+
+MP12d=541651d7及原生窗口修复85804013已正常提交/ff合并/push main。先完成MP13a的有界基础批：offline POM明确声明已冻结的recsys-persistence与MP boot3 starter；现有OfflineAdShardingConfig导入四个共享会话工厂，复用原DataSource/环境/分片规则，不改连接池，也不提前删除仍被作业使用的JdbcTemplate。旧13类离线测试/tmp/recsys-mp13a1-before.log运行中。新增隔离PG四schema会话绑定验证，确认每个factory实际使用原DataSource且只加载其XML目录；真实ShardingSphere路由仍随后续分片作业验证，不用普通PG探针代替路由证明。
+
+下一小片再处理BehaviorQuery生成SQL的共用路径与封闭表来源参数；本基础批不将44个离线业务文件或整个MP13a标为DONE。保持SQL迁移与错误码阶段顺序，当前原生窗口修复须等新远程CI实际通过后才关闭远程失败记录，避免再次提前推送取消其验证。
+
+MP13a1旧64项/13类全部通过；offline已明确声明原冻结依赖并在原数据源配置导入四源工厂。新增真实PG四schema绑定测试通过，测试只加载实际Import清单而以独占源替换环境连接，不访问共享配置；同时核验原DS对象/各XML目录/STATEMENT及禁二级缓存。7源指纹8353c708fe8ed5b8cf3b671fb62afdf1b59aca343e7f355f1638ddb91d74da11，清单/tmp/recsys-mp13a1-source-paths.json；全离线回归/tmp/recsys-mp13a1-after.log运行中。CI38741661134（541651d7）仍运行，console-ci38741660789全部SUCCESS。
+
+## MP13a1最终验证
+
+本地DONE/PASS，见MP13A1_RESULT。旧64项/13类、新65项/14类及全仓24 reactor编译通过；依赖树保持MP3.5.17/MyBatis3.5.19/mybatis-spring3.0.5，hygiene按已批准artifact名称重跑无阻塞。7源指纹8353c708fe8ed5b8cf3b671fb62afdf1b59aca343e7f355f1638ddb91d74da11。当前541651d7 CI38741661134仍运行，暂不推送下一批以免取消原生窗口修复验证；没有新增技术取舍或待用户确认项。
