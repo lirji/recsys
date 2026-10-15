@@ -1,3 +1,4 @@
+import SandboxSearchAdsConsole from './SandboxSearchAdsConsole';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Table, Tag, Tooltip, Typography } from 'antd';
@@ -40,7 +41,7 @@ const AdBiddingChart = lazy(() => import('../../components/charts/AdBiddingChart
 
 const fmt = (n: number, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : '—');
 
-export default function SearchAdsConsole() {
+function LegacySearchAdsConsole() {
   const { userId, scene, setUserId, setScene } = useGlobalUser();
   const { message } = App.useApp();
   const { initial, write } = useUrlParams<AdParams>({ userId, scene, q: 'action', slots: 3 });
@@ -337,5 +338,13 @@ export default function SearchAdsConsole() {
         )}
       </Modal>
     </Space>
+  );
+}
+
+export default function SearchAdsConsole() {
+  return import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' ? (
+    <SandboxSearchAdsConsole />
+  ) : (
+    <LegacySearchAdsConsole />
   );
 }

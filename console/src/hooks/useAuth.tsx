@@ -8,7 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { clearAuth, getCurrentUser, login, type AuthUser } from '../api/auth';
+import {
+  clearAuth,
+  clearLegacyCredentials,
+  getCurrentUser,
+  login,
+  type AuthUser,
+} from '../api/auth';
 import { AUTH_MODE, type AuthMode } from '../config/auth';
 import {
   getUserManager,
@@ -17,6 +23,7 @@ import {
   userFromCasdoorToken,
 } from '../auth/oidc';
 import { redirectToLogin } from '../api/nav';
+import { exposureAuthScope, revokeExposureSession } from '../exposure/identity';
 
 // 全局身份态:当前登录用户 + 登录 / 切换 / 退出。改动后失效全部 react-query 缓存,让当前页用新身份重取。
 // 双驱动(config/auth.ts 的 AUTH_MODE):
@@ -60,25 +67,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (AUTH_MODE !== 'oidc') return;
     // R1:进入 oidc 模式即清 legacy 三键,残留旧 token 既不误发(resolveToken 已隔离)也不残留。
-    clearAuth();
+    clearLegacyCredentials();
     let disposed = false;
     let cleanup: (() => void) | null = null;
     getUserManager()
       .then((um) => {
         if (disposed) return;
+        let knownScope: string | null = null;
+        const onLoaded = (u: { access_token?: string }) => {
+          const scope = exposureAuthScope(u.access_token ?? null);
+          // 同主体续期保留队列；跨主体在通知 React 前撤销，阻止旧请求/迟到 ACK。
+          if (knownScope && knownScope !== scope) revokeExposureSession();
+          knownScope = scope;
+          setUser(userFromCasdoorToken(u.access_token));
+        };
         // 刷新恢复:有未过期存储会话则直接建镜像;过期/坏 token 不建会话(401 单飞续期兜底)。
         // 无论恢复与否,恢复动作完成后才置 ready —— 守卫在此之前不得重定向(掉登录态 bug 的根因)。
         um.getUser()
           .then((u) => {
-            if (!disposed && u && !u.expired) setUser(userFromCasdoorToken(u.access_token));
+            if (!disposed && u && !u.expired) onLoaded(u);
           })
           .catch(() => {})
           .finally(() => {
             if (!disposed) setReady(true);
           });
-        const onLoaded = (u: { access_token?: string }) =>
-          setUser(userFromCasdoorToken(u.access_token));
-        const onUnloaded = () => setUser(null);
+        const onUnloaded = () => {
+          revokeExposureSession();
+          setUser(null);
+        };
         um.events.addUserLoaded(onLoaded);
         um.events.addUserUnloaded(onUnloaded);
         um.events.addSilentRenewError(onUnloaded);
@@ -154,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Casdoor 端会话不结束、下次登录被 SSO 秒登);失败才兜底本地清 + 经 nav holder 跳登录
   // (AuthProvider 在 Router 外,拿不到 useNavigate)。导航全权在此,AppLayout 不再补 navigate。
   const logout = useCallback(() => {
+    revokeExposureSession();
     if (AUTH_MODE === 'legacy') {
       clearAuth();
       setUser(null);

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { revokeExposureSession } from '../exposure/identity';
 
 // P0 安全:登录 + token / 身份管理。
 // 全站启用了边缘认证(网关校验 JWT),写侧/管理接口(实验管理、冷启动兴趣、广告主 CRUD、行为上报)需带 Bearer token。
@@ -38,6 +39,12 @@ export function clearToken(): void {
 
 /** 清空全部身份态(token + username + roles)。切换身份前调用。 */
 export function clearAuth(): void {
+  revokeExposureSession();
+  clearLegacyCredentials();
+}
+
+/** OIDC 启动只清旧认证方式残留，不能清掉当前 OIDC 会话的待确认回执。 */
+export function clearLegacyCredentials(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USERNAME_KEY);
   localStorage.removeItem(ROLES_KEY);
@@ -61,6 +68,7 @@ export async function login(
   username: string = DEFAULT_USER.username,
   password: string = DEFAULT_USER.password,
 ): Promise<string> {
+  revokeExposureSession();
   const resp = await axios.post<LoginResponse>('/api/auth/login', { username, password });
   const data = resp.data;
   // 落盘全部身份态:token + 我们请求的 username + 响应里的 roles(响应直接带 roles,无需解 JWT)。

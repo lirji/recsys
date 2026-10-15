@@ -385,7 +385,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (g) setOpenKeys([g.key]);
   }, [selectedKey, menuItems]);
 
-  const debugContext = showsDebugContext(location.pathname);
+  // Sandbox 表单已有冻结用户/场景；窄屏隐藏重复全局输入，避免挤出身份菜单。
+  const sandboxNarrow =
+    import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' &&
+    location.pathname === '/search-ads' &&
+    !screens.md;
+  const debugContext = showsDebugContext(location.pathname) && !sandboxNarrow;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -455,7 +460,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 16,
-            paddingInline: 24,
+            paddingInline: sandboxNarrow ? 8 : 24,
           }}
         >
           <Button

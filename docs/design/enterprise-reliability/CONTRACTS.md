@@ -122,3 +122,19 @@ ad V006 扩展 Outbox 的 READY/SENDING/PUBLISHED/DEAD 状态、尝试次数、�
 配置独立默认关闭：recsys.ad.billing.events.relay-enabled、projection-enabled；须 sandbox-enabled，且为 owner。不依赖 receipts-enabled，以便停新增后继续待发处理；仍须 V001～V006 验证。连接复用 spring.kafka 的受控连接/安全属性，资金相关客户端参数由专用工厂强制固定。topic/group 可显式设置用于环境隔离，默认 topic 为上述逻辑名，group 为 recsys-sandbox-billing-projection-v1。开关受控重启生效，无动态原子切换承诺。Topic 显式预建，禁止 compact（分区键不是 eventId），开发单副本不能推断生产 RPO；保留期尚未确认，首次 sandbox topic 使用 retention.ms=-1/retention.bytes=-1 并监控增长，不自动删除 Outbox/Inbox。
 
 验收：真实 PG/Kafka 的同库提交后未发送、broker ACK 后未标记、投影提交后未提交位点三种故障窗口恢复；重复/乱序/不同账户版本均逐事实正确；两执行器领取/过期 fencing/重试上限/审计重放；不可变投影、坏 schema/改负载不 ACK；断连恢复；默认关闭与两宿主 owner 边界。只在临时容器/唯一 topic 故障注入，不停止共享 dev_infra 或迁移共享库。CI 钱链路门禁涵盖这些测试及 RPC/HTTP/gateway。
+
+## C07：sandbox 搜索可见曝光采集（ER-S07）
+
+沿已评审 PLAN 的页面/组件/状态方案，仅 /search-ads。VITE_SANDBOX_EXPOSURE_ENABLED=true 显式构建启用新页面分支；默认 false 保留既有页面。新分支不挂载旧请求 hook、不调用旧广告 GET/点击/转化/outcome，后端未启用或拒绝时显示错误，不回退旧收费接口。无新路由、UI 库或状态框架；仍为 ADMIN 调试入口。
+
+首个请求由用户主动点击“新交付”，生成 operationId 并冻结 userId（十进制字符串）、query、slots、scene；PUT/GET 完全使用 C04。202/PREPARING/503 显示原 ID 与“恢复原操作”，不自动换 ID。刷新只恢复同认证范围内的原意图并查询，不自动创建新交付；恢复 PUT 保留原参数。COMPLETE 后新交付才生成新的操作 ID；列表按服务端 slot 固定，不提供重排/分页。历史“重跑”是明确的新意图，历史/对比/原始 JSON 展示本身不采集。
+
+实际创意文本区域由 IntersectionObserver 观测，至少 50% 且 document 可见，performance.now 连续一秒后冻结 C05 信号和 UUID receiptId。离屏、hidden/pagehide、卸载、已知遮盖层打开重置计时；不支持观测则明确提示，不以定时器假定可见。资格与回执绑定原响应 userId/childId，不读取后续编辑表单生成事件；当前已确认 CPM 政策固定版本，不接受客户端更换政策。
+
+公共队列在同源会话内按认证范围（origin、认证模式、issuer、sub、tenant）隔离，最多 100 条、512 KiB、保留最多一小时，不存 Bearer/refresh token。只恢复结构有效且同范围条目；storage 不可用时内存发送并提示刷新不可恢复。并发最多两条，自动最多六轮、指数退避上限 30 秒；同资格始终复用 receiptId。同 ID 的未知结果先 GET，404 在未到本地期限时才按原 body 重试 PUT；到期后只查询，不把 404 当未收费。超过自动上限保持待确认并提供同 ID 手工查询；客户端期限只限制发送，服务端期限仍为权威。只在服务端 ACCEPTED/ALREADY_ACCEPTED 后显示“已确认消费”；422 显示原拒绝，超时不显示成功或零消费。会话关闭/清存储可能丢失未提交事件，不能据此宣称浏览器零丢失。
+
+认证请求增加仅用于本片的 expected scope/epoch 守卫，放在实际解析当前 Bearer 后、发送前；401 单次续期也重新核对，防止身份切换后用新 token 发旧主体事件。退出/切换开始即撤销旧 epoch、取消在途请求并清理本片队列/意图；已经抵达服务器的请求仍可能完成，不能称取消已撤销费用。OIDC 同主体续期不丢弃队列。身份范围变化后迟到结果不能覆盖新界面。
+
+使用现有 Ant Design 表单/Table/Tag/Alert、HistoryDrawer/ResultDiff/TracePanel；增加 ExposureScope、useVisibleExposure、ReceiptStatus 与 sandbox 页面组件，不修改其他页面采集行为。金额保持服务端十进制字符串，不用 JS 浮点重算；报价与已确认消费分列。历史 push 与 TracePanel 的显示/复制/下载统一递归脱敏 qualificationToken/offerToken/authorization/accessToken/refreshToken；历史只留脱敏快照，不把票据传入历史测量组件。
+
+验收：Vitest 覆盖测量状态、队列边界/重试/恢复/身份切换和续期守卫；Playwright 覆盖实际滚动/hidden/重挂载、表单编辑原身份、刷新同 ID、历史与导出无票据，桌面/窄屏截图实际查看。真实后端的原子捕获与 Kafka 投影联调使用隔离数据库种子，页面不硬编码 mock；受控模拟响应的 UI 测试单独标识，不冒充真实联调。依赖和 UI 范围与已批准 F07 一致。

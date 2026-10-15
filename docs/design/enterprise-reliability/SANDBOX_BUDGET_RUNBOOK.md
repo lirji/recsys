@@ -263,3 +263,23 @@ SELECT :'replay_id'::uuid,event_id,:'actor',:'reason',attempts FROM changed;
 ~~~
 
 位点重放可停消费者、核对隔离 topic/group 后从 earliest 重放，Inbox 不应被删除；重新构建另一套投影应先设计新的投影命名空间/切换，不能把新 consumer group 当作已经重建成功。本片验证已有投影重复读取后不重记；未做生产级备份还原、整个宿主 kill 或副本故障演练。
+
+## S07：浏览器 sandbox 入口与验收
+
+console 构建变量 `VITE_SANDBOX_EXPOSURE_ENABLED=true` 显式选择 `/search-ads` 新页面；默认关闭，重新构建才生效。仅 ADMIN，仍须启用 C04/C05 的服务端 sandbox 资格/回执与密钥配置。页面不会把后端拒绝降级为旧广告接口。新交付冻结用户/场景；准备中或超时使用“恢复原操作”，不能改 ID 绕过未知结果。
+
+实际文本创意至少 50% 连续一秒可见才入队；hidden/pagehide、离屏、打开历史/对比均停止重新计时。报价不等于消费，只有回执原结果确认后显示消费。刷新同认证主体使用会话原操作/receiptId 查询；不同主体、退出会清理队列并取消后续发送，已经到达服务端的请求仍可能记账。同主体 OIDC 续期保留恢复信息。
+
+会话最多 100 条/512 KiB/一小时，自动最多六轮、并发二条、退避最多三十秒。未知结果到期后只查，不补扣；可手工“查询原回执”。存储禁用会提示刷新不可恢复。关闭终端、清会话或一小时过期会丢失客户端恢复信息，不承诺浏览器零丢失。普通历史、JSON 复制/下载均脱敏票据；资格仅在当前响应及未确认队列中用于提交。
+
+可重复隔离验收（Java 21、Python 3、Node 22+、本机 Docker、console 已 npm ci 并安装 Playwright Chromium）：
+
+~~~sh
+python3 scripts/test-sandbox-exposure.py
+~~~
+
+脚本启动专用测试类、临时 PostgreSQL 16 / Kafka 3.7.1、独立 seed/schema/topic/group，以及 Vite 127.0.0.1:4183；端口冲突失败，不终止其他进程。所有候选来自测试数据库，只有召回/模型及测试登录适配；生产 HTTP/资格/预占/捕获/Outbox/投影代码真实执行。它不代表真实网关、生产认证或完整召回模型端到端通过。原生 Chromium 标签页 hidden 验证与受控可见状态注入分开记录。
+
+日志 `recsys-rec-engine/target/sandbox-browser-backend.log`；截图/失败 trace 在 `recsys-rec-engine/target/browser-evidence/`。宿主 finish 时核对所有 ledger 已投影、账户消费和账本总额相等，再释放自己创建的容器；失败仍退出非零。CI 新增 sandbox-exposure-browser-gate 同样执行，不向共享库写测试数据。测试宿主只存在于测试 classpath，随机测试凭据不提交。
+
+回退：先暂停服务端新增接受，保留查询、到期回收和事件续发。关闭前端构建开关会恢复既有调试页，该旧页仍有历史收费语义；因此暂停 sandbox 测试时应退出该页面，不把切回旧页视为安全恢复账务。已记账效果不因前端回退撤销，仍按账本/投影对账。

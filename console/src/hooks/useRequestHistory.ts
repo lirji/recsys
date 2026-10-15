@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { redactExposureSecrets } from '../exposure/redact';
 
 // 每个调试台一份内存请求历史栈(最新在前)。每次成功请求 push 一条 {参数, 响应, 时间, 耗时},
 // 供「历史抽屉」重跑 + 选两条做 A/B 对比。刷新即清空(内存,不落盘,避免响应体膨胀 storage)。
@@ -19,7 +20,13 @@ export function useRequestHistory<P, D>(max = 20) {
   const push = useCallback(
     (params: P, data: D, durationMs: number) => {
       setEntries((prev) => {
-        const e: HistoryEntry<P, D> = { id: `h${(seq.current += 1)}`, ts: Date.now(), durationMs, params, data };
+        const e: HistoryEntry<P, D> = {
+          id: `h${(seq.current += 1)}`,
+          ts: Date.now(),
+          durationMs,
+          params: redactExposureSecrets(params),
+          data: redactExposureSecrets(data),
+        };
         return [e, ...prev].slice(0, max);
       });
     },

@@ -163,3 +163,24 @@ describe('AuthProvider(oidc 模式)', () => {
     expect(result.current.user).toBeNull();
   });
 });
+
+it('OIDC 硬刷新保留回执；同主体续期保留、不同主体在事件内立即撤销', async () => {
+  const { exposureEpoch } = await import('../../exposure/identity');
+  const same = fakeJwt({ sub: 'admin-a', name: 'admin-a', groups: ['recsys/admins'] });
+  mocks.um.getUser.mockResolvedValue({ expired: false, access_token: same });
+  sessionStorage.setItem('recsys.sandbox.delivery.v1', 'persisted-intent');
+  const before = exposureEpoch();
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  expect(sessionStorage.getItem('recsys.sandbox.delivery.v1')).toBe('persisted-intent');
+  const loaded = mocks.um.events.addUserLoaded.mock.calls.at(-1)![0];
+  act(() => loaded({ access_token: same }));
+  expect(exposureEpoch()).toBe(before);
+  act(() =>
+    loaded({
+      access_token: fakeJwt({ sub: 'admin-b', name: 'admin-b', groups: ['recsys/admins'] }),
+    }),
+  );
+  expect(exposureEpoch()).toBe(before + 1);
+  expect(sessionStorage.getItem('recsys.sandbox.delivery.v1')).toBeNull();
+});

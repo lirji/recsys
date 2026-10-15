@@ -69,6 +69,44 @@ jobs:
       - name: Money-chain consistency gate
         run: mvn -B -e -pl recsys-rec-engine,recsys-ad-serving,recsys-advertiser,recsys-gateway -am test -Dgroups=money-chain -Dsurefire.failIfNoSpecifiedTests=false
 
+  sandbox-exposure-browser-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Install browser test dependencies
+        working-directory: console
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Frontend types, unit tests and build
+        working-directory: console
+        run: |
+          npm run typecheck
+          npm run test:run
+          npm run build
+      - name: Isolated browser, PostgreSQL and Kafka acceptance
+        run: python3 scripts/test-sandbox-exposure.py
+      - name: Upload sandbox browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-exposure-evidence
+          path: |
+            recsys-rec-engine/target/browser-evidence/
+            recsys-rec-engine/target/sandbox-browser-backend.log
+          if-no-files-found: ignore
+
   # P3 供应链安全:Trivy 文件系统扫描——后端 Maven / 前端 npm 依赖漏洞(SCA)+ IaC/配置误配。
   # 与 Dependabot(自动升级 PR)互补。教学默认不阻断(报告);生产设 exit-code=1 + severity 收紧即成硬门槛。
   security-scan:

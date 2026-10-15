@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { App, Button, Collapse, Input, Space, Typography } from 'antd';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import { downloadText } from '../../utils/download';
+import { redactExposureSecrets } from '../../exposure/redact';
 
 // 调试信息面板:折叠展示 traceId/requestId + 原始 JSON。升级:关键字过滤高亮 + 匹配计数 + 复制/下载 JSON + 复制 ID。
 
@@ -38,7 +39,7 @@ export default function TracePanel({
 }) {
   const { message } = App.useApp();
   const [kw, setKw] = useState('');
-  const json = useMemo(() => JSON.stringify(raw, null, 2), [raw]);
+  const json = useMemo(() => JSON.stringify(redactExposureSecrets(raw), null, 2), [raw]);
   const matchCount = kw ? json.toLowerCase().split(kw.toLowerCase()).length - 1 : 0;
 
   const copy = async (text: string, ok: string) => {
@@ -80,7 +81,9 @@ export default function TracePanel({
         <Button
           size="small"
           icon={<DownloadOutlined />}
-          onClick={() => downloadText(`trace-${traceId || requestId || 'raw'}.json`, json, 'application/json')}
+          onClick={() =>
+            downloadText(`trace-${traceId || requestId || 'raw'}.json`, json, 'application/json')
+          }
         >
           下载
         </Button>
