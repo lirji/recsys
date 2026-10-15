@@ -12,6 +12,8 @@ import com.recsys.proto.billing.v1.SandboxBudgetServiceGrpc;
 import com.recsys.proto.billing.v1.SetBudgetLimitRequest;
 import com.recsys.proto.security.InternalAuthGrpcServerInterceptor;
 import io.grpc.Status;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -51,7 +53,7 @@ public class SandboxBudgetGrpcService extends SandboxBudgetServiceGrpc.SandboxBu
     public void getAccount(GetBudgetAccountRequest request, StreamObserver<BudgetAccountReply> observer) {
         respond(observer, "getAccount", request.getAdvertiserId(), "", () -> BudgetProtoMapper.toProto(
                 service.findAccount(request.getAdvertiserId(), BudgetCommand.parseDate(request.getBudgetDate()))
-                        .orElseThrow(() -> Status.NOT_FOUND.withDescription("当前未查到账户").asRuntimeException())));
+                        .orElseThrow(() -> GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_BUDGET_ACCOUNT_NOT_FOUND))));
     }
 
     /** 不存在仅表示当前未观察到结果，不证明在途命令未执行。 */
@@ -59,30 +61,30 @@ public class SandboxBudgetGrpcService extends SandboxBudgetServiceGrpc.SandboxBu
     public void getCommand(GetBudgetCommandRequest request, StreamObserver<BudgetCommandReply> observer) {
         respond(observer, "getCommand", request.getAdvertiserId(), request.getCommandId(), () -> BudgetProtoMapper.toProto(
                 service.findCommand(request.getAdvertiserId(), BudgetCommand.parseId(request.getCommandId()))
-                        .orElseThrow(() -> Status.NOT_FOUND.withDescription("当前未查到命令结果").asRuntimeException())));
+                        .orElseThrow(() -> GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_BUDGET_COMMAND_NOT_FOUND))));
     }
 
     private <T> void respond(StreamObserver<T> observer, String operation, long advertiserId,
                               String commandId, Supplier<T> action) {
         try {
             String caller = InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
-            if (caller == null) throw Status.UNAUTHENTICATED.withDescription("缺少可信内部身份").asRuntimeException();
-            if (!advertiserCaller.equals(caller)) throw Status.PERMISSION_DENIED.withDescription("调用方无账务权限").asRuntimeException();
+            if (caller == null) throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            if (!advertiserCaller.equals(caller)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_BUDGET_CALLER_FORBIDDEN);
             if (advertiserId <= 0) throw new IllegalArgumentException("advertiserId 须为正整数");
             T result = action.get();
             observer.onNext(result);
             observer.onCompleted();
         } catch (BudgetCommandResult.PayloadConflict ex) {
-            observer.onError(Status.ALREADY_EXISTS.withDescription(ex.getMessage()).asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_BUDGET_PAYLOAD_CONFLICT));
         } catch (IllegalArgumentException ex) {
-            observer.onError(Status.INVALID_ARGUMENT.withDescription(ex.getMessage()).asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.INVALID_ARGUMENT, ErrorCode.RPC_BUDGET_INVALID_ARGUMENT));
         } catch (StatusRuntimeException ex) {
-            observer.onError(ex);
+            observer.onError(GrpcErrors.sanitize(ex, ErrorCode.RPC_BUDGET_RESULT_UNKNOWN));
         } catch (Exception ex) {
             // 仅记录已校验格式的 ID，避免恶意长文本或换行污染账务故障日志。
             String safeId = commandId != null && commandId.matches("[0-9a-fA-F-]{36}") ? commandId : "invalid-or-query";
             log.error("sandbox budget failure operation={} advertiserId={} commandId={}", operation, advertiserId, safeId, ex);
-            observer.onError(Status.UNAVAILABLE.withDescription("账务结果未知，请保留原 commandId 查询或重试").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_BUDGET_RESULT_UNKNOWN));
         }
     }
 }

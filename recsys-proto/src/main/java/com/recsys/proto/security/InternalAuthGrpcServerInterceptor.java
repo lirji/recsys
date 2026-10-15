@@ -1,6 +1,8 @@
 package com.recsys.proto.security;
 
 import com.recsys.platform.security.InternalToken;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.Context;
 import io.grpc.Contexts;
 import io.grpc.Metadata;
@@ -40,7 +42,8 @@ public class InternalAuthGrpcServerInterceptor implements ServerInterceptor {
         InternalToken.Claims claims = InternalToken.verify(token, Instant.now().getEpochSecond(), secret);
         if (claims == null) {
             if (required) {
-                call.close(Status.UNAUTHENTICATED.withDescription("missing or invalid internal token"), new Metadata());
+                var failure = GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+                call.close(failure.getStatus(), failure.getTrailers());
                 return new ServerCall.Listener<>() {
                 };
             }

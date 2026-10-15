@@ -9,6 +9,8 @@ import com.recsys.proto.DeliveryProtoMapper;
 import com.recsys.proto.delivery.v1.*;
 import com.recsys.proto.security.InternalAuthGrpcServerInterceptor;
 import io.grpc.Status;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -42,7 +44,7 @@ public class SandboxDeliveryGrpcService extends SandboxDeliveryServiceGrpc.Sandb
     public void feedCandidates(CandidateQuery request, StreamObserver<CandidateReply> observer) {
         respond(observer, () -> {
             var owner=feedCandidates==null?null:feedCandidates.getIfAvailable();
-            if(owner==null) throw Status.UNAVAILABLE.withDescription("sandbox feed 候选未启用").asRuntimeException();
+            if(owner==null) throw GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_DELIVERY_FEED_DISABLED);
             return CandidateReply.newBuilder().addAllCandidates(owner.candidates(DeliveryProtoMapper.fromProto(request))
                     .stream().map(DeliveryProtoMapper::toProto).toList()).build();
         });
@@ -55,25 +57,25 @@ public class SandboxDeliveryGrpcService extends SandboxDeliveryServiceGrpc.Sandb
     @Override
     public void getPreparation(GetPreparationRequest request, StreamObserver<PreparedDelivery> observer) {
         respond(observer, () -> DeliveryProtoMapper.toProto(service.find(BudgetCommand.parseId(request.getChildId()), request.getSubject())
-                .orElseThrow(() -> Status.NOT_FOUND.withDescription("当前未观察到准备结果").asRuntimeException())));
+                .orElseThrow(() -> GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_DELIVERY_NOT_FOUND))));
     }
     private <T> void respond(StreamObserver<T> observer, Supplier<T> action) {
         try {
             String subject = InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
-            if (subject == null) throw Status.UNAUTHENTICATED.asRuntimeException();
-            if (!caller.equals(subject)) throw Status.PERMISSION_DENIED.asRuntimeException();
+            if (subject == null) throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
             T result = action.get(); observer.onNext(result); observer.onCompleted();
         } catch (SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
-            observer.onError(Status.PERMISSION_DENIED.withDescription("交付证明或主体不匹配").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_DELIVERY_FORBIDDEN));
         } catch (SandboxDelivery.Conflict | Reservation.Conflict | FrozenCpmQuote.Conflict ex) {
-            observer.onError(Status.ALREADY_EXISTS.withDescription("交付标识负载冲突").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_DELIVERY_CONFLICT));
         } catch (IllegalArgumentException ex) {
-            observer.onError(Status.INVALID_ARGUMENT.withDescription("交付请求非法").asRuntimeException());
-        } catch (StatusRuntimeException ex) { observer.onError(ex);
+            observer.onError(GrpcErrors.exception(Status.Code.INVALID_ARGUMENT, ErrorCode.RPC_DELIVERY_INVALID_ARGUMENT));
+        } catch (StatusRuntimeException ex) { observer.onError(GrpcErrors.sanitize(ex, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN));
         } catch (RuntimeException ex) {
             // 不记录 token、主体或 SQL 参数；异常类型供告警聚合，业务 ID 在 engine 记录。
             LOG.error("sandbox prepare dependency failure type={}", ex.getClass().getSimpleName());
-            observer.onError(Status.UNAVAILABLE.withDescription("结果未知，请按原 ID 查询或重试").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN));
         }
     }
 }

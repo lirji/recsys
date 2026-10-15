@@ -352,6 +352,114 @@ export const errorCodes = {
     message: '恢复响应改变了原广告准备结论',
     httpStatus: 0,
   },
+  RPC_BUDGET_ACCOUNT_NOT_FOUND: {
+    message: '当前未查到账户',
+    httpStatus: 0,
+  },
+  RPC_BUDGET_COMMAND_NOT_FOUND: {
+    message: '当前未查到命令结果',
+    httpStatus: 0,
+  },
+  RPC_BUDGET_CALLER_FORBIDDEN: {
+    message: '调用方无账务权限',
+    httpStatus: 0,
+  },
+  RPC_BUDGET_PAYLOAD_CONFLICT: {
+    message: 'commandId 已用于不同预算命令',
+    httpStatus: 0,
+  },
+  RPC_BUDGET_INVALID_ARGUMENT: {
+    message: '预算命令参数非法',
+    httpStatus: 0,
+  },
+  RPC_BUDGET_RESULT_UNKNOWN: {
+    message: '账务结果未知，请保留原 commandId 查询或重试',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_FEED_DISABLED: {
+    message: 'sandbox feed 候选未启用',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_NOT_FOUND: {
+    message: '当前未观察到准备结果',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_FORBIDDEN: {
+    message: '交付证明或主体不匹配',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_CONFLICT: {
+    message: '交付标识负载冲突',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_INVALID_ARGUMENT: {
+    message: '交付请求非法',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_RESULT_UNKNOWN: {
+    message: '结果未知，请按原 ID 查询或重试',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_NOT_FOUND: {
+    message: '当前未观察到回执结果',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_CONFLICT: {
+    message: '回执负载冲突',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_FORBIDDEN: {
+    message: '资格或主体无效',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_INVALID_ARGUMENT: {
+    message: '回执格式非法',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_RESULT_UNKNOWN: {
+    message: '账务结果未知，请保留原 receiptId 查询或重试',
+    httpStatus: 0,
+  },
+  RPC_CLICK_NOT_FOUND: {
+    message: '当前未观察到原结果',
+    httpStatus: 0,
+  },
+  RPC_CLICK_FORBIDDEN: {
+    message: '点击证明或主体无效',
+    httpStatus: 0,
+  },
+  RPC_CLICK_CONFLICT: {
+    message: '点击标识负载冲突',
+    httpStatus: 0,
+  },
+  RPC_CLICK_INVALID_ARGUMENT: {
+    message: '点击请求格式非法',
+    httpStatus: 0,
+  },
+  RPC_CLICK_RESULT_UNKNOWN: {
+    message: '结果未知，请保留原ID查询或重试',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_NOT_FOUND: {
+    message: '当前未观察到原结果',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_FORBIDDEN: {
+    message: 'CPA证明或主体无效',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_CONFLICT: {
+    message: 'CPA标识负载冲突',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_INVALID_ARGUMENT: {
+    message: 'CPA请求格式非法',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_RESULT_UNKNOWN: {
+    message: '结果未知，请保留原ID查询或重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -1,6 +1,7 @@
 package com.recsys.proto.security;
 
 import com.recsys.platform.security.InternalToken;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.ServerCall;
@@ -66,6 +67,8 @@ class InternalAuthGrpcServerInterceptorTest {
         });
 
         assertEquals(Status.Code.UNAUTHENTICATED, call.closedStatus.getCode());
+        assertEquals("UNAUTHENTICATED", call.closedTrailers.get(GrpcErrors.ERROR_CODE));
+        assertTrue(call.closedStatus.getDescription().startsWith("[UNAUTHENTICATED] "));
         assertFalse(handlerEntered.get(), "无令牌不应进入业务 handler");
     }
 
@@ -81,6 +84,7 @@ class InternalAuthGrpcServerInterceptorTest {
 
         assertEquals(Status.Code.UNAUTHENTICATED, call.closedStatus.getCode(),
                 "secret 不同源应拒绝");
+        assertEquals("UNAUTHENTICATED", call.closedTrailers.get(GrpcErrors.ERROR_CODE));
     }
 
     @Test
@@ -102,6 +106,7 @@ class InternalAuthGrpcServerInterceptorTest {
     /** 记录 close(status) 的最小 ServerCall 假体;其余方法空实现。 */
     private static final class RecordingServerCall extends ServerCall<String, String> {
         private Status closedStatus;
+        private Metadata closedTrailers;
 
         @Override
         public void request(int numMessages) {
@@ -118,6 +123,7 @@ class InternalAuthGrpcServerInterceptorTest {
         @Override
         public void close(Status status, Metadata trailers) {
             this.closedStatus = status;
+            this.closedTrailers = trailers;
         }
 
         @Override

@@ -7,6 +7,8 @@ import com.recsys.proto.ImpressionProtoMapper;
 import com.recsys.proto.impression.v1.*;
 import com.recsys.proto.security.InternalAuthGrpcServerInterceptor;
 import io.grpc.Status;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -33,25 +35,25 @@ public class SandboxImpressionGrpcService extends SandboxImpressionServiceGrpc.S
     /** 找不到不代表可以换 receiptId 重试。 */
     @Override public void getReceipt(GetVisibleReceiptRequest request, StreamObserver<VisibleReceiptResult> observer) {
         respond(observer, request.getReceiptId(), () -> ImpressionProtoMapper.toProto(service.find(BudgetCommand.parseId(request.getReceiptId()), request.getSubject())
-                .orElseThrow(() -> Status.NOT_FOUND.withDescription("当前未观察到回执结果").asRuntimeException())));
+                .orElseThrow(() -> GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_RECEIPT_NOT_FOUND))));
     }
     private <T> void respond(StreamObserver<T> observer, String receiptId, Supplier<T> action) {
         try {
             String subject = InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
-            if (subject == null) throw Status.UNAUTHENTICATED.asRuntimeException();
-            if (!caller.equals(subject)) throw Status.PERMISSION_DENIED.asRuntimeException();
+            if (subject == null) throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
             T result=action.get(); observer.onNext(result); observer.onCompleted();
         } catch (ImpressionReceipt.Conflict ex) {
-            observer.onError(Status.ALREADY_EXISTS.withDescription("回执负载冲突").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_RECEIPT_CONFLICT));
         } catch (SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
-            observer.onError(Status.PERMISSION_DENIED.withDescription("资格或主体无效").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_RECEIPT_FORBIDDEN));
         } catch (IllegalArgumentException ex) {
-            observer.onError(Status.INVALID_ARGUMENT.withDescription("回执格式非法").asRuntimeException());
-        } catch (StatusRuntimeException ex) { observer.onError(ex);
+            observer.onError(GrpcErrors.exception(Status.Code.INVALID_ARGUMENT, ErrorCode.RPC_RECEIPT_INVALID_ARGUMENT));
+        } catch (StatusRuntimeException ex) { observer.onError(GrpcErrors.sanitize(ex, ErrorCode.RPC_RECEIPT_RESULT_UNKNOWN));
         } catch (RuntimeException ex) {
             String safeId = receiptId != null && receiptId.matches("[0-9a-fA-F-]{36}") ? receiptId : "invalid";
             LOG.error("sandbox receipt dependency failure receiptId={} type={}", safeId, ex.getClass().getSimpleName());
-            observer.onError(Status.UNAVAILABLE.withDescription("账务结果未知，请保留原 receiptId 查询或重试").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_RECEIPT_RESULT_UNKNOWN));
         }
     }
 }

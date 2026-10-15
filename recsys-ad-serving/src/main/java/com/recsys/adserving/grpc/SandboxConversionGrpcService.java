@@ -10,6 +10,8 @@ import com.recsys.proto.conversion.v1.*;
 import com.recsys.proto.delivery.v1.*;
 import com.recsys.proto.security.InternalAuthGrpcServerInterceptor;
 import io.grpc.Status;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -70,23 +72,23 @@ public class SandboxConversionGrpcService extends SandboxConversionServiceGrpc.S
                     .orElseThrow(SandboxConversionGrpcService::notFound));
         });
     }
-    private static StatusRuntimeException notFound() { return Status.NOT_FOUND.withDescription("当前未观察到原结果").asRuntimeException(); }
+    private static StatusRuntimeException notFound() { return GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_CONVERSION_NOT_FOUND); }
     private <T> void respond(StreamObserver<T> observer,String expectedCaller,Supplier<T> action) {
         try {
             var subject=InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
-            if(subject==null)throw Status.UNAUTHENTICATED.asRuntimeException();
-            if(!expectedCaller.equals(subject))throw Status.PERMISSION_DENIED.asRuntimeException();
+            if(subject==null)throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            if(!expectedCaller.equals(subject))throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
             observer.onNext(action.get());observer.onCompleted();
         } catch(SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
-            observer.onError(Status.PERMISSION_DENIED.withDescription("CPA证明或主体无效").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_CONVERSION_FORBIDDEN));
         } catch(SandboxDelivery.Conflict | FrozenConversionQuote.Conflict | ConversionSettlement.Conflict ex) {
-            observer.onError(Status.ALREADY_EXISTS.withDescription("CPA标识负载冲突").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_CONVERSION_CONFLICT));
         } catch(IllegalArgumentException ex) {
-            observer.onError(Status.INVALID_ARGUMENT.withDescription("CPA请求格式非法").asRuntimeException());
-        } catch(StatusRuntimeException ex) { observer.onError(ex);
+            observer.onError(GrpcErrors.exception(Status.Code.INVALID_ARGUMENT, ErrorCode.RPC_CONVERSION_INVALID_ARGUMENT));
+        } catch(StatusRuntimeException ex) { observer.onError(GrpcErrors.sanitize(ex, ErrorCode.RPC_CONVERSION_RESULT_UNKNOWN));
         } catch(RuntimeException ex) {
             LOG.warn("sandbox conversion dependency failure type={}",ex.getClass().getSimpleName());
-            observer.onError(Status.UNAVAILABLE.withDescription("结果未知，请保留原ID查询或重试").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_CONVERSION_RESULT_UNKNOWN));
         }
     }
 }

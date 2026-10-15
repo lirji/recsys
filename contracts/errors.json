@@ -617,6 +617,195 @@
       "httpStatus": 0,
       "message": "恢复响应改变了原广告准备结论",
       "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_ACCOUNT_NOT_FOUND",
+      "code": "RPC_BUDGET_ACCOUNT_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未查到账户",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_COMMAND_NOT_FOUND",
+      "code": "RPC_BUDGET_COMMAND_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未查到命令结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_CALLER_FORBIDDEN",
+      "code": "RPC_BUDGET_CALLER_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "调用方无账务权限",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_PAYLOAD_CONFLICT",
+      "code": "RPC_BUDGET_PAYLOAD_CONFLICT",
+      "httpStatus": 0,
+      "message": "commandId 已用于不同预算命令",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_INVALID_ARGUMENT",
+      "code": "RPC_BUDGET_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "预算命令参数非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_BUDGET_RESULT_UNKNOWN",
+      "code": "RPC_BUDGET_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "账务结果未知，请保留原 commandId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_FEED_DISABLED",
+      "code": "RPC_DELIVERY_FEED_DISABLED",
+      "httpStatus": 0,
+      "message": "sandbox feed 候选未启用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_NOT_FOUND",
+      "code": "RPC_DELIVERY_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到准备结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_FORBIDDEN",
+      "code": "RPC_DELIVERY_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "交付证明或主体不匹配",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_CONFLICT",
+      "code": "RPC_DELIVERY_CONFLICT",
+      "httpStatus": 0,
+      "message": "交付标识负载冲突",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_INVALID_ARGUMENT",
+      "code": "RPC_DELIVERY_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "交付请求非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_RESULT_UNKNOWN",
+      "code": "RPC_DELIVERY_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "结果未知，请按原 ID 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_NOT_FOUND",
+      "code": "RPC_RECEIPT_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到回执结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_CONFLICT",
+      "code": "RPC_RECEIPT_CONFLICT",
+      "httpStatus": 0,
+      "message": "回执负载冲突",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_FORBIDDEN",
+      "code": "RPC_RECEIPT_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "资格或主体无效",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_INVALID_ARGUMENT",
+      "code": "RPC_RECEIPT_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "回执格式非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_RESULT_UNKNOWN",
+      "code": "RPC_RECEIPT_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "账务结果未知，请保留原 receiptId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_NOT_FOUND",
+      "code": "RPC_CLICK_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到原结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_FORBIDDEN",
+      "code": "RPC_CLICK_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "点击证明或主体无效",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_CONFLICT",
+      "code": "RPC_CLICK_CONFLICT",
+      "httpStatus": 0,
+      "message": "点击标识负载冲突",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_INVALID_ARGUMENT",
+      "code": "RPC_CLICK_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "点击请求格式非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_RESULT_UNKNOWN",
+      "code": "RPC_CLICK_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "结果未知，请保留原ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_NOT_FOUND",
+      "code": "RPC_CONVERSION_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到原结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_FORBIDDEN",
+      "code": "RPC_CONVERSION_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "CPA证明或主体无效",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_CONFLICT",
+      "code": "RPC_CONVERSION_CONFLICT",
+      "httpStatus": 0,
+      "message": "CPA标识负载冲突",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_INVALID_ARGUMENT",
+      "code": "RPC_CONVERSION_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "CPA请求格式非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_RESULT_UNKNOWN",
+      "code": "RPC_CONVERSION_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "结果未知，请保留原ID查询或重试",
+      "httpDefault": false
     }
   ],
   "families": [

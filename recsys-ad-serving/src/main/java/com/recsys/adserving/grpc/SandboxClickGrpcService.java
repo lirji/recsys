@@ -10,6 +10,8 @@ import com.recsys.proto.click.v1.*;
 import com.recsys.proto.delivery.v1.*;
 import com.recsys.proto.security.InternalAuthGrpcServerInterceptor;
 import io.grpc.Status;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
@@ -55,23 +57,23 @@ public class SandboxClickGrpcService extends SandboxClickServiceGrpc.SandboxClic
     @Override public void getSettlement(GetClickSettlementRequest request,StreamObserver<ClickSettlementSnapshot> observer) {
         respond(observer,()->ClickProtoMapper.toProto(settlements.find(BudgetCommand.parseId(request.getQualificationId()),request.getSubject()).orElseThrow(SandboxClickGrpcService::notFound)));
     }
-    private static StatusRuntimeException notFound() { return Status.NOT_FOUND.withDescription("当前未观察到原结果").asRuntimeException(); }
+    private static StatusRuntimeException notFound() { return GrpcErrors.exception(Status.Code.NOT_FOUND, ErrorCode.RPC_CLICK_NOT_FOUND); }
     private <T> void respond(StreamObserver<T> observer,Supplier<T> action) {
         try {
             var subject=InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
-            if(subject==null)throw Status.UNAUTHENTICATED.asRuntimeException();
-            if(!caller.equals(subject))throw Status.PERMISSION_DENIED.asRuntimeException();
+            if(subject==null)throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            if(!caller.equals(subject))throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
             observer.onNext(action.get());observer.onCompleted();
         } catch(SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
-            observer.onError(Status.PERMISSION_DENIED.withDescription("点击证明或主体无效").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_CLICK_FORBIDDEN));
         } catch(SandboxDelivery.Conflict | FrozenClickQuote.Conflict | ClickSettlement.Conflict ex) {
-            observer.onError(Status.ALREADY_EXISTS.withDescription("点击标识负载冲突").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_CLICK_CONFLICT));
         } catch(IllegalArgumentException ex) {
-            observer.onError(Status.INVALID_ARGUMENT.withDescription("点击请求格式非法").asRuntimeException());
-        } catch(StatusRuntimeException ex) { observer.onError(ex);
+            observer.onError(GrpcErrors.exception(Status.Code.INVALID_ARGUMENT, ErrorCode.RPC_CLICK_INVALID_ARGUMENT));
+        } catch(StatusRuntimeException ex) { observer.onError(GrpcErrors.sanitize(ex, ErrorCode.RPC_CLICK_RESULT_UNKNOWN));
         } catch(RuntimeException ex) {
             LOG.warn("sandbox click dependency failure type={}",ex.getClass().getSimpleName());
-            observer.onError(Status.UNAVAILABLE.withDescription("结果未知，请保留原ID查询或重试").asRuntimeException());
+            observer.onError(GrpcErrors.exception(Status.Code.UNAVAILABLE, ErrorCode.RPC_CLICK_RESULT_UNKNOWN));
         }
     }
 }

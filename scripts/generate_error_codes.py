@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JAVA = "recsys-common/src/main/java/com/recsys/common/error/ErrorCode.java"
 JAVA_FAMILY = "recsys-common/src/main/java/com/recsys/common/error/ErrorFamily.java"
 TYPESCRIPT = "console/src/api/generated/errorCodes.ts"
-# HTTP错误状态的协议范围；0只表示CLI/客户端不存在HTTP响应。
+# HTTP错误状态的协议范围；0表示RPC专用码、CLI或客户端没有直接HTTP响应。
 NO_HTTP_STATUS = 0
 HTTP_ERROR_STATUS_MIN = 400
 HTTP_ERROR_STATUS_MAX = 599
@@ -80,7 +80,7 @@ def outputs(catalog):
 public enum ErrorCode {
 ''' + constants + ''';
 
-    /** CLI/客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
+    /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
     private final String code;
     private final String message;
