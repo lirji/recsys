@@ -1,7 +1,8 @@
 package com.recsys.content;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.content.persistence.mapper.ItemCatalogMapper;
+import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -12,12 +13,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "recsys.content.item-source", havingValue = "db", matchIfMissing = true)
 public class DbItemCatalogReader extends AbstractItemCatalogReader {
 
-    public DbItemCatalogReader(JdbcTemplate jdbc) {
-        super(jdbc);
+    public DbItemCatalogReader(ItemCatalogMapper mapper) {
+        super(mapper);
     }
 
     @Override
-    protected String itemTable() {
-        return "item";
+    protected CatalogTable itemTable() {
+        return CatalogTable.OWNED;
     }
 }

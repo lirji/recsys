@@ -2,6 +2,9 @@ package com.recsys.content;
 
 import com.recsys.common.content.ItemCatalogReader.ScoredId;
 import com.recsys.common.query.TermWeight;
+import com.recsys.content.persistence.mapper.ItemCatalogMapper;
+import com.recsys.persistence.spring.SpringSqlSessions;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +30,13 @@ class AbstractItemCatalogReaderPostgresTest {
     static DbItemCatalogReader reader;
 
     @BeforeAll
-    static void createSchema() {
+    static void createSchema() throws Exception {
         DriverManagerDataSource ds = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
-        reader = new DbItemCatalogReader(jdbc);
+        ItemCatalogMapper mapper = new SqlSessionTemplate(SpringSqlSessions.create(ds,
+                "classpath*:mapper/content/primary/**/*.xml")).getMapper(ItemCatalogMapper.class);
+        reader = new DbItemCatalogReader(mapper);
         jdbc.execute("""
                 CREATE TABLE item (
                     item_id BIGINT PRIMARY KEY,
@@ -39,7 +44,12 @@ class AbstractItemCatalogReaderPostgresTest {
                     category TEXT,
                     title_tsv tsvector GENERATED ALWAYS AS
                         (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED
-                )
+                );
+                COMMENT ON TABLE item IS '全文检索契约测试独占表';
+                COMMENT ON COLUMN item.item_id IS '物品标识';
+                COMMENT ON COLUMN item.title IS '物品标题';
+                COMMENT ON COLUMN item.category IS '物品类别';
+                COMMENT ON COLUMN item.title_tsv IS '英文检索向量';
                 """);
         jdbc.execute("CREATE INDEX idx_item_title_tsv ON item USING gin(title_tsv)");
     }

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.content.persistence.mapper.ItemCatalogMapper">
+    <resultMap id="scoredId" type="com.recsys.common.content.ItemCatalogReader$ScoredId">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="score" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="catItem" type="com.recsys.common.content.ItemCatalogReader$CatItem">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="category" javaType="string"/><arg column="popularity" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="coldItem" type="com.recsys.common.content.ItemCatalogReader$ColdItem">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="category" javaType="string"/><arg column="popularity" javaType="_double"/><arg column="rn" javaType="_int"/></constructor>
+    </resultMap>
+    <resultMap id="catId" type="com.recsys.common.content.ItemCatalogReader$CatId">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="category" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="catCount" type="com.recsys.common.content.ItemCatalogReader$CatCount">
+        <constructor><arg column="category" javaType="string"/><arg column="c" javaType="_long"/></constructor>
+    </resultMap>
+
+    <sql id="tableName"><include refid="com.recsys.content.persistence.mapper.ItemMapper.tableName"/></sql>
+
+    <select id="lexicalSearch" resultMap="scoredId">
+        WITH q AS (SELECT to_tsquery('english',
+            NULLIF(replace(plainto_tsquery('english', #{query})::text, '&amp;', '|'), '')) AS tsq)
+        SELECT item_id, ts_rank_cd(title_tsv, q.tsq) AS score
+        FROM <include refid="tableName"/>, q WHERE title_tsv @@ q.tsq
+        ORDER BY score DESC, item_id ASC LIMIT #{limit}
+    </select>
+
+    <select id="weightedLexicalSearch" resultMap="scoredId">
+        WITH base_q AS (SELECT to_tsquery('english',
+            NULLIF(replace(plainto_tsquery('english', #{query})::text, '&amp;', '|'), '')) AS tsq),
+        weighted_terms AS (
+            SELECT term, boost, plainto_tsquery('english', term) AS tsq
+            FROM unnest(#{terms,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}::text[],
+                #{boosts,typeHandler=com.recsys.persistence.typehandler.DoubleArrayTypeHandler}::float8[]) AS t(term, boost)
+            WHERE boost > 0 AND numnode(plainto_tsquery('english', term)) > 0
+        ), boost_total AS (SELECT SUM(boost) AS total FROM weighted_terms), candidates AS (
+            SELECT i.item_id, i.title_tsv, ts_rank_cd(i.title_tsv, b.tsq) AS base_score
+            FROM <include refid="tableName"/> i CROSS JOIN base_q b WHERE i.title_tsv @@ b.tsq
+        ), idf_score AS (
+            SELECT c.item_id, SUM(w.boost * ts_rank_cd(c.title_tsv, w.tsq)) / NULLIF(t.total, 0) AS boost_score
+            FROM candidates c JOIN weighted_terms w ON c.title_tsv @@ w.tsq
+            CROSS JOIN boost_total t GROUP BY c.item_id, t.total
+        ) SELECT c.item_id, c.base_score + COALESCE(s.boost_score, 0) AS score
+        FROM candidates c LEFT JOIN idf_score s ON s.item_id=c.item_id
+        ORDER BY score DESC, c.item_id ASC LIMIT #{limit}
+    </select>
+
+    <select id="byCategories" resultMap="catItem">
+        SELECT i.item_id, i.category, COALESCE(i.popularity, 0) AS popularity
+        FROM <include refid="tableName"/> i WHERE category IN (
+            <foreach collection="categories" item="category" separator=",">#{category}</foreach>
+        ) ORDER BY i.popularity DESC LIMIT #{limit}
+    </select>
+
+    <select id="coldStartByCategory" resultMap="coldItem">
+        SELECT item_id, COALESCE(popularity, 0) AS popularity, category, rn FROM (
+            SELECT item_id, popularity, category,
+                ROW_NUMBER() OVER (PARTITION BY category ORDER BY popularity DESC) rn
+            FROM <include refid="tableName"/> WHERE category IS NOT NULL
+        ) t WHERE rn &lt;= #{perCategory} ORDER BY rn ASC, t.popularity DESC LIMIT #{limit}
+    </select>
+
+    <select id="hotByPopularity" resultMap="scoredId">
+        SELECT item_id, COALESCE(popularity, 0) AS score FROM <include refid="tableName"/>
+        ORDER BY popularity DESC LIMIT #{limit}
+    </select>
+
+    <select id="recentTitles" resultType="string">
+        SELECT i.title FROM user_behavior b JOIN <include refid="tableName"/> i ON i.item_id=b.item_id
+        WHERE b.user_id=#{userId} AND b.action IN ('CLICK','LIKE','PLAY','RATING')
+        AND i.title IS NOT NULL ORDER BY b.ts DESC LIMIT #{limit}
+    </select>
+
+    <select id="recentRatedCategories" resultMap="catId">
+        SELECT b.item_id AS item_id, i.category AS category FROM user_behavior b
+        JOIN <include refid="tableName"/> i ON i.item_id=b.item_id
+        WHERE b.user_id=#{userId} AND b.action='RATING' AND b.value>=4 ORDER BY b.ts DESC LIMIT #{limit}
+    </select>
+
+    <select id="categoryCountsByTitleLike" resultMap="catCount">
+        SELECT category, count(*) AS c FROM <include refid="tableName"/>
+        WHERE title ILIKE ANY (#{patterns,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}) AND category IS NOT NULL
+        GROUP BY category ORDER BY c DESC LIMIT #{limit}
+    </select>
+
+    <select id="distinctCategories" resultType="string">
+        SELECT DISTINCT category FROM <include refid="tableName"/> WHERE category IS NOT NULL
+    </select>
+</mapper>

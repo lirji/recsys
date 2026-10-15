@@ -1,7 +1,8 @@
 package com.recsys.content;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.content.persistence.mapper.ItemCatalogMapper;
+import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -12,12 +13,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "recsys.content.item-source", havingValue = "replica")
 public class ReplicaItemCatalogReader extends AbstractItemCatalogReader {
 
-    public ReplicaItemCatalogReader(JdbcTemplate jdbc) {
-        super(jdbc);
+    public ReplicaItemCatalogReader(ItemCatalogMapper mapper) {
+        super(mapper);
     }
 
     @Override
-    protected String itemTable() {
-        return "item_local";
+    protected CatalogTable itemTable() {
+        return CatalogTable.REPLICA;
     }
 }

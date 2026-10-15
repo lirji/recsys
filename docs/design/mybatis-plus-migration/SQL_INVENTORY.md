@@ -110,10 +110,10 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/content/AbstractItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/AbstractItemCatalogReader.java) | 5 | 16 | TODO |
-| [com/recsys/content/DbItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/DbItemCatalogReader.java) | 4 | 0 | TODO |
+| [com/recsys/content/AbstractItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/AbstractItemCatalogReader.java) | 5 | 16 | MP02b DONE：ItemCatalogMapper.xml；见MP02B_RESULT |
+| [com/recsys/content/DbItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/DbItemCatalogReader.java) | 4 | 0 | MP02b DONE：ItemCatalogMapper.xml；见MP02B_RESULT |
 | [com/recsys/content/JdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/MybatisContentService.java) | 5 | 5 | MP02a DONE：MybatisContentService / ItemMapper.xml；见MP02A_RESULT |
-| [com/recsys/content/ReplicaItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaItemCatalogReader.java) | 4 | 0 | TODO |
+| [com/recsys/content/ReplicaItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaItemCatalogReader.java) | 4 | 0 | MP02b DONE：ItemCatalogMapper.xml；见MP02B_RESULT |
 | [com/recsys/content/ReplicaJdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaMybatisContentService.java) | 4 | 0 | MP02a DONE：MybatisContentService / ItemMapper.xml；见MP02A_RESULT |
 
 ### recsys-offline
