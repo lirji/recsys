@@ -27,10 +27,10 @@ public class ConversionEventConfiguration {
     @ConditionalOnExpression("${recsys.ad.billing.conversion-events.relay-enabled:false} or ${recsys.ad.billing.conversion-events.projection-enabled:false}")
     static class Shared {
         /** 无需启用新收费或签名密钥即可续发，但必须具备已交付的原事实及投影迁移。 */
-        @Bean BillingOutboxRepository conversionOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
+        @Bean BillingOutboxRepository conversionOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
             new BudgetRepository(sessions).verifySchema(); new ConversionQuoteRepository(sessions).verifySchema();
             new ConversionSettlementRepository(sessions,json).verifySchema();
-            var repository=new BillingOutboxRepository(jdbc,EventFamily.CONVERSION);repository.verifySchema();return repository;
+            var repository=new BillingOutboxRepository(sessions,EventFamily.CONVERSION);repository.verifySchema();return repository;
         }
         @Bean ConversionEventCodec conversionEventCodec(ObjectMapper json) { return new ConversionEventCodec(json); }
     }

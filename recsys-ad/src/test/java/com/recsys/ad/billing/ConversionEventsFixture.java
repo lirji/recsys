@@ -44,7 +44,7 @@ class ConversionEventsFixture {
         quotes=new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         settlement=new ConversionSettlementService(new ConversionSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true);
-        outbox=new BillingOutboxRepository(jdbc,BillingOutboxRepository.EventFamily.CONVERSION);outbox.verifySchema();
+        outbox=new BillingOutboxRepository(cpm.sessions,BillingOutboxRepository.EventFamily.CONVERSION);outbox.verifySchema();
         projection=new ConversionProjectionService(new ConversionProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
     }
     UUID capture(long advertiser,String amount) { return capture(advertiser,amount,UUID.randomUUID()); }

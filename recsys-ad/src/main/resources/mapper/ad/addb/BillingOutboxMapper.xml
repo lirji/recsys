@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.BillingOutboxMapper">
+    <resultMap id="pending" type="com.recsys.ad.persistence.mapper.addb.BillingOutboxMapper$PendingRow">
+        <constructor><idArg column="event_id" javaType="java.util.UUID"/><arg column="destination" javaType="string"/>
+            <arg column="partition_key" javaType="string"/><arg column="payload_json" javaType="string"/>
+            <arg column="fence" javaType="_long"/><arg column="attempts" javaType="_int"/></constructor>
+    </resultMap>
+    <resultMap id="backlog" type="com.recsys.ad.persistence.mapper.addb.BillingOutboxMapper$BacklogRow">
+        <constructor><arg column="pending" javaType="_long"/><arg column="dead" javaType="_long"/>
+            <arg column="oldest_seconds" javaType="_double"/></constructor>
+    </resultMap>
+    <!-- family在Repository构造时非空校验；这里只允许三组固定表，不拼接外部标识符。 -->
+    <sql id="outbox"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_outbox</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_outbox</when>
+        <otherwise>ad_billing_outbox</otherwise>
+    </choose></sql>
+    <sql id="fact"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_projection_fact</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_projection_fact</when>
+        <otherwise>ad_billing_projection_fact</otherwise>
+    </choose></sql>
+    <sql id="daily"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_projection_daily</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_projection_daily</when>
+        <otherwise>ad_billing_projection_daily</otherwise>
+    </choose></sql>
+    <sql id="replayAudit"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_outbox_replay</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_outbox_replay</when>
+        <otherwise>ad_billing_outbox_replay</otherwise>
+    </choose></sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=#{version}</select>
+    <select id="verifyOutbox" resultType="map" timeout="5">SELECT delivery_state,available_at,fence FROM <include refid="outbox"/> LIMIT 0</select>
+    <select id="verifyFact" resultType="map" timeout="5">SELECT payload_hash FROM <include refid="fact"/> LIMIT 0</select>
+    <select id="verifyDaily" resultType="map" timeout="5">SELECT charged_amount FROM <include refid="daily"/> LIMIT 0</select>
+    <update id="exhaust" timeout="5">
+        WITH due AS (SELECT event_id FROM <include refid="outbox"/>
+            WHERE delivery_state IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts &gt;= #{maxAttempts}
+            ORDER BY available_at,event_id LIMIT 100 FOR UPDATE SKIP LOCKED)
+        UPDATE <include refid="outbox"/> o SET delivery_state='DEAD',last_error='ATTEMPTS_EXHAUSTED'
+        FROM due WHERE o.event_id=due.event_id
+    </update>
+    <select id="claim" resultMap="pending" timeout="5" affectData="true" flushCache="true" useCache="false">
+        WITH due AS (SELECT event_id FROM <include refid="outbox"/>
+            WHERE delivery_state IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts &lt; #{maxAttempts}
+            ORDER BY available_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED)
+        UPDATE <include refid="outbox"/> o SET delivery_state='SENDING',attempts=attempts+1,fence=fence+1,
+            available_at=clock_timestamp()+(#{leaseSeconds} * interval '1 second')
+        FROM due WHERE o.event_id=due.event_id
+        RETURNING o.event_id,o.destination,o.partition_key,o.payload_json,o.fence,o.attempts
+    </select>
+    <update id="published" timeout="5">
+        UPDATE <include refid="outbox"/> SET delivery_state='PUBLISHED',published_at=clock_timestamp(),last_error=NULL
+        WHERE event_id=#{eventId} AND fence=#{fence} AND delivery_state='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <update id="failed" timeout="5">
+        UPDATE <include refid="outbox"/> SET delivery_state=CASE WHEN attempts &gt;= #{maxAttempts} THEN 'DEAD' ELSE 'READY' END,
+            available_at=clock_timestamp()+(#{delayMs} * interval '1 millisecond'),last_error=#{errorType}
+        WHERE event_id=#{eventId} AND fence=#{fence} AND delivery_state='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <insert id="replay" timeout="5">
+        WITH locked AS (SELECT event_id,attempts FROM <include refid="outbox"/>
+            WHERE event_id=#{eventId} AND delivery_state='DEAD' FOR UPDATE),
+        changed AS (UPDATE <include refid="outbox"/> o SET delivery_state='READY',attempts=0,fence=fence+1,
+            available_at=clock_timestamp(),last_error=NULL FROM locked l WHERE o.event_id=l.event_id
+            RETURNING o.event_id,l.attempts)
+        INSERT INTO <include refid="replayAudit"/>(replay_id,event_id,actor,reason,previous_attempts)
+        SELECT #{replayId},event_id,#{actor},#{reason},attempts FROM changed
+    </insert>
+    <select id="backlog" resultMap="backlog" timeout="5" useCache="false">
+        SELECT count(*) FILTER (WHERE delivery_state IN ('READY','SENDING')) AS pending,
+            count(*) FILTER (WHERE delivery_state='DEAD') AS dead,
+            coalesce(extract(epoch FROM clock_timestamp()-min(created_at)
+                FILTER (WHERE delivery_state IN ('READY','SENDING'))),0) AS oldest_seconds
+        FROM <include refid="outbox"/> WHERE delivery_state &lt;&gt; 'PUBLISHED'
+    </select>
+</mapper>

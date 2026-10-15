@@ -43,7 +43,7 @@ class ClickEventsFixture {
         quotes=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         settlement=new ClickSettlementService(new ClickSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true,new ClickSettlementService.FraudPolicy(true,20));
-        outbox=new BillingOutboxRepository(jdbc,BillingOutboxRepository.EventFamily.CLICK);outbox.verifySchema();
+        outbox=new BillingOutboxRepository(cpm.sessions,BillingOutboxRepository.EventFamily.CLICK);outbox.verifySchema();
         projection=new ClickProjectionService(new ClickProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
     }
     UUID capture(long advertiser,String amount) {

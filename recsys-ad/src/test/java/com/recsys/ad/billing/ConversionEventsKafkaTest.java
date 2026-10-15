@@ -83,7 +83,7 @@ class ConversionEventsKafkaTest {
         UUID id=f.capture(1,"0.123456");
         assertEquals("READY",f.state(id));assertEquals(0,f.count());
         try(var publisher=publisher()) {
-            var failAfterAck=new BillingOutboxRepository(f.jdbc,BillingOutboxRepository.EventFamily.CONVERSION) {
+            var failAfterAck=new BillingOutboxRepository(f.cpm.sessions,BillingOutboxRepository.EventFamily.CONVERSION) {
                 @Override public boolean published(Pending event) {throw new IllegalStateException("crash after broker ACK");}
             };
             assertThrows(IllegalStateException.class,()->relay(failAfterAck,publisher).relayOne());

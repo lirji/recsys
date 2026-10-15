@@ -24,6 +24,7 @@ class BillingEventsFixture {
     static final ObjectMapper JSON=new ObjectMapper().findAndRegisterModules().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     final DriverManagerDataSource ds;
     final JdbcTemplate jdbc;
+    final SqlSessionTemplate sessions;
     final BillingOutboxRepository outbox;
     final BillingEventCodec codec=new BillingEventCodec(JSON);
     final BillingProjectionService projection;
@@ -45,6 +46,7 @@ class BillingEventsFixture {
                 ScriptUtils.executeSqlScript(c,new ClassPathResource(path));
             }
         }
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/ad/addb/**/*.xml"));
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -53,7 +55,7 @@ class BillingEventsFixture {
                 new ReservationService(reservations,quotes,BudgetConfiguration.transactions(ds,5),true),tokens);
         receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),preparations,reservations,quotes,tokens,
                 BudgetConfiguration.transactions(ds,5),true);
-        outbox=new BillingOutboxRepository(jdbc);outbox.verifySchema();
+        outbox=new BillingOutboxRepository(sessions);outbox.verifySchema();
         projection=new BillingProjectionService(new BillingProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));
     }
     LocalDate today(){return reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();}

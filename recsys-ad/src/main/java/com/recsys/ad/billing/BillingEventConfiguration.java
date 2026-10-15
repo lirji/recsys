@@ -29,11 +29,11 @@ public class BillingEventConfiguration {
     @ConditionalOnExpression("${recsys.ad.billing.events.relay-enabled:false} or ${recsys.ad.billing.events.projection-enabled:false}")
     static class Shared {
         /** 事件能力可在停止新回执后单独续办，仍核验全部迁移历史。 */
-        @Bean BillingOutboxRepository billingOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
+        @Bean BillingOutboxRepository billingOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
             new BudgetRepository(sessions).verifySchema();new CpmQuoteRepository(sessions).verifySchema();
             new ReservationRepository(sessions).verifySchema();new PreparationRepository(sessions,json).verifySchema();
             new ImpressionReceiptRepository(sessions,json).verifySchema();
-            var repository=new BillingOutboxRepository(jdbc);repository.verifySchema();return repository;
+            var repository=new BillingOutboxRepository(sessions);repository.verifySchema();return repository;
         }
         @Bean BillingEventCodec billingEventCodec(ObjectMapper json){return new BillingEventCodec(json);}
     }

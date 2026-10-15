@@ -13,6 +13,46 @@ class BillingEventsPostgresTest {
     @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
     BillingEventsFixture f;
     @BeforeEach void setup() throws Exception {f=new BillingEventsFixture(PG);}
+    /** RETURNING既要能自动提交领取，也必须服从显式事务回滚，不能缓存旧领取结果。 */
+    @Test void returningClaimCommitsOutsideTransactionAndRollsBackWithItsTransaction() {
+        var id=f.capture(1,"0.100001");var original=f.event(id);
+        BudgetConfiguration.transactions(f.ds,5).executeWithoutResult(status->{
+            var claimed=f.outbox.claim().orElseThrow();
+            assertEquals(id,claimed.eventId());assertEquals(1,claimed.attempts());assertEquals(1,claimed.fence());
+            assertEquals("SENDING",f.state(id));assertTrue(f.outbox.claim().isEmpty());
+            status.setRollbackOnly();
+        });
+        assertEquals("READY",f.state(id));assertEquals(original,f.event(id));
+        var claimed=f.outbox.claim().orElseThrow();
+        assertEquals(original.eventId(),claimed.eventId());assertEquals(original.destination(),claimed.destination());
+        assertEquals(original.key(),claimed.key());assertEquals(original.payload(),claimed.payload());
+        assertEquals(1,claimed.fence());assertEquals(1,claimed.attempts());assertEquals("SENDING",f.state(id));
+        assertTrue(f.outbox.published(claimed));assertEquals("PUBLISHED",f.state(id));
+        assertEquals(0,f.outbox.backlog().pending());assertEquals(0,f.outbox.backlog().dead());assertEquals(0,f.outbox.backlog().oldestSeconds());
+    }
+    /** 其他执行器持有最早行时必须跳过它，不能为等待一条待办阻塞整个投递器。 */
+    @Test void lockedFirstEventIsSkippedWhileAnotherEventCanBeClaimed() throws Exception {
+        var first=f.capture(1,"0.100001");var second=f.capture(1,"0.200002");
+        try(var connection=f.ds.getConnection()) {
+            connection.setAutoCommit(false);
+            try(var statement=connection.prepareStatement("SELECT event_id FROM ad_billing_outbox WHERE event_id=? FOR UPDATE")) {
+                statement.setObject(1,first);try(var result=statement.executeQuery()){assertTrue(result.next());}
+                assertEquals(second,f.outbox.claim().orElseThrow().eventId());assertTrue(f.outbox.claim().isEmpty());
+            } finally {connection.rollback();}
+        }
+        assertEquals(first,f.outbox.claim().orElseThrow().eventId());
+    }
+    /** 重放审计冲突必须撤销同一CTE中的状态、次数与fence变化。 */
+    @Test void replayAuditConflictRollsBackReopeningTheOtherEvent() {
+        var first=f.capture(1,"0.100001");var second=f.capture(1,"0.200002");
+        f.jdbc.update("UPDATE ad_billing_outbox SET delivery_state='DEAD',attempts=20 WHERE event_id IN (?,?)",first,second);
+        var replayId=UUID.randomUUID();assertTrue(f.outbox.replay(replayId,first,"operator","恢复后续发"));
+        var original=f.event(second);
+        assertThrows(org.springframework.dao.DataAccessException.class,()->f.outbox.replay(replayId,second,"operator","审计键冲突"));
+        assertEquals("DEAD",f.state(second));assertEquals(original,f.event(second));
+        assertEquals(1,f.jdbc.queryForObject("SELECT count(*) FROM ad_billing_outbox_replay",Integer.class));
+        assertEquals(1,f.outbox.backlog().pending());assertEquals(1,f.outbox.backlog().dead());
+    }
     @Test void concurrentClaimFencingAndCrashedLastAttemptBecomeDead() throws Exception {
         var id=f.capture(1,"0.100001");
         try(var pool=Executors.newFixedThreadPool(8)) {

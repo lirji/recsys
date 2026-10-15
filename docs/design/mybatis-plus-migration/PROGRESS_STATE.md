@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c DONE/PASS，MP10整体完成；下一片MP11a Outbox。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a DONE/PASS；原生页签故障修复并通过14项浏览器，准备正常Git交付后继续MP11b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -79,7 +79,7 @@ MP01～MP03已交付。当前MP10b：转化结算Mapper/XML、Repository/配置�
 
 ## 下一步
 
-1. MP10b/c验证完成并准备Git交付，继续MP11a Outbox。
+1. MP10b/c已交付e0949431，继续MP11a Outbox旧实现保护及迁移。
 2. 继续MP11～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -202,3 +202,25 @@ MP10b当前10源文件清单/tmp/recsys-mp10b-source-paths.json，指纹3f34f9b7
 DONE/PASS，MP10整体完成，见MP10B_RESULT。10源文件指纹3f34f9b7aff5a75e278ae4a05457852990fba911062c5bd9d4680968ba68ed1b；旧24项、迁移后42项、全仓24 reactor完整资金链374项/68类、推荐宿主3项均通过；hygiene无阻塞，45历史SQL/8保护文件不变。MP10c准备与消费者无额外SQL，Outbox/投影仍属于MP11，engine交付仍MP12。MP10a CI38732423173五门禁全部SUCCESS；MP09b CI38732026360被后续提交取消。
 
 下一片MP11a BillingOutboxRepository：10条独立原子语句（三族schema探针、exhaust/claim/published/failed/replay/backlog）；固定表族移到XML choose，不再Java replace SQL，不使用用户表名。claim为UPDATE RETURNING，必须affectData=true/flushCache=true/useCache=false；保留30秒租约、20次尝试、exhaust批次100、clock_timestamp、fence+未过期条件和重放审计CTE同语句。每条5秒超时，调用方不能持数据库锁等待Kafka。构造引用为三EventConfiguration、三EventsFixture、三EventsKafkaTest故障子类及SandboxExposureBrowserFixtureTest；fixture可复用cpm.sessions避免临时checked exception。当前完整资金链374项作为旧基线；新增真实claim事务回滚、SKIP LOCKED与重放审计冲突回滚保护后再迁移。
+
+## MP11a迁移前保护
+
+BillingEventsPostgresTest新增RETURNING领取自动提交/事务回滚、锁住最早待办后跳过并领取其他记录、重放审计键冲突时CTE中的状态/尝试次数/fence全部回滚。旧实现运行中/tmp/recsys-mp11a-before.log；未改Outbox产品代码。MP10b/c已正常ff合并并推main=e0949431，完整374项资金链可作为其余三族事件路径旧基线。
+
+MP11a旧实现12项PG通过；已完成10条Mapper/XML及三族装配、fixture和Kafka故障子类适配，迁移后验证/tmp/recsys-mp11a-after.log运行中。14源文件清单/tmp/recsys-mp11a-source-paths.json，指纹9c9b21d4ceb18b35575f59f64afaea2c394082073d5d61ca9165157f65095726。MP10b CI38734120451运行中。
+
+MP11a迁移后60项/10类全部通过，hygiene无阻塞；sandbox真实浏览器正在运行/tmp/recsys-mp11a-sandbox-browser.log。后续默认关闭推荐宿主与全仓编译，全部完成后才提交。
+
+## MP11a最终验证及CI故障
+
+MP11a本地DONE/PASS，见MP11A_RESULT：旧12项PG、新60项三族PG/Kafka/配置/worker、推荐宿主3项、sandbox浏览器4项及24 reactor编译全部通过，hygiene无阻塞；45历史SQL/8保护文件不变。14源文件指纹9c9b21d4ceb18b35575f59f64afaea2c394082073d5d61ca9165157f65095726。
+
+MP10b CI38734120451资金链/自然/security成功，但混排原生hidden场景在创建空白页签后仍visible而失败；sandbox4/自然5均成功，混排4成功/1失败。三套同类测试已显式激活新target，保留原生hidden断言及事实检查；单独修复提交，证据NATIVE_TAB_CI_RESULT。当前混排运行/tmp/recsys-native-tab-feed.log，之后依次自然/sandbox；Maven仍串行。
+
+## MP11b实施准备
+
+下一片三族ProjectionRepository已读全：Billing 3条SQL、Click 4条、Conversion 3条。保留各自Mapper/XML，不用可空的统一万能Fact：CPM单receipt、CPC双receipt与跨kind共同唯一索引、CPA独立visible/outcome/businessEvent身份约束不同。CPC两receipt按UUID排序领取，两条必须全部插入，失败回滚Inbox；三族同ID同hash重复false，冲突不同ID/资格/内容仍失败。累计金额不按账户版本水位丢弃独立事实，SQL ON CONFLICT全部约束及原精度保持。
+
+三Repository改用SqlSessionTemplate，从实际factory取DataSource供Service同事务身份校验；Billing/Click原来没有单句超时，保持XML不另加默认；Conversion原单句5秒要保留。三个EventConfiguration的Projection装配改sessions后可移除JdbcTemplate引用。引用：三EventsFixture（共享cpm.sessions已MP11a引入）、三EventsPostgresTest故障子类/restart、SandboxExposureBrowserFixtureTest；原PG测试已覆盖Inbox/汇总前后失败回滚、并发重复、反序版本和身份冲突，三族Kafka测试涵盖ACK/位点窗口和重启。新增同URL不同DataSource拒绝保护应在旧实现先跑，可放ConversionEventsPostgresTest一次覆盖三族；构造测试fixture仍用实际同一DataSource。之后MP11c ReconciliationRepository 只读RR与实际资源/超时独立验证，不更改V016。
+
+原生页签修复本地DONE/PASS，独立提交34a2a7a7，三套真实浏览器混排5/自然5/sandbox4均通过；类型/Prettier/ESLint及联合hygiene通过。MP11a产品迁移全部验证完成，随后独立提交并与修复一起ff推main，继续MP11b。

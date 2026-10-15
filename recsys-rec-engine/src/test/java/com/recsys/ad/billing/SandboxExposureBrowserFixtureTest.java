@@ -182,7 +182,7 @@ class SandboxExposureBrowserFixtureTest {
             }
             var env=new MockEnvironment().withProperty("spring.kafka.bootstrap-servers",bootstrap)
                     .withProperty("recsys.ad.billing.events.topic",topic).withProperty("recsys.ad.billing.events.group","browser-"+UUID.randomUUID());
-            var metrics=new SimpleMeterRegistry();var outbox=new BillingOutboxRepository(ad);var codec=new BillingEventCodec(JSON);
+            var metrics=new SimpleMeterRegistry();var outbox=new BillingOutboxRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml")));var codec=new BillingEventCodec(JSON);
             publisher=new BillingKafkaPublisher(new KafkaProducer<>(BillingEventConfiguration.producerProperties(env)),topic);
             scheduler.setPoolSize(1);scheduler.setThreadNamePrefix("browser-outbox-");scheduler.initialize();
             relay=new BillingOutboxJob(outbox,new BillingOutboxRelay(outbox,publisher,codec,metrics),scheduler,metrics);

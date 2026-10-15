@@ -52,7 +52,7 @@
 | [com/recsys/ad/ShardedAdCatalogReader.java](../../../recsys-ad/src/main/java/com/recsys/ad/ShardedAdCatalogReader.java) | 7 | 6 | DONE MP04a |
 | [com/recsys/ad/UpliftAssignmentService.java](../../../recsys-ad/src/main/java/com/recsys/ad/UpliftAssignmentService.java) | 9 | 5 | DONE MP05a |
 | [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | TODO |
-| [com/recsys/ad/billing/BillingOutboxRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingOutboxRepository.java) | 3 | 12 | TODO |
+| [com/recsys/ad/billing/BillingOutboxRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingOutboxRepository.java) | 3 | 12 | DONE MP11a：见MP11A_RESULT |
 | [com/recsys/ad/billing/BillingProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingProjectionRepository.java) | 3 | 3 | TODO |
 | [com/recsys/ad/billing/BudgetConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetConfiguration.java) | 8 | 0 | DONE MP08a |
 | [com/recsys/ad/billing/BudgetRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetRepository.java) | 7 | 11 | DONE MP08a |
