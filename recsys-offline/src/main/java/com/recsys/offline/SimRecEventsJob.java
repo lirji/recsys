@@ -3,12 +3,10 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.RecSimulationWriter;
+import com.recsys.offline.persistence.mapper.primary.RecSimulationMapper;
 import org.springframework.stereotype.Component;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,17 +36,22 @@ public class SimRecEventsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SimRecEventsJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final RecSimulationMapper mapper;
+    private final RecSimulationWriter writer;
 
-    public SimRecEventsJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 读取与批次写入同属主源，原事务由调用方决定。 */
+    public SimRecEventsJob(RecSimulationMapper mapper, RecSimulationWriter writer) {
+        this.mapper = mapper;
+        this.writer = writer;
     }
 
+    /** 保持既有命令名称，脚本入口无需随持久层迁移调整。 */
     @Override
     public String name() {
         return "sim-rec-events";
     }
 
+    /** 保留原随机生成顺序及单个大批次，避免改变样本与失败进度。 */
     @Override
     public void run(ApplicationArguments args) {
         int sessions = intArg(args, "sessions", 5000);
@@ -59,12 +62,11 @@ public class SimRecEventsJob implements OfflineJob {
         long seed = (long) doubleArg(args, "seed", 42);
 
         if (args.containsOption("clear")) {
-            int del = jdbc.update("DELETE FROM user_behavior WHERE scene='sim-rec'");
+            int del = mapper.deleteSimulation();
             log.info("已清空既有 sim-rec 行 {} 条", del);
         }
 
-        List<Long> items = jdbc.queryForList(
-                "SELECT item_id FROM " + ItemQuery.table(args), Long.class);   // #3:item 读来源表(默认 item)
+        List<Long> items = mapper.itemIds(ItemQuery.source(args));
         if (items.isEmpty()) {
             log.warn("item 表为空;先跑 --job=import-items");
             return;
@@ -75,8 +77,8 @@ public class SimRecEventsJob implements OfflineJob {
         Random rnd = new Random(seed);
         long now = System.currentTimeMillis();
 
-        // 行缓冲:[userId, itemId, action, value, position, tsMillis]
-        List<Object[]> rows = new ArrayList<>();
+        // 继续全量保留原事件顺序，再以单个JDBC逻辑批次写入。
+        List<RecSimulationMapper.Event> rows = new ArrayList<>();
         long clicks = 0, likes = 0, imprs = 0;
         for (int s = 0; s < sessions; s++) {
             long userId = 1 + rnd.nextInt(users);
@@ -85,16 +87,16 @@ public class SimRecEventsJob implements OfflineJob {
             double examine = 1.0;
             for (int p = 1; p <= slate; p++) {
                 long itemId = items.get(rnd.nextInt(items.size()));
-                rows.add(new Object[]{userId, itemId, "IMPRESSION", (double) p, p, imprTs});
+                rows.add(new RecSimulationMapper.Event(userId, itemId, "IMPRESSION", (double) p, p, new Timestamp(imprTs)));
                 imprs++;
                 // 相关性由物品热度驱动(+ 轻噪声),与位次独立 → 两个信号都可被模型识别
                 double rel = 0.08 + 0.50 * relevance.getOrDefault(itemId, 0.0) + 0.05 * rnd.nextDouble();
                 if (rnd.nextDouble() < examine * rel) {
                     long clickTs = imprTs + 30_000L + (long) (rnd.nextDouble() * 60_000L);
-                    rows.add(new Object[]{userId, itemId, "CLICK", 0.0, p, clickTs});
+                    rows.add(new RecSimulationMapper.Event(userId, itemId, "CLICK", 0.0, p, new Timestamp(clickTs)));
                     clicks++;
                     if (rnd.nextDouble() < likeRate) {
-                        rows.add(new Object[]{userId, itemId, "LIKE", 0.0, p, clickTs + 5_000L});
+                        rows.add(new RecSimulationMapper.Event(userId, itemId, "LIKE", 0.0, p, new Timestamp(clickTs + 5_000L)));
                         likes++;
                     }
                 }
@@ -102,26 +104,7 @@ public class SimRecEventsJob implements OfflineJob {
             }
         }
 
-        jdbc.batchUpdate(
-                "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position,ts) " +
-                "VALUES(?,?,?,?, 'sim-rec','sim',?,?)",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement ps, int i) throws SQLException {
-                        Object[] r = rows.get(i);
-                        ps.setLong(1, (Long) r[0]);
-                        ps.setLong(2, (Long) r[1]);
-                        ps.setString(3, (String) r[2]);
-                        ps.setDouble(4, (Double) r[3]);
-                        ps.setInt(5, (Integer) r[4]);
-                        ps.setTimestamp(6, new Timestamp((Long) r[5]));
-                    }
-
-                    @Override
-                    public int getBatchSize() {
-                        return rows.size();
-                    }
-                });
+        writer.insert(rows);
 
         log.info("sim-rec-events 完成(教学用):曝光 {} / 点击 {}(经验 CTR≈{}) / 赞 {};"
                         + "位置衰减 decay={}。下一步:--job=gen-samples-impr → 重训 mmoe/din 看 PAL 位置曲线",
@@ -131,10 +114,11 @@ public class SimRecEventsJob implements OfflineJob {
     /** 物品评分热度 → [0,1] 归一相关性代理(log 归一,缓解长尾)。 */
     private Map<Long, Double> loadRelevanceByPopularity() {
         Map<Long, Long> cnt = new java.util.HashMap<>();
-        jdbc.query("SELECT item_id, count(*) c FROM user_behavior WHERE action='RATING' GROUP BY item_id",
-                rs -> {
-                    cnt.put(rs.getLong("item_id"), rs.getLong("c"));
-                });
+        mapper.scanRatingCounts(context -> {
+            var row = context.getResultObject();
+            // 历史item_id允许NULL；保留原ResultSet.getLong(NULL)=0，不丢弃该热度分组。
+            cnt.put(row.itemId() == null ? 0L : row.itemId(), row.count());
+        });
         double lnMax = Math.log1p(cnt.values().stream().mapToLong(Long::longValue).max().orElse(1));
         Map<Long, Double> rel = new java.util.HashMap<>();
         for (var e : cnt.entrySet()) {

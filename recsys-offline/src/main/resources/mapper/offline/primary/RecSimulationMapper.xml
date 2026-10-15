@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.RecSimulationMapper">
+    <resultMap id="ratingCount" type="com.recsys.offline.persistence.mapper.primary.RecSimulationMapper$RatingCount">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="java.lang.Long"/>
+            <arg name="count" column="c" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <delete id="deleteSimulation">
+        DELETE FROM user_behavior WHERE scene='sim-rec'
+    </delete>
+    <select id="itemIds" resultType="java.lang.Long" useCache="false">
+        SELECT item_id FROM
+        <choose><when test="source.name() == 'REPLICA'">item_local</when><otherwise>item</otherwise></choose>
+    </select>
+    <select id="scanRatingCounts" resultMap="ratingCount" useCache="false">
+        SELECT item_id,count(*) c FROM user_behavior WHERE action='RATING' GROUP BY item_id
+    </select>
+    <insert id="insert">
+        INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position,ts)
+        VALUES(#{row.userId},#{row.itemId},#{row.action},#{row.value},'sim-rec','sim',
+               #{row.position},#{row.timestamp,jdbcType=TIMESTAMP})
+    </insert>
+</mapper>
