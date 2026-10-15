@@ -11,6 +11,8 @@ import com.recsys.ad.billing.SandboxPreparationService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.recsys.ad.AdPipeline;
+import com.recsys.ad.billing.ImpressionReceiptService;
+import com.recsys.common.ad.billing.ImpressionReceipt;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -53,6 +55,20 @@ public class InProcessAdServingGateway implements AdServingGateway {
     public Optional<Prepared> findSandboxPreparation(UUID id, String subject) {
         return sandbox().find(id, subject);
     }
+
+    @Autowired
+    private ObjectProvider<ImpressionReceiptService> impressions;
+
+    /** 回执开关关闭时拒绝调用，不能回落到旧计费。 */
+    private ImpressionReceiptService impressions() {
+        var service = impressions == null ? null : impressions.getIfAvailable();
+        if (service == null) throw new IllegalStateException("sandbox 回执未启用");
+        return service;
+    }
+    @Override
+    public ImpressionReceipt.Result acceptSandboxImpression(ImpressionReceipt.Command command) { return impressions().accept(command); }
+    @Override
+    public Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject) { return impressions().find(id, subject); }
 
     @Override
     public SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,

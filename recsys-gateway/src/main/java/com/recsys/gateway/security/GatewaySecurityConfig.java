@@ -76,6 +76,8 @@ public class GatewaySecurityConfig {
                                 "/api/query/**", "/api/console/**").permitAll()
                         // 广告主写侧后台:需广告主或管理员
                         .pathMatchers("/api/advertiser/**").hasAnyRole("ADVERTISER", "ADMIN")
+                        // sandbox 交付/回执涉及测试资金，只允许管理员且下游再次校验。
+                        .pathMatchers("/api/sandbox/**").hasRole("ADMIN")
                         // 实验分流管理:仅管理员
                         .pathMatchers("/api/experiment/**").hasRole("ADMIN")
                         // 其余(行为上报、广告点击/转化计费、写操作等)需登录

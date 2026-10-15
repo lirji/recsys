@@ -14,6 +14,9 @@ import io.grpc.Status;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.proto.AdProtoMapper;
+import com.recsys.proto.ImpressionProtoMapper;
+import com.recsys.proto.impression.v1.*;
+import com.recsys.common.ad.billing.ImpressionReceipt;
 import com.recsys.proto.ad.v1.Ack;
 import com.recsys.proto.ad.v1.AdServingServiceGrpc;
 import com.recsys.proto.ad.v1.AdsReply;
@@ -73,6 +76,34 @@ public class GrpcAdServingGateway implements AdServingGateway {
             if (ex.getStatus().getCode() == Status.Code.NOT_FOUND) return Optional.empty();
             throw ex;
         }
+    }
+
+    @GrpcClient("ad-serving")
+    private SandboxImpressionServiceGrpc.SandboxImpressionServiceBlockingStub impressionStub;
+
+    /** 不套旧吞错 fallback，写入超时可能已经提交。 */
+    @Override
+    public ImpressionReceipt.Result acceptSandboxImpression(ImpressionReceipt.Command command) {
+        try { return ImpressionProtoMapper.fromProto(impressionStub.accept(ImpressionProtoMapper.toProto(command))); }
+        catch (StatusRuntimeException ex) { throw receiptFailure(ex); }
+    }
+    @Override
+    public Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject) {
+        try {
+            return Optional.of(ImpressionProtoMapper.fromProto(impressionStub.getReceipt(GetVisibleReceiptRequest.newBuilder()
+                    .setReceiptId(id.toString()).setSubject(subject).build())));
+        } catch (StatusRuntimeException ex) {
+            if (ex.getStatus().getCode() == Status.Code.NOT_FOUND) return Optional.empty();
+            throw receiptFailure(ex);
+        }
+    }
+    private RuntimeException receiptFailure(StatusRuntimeException ex) {
+        return switch (ex.getStatus().getCode()) {
+            case ALREADY_EXISTS -> new ImpressionReceipt.Conflict();
+            case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
+            case INVALID_ARGUMENT -> new IllegalArgumentException("回执格式非法");
+            default -> ex;
+        };
     }
 
     private static String nz(String s) {

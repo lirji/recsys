@@ -1,6 +1,6 @@
 # sandbox 预算命令运行说明
 
-范围为 [CONTRACTS C02/C02A/C03/C04](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。交付资格、回执与账本切片验收后，才形成曝光资金闭环。
+范围为 [CONTRACTS C02/C02A/C03/C04/C05](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。资格和回执捕获已接通；可靠投递与浏览器采集分别由 S06/S07 补齐后，才形成端到端曝光资金闭环。
 
 ## 隔离库迁移
 
@@ -16,7 +16,7 @@ psql -X --set ON_ERROR_STOP=on \
   --command 'SELECT version, description, script_sha256, installed_at FROM ad_billing_schema_history ORDER BY version;'
 ```
 
-迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的版本。ER-S02A 增加 V002、ER-S03 增加 V003：按上面相同命令，将 billing_migration 依次改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql`、`recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql`，逐个重新计算摘要并执行。ER-S04 再依次执行 `recsys-ad/src/main/resources/db/ad-billing/V004__delivery_preparation.sql`。当前 owner 启用时分别校验 V001～V004，缺失/漂移拒绝启动；旧应用仍只要求自身版本，扩展迁移支持版本共存，不自动迁移。
+迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的版本。ER-S02A 增加 V002、ER-S03 增加 V003：按上面相同命令，将 billing_migration 依次改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql`、`recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql`，逐个重新计算摘要并执行。ER-S04 再依次执行 `recsys-ad/src/main/resources/db/ad-billing/V004__delivery_preparation.sql`。预算/准备 owner 启用时分别校验 V001～V004，回执能力另外要求 V005，缺失/漂移拒绝启动；旧应用仍只要求自身版本，扩展迁移支持版本共存，不自动迁移。
 
 ## 启用范围与身份
 
@@ -65,7 +65,7 @@ ER-S02A 的 `auctionSandboxCpm` 仅产生标准 GSP/CPM 候选与精确计价依
 
 冻结数据位于 `ad_cpm_quote`，quoteId 和 delivery/slot 均唯一，服务器数据库时钟签发并在 5 分钟到期。重试只读原行，不重新计算出价/模型、不刷新期限；同 ID 改定价依据或同交付位置换 ID 冲突。已过期报价仍可查询，后续预占接口必须基于服务端时间拒绝过期报价。展示字段 double 不可用于收费，后续预占与结算只引用服务端持久化 quoteId 的精确金额。
 
-代码回退保留 V002 和报价，不能删表释放业务义务；报价已连接内部预占，公开 sandbox 交付已接通，回执扣费仍由 S05 接入。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
+代码回退保留 V002 和报价，不能删表释放业务义务；报价已连接内部预占，公开 sandbox 交付已接通，回执捕获由 S05 的独立默认关闭开关接入。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
 
 ## 预占、释放与到期回收
 
@@ -95,7 +95,7 @@ GROUP BY a.advertiser_id, a.budget_date, a.held_amount
 HAVING a.held_amount <> COALESCE(SUM(r.amount) FILTER (WHERE r.state = 'HELD'), 0);
 ```
 
-ER-S03 恢复边界：停止进程不撤销已提交 held；恢复同版本服务后 worker 继续处理持久化 HELD。关闭签发/新增后保持回收，确认无 HELD 义务再决定是否停止整个能力。回退到没有回收功能的旧二进制不能充当预算补偿；保留 V001～V003，不删除账户、报价或预占。收费捕获及释放竞争由 ER-S05 接入，本片无 charged 修改。
+ER-S03 恢复边界：停止进程不撤销已提交 held；恢复同版本服务后 worker 继续处理持久化 HELD。关闭签发/新增后保持回收，确认无 HELD 义务再决定是否停止整个能力。回退到没有回收功能的旧二进制不能充当预算补偿；保留 V001～V003，不删除账户、报价或预占。ER-S03 的预占/释放本身不修改 charged；ER-S05 捕获分支才修改 charged。
 
 
 ## 整次 sandbox 搜索交付与恢复
@@ -131,7 +131,7 @@ Content-Type: application/json
 
 engine 先保存整页候选、位置和稳定 childId，再调用 owner。未冻结时可重试纯候选查询，冻结后再也不重选、不补位；已拒绝条目占据原位置。先 GET 观察已保存进度，再用原 PUT 续办即可；进程崩溃遗留租约最多按数据库 30 秒期限等待可再次领取。每次租约递增 fence，旧执行器无法覆盖新进度。该期限不是 RTO 承诺，也不保证自动完成：本片同步推进，尚无后台 whole-operation 执行器。
 
-准备结果保存失败可能已经存在 quote/held；按原 childId 恢复，不创建新广告操作冒充补偿。候选超过五分钟不能首次冻结报价；已有报价恢复仍沿原五分钟到期时间。重试返回已过期的原 QUALIFIED 不代表可以继续收回执，S05 必须再次校验当前预占/资格/服务端期限。当前版本还没有收费回执接口，charged 不因准备变化。
+准备结果保存失败可能已经存在 quote/held；按原 childId 恢复，不创建新广告操作冒充补偿。候选超过五分钟不能首次冻结报价；已有报价恢复仍沿原五分钟到期时间。重试返回已过期的原 QUALIFIED 不代表可以继续收回执，S05 接受时会再次校验当前预占/资格/服务端期限。charged 不因准备变化，只在开启的回执捕获路径变化。
 
 只读排查（分别连接 owner 的数据库，不做跨库 JOIN）：
 
@@ -147,4 +147,54 @@ FROM ad_delivery_preparation WHERE result_json IS NULL ORDER BY created_at LIMIT
 
 engine 异常日志 `sandbox delivery incomplete` 仅含 operationId 与异常类型；owner RPC 日志仅含异常类型，不写证明、主体或 SQL 参数。积压告警结合上面待办年龄、数量与 S03 预占到期指标。持续永久错误暂停新增并人工核对配置/版本，不改金额或直接把状态标为 COMPLETE。保留期限待业务确认，当前不自动清理操作、资格或幂等记录；需监控表增长。
 
-回退保留 engine V001 和 ad V001～V004，停止新入口流量并维持 ad 到期回收；已发生的 held 不随二进制回退撤销。恢复同版本可用原 ID 续办。没有验证生产容量、整进程 kill 演练、浏览器采集或 RTO/RPO；后续 S05～S07 和 S25 继续补齐。
+回退保留 engine V001 和 ad V001～V005（CAPTURED 的二进制兼容限制见下一节），停止新入口流量并维持 ad 到期回收；已发生的 held 不随二进制回退撤销。恢复同版本可用原 ID 续办。没有验证生产容量、整进程 kill 演练、浏览器采集或 RTO/RPO；后续 S06～S07 和 S25 继续补齐。
+
+## 可见回执与原子捕获
+
+ER-S05 新增 ad owner `recsys-ad/src/main/resources/db/ad-billing/V005__impression_capture.sql`。按前述显式迁移流程重新计算该文件 SHA256，并在隔离 adDb 应用。它扩展 CAPTURED 状态，新增回执、不可变账本、待发 Outbox；不改 V001～V004，也没有 engine 新表。先完成全部 owner 二进制升级，再显式打开 engine 与 owner 的 `recsys.ad.billing.receipts-enabled=true`（依然须 sandbox-enabled=true）。未开启时接口不存在，不会因签发资格自动收费。
+
+入口经 gateway 的 discovery/static 两种 profile 路由到 engine，边缘与 engine 都检查 ADMIN，owner RPC 再检查独立 engine 内部身份。使用交付响应中原 QUALIFIED token，客户端达到连续可见政策后生成并保存一个 receiptId：
+
+```http
+PUT /api/sandbox/ad-impressions/ed727b3d-cdc7-4331-870c-809c7762e10d
+Content-Type: application/json
+
+{"qualificationToken":"<交付返回的原资格证明>","visibleDurationMs":1000,"minVisibleRatioBps":5000,"pageVisible":true}
+```
+
+上面为协议示例，不能把它当作自动证明实际可见；S07 将接入浏览器连续观测与 hidden 重置。服务端要求至少 5000 基点、连续 1000 毫秒、页面可见，且资格签发至当前数据库时间足以覆盖声明时长。新回执须在五分钟期限内被 owner 接受；等待账户锁后重验期限。
+
+200 的 ACCEPTED 表示首次捕获；ALREADY_ACCEPTED 引用同一 canonicalReceiptId/ledgerId，不产生第二份曝光、钱或 Outbox。响应 chargedAmount 为 CNY 六位字符串，budgetDate 为预占原日。422 返回已持久化 POLICY_NOT_MET/EXPIRED/NOT_HELD，chargedAmount=0；同 receiptId 重试仍是原拒绝，新的真实观测意图才可新建 receiptId。400/403 为格式、证明或主体不合法，409 为同 ID 变负载。
+
+503 为账务结果未知，必须保存原 receiptId、token 和观测字段，GET 同路径查询原结果，或以完全相同 PUT 重试；不能换 ID 猜测原请求是否成功。不同 ID 即使撞到同一资格，也由唯一账本阻止重复收费，但仍应遵守客户端稳定事件 ID。GET 404 只表示当前未观察到。历史同 ID 结果恢复不因 key 后来轮换或资格过期改变；新事件仍须可验证签名。
+
+捕获只把原预算日 held 转为同额 charged；跨日不扣今天账户。`ad_billing_ledger` 为唯一捕获事实，正常 UPDATE/DELETE 被数据库触发器拒绝；更正须以后设计的补偿事实，不直接修改历史。`ad_billing_outbox` 中 eventId=ledgerId，事件 AdImpressionCapturedV1，目标 ad-impression-captured-v1，分区键 advertiserId:budgetDate；金额字符串、接受时间 ISO-8601，不含 token/认证主体。本片没有发布器，published_at 为空是待发事实，不能宣称消息已经送达。
+
+暂停新接受使用 `recsys.ad.billing.receipt-admission-enabled=false` 并受控重启相应 owner，保留 receipts-enabled、sandbox-enabled 与新版代码，使原结果查询/恢复、预占到期回收继续可用。多实例需逐一核验开关，不承诺瞬时全局 fence。必要时同时关闭 reservation-admission-enabled 停止新占用。已经捕获的金额不随开关或镜像回退撤销。
+
+V005 启用后，不可回退到不能解析 CAPTURED 的 S03/S04 旧 owner；先停止新增、保留支持新状态的查询/回收/待发处理版本。保留全部 schema 与历史记录。真实账户/正式收费切换仍未授权。
+
+只读核对（adDb）：
+
+```sql
+SELECT receipt_id, qualification_id, status, ledger_id, charged_amount, budget_date, decided_at
+FROM ad_impression_receipt ORDER BY created_at DESC LIMIT 100;
+
+SELECT count(*) AS pending, min(created_at) AS oldest_pending
+FROM ad_billing_outbox WHERE published_at IS NULL;
+
+SELECT a.advertiser_id, a.budget_date, a.charged_amount,
+       COALESCE(SUM(l.amount), 0) AS ledger_amount
+FROM ad_budget_account a
+LEFT JOIN ad_billing_ledger l ON l.advertiser_id=a.advertiser_id AND l.budget_date=a.budget_date
+  AND l.traffic_class=a.traffic_class AND l.currency=a.currency
+WHERE a.traffic_class='SANDBOX'
+GROUP BY a.advertiser_id,a.budget_date,a.charged_amount
+HAVING a.charged_amount<>COALESCE(SUM(l.amount),0);
+
+SELECT r.reservation_id,r.state,l.ledger_id
+FROM ad_budget_reservation r LEFT JOIN ad_billing_ledger l ON l.qualification_id=r.reservation_id
+WHERE (r.state='CAPTURED')<>(l.ledger_id IS NOT NULL);
+```
+
+发现不一致时暂停新增并按 receiptId/qualificationId/ledgerId 核查。服务遇到“账本已存在但预占非 CAPTURED”等不变量破坏会拒绝新回执，不替损坏数据返回成功。owner 日志 `sandbox receipt dependency failure`、engine 日志 `sandbox receipt result unknown` 只记合法格式 receiptId 与异常类型，不输出证明或内部 SQL。永久错误需人工排查，不能通过删除幂等行或把状态直接改为成功解决。

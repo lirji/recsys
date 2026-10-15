@@ -32,3 +32,7 @@ ER-S04：整次交付选用 engine primary PG 的不可变计划 + 有效租约/
 候选证明与资格采用现有 JDK HmacSHA256 + Jackson，无新增依赖。版本、用途和 keyId 一起签名，使用独立受控密钥环，防止把候选证明当回执资格。相较让 engine 传价格直接预占，这使价格依据只由 ad owner 生成；相较候选阶段创建数据库报价，则保留候选查询无持久化副作用。代价是 key 轮换须保留所有未完成操作需要的验证 key，候选有独立五分钟受理期限。资格最终期限由真实 PG 报价签发时间决定。
 
 S04 搜索入口最多 10 位，最终去重/截断后持久化计划；feed 接入及频控仍属于 S10。已有 recall/rank/audience 的内部降级保留，不能因此宣称终端可信、反作弊或定向强一致已经完成。新代码不沿用旧响应即扣费/空响应 fallback。RPC 与同进程共用域 DTO/owner；grpc engine 不装配本地新账务和回收器，但历史 ad 模块已有连接池不在本片重构。
+
+ER-S05：回执接受采用同 adDb `TransactionTemplate`，依次领取回执键、锁预占和原预算日账户；不持锁调用 RPC/MQ。捕获、唯一 ledger、Outbox 和首次回执结果一起提交，账本用唯一 qualification_id 与禁止改删触发器保护。事件使用原 ledgerId 去重和关联，不能用账户最大版本过滤金额事实。Outbox 本片只落持久化待发记录，S06 才实现 broker 确认、重试/隔离与投影。
+
+回执能力和暂停新接受分开：`receipts-enabled` 缺省 false，部署扩展 schema/新 owner 后才能启用；`receipt-admission-enabled=false` 暂停新命令但保留查询及同 ID 原结果恢复。资格签发时间与服务端接受时间约束声明时长，不使用客户端 wall-clock 作为到期权威；可见观测仍不是真人或终端完整性证明。gateway 两种 route profile 增加 sandbox namespace 并限定 ADMIN，不变更基础设施和用户已有运行文件。

@@ -1,0 +1,31 @@
+syntax = "proto3";
+package recsys.impression.v1;
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.impression.v1";
+option java_outer_classname = "ImpressionProto";
+import "google/protobuf/timestamp.proto";
+// 回执 owner 只信任已验证的 engine；未知结果保留 receipt_id 查询。
+service SandboxImpressionService {
+  rpc Accept(VisibleReceiptCommand) returns (VisibleReceiptResult);
+  rpc GetReceipt(GetVisibleReceiptRequest) returns (VisibleReceiptResult);
+}
+message VisibleReceiptCommand {
+  string receipt_id = 1;
+  string subject = 2;
+  string qualification_token = 3;
+  int64 visible_duration_ms = 4;
+  int32 min_visible_ratio_bps = 5;
+  bool page_visible = 6;
+}
+message GetVisibleReceiptRequest { string receipt_id = 1; string subject = 2; }
+message VisibleReceiptResult {
+  string receipt_id = 1;
+  string qualification_id = 2;
+  string status = 3;
+  string ledger_id = 4;
+  string canonical_receipt_id = 5;
+  string charged_amount = 6;
+  string budget_date = 7;
+  google.protobuf.Timestamp accepted_at = 8;
+  google.protobuf.Timestamp decided_at = 9;
+}

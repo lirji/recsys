@@ -90,3 +90,21 @@ ad owner 持久化 preparation 输入摘要（同 childId 变 slot/证明/主体
 密钥只来自受控配置，当前 keyId 与至少 32 字节 base64 key 必填，无默认秘密；可同时配置旧验证 key，轮换时所有实例一致，旧 key 至少保留到未完成准备及资格恢复窗口结束，删除前查待办。token 不进日志、指标或 HTTP 候选输入，大小有界；数据库与备份按敏感配置权限管理。不在此片自动清理幂等/操作/资格记录，业务保留期限尚待确认，运维需监控增长。
 
 迁移：ad owner V004 preparation（不改 V001～V003）；engine 独立 `db/engine-delivery/V001__delivery_operation.sql` 和 SHA 历史。默认关闭、显式迁移、缺表/错版本拒绝启用。验收覆盖纯候选无收费副作用、签名篡改/用途/主体、真实 PG 部分失败恢复/预算不重复/过期、不变整页计划、租约 fencing、双模式 DTO/RPC 权限与失败传播。没有部署或真实收费切换授权。
+
+## C05：可见回执、CPM 捕获与账本/Outbox（ER-S05）
+
+只实现已确认图文 CPM 政策和 SANDBOX。在 sandbox 开关之外增加默认关闭的 `recsys.ad.billing.receipts-enabled`；只在 owner 与 engine 都显式启用时接受回执。未安装回执能力时此开关保持关闭，不停止既有预占回收。启用后暂停新接受使用 `recsys.ad.billing.receipt-admission-enabled=false`（默认 true），保留原 receiptId 结果恢复/查询；不要用关闭整个能力代替在途恢复。OCPM/CPC/CPA、浏览器采集及 Kafka 投递不在本片，分别由后续切片承接。
+
+HTTP `PUT /api/sandbox/ad-impressions/{receiptId}`：ADMIN 原主体，body `{qualificationToken, visibleDurationMs, minVisibleRatioBps, pageVisible}`。receiptId 为 UUID；时长为整数毫秒 0～300000，比例为整数基点 0～10000，pageVisible 必须 JSON boolean；报价/广告主/预算日/金额不接受终端输入。达到政策须 minVisibleRatioBps>=5000、visibleDurationMs>=1000、pageVisible=true，且 DB 接受时刻减资格签发时刻至少覆盖声明时长。隐藏重置的连续性由前端观测，服务端拒绝显然不可能证据，但不声称能证明真人可见或防伪终端。GET 同路径按原主体查首次结果。新 impression.v1 RPC 仅可信 engine 调用；两种 gateway 同行为，故障结果未知，禁止成功 ACK 兜底。
+
+使用专用 qualification 用途验签，并比对 adDb 已保存的 QUALIFIED 原 token、主体和签名绑定字段；不能凭未完成 preparation 或 offer token 收费。格式/签名/绑定非法返回 400/403，不写资金。receiptId 同负载返回原结果，同 ID 不同负载 409；摘要含主体、资格 token 和规范化观测信号。已保存同 ID 原结果可直接查询/恢复，不受后来 expiry 或 key 轮换改写；新事件仍须可验证有效 key。GET 404 仅表示当前未查到。
+
+业务幂等键为 `(SANDBOX, qualificationId, IMPRESSION)`：每资格最多一笔 CPM 捕获账。不同 receiptId 对已捕获资格返回 ALREADY_ACCEPTED，引用唯一原账本/原 receiptId，不重复记曝光、钱或 Outbox。合法签名但未达政策返回 POLICY_NOT_MET；到期返回 EXPIRED；已主动释放/拒绝返回 NOT_HELD。这些结果都按 receiptId 持久化；后续新的观测意图使用新 receiptId，不改变原拒绝。ACCEPTED/ALREADY_ACCEPTED 返回 200，持久化业务拒绝返回 422，状态与实收金额明确；系统/提交未知 503，保留同 ID 查询。
+
+同 adDb 短事务：领取 receipt 唯一键 → 锁 reservation → 检查既有 ledger → 锁原预算日账户 → 取新鲜 DB 时间，严格早于 expiresAt 且满足政策 → 条件 held 减 amount、charged 加相同 amount、账户版本递增 → HELD 变 CAPTURED → 插入唯一不可变 ledger → 插入 Outbox → 保存 receipt 结果。任一步失败整笔回滚；返回只在提交后。释放和捕获都按 reservation→account 锁序竞争，一笔仅到 CAPTURED/RELEASED/EXPIRED 之一。跨日用原 reservation.budgetDate，金额只取原精确 quote，不重算、不从客户端读取。
+
+ledger 为不可变业务事实，唯一 reservation/原 receipt；记录原预算日、广告/创意/slot、用户、金额/CNY/SANDBOX、父操作/资格、接受时间和账户版本。使用数据库约束及禁止改删的触发器保护正常写入路径；更正以后走显式补偿事实，不改历史。Outbox 与 ledger 一一对应，事件 `AdImpressionCapturedV1` 使用 eventId=ledgerId，包含明确版本/来源/计价单位及关联业务 ID，金额为字符串、接受时间为 ISO-8601 字符串，不含 token 或认证主体。分区键为 advertiserId+预算日；S06 逐事件幂等投影，不因账户版本已前进而丢弃旧 ledger 事实。本片只持久化待发事件，禁止先发送 Kafka 后记账。
+
+ad V005 扩展 CAPTURED 状态与约束并新增 receipt、ledger、Outbox；不改 V001～V004。滚动启用先完成扩展迁移及全部 owner 二进制升级，再打开 receipts-enabled；旧二进制不能读取 CAPTURED，启用后不可直接回退到只认识 S03 状态的版本。回退停止新接受，保留新版查询、回收及后续 Outbox 处理，数据历史不得删除。engine 无新表。gateway 的发现/静态路由均补 `/api/sandbox/**` 到 engine，并明确 ADMIN 边界，作为两个 sandbox API 的最小运行接入；不改用户已有 Docker/启停文件。
+
+验收：真实 PG 同 ID/不同 ID 同资格并发只一账一事件；重复/改负载/错主体/错签名/未达政策/到期；账务写入、ledger、Outbox、结果任一步故障整体回滚；捕获与主动/到期释放竞争；锁等待跨过到期仍拒绝；跨日只动原账户；重建可查原 receipt/ledger/待发事件。RPC/HTTP 权限、精度、错误/未知结果和两模式一致，真实 broker 与浏览器由 S06/S07 证明。

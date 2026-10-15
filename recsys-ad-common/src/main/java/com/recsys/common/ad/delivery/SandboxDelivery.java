@@ -75,7 +75,15 @@ public final class SandboxDelivery {
     /** 资格载荷与持久化预占绑定，后续回执必须同时验证签名和数据库当前状态。 */
     public record Qualification(UUID operationId, UUID childId, String subject, long userId,
                                 long advertiserId, long adId, long creativeId, int slot, String amount,
-                                String trafficClass, String currency, String policy, Instant issuedAt, Instant expiresAt) {}
+                                String trafficClass, String currency, String policy, Instant issuedAt, Instant expiresAt) {
+        public Qualification {
+            requireIdentity(operationId, subject, userId); requireSlot(slot);
+            com.recsys.common.ad.billing.CnyAmount.parse(amount);
+            if (childId == null || advertiserId <= 0 || adId <= 0 || creativeId < 0 || issuedAt == null || expiresAt == null
+                    || !expiresAt.equals(issuedAt.plusSeconds(com.recsys.common.ad.billing.FrozenCpmQuote.TTL_SECONDS))
+                    || trafficClass == null || currency == null || policy == null) throw new IllegalArgumentException("资格快照不完整");
+        }
+    }
 
     /** 权限失败与负载冲突单独映射，不能归并为普通空候选。 */
     public static final class Conflict extends RuntimeException {

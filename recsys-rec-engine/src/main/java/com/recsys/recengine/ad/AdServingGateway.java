@@ -10,6 +10,7 @@ import java.util.UUID;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import java.time.Instant;
+import com.recsys.common.ad.billing.ImpressionReceipt;
 
 /**
  * 广告在线服务网关(rec-engine 侧的调用抽象)。屏蔽"进程内直调 vs 跨进程 gRPC"两种实现,
@@ -33,6 +34,12 @@ public interface AdServingGateway {
 
     /** 已提交原结果查询；空仅代表当前未观察到。 */
     Optional<Prepared> findSandboxPreparation(UUID id, String subject);
+
+    /** 新可见回执只通过 owner 原子捕获，不调用旧曝光/点击接口。 */
+    ImpressionReceipt.Result acceptSandboxImpression(ImpressionReceipt.Command command);
+
+    /** 同一 receiptId 的原结果查询，用于未知响应恢复。 */
+    Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject);
 
     /** 搜索广告:召回→竞价→GSP→曝光埋点,返回竞得赞助广告。 */
     SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,

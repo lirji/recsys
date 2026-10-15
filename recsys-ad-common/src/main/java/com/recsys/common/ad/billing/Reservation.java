@@ -7,8 +7,8 @@ import java.util.UUID;
 
 /** 预占首次决策与可演进当前状态分离；重复 prepare 不能把已释放义务重新占用。 */
 public record Reservation(Prepared prepared, State state, long version, Instant closedAt, String closeReason) {
-    /** 当前合法状态；捕获收费状态由后续账本切片扩展，首版无收费入口。 */
-    public enum State { HELD, REJECTED, RELEASED, EXPIRED }
+    /** 当前合法状态；捕获和释放只允许从 HELD 到一个终态。 */
+    public enum State { HELD, REJECTED, RELEASED, EXPIRED, CAPTURED }
     /** 首次命令结论永久保留，即使后来补预算也不能改变原拒绝。 */
     public enum Decision { HELD, INSUFFICIENT_BUDGET, QUOTE_EXPIRED, ACCOUNT_MISSING }
 

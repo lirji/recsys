@@ -109,6 +109,30 @@ public class ReservationRepository {
                 """, RESERVATION).stream().findFirst();
     }
 
+    /** 捕获只从 HELD 转移，和释放使用同一锁序；任何更新行数异常使整个回执事务回滚。 */
+    public BudgetAccount capture(Reservation reservation, BudgetAccount account, Instant acceptedAt) {
+        var held = reservation.prepared();
+        if (reservation.state() != Reservation.State.HELD || account.advertiserId() != held.advertiserId()
+                || !account.budgetDate().equals(held.budgetDate()) || !acceptedAt.isBefore(held.expiresAt())) {
+            throw new IllegalArgumentException("预占不可捕获或账户/期限不一致");
+        }
+        int changed = jdbc.update("""
+                UPDATE ad_budget_account SET held_amount=held_amount-?, charged_amount=charged_amount+?,
+                    version=version+1, updated_at=clock_timestamp()
+                WHERE traffic_class='SANDBOX' AND advertiser_id=? AND budget_date=? AND currency='CNY'
+                    AND version=? AND held_amount>=?
+                """, held.amount(), held.amount(), account.advertiserId(), account.budgetDate(), account.version(), held.amount());
+        if (changed != 1) throw new IllegalStateException("捕获账户未生效 reservationId=" + held.reservationId());
+        changed = jdbc.update("""
+                UPDATE ad_budget_reservation SET state='CAPTURED', close_reason='IMPRESSION_CAPTURED', closed_at=?,
+                    updated_at=clock_timestamp(), version=version+1
+                WHERE traffic_class='SANDBOX' AND reservation_id=? AND state='HELD' AND version=?
+                """, Timestamp.from(acceptedAt), held.reservationId(), reservation.version());
+        if (changed != 1) throw new IllegalStateException("捕获预占状态未生效 reservationId=" + held.reservationId());
+        return new BudgetAccount(account.advertiserId(), account.budgetDate(), account.limitAmount(),
+                account.heldAmount().subtract(held.amount()), account.chargedAmount().add(held.amount()), account.version()+1);
+    }
+
     /** 释放账户与预占终态一起提交；任一条件更新失败都抛异常回滚。 */
     public Reservation close(Reservation reservation, BudgetAccount account, Instant now) {
         var prepared = reservation.prepared();
