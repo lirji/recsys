@@ -60,3 +60,5 @@ SKILL_HANDOFF: frontend-implementation → implementation-validation → update-
 - ONNX 10 个模型自包含、Python/Java 共用的 10 个 golden 固件跨语言校验 PASS。`git diff --check` PASS；根级 formatter 缺失仍是既有限制。
 
 `clean` 前将本片浏览器证据复制到 `/tmp/recsys-s09-browser-evidence-archive/`，用户已有 `console/test-results/` 未清理。当前修复不改 UI，沿用已审查的 S09 视觉证据。修复通过后正常合并推送 main，继续 S10；远程结论随该提交核对。
+
+修复提交 `58767a4f9305aee8e2e07056eba2bcf142d65086` 已正常合并推送 main；远程 [CI 38682991597](https://github.com/lirji/recsys/actions/runs/38682991597) 的 build、money-chain、natural-exposure、sandbox browser 与 security-scan 全部 SUCCESS。

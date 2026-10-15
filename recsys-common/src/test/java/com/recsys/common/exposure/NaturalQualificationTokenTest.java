@@ -44,6 +44,13 @@ class NaturalQualificationTokenTest {
         assertEquals(POLICY, codec.verify(token).policy());
     }
 
+    @Test void feedKindPreservesFinalSlotWithoutChangingExistingGolden() {
+        var q=qualification(POLICY); var codec=new NaturalQualificationToken("old",Map.of("old",OLD));
+        var feed=new NaturalQualification(q.operationId(),q.qualificationId(),q.subject(),q.userId(),q.itemId(),49,
+                NaturalQualification.Kind.FEED,q.trafficClass(),"feed",q.bucket(),q.contentHash(),q.policy(),q.issuedAt(),q.expiresAt());
+        assertEquals(feed,codec.verify(codec.sign(feed))); assertNotEquals(codec.sign(q),codec.sign(feed));
+    }
+
     @Test void oldKeyCanVerifyDuringRotationButVerifierCannotIssue() {
         var old = new NaturalQualificationToken("old", Map.of("old", OLD));
         var rotating = new NaturalQualificationToken("new", Map.of("old", OLD, "new", NEW));

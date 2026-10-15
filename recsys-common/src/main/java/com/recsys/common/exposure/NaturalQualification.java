@@ -21,8 +21,8 @@ public record NaturalQualification(
         return policy;
     }
 
-    /** 稳定协议码，不使用 ordinal；尚不承载 S10 的最终 feed 位置。 */
-    public enum Kind { RECOMMEND, SEARCH }
+    /** 稳定协议码，不使用 ordinal；FEED 明确最终混排位置，旧两种编码不变。 */
+    public enum Kind { RECOMMEND, SEARCH, FEED }
     /** 首版只允许 sandbox，不能由客户端升级为正式样本来源。 */
     public enum Traffic { SANDBOX }
 

@@ -57,6 +57,17 @@ public class InProcessAdServingGateway implements AdServingGateway {
     }
 
     @Autowired
+    private ObjectProvider<com.recsys.ad.billing.FeedCandidateService> feedCandidates;
+
+    /** 未启用新准入只向 engine 报不可用，不借用旧 Redis 计数放行。 */
+    @Override
+    public List<Candidate> sandboxFeedCandidates(Query query) {
+        var service=feedCandidates==null?null:feedCandidates.getIfAvailable();
+        if(service==null) throw new IllegalStateException("sandbox feed 候选未启用");
+        return service.candidates(query);
+    }
+
+    @Autowired
     private ObjectProvider<ImpressionReceiptService> impressions;
 
     /** 回执开关关闭时拒绝调用，不能回落到旧计费。 */

@@ -26,10 +26,10 @@ import { toApiError } from '../../api/client';
 import { useAuth } from '../../hooks/useAuth';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import { useRequestHistory, type HistoryEntry } from '../../hooks/useRequestHistory';
-import { useVisibleExposure, type MeasurementPhase } from '../../hooks/useVisibleExposure';
+import { type MeasurementPhase } from '../../hooks/useVisibleExposure';
 import ExposureScope, { useExposureScope } from '../../components/exposure/ExposureScope';
 import ReceiptStatus from '../../components/exposure/ReceiptStatus';
-import { receiptQueue } from '../../exposure/receiptQueue';
+import AdCreative from '../../components/exposure/AdCreative';
 import { exposureEpoch, onExposureRevoked } from '../../exposure/identity';
 import PageHeader from '../../components/PageHeader';
 import HistoryDrawer from '../../components/debug/HistoryDrawer';
@@ -43,50 +43,6 @@ interface Intent {
   input: SandboxDeliveryInput;
   createdAt: number;
   scope: string;
-}
-function Creative({
-  item,
-  enabled,
-  status,
-}: {
-  item: SandboxAdItem;
-  enabled: boolean;
-  status: (value: MeasurementPhase) => void;
-}) {
-  const preparation = item.preparation;
-  const { ref, phase } = useVisibleExposure(
-    enabled && !!item.title?.trim() && preparation?.status === PreparationStatus.QUALIFIED,
-    preparation?.expiresAt ?? null,
-    (duration, ratio) =>
-      !!preparation?.qualificationToken &&
-      !!receiptQueue().enqueue(item.childId, preparation.expiresAt!, {
-        qualificationToken: preparation.qualificationToken,
-        visibleDurationMs: duration,
-        minVisibleRatioBps: ratio,
-        pageVisible: true,
-      }),
-  );
-  useEffect(() => status(item.title?.trim() ? phase : 'unavailable'), [phase, status, item.title]);
-  return (
-    <div>
-      <div
-        ref={ref}
-        data-testid={`creative-${item.slot}`}
-        style={{
-          minHeight: 84,
-          padding: 16,
-          border: '1px solid #d9e2f2',
-          borderRadius: 8,
-          background: '#fff',
-        }}
-      >
-        <Typography.Text strong>{item.title || '创意内容缺失'}</Typography.Text>
-      </div>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-        广告 {item.adId} · 创意 {item.creativeId}
-      </Typography.Text>
-    </div>
-  );
 }
 function SandboxPage() {
   const identity = useExposureScope();
@@ -232,7 +188,7 @@ function SandboxPage() {
       key: 'creative',
       width: 300,
       render: (_, item) => (
-        <Creative
+        <AdCreative
           item={item}
           enabled={
             !!identity && !drawerOpen && !compareOpen && delivery?.state === DeliveryState.COMPLETE

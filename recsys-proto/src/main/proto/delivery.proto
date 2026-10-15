@@ -9,6 +9,8 @@ import "google/protobuf/timestamp.proto";
 // sandbox 专用边界，要求可信 engine 身份；所有写请求用原 child_id 恢复。
 service SandboxDeliveryService {
   rpc Candidates(CandidateQuery) returns (CandidateReply);
+  // feed 专用纯候选先经已接受账本频控；旧服务未实现时只允许自然降级。
+  rpc FeedCandidates(CandidateQuery) returns (CandidateReply);
   rpc Prepare(PrepareDelivery) returns (PreparedDelivery);
   rpc GetPreparation(GetPreparationRequest) returns (PreparedDelivery);
 }

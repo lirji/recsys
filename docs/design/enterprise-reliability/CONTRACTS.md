@@ -184,3 +184,9 @@ common 的 TEXT_POLICY_V1 为已批准值；engine/behavior 正式配置装配�
 ## C09：自然浏览器（ER-S09）
 
 冻结范围与执行决策见 [C09_DESIGN](C09_DESIGN.md)，沿用已批准 PLAN/REVIEW，不改变 C08-B HTTP 或 C08-C 政策。/recommend、/search 通过默认关闭构建开关接显式新交付、原操作恢复和自然可见回执；ID 字符串，冻结文本/原请求，历史对比只读脱敏。两协议共享有界恢复算法，独立类型/存储/100 条与 2 并发预算；自然无金额字段。验收覆盖共享广告回归与隔离 PG 的浏览器完整路径，S15 之前仅持久化自然 Outbox。
+
+## C10：最终 Feed 混排交付（ER-S10）
+
+正式冻结细节见 [C10_DESIGN](C10_DESIGN.md)。仅 sandbox ADMIN `PUT/GET /api/sandbox/feed-deliveries/{operationId}`；固定原请求/混排配置，最终位置持久化后才准备广告。自然资格新增稳定 kind=FEED，仍为原自然图文政策；旧自然交付端点只接 RECOMMEND/SEARCH。先升级验证端，再启用新签发。自然/广告混排去重，广告位沿用1～10，列表1～50。engine V003 固定完整计划及自然票据，只允许原广告准备结果单调补齐；PREPARING 可返回已冻结自然和已确认广告，未知项占位不采集。纯候选故障可冻结全自然，prepare未知只能恢复原child/slot，禁止重混排。
+
+新增纯 `FeedCandidates` RPC 与同进程入口，ad owner 基于 sandbox 唯一接受账本进行当日频控；ad V007索引，准入过滤不冒充严格并发频次上限。预算硬上限、收费、资格/回执、自然Outbox归属均不变。新能力与页面默认关闭，复用两条有界队列和既有独立前端规划，不改变旧收费路径或生产部署状态。

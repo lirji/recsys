@@ -103,6 +103,10 @@ class NaturalExposureBrowserAcceptanceTest {
     }
     static class State {
         final JdbcTemplate behavior;
+        final JdbcTemplate engine;
+        final DriverManagerDataSource engineDs;
+        final ContentGateway content;
+        final NaturalQualificationToken tokens;
         final NaturalDeliveryService delivery;
         final NaturalReceiptService receipt;
         final RecommendOrchestrator recommender=mock(RecommendOrchestrator.class);
@@ -112,9 +116,9 @@ class NaturalExposureBrowserAcceptanceTest {
             new java.security.SecureRandom().nextBytes(key);
             var admin=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
             admin.execute("CREATE SCHEMA browser_natural_engine");admin.execute("CREATE SCHEMA browser_natural_behavior");
-            var engineDs=new DriverManagerDataSource(pg.getJdbcUrl()+"&currentSchema=browser_natural_engine",pg.getUsername(),pg.getPassword());
+            engineDs=new DriverManagerDataSource(pg.getJdbcUrl()+"&currentSchema=browser_natural_engine",pg.getUsername(),pg.getPassword());
             var behaviorDs=new DriverManagerDataSource(pg.getJdbcUrl()+"&currentSchema=browser_natural_behavior",pg.getUsername(),pg.getPassword());
-            var engine=new JdbcTemplate(engineDs);behavior=new JdbcTemplate(behaviorDs);
+            engine=new JdbcTemplate(engineDs);behavior=new JdbcTemplate(behaviorDs);
             migrate(engineDs,DeliveryOperationRepository.MIGRATION,DeliveryOperationRepository.migrationSha256());
             migrate(engineDs,NaturalDeliveryRepository.MIGRATION,NaturalDeliveryRepository.migrationSha256());
             migrate(behaviorDs,NaturalReceiptRepository.MIGRATION,NaturalReceiptRepository.migrationSha256());
@@ -134,11 +138,11 @@ class NaturalExposureBrowserAcceptanceTest {
                         (rs,n)->new RecommendItem(rs.getLong(1),0.9-n*0.1,List.of("HOT"),null),r.query(),"%"+r.query()+"%",r.size());
                 return new RecommendOrchestrator.NaturalCandidates(new RecommendResponse(r.userId(),r.scene(),items,"browser-trace"),"sandbox:first");
             });
-            ContentGateway content=ids->{
+            content=ids->{
                 var all=engine.query("SELECT * FROM browser_natural_seed ORDER BY item_id",(rs,n)->new Item(rs.getLong("item_id"),rs.getString("title"),rs.getString("category"),List.of(),rs.getString("description"),1));
                 var result=new HashMap<Long,Item>();all.stream().filter(i->ids.contains(i.itemId())).forEach(i->result.put(i.itemId(),i));return result;
             };
-            var tokens=new NaturalQualificationToken("browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
+            tokens=new NaturalQualificationToken("browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
             var operations=new NaturalDeliveryRepository(engine,JSON);operations.verifySchema();
             var receipts=new NaturalReceiptRepository(behavior,JSON);receipts.verifySchema();
             delivery=new NaturalDeliveryService(operations,recommender,content,tokens,NaturalQualification.TEXT_POLICY_V1,true);

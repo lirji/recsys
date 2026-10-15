@@ -21,13 +21,19 @@ import static org.mockito.Mockito.*;
 class SandboxDeliveryGrpcTest {
     static final String SECRET = "sandbox-delivery-test-only-secret";
     SandboxPreparationService service;
+    com.recsys.ad.billing.FeedCandidateService feedOwner;
     Server server;
     ManagedChannel channel;
     SandboxDeliveryServiceGrpc.SandboxDeliveryServiceBlockingStub stub;
     Prepare request = new Prepare(UUID.randomUUID(), "admin", 1, UUID.randomUUID(), 2, "opaque-test-offer");
     @BeforeEach void start() throws Exception {
         service = mock(SandboxPreparationService.class);
-        server = ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(new SandboxDeliveryGrpcService(service, "recsys-rec-engine"),
+        feedOwner=mock(com.recsys.ad.billing.FeedCandidateService.class);
+        org.springframework.beans.factory.ObjectProvider<com.recsys.ad.billing.FeedCandidateService> feedProvider=mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(feedProvider.getIfAvailable()).thenReturn(feedOwner);
+        var boundary=new SandboxDeliveryGrpcService(service,"recsys-rec-engine");
+        org.springframework.test.util.ReflectionTestUtils.setField(boundary,"feedCandidates",feedProvider);
+        server = ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(boundary,
                 new InternalAuthGrpcServerInterceptor("x-internal-token", SECRET, false))).build().start();
         channel = ManagedChannelBuilder.forAddress("localhost", server.getPort()).usePlaintext().build();
         stub = SandboxDeliveryServiceGrpc.newBlockingStub(channel).withDeadlineAfter(5, TimeUnit.SECONDS);
@@ -64,6 +70,17 @@ class SandboxDeliveryGrpcTest {
         var error = assertThrows(StatusRuntimeException.class, () -> trusted.prepare(DeliveryProtoMapper.toProto(request)));
         assertEquals(Status.Code.UNAVAILABLE, error.getStatus().getCode()); assertFalse(error.getMessage().contains("sensitive"));
         code(Status.Code.NOT_FOUND, () -> trusted.getPreparation(GetPreparationRequest.newBuilder().setChildId(request.childId().toString()).setSubject("admin").build()));
+    }
+    @Test void feedCandidateRpcIsAuthenticatedAndPreservesPayloadOrExplicitFailure() {
+        var query=new Query(UUID.randomUUID(),"admin",Long.MAX_VALUE,new StructuredQuery("q","q",null,null,null,null),3,"feed","bucket",.1);
+        var wire=DeliveryProtoMapper.toProto(query);
+        code(Status.Code.UNAUTHENTICATED,()->stub.feedCandidates(wire));
+        code(Status.Code.PERMISSION_DENIED,()->as("recsys-advertiser").feedCandidates(wire)); verifyNoInteractions(feedOwner);
+        var ad=new com.recsys.common.ad.SponsoredAd(1,Long.MAX_VALUE-1,2,0,"正文",com.recsys.common.ad.AdChannel.KW_EXACT,1,1,1,1,1,1,1,1,0,"CPM");
+        var c=new Candidate(UUID.randomUUID(),ad,"opaque-offer"); when(feedOwner.candidates(query)).thenReturn(List.of(c));
+        assertEquals(List.of(c),as("recsys-rec-engine").feedCandidates(wire).getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList());
+        when(feedOwner.candidates(any())).thenThrow(new IllegalStateException("sensitive SQL"));
+        code(Status.Code.UNAVAILABLE,()->as("recsys-rec-engine").feedCandidates(wire)); verifyNoInteractions(service);
     }
     @Test void pureQueryFailureMustNotBecomeEmptySuccessfulResponse() {
         var query = new Query(UUID.randomUUID(), "admin", 1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", "b", .1);

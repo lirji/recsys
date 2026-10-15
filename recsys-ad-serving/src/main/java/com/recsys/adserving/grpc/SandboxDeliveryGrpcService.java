@@ -34,6 +34,19 @@ public class SandboxDeliveryGrpcService extends SandboxDeliveryServiceGrpc.Sandb
         respond(observer, () -> CandidateReply.newBuilder().addAllCandidates(service.candidates(DeliveryProtoMapper.fromProto(request))
                 .stream().map(DeliveryProtoMapper::toProto).toList()).build());
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.recsys.ad.billing.FeedCandidateService> feedCandidates;
+
+    /** 与已有方法使用相同可信 engine 身份校验；owner 缺能力时必须传播失败。 */
+    @Override
+    public void feedCandidates(CandidateQuery request, StreamObserver<CandidateReply> observer) {
+        respond(observer, () -> {
+            var owner=feedCandidates==null?null:feedCandidates.getIfAvailable();
+            if(owner==null) throw Status.UNAVAILABLE.withDescription("sandbox feed 候选未启用").asRuntimeException();
+            return CandidateReply.newBuilder().addAllCandidates(owner.candidates(DeliveryProtoMapper.fromProto(request))
+                    .stream().map(DeliveryProtoMapper::toProto).toList()).build();
+        });
+    }
     /** 超时结果未知，调用方保留原操作 ID。 */
     @Override
     public void prepare(PrepareDelivery request, StreamObserver<PreparedDelivery> observer) {

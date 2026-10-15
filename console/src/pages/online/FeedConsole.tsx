@@ -17,9 +17,19 @@ import { channelColor } from '../../components/explain/channelColors';
 import { ACCENTS, BRAND, STATUS, hexOfPreset } from '../../theme/tokens';
 import TracePanel from '../../components/explain/TracePanel';
 
+import SandboxFeedConsole from './SandboxFeedConsole';
+
 type FeedParams = { userId: number; size: number; scene: string; q: string };
 
 export default function FeedConsole() {
+  return import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' ? (
+    <SandboxFeedConsole />
+  ) : (
+    <LegacyFeedConsole />
+  );
+}
+
+function LegacyFeedConsole() {
   const { applied, setApplied, userId, scene } = useDebugParams<FeedParams>({
     userId: 1,
     size: 12,

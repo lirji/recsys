@@ -28,7 +28,7 @@ class NaturalDeliveryControllerTest {
     }
     @Test void strictRequestRejectsNumericIdsFractionalSizesUnknownKindAndClientAttribution() throws Exception {
         for(String invalid:List.of(body.replace("\"9223372036854775807\"","9223372036854775807"),body.replace("\"size\":2","\"size\":1.2"),
-                body.replace("\"size\":2","\"size\":51"),body.replace("SEARCH","RECOMMEND"),body.replace("SEARCH","UNKNOWN"),body.replace("}",",\"bucket\":\"fake\"}"))) {
+                body.replace("\"size\":2","\"size\":51"),body.replace("SEARCH","RECOMMEND"),body.replace("SEARCH","UNKNOWN"),body.replace("SEARCH","FEED"),body.replace("}",",\"bucket\":\"fake\"}"))) {
             mvc.perform(put(path).principal(admin).contentType("application/json").content(invalid)).andExpect(status().isBadRequest());
         }
         verifyNoInteractions(service);

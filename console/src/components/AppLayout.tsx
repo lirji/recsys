@@ -390,9 +390,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ((import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' &&
       location.pathname === '/search-ads') ||
       (import.meta.env.VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED === 'true' &&
-        ['/recommend', '/search'].includes(location.pathname))) &&
+        ['/recommend', '/search'].includes(location.pathname)) ||
+      (import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' && location.pathname === '/feed')) &&
     !screens.md;
-  const debugContext = showsDebugContext(location.pathname) && !sandboxNarrow;
+  // 混排结果绑定页面内的原请求，顶栏可编辑 userId 不参与该请求，避免形成两个输入来源。
+  const sandboxFeed = import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' && location.pathname === '/feed';
+  const debugContext = showsDebugContext(location.pathname) && !sandboxNarrow && !sandboxFeed;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

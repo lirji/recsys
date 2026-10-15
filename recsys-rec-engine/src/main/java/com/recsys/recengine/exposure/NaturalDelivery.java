@@ -16,7 +16,7 @@ public final class NaturalDelivery {
     public record Request(UUID operationId, String subject, long userId, NaturalQualification.Kind kind, int size, String scene, String query) {
         public Request {
             Objects.requireNonNull(operationId); NaturalReceipt.validateSubject(subject); Objects.requireNonNull(kind);
-            if (userId <= 0 || size < 1 || size > NaturalQualification.MAX_SLOTS || scene == null || scene.isBlank() || scene.length() > 100
+            if (kind == NaturalQualification.Kind.FEED || userId <= 0 || size < 1 || size > NaturalQualification.MAX_SLOTS || scene == null || scene.isBlank() || scene.length() > 100
                     || (kind == NaturalQualification.Kind.SEARCH ? query == null || query.isBlank() || query.length() > 500 : query != null)) {
                 throw new IllegalArgumentException("自然交付请求非法");
             }

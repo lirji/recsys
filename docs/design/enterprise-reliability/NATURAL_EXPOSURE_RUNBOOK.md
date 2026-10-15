@@ -36,7 +36,7 @@ engine primary PG 保存整次交付、原请求/政策、最终文本/位置/�
 
 行为事务按 receipt 唯一键→qualification 锁排序，锁后取 clock_timestamp，5 秒事务/语句上限、4 秒锁等待上限。资格锁竞争跨过期限仍拒绝；事实、Outbox、原结果整体提交。提交时约束拒绝 PENDING 半成品及缺失 Outbox，复合 FK 绑定 canonical receipt/acceptedAt。事实、资格和终态不可 UPDATE/DELETE；不能通过改历史补偿。单条外部持久化失败/未知由原 ID 恢复，不访问 MQ/Redis。
 
-Outbox 本片仅持久化，没有发布器。`published_at` 保持空且当前版本禁止修改；S15 用新迁移与可靠发布协议演进，不能拿事件落表宣称已到 Kafka。S09 已接入 /recommend、/search 浏览器采集，构建开关默认关闭；feed 仍由 S10 接入。
+Outbox 本片仅持久化，没有发布器。`published_at` 保持空且当前版本禁止修改；S15 用新迁移与可靠发布协议演进，不能拿事件落表宣称已到 Kafka。S09 已接入 /recommend、/search 浏览器采集；S10 已实现 feed 最终位置与双回执，见 [混排运行说明](FEED_EXPOSURE_RUNBOOK.md)，构建开关均默认关闭。
 
 ## 检查与保留
 

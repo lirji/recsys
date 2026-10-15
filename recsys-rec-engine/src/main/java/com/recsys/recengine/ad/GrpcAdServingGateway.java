@@ -62,6 +62,12 @@ public class GrpcAdServingGateway implements AdServingGateway {
         return deliveryStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream()
                 .map(DeliveryProtoMapper::fromProto).toList();
     }
+    /** 新方法保持公共 deadline interceptor 的边界，不把 UNIMPLEMENTED 伪装为成功候选。 */
+    @Override
+    public List<Candidate> sandboxFeedCandidates(Query query) {
+        return deliveryStub.feedCandidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream()
+                .map(DeliveryProtoMapper::fromProto).toList();
+    }
     @Override
     public Prepared prepareSandbox(
             Prepare request) {

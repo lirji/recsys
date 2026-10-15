@@ -74,6 +74,16 @@ class NaturalReceiptPostgresTest {
         assertEquals(300000,java.time.Duration.between(q.issuedAt(),q.expiresAt()).toMillis());
     }
 
+    @Test void feedFinalPositionIsPreservedInFactAndOutboxWithoutMoney() throws Exception {
+        var template=qualification(60000);
+        var q=new NaturalQualification(template.operationId(),template.qualificationId(),template.subject(),template.userId(),template.itemId(),11,
+                NaturalQualification.Kind.FEED,template.trafficClass(),"feed",template.bucket(),template.contentHash(),template.policy(),template.issuedAt(),template.expiresAt());
+        assertEquals(Status.ACCEPTED,service(repository).accept(command(q)).status()); assertOneFact(q);
+        var event=JSON.readTree(jdbc.queryForObject("SELECT payload_json FROM natural_impression_outbox WHERE event_id=?",String.class,q.qualificationId()));
+        assertEquals("FEED",event.path("kind").textValue()); assertEquals(11,event.path("slot").intValue());
+        assertEquals(q.operationId().toString(),event.path("operationId").textValue()); assertFalse(event.has("amount"));
+    }
+
     @Test void sameReceiptConcurrentAndRebuiltServiceReturnExactOriginal() throws Exception {
         var q = qualification(60000); var c = command(q);
         List<Result> results = concurrent(Collections.nCopies(8, c));

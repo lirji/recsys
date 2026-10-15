@@ -117,32 +117,36 @@ export function validateNaturalDelivery(
   const qualifications = new Set<string>();
   const items = new Set<string>();
   for (const [index, item] of view.items.entries()) {
-    if (
-      !item ||
-      item.slot !== index + 1 ||
-      !positiveLong(item.itemId) ||
-      items.has(item.itemId) ||
-      !naturalUuid(item.qualificationId) ||
-      qualifications.has(item.qualificationId) ||
-      !textWithin(item.qualificationToken, 16384) ||
-      !item.qualificationToken.startsWith('nq1.') ||
-      !textWithin(item.title, 2000) ||
-      !item.title.trim() ||
-      !textWithin(item.category, 200) ||
-      !textWithin(item.description, 16000) ||
-      (item.reason !== null && !textWithin(item.reason, 4000)) ||
-      !Number.isFinite(item.score) ||
-      !Array.isArray(item.recallFrom) ||
-      item.recallFrom.length > 50 ||
-      item.recallFrom.some((s) => !textWithin(s, 100)) ||
-      !/^[0-9a-f]{64}$/.test(item.contentHash) ||
-      !Number.isFinite(Date.parse(item.issuedAt)) ||
-      Date.parse(item.expiresAt) - Date.parse(item.issuedAt) !== NATURAL_TEXT_POLICY.ttlMs
-    )
-      throw new Error('自然交付内容或资格不完整，未开始采集');
+    validateNaturalItem(item, index + 1);
+    if (items.has(item.itemId) || qualifications.has(item.qualificationId))
+      throw new Error('自然交付身份重复，未开始采集');
     qualifications.add(item.qualificationId);
     items.add(item.itemId);
   }
+}
+/** 自然独立列表和 feed 均验证完整正文；位置由各自最终计划给定。 */
+export function validateNaturalItem(item: NaturalItem, slot: number) {
+  if (
+    !item ||
+    item.slot !== slot ||
+    !positiveLong(item.itemId) ||
+    !naturalUuid(item.qualificationId) ||
+    !textWithin(item.qualificationToken, 16384) ||
+    !item.qualificationToken.startsWith('nq1.') ||
+    !textWithin(item.title, 2000) ||
+    !item.title.trim() ||
+    !textWithin(item.category, 200) ||
+    !textWithin(item.description, 16000) ||
+    (item.reason !== null && !textWithin(item.reason, 4000)) ||
+    !Number.isFinite(item.score) ||
+    !Array.isArray(item.recallFrom) ||
+    item.recallFrom.length > 50 ||
+    item.recallFrom.some((s) => !textWithin(s, 100)) ||
+    !/^[0-9a-f]{64}$/.test(item.contentHash) ||
+    !Number.isFinite(Date.parse(item.issuedAt)) ||
+    Date.parse(item.expiresAt) - Date.parse(item.issuedAt) !== NATURAL_TEXT_POLICY.ttlMs
+  )
+    throw new Error('自然交付内容或资格不完整，未开始采集');
 }
 export async function putNaturalDelivery(
   id: string,

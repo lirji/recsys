@@ -28,6 +28,9 @@ public interface AdServingGateway {
     List<Candidate> sandboxCandidates(
             Query query);
 
+    /** feed 独立准入，不能用旧候选/旧收费 fallback 绕过可信频控。 */
+    List<Candidate> sandboxFeedCandidates(Query query);
+
     /** 原 childId 准备，不能使用旧响应即收费路径。 */
     Prepared prepareSandbox(
             Prepare request);
