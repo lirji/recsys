@@ -58,7 +58,7 @@ class ClickOnlineFixture implements AutoCloseable {
                 BEGIN NEW.issued_at=NEW.issued_at-interval '2 seconds';NEW.expires_at=NEW.expires_at-interval '2 seconds';RETURN NEW;END;$$;
                 CREATE TRIGGER test_click_clock BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_clock();
                 """);
-        quotes=new ClickQuoteRepository(ad);preparationRepository=new PreparationRepository(ad,JSON,ChargeMode.CLICK);
+        quotes=new ClickQuoteRepository(ad);preparationRepository=new PreparationRepository(sessions,JSON,ChargeMode.CLICK);
         settlements=new ClickSettlementService(new ClickSettlementRepository(ad,JSON),quotes,new ReservationRepository(sessions),tokens,
                 transactions(adDs),true,true,new ClickSettlementService.FraudPolicy(true,20));
         preparations=new ClickPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);

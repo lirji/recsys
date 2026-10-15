@@ -75,7 +75,7 @@ class FeedDeliveryPostgresTest {
         budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),adSource,5);
         reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         reservationService=new ReservationService(reservations,quotes,transactions(),true);
-        preparations=new PreparationRepository(adDb,JSON); receipts=new ImpressionReceiptRepository(adDb,JSON);
+        preparations=new PreparationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON); receipts=new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON);
         adTokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         naturalTokens=new NaturalQualificationToken("test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         owner=new SandboxPreparationService(mock(AdPipeline.class),preparations,quotes,reservationService,adTokens);

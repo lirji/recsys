@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b报价/预占DONE/PASS，验证完整，待本批Git交付。下一片MP08c。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c DONE/PASS，MP08整体完成。当前准备本批Git交付，随后MP09点击报价。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -14,7 +14,7 @@
 
 ## 已完成
 
-- MP08a预算账户/命令完成，见MP08A_RESULT。
+- MP08预算、CPM报价/预占、准备/回执全部完成，见MP08A_RESULT、MP08B_RESULT、MP08C_RESULT。
 
 - MP07b MMR/DPP向量查询完成，MP07整体DONE，见MP07B_RESULT。
 
@@ -54,13 +54,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP07已完成；MP08～MP15及追加统一错误码目标未完成。
+- MP00～MP08已完成；MP09～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP08b：报价/预占Mapper/XML、Repository/配置及跨模块测试宿主，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP08c：准备/回执Mapper/XML、Repository/配置及跨模块测试宿主，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,8 +79,8 @@ MP01～MP03已交付。当前MP08b：报价/预占Mapper/XML、Repository/配置
 
 ## 下一步
 
-1. MP08a已交付b7853b47，MP08b已验证通过，正常提交/ff合并/push。
-2. 继续MP08c～MP15，全部SQL完成后处理统一错误码。
+1. MP08c已验证完成，正常提交/ff合并/push，然后MP09a。
+2. 继续MP09～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -148,3 +148,11 @@ DONE/PASS，见MP08A_RESULT；27源文件，最终指纹cb8cf4cb62e62a84158e5da2
 ## MP08b最终验证
 
 DONE/PASS，见MP08B_RESULT。25源文件指纹f63df6b52a2bda1dc9f20efaf0e25f3ba8c412a4be76088aa705addbe4893853；旧/新专项23项、完整资金链369项/68类、sandbox浏览器4项、混排5项、推荐宿主3项全部通过，全仓24 reactor编译与hygiene通过。45历史SQL/8保护文件不变。MP08a远程CI38726514355全绿。本批Git后继续MP08c准备/回执：本次money-chain可作为迁移前基线；Preparation的三种固定表、独立提交/5秒查询超时、原ID恢复和首次结果不覆盖必须保持；Receipt的四份事实同事务、可空时间/ID与半成品拒绝需保护。
+
+## MP08c迁移前保护
+
+复用MP08b完整资金链369项基线，另新增未完成准备的主体/请求校验、PENDING回执在空字段映射前拒绝。四套准备/回执PG专项旧实现通过，日志/tmp/recsys-mp08c-before.log。迁移全部固定模式准备SQL和CPM回执/账本/Outbox写入，保留Prepared JSON文本、首次结果、查询超时5秒及同库回滚。
+
+## MP08c最终验证
+
+DONE/PASS，MP08整体完成。23源文件指纹8b86c433e636bb540a70472e6c2c2a1b3a179787aef4a033c2a682e292480d21；旧/新专项38项，新增锁超时兼容测试后准备9项通过，最终全仓24 reactor资金链372项/68类全通过；sandbox4/feed5浏览器、推荐宿主3项通过，hygiene无阻塞。最初超时异常预期错误，现直接对照旧JdbcTemplate确认相同异常类别和SQLSTATE57014，产品逻辑未改。45历史SQL/8保护文件不变。MP08b CI38728391213已SUCCESS。Git后继续MP09a ClickQuoteRepository/Configuration，装配ClickEventConfiguration及全部构造调用；保持CPC/OCPC价格/摘要/五分钟期限、位置冲突优先于过期、主体先校验与5秒超时。当前完整资金链可作为旧实现基线。

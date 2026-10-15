@@ -32,6 +32,7 @@ class PreparationPostgresTest {
     static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
     static DriverManagerDataSource ds;
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static CpmQuoteRepository quotes;
     static ReservationService reservations;
     static PreparationRepository repository;
@@ -40,13 +41,14 @@ class PreparationPostgresTest {
     static SandboxPreparationService service;
     @BeforeAll static void setup() throws Exception {
         ds = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()); jdbc = new JdbcTemplate(ds);
+        sessions = new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"));
         for (String migration : List.of(BudgetRepository.MIGRATION, CpmQuoteRepository.MIGRATION, ReservationRepository.MIGRATION, PreparationRepository.MIGRATION)) {
             try (var c = ds.getConnection(); var stmt = c.createStatement()) {
                 stmt.execute("SET recsys.migration_sha256 = '" + BudgetRepository.migrationSha256(migration) + "'");
                 ScriptUtils.executeSqlScript(c, new ClassPathResource(migration));
             }
         }
-        quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); repository = new PreparationRepository(jdbc, JSON); repository.verifySchema();
+        quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); repository = new PreparationRepository(sessions, JSON); repository.verifySchema();
         reservations = new ReservationService(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), quotes, BudgetConfiguration.transactions(ds, 5), true);
         tokens = new DeliveryTokenCodec(JSON, "test", Map.of("test", Base64.getEncoder().encodeToString(new byte[32])));
         budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
@@ -72,7 +74,7 @@ class PreparationPostgresTest {
             for (int i = 0; i < 8; i++) futures.add(executor.submit(() -> service.prepare(request)));
             var result = futures.getFirst().get(10, TimeUnit.SECONDS);
             for (var f : futures) assertEquals(result, f.get(10, TimeUnit.SECONDS));
-            assertEquals(result, fresh(new PreparationRepository(jdbc, JSON)).prepare(request));
+            assertEquals(result, fresh(new PreparationRepository(sessions, JSON)).prepare(request));
             assertEquals(Status.QUALIFIED, result.status());
             var qualification = tokens.verify(result.qualificationToken(), "qualification", Qualification.class);
             assertEquals(request.operationId(), qualification.operationId()); assertEquals(request.childId(), qualification.childId());
@@ -84,7 +86,7 @@ class PreparationPostgresTest {
     }
     @Test void failureAfterHoldRecoversWithoutAnotherHoldOrTtlExtension() {
         var request = request("10", repository.now().plusSeconds(300));
-        var failing = new PreparationRepository(jdbc, JSON) {
+        var failing = new PreparationRepository(sessions, JSON) {
             @Override public Prepared complete(Prepared result, String subject) { throw new IllegalStateException("injected lost result"); }
         };
         assertThrows(IllegalStateException.class, () -> fresh(failing).prepare(request));
@@ -132,6 +134,49 @@ class PreparationPostgresTest {
         assertEquals(Status.QUOTE_EXPIRED, result.status());
         assertEquals(expired.expiresAt(), result.expiresAt());
         assertEquals(Reservation.State.REJECTED, reservations.find(request.childId(), "admin").orElseThrow().state());
+    }
+
+    /** 未完成的检查点仍有主体和不可变请求，不能因结果为空跳过鉴权或冲突判断。 */
+    @Test void unfinishedCheckpointKeepsSubjectAndOriginalRequestGuards() {
+        var request = request("10", repository.now().plusSeconds(300));
+        repository.claim(request);
+        assertTrue(repository.find(request.childId(), "admin").isEmpty());
+        assertTrue(repository.original(request).isEmpty());
+        assertThrows(Reservation.AccessDenied.class, () -> repository.find(request.childId(), "other"));
+        assertThrows(Conflict.class, () -> repository.original(new Prepare(request.operationId(), request.subject(),
+                request.userId(), request.childId(), request.slot() + 1, request.offerToken())));
+        var completed = service.prepare(request);
+        assertEquals(completed, repository.original(request).orElseThrow());
+        assertEquals(completed, repository.find(request.childId(), "admin").orElseThrow());
+    }
+
+    /** 真实行锁阻塞证明原查询超时仍生效，取消后不能留下伪完成结果。 */
+    @Test void checkpointWriteTimesOutOnLockAndCanResumeAfterRelease() throws Exception {
+        var request = request("10", repository.now().plusSeconds(300));
+        repository.claim(request);
+        var result = new Prepared(request.childId(), Status.OFFER_EXPIRED, "0.000000", "", null);
+        try (var connection = ds.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var statement = connection.prepareStatement("SELECT child_id FROM ad_delivery_preparation WHERE child_id=? FOR UPDATE")) {
+                statement.setObject(1, request.childId());
+                try (var rows = statement.executeQuery()) { assertTrue(rows.next()); }
+                // 直接对照迁移前JdbcTemplate，不能假定PG取消一定映射成QueryTimeoutException。
+                var legacy = new JdbcTemplate(ds); legacy.setQueryTimeout(5);
+                var before = assertTimeoutPreemptively(Duration.ofSeconds(12), () ->
+                        assertThrows(org.springframework.dao.DataAccessException.class, () -> legacy.update(
+                                "UPDATE ad_delivery_preparation SET result_json=?,completed_at=clock_timestamp() WHERE child_id=? AND result_json IS NULL",
+                                JSON.writeValueAsString(result), request.childId())));
+                var after = assertTimeoutPreemptively(Duration.ofSeconds(12), () ->
+                        assertThrows(before.getClass(), () -> repository.complete(result, "admin")));
+                assertEquals("57014", ((java.sql.SQLException) before.getMostSpecificCause()).getSQLState());
+                assertEquals("57014", ((java.sql.SQLException) after.getMostSpecificCause()).getSQLState());
+                assertTrue(repository.find(request.childId(), "admin").isEmpty());
+            } finally {
+                connection.rollback();
+            }
+        }
+        assertEquals(result, repository.complete(result, "admin"));
+        assertEquals(result, repository.original(request).orElseThrow());
     }
 
     @Test void ownerRejectsOuterTransactionsAndEveryColumnHasComment() {

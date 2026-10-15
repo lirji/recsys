@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.PreparationMapper">
+    <resultMap id="result" type="com.recsys.ad.persistence.mapper.addb.PreparationMapper$StoredResult">
+        <constructor><arg column="subject_key" javaType="string"/><arg column="result_json" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="original" type="com.recsys.ad.persistence.mapper.addb.PreparationMapper$Original">
+        <constructor><arg column="subject_key" javaType="string"/><arg column="request_json" javaType="string"/>
+            <arg column="result_json" javaType="string"/></constructor>
+    </resultMap>
+    <!-- 表名只来自固定SQL分支；mode为构造时已校验的封闭枚举。 -->
+    <sql id="table"><choose>
+        <when test="mode.name() == 'CLICK'">ad_click_preparation</when>
+        <when test="mode.name() == 'CONVERSION'">ad_conversion_preparation</when>
+        <otherwise>ad_delivery_preparation</otherwise>
+    </choose></sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=#{version}</select>
+    <select id="verifyPreparation" resultType="map" timeout="5">SELECT child_id,request_json,result_json FROM <include refid="table"/> LIMIT 0</select>
+    <select id="now" resultType="java.time.OffsetDateTime" timeout="5" useCache="false">SELECT clock_timestamp()</select>
+    <insert id="claim" timeout="5">
+        INSERT INTO <include refid="table"/>(child_id,operation_id,subject_key,slot,request_json)
+        VALUES(#{row.childId},#{row.operationId},#{row.subject},#{row.slot},#{row.requestJson}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="requests" resultType="string" timeout="5">SELECT request_json FROM <include refid="table"/> WHERE child_id=#{id}</select>
+    <select id="find" resultMap="result" timeout="5">SELECT subject_key,result_json FROM <include refid="table"/> WHERE child_id=#{id}</select>
+    <update id="complete" timeout="5">
+        UPDATE <include refid="table"/> SET result_json=#{resultJson},completed_at=clock_timestamp() WHERE child_id=#{id} AND result_json IS NULL
+    </update>
+    <select id="original" resultMap="original" timeout="5">
+        SELECT subject_key,request_json,result_json FROM <include refid="table"/> WHERE child_id=#{id}
+    </select>
+</mapper>

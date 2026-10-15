@@ -193,6 +193,7 @@ class ConversionOnlinePostgresTest {
         contexts.withUserConfiguration(PreparationConfiguration.class,ClickPreparationConfiguration.class,ConversionPreparationConfiguration.class,ImpressionReceiptConfiguration.class)
                 .withPropertyValues(flags).withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.ad)
                 .withBean("adDbDataSource",javax.sql.DataSource.class,()->f.adDs)
+                .withBean("adDbSqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.sessions)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ConversionOnlineFixture.JSON)
                 .withBean(com.recsys.ad.AdPipeline.class,()->f.pipeline).withBean(ClickQuoteRepository.class,()->new ClickQuoteRepository(f.ad))
                 .withBean(ConversionQuoteRepository.class,()->f.quotes).withBean(ConversionSettlementService.class,()->f.settlements)

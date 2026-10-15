@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import javax.sql.DataSource;
 
 /** 捕获默认关闭；先扩展迁移和所有 owner 版本升级，再显式开启回执接受。 */
@@ -16,8 +16,8 @@ import javax.sql.DataSource;
 public class ImpressionReceiptConfiguration {
     /** 只校验 adDb V005，不自动迁移共享库。 */
     @Bean
-    public ImpressionReceiptRepository impressionReceiptRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc, ObjectMapper json) {
-        var repository = new ImpressionReceiptRepository(jdbc, json); repository.verifySchema(); return repository;
+    public ImpressionReceiptRepository impressionReceiptRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, ObjectMapper json) {
+        var repository = new ImpressionReceiptRepository(sessions, json); repository.verifySchema(); return repository;
     }
     /** 明确绑定同一 adDb 事务，不加入 engine 或其他库的事务。 */
     @Bean

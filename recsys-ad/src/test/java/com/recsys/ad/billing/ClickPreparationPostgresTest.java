@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.ad.AdPipeline;
 import com.recsys.ad.BiddingService;
 import com.recsys.ad.delivery.DeliveryTokenCodec;
@@ -24,13 +26,15 @@ import static org.mockito.Mockito.*;
 class ClickPreparationPostgresTest {
     @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
     ClickEventsFixture f;PreparationRepository repository;AdPipeline pipeline;ClickPreparationService service;
+    SqlSessionTemplate sessions;
     @BeforeEach void setup() throws Exception {
         f=new ClickEventsFixture(PG);
         try(var in=new ClassPathResource(PreparationRepository.CLICK_MIGRATION).getInputStream();var c=f.ds.getConnection();var st=c.createStatement()) {
             st.execute("SET recsys.migration_sha256='"+BudgetRepository.migrationSha256(PreparationRepository.CLICK_MIGRATION)+"'");
             st.execute(new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
         }
-        repository=new PreparationRepository(f.jdbc,ClickEventsFixture.JSON,ChargeMode.CLICK);repository.verifySchema();
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(f.jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"));
+        repository=new PreparationRepository(sessions,ClickEventsFixture.JSON,ChargeMode.CLICK);repository.verifySchema();
         pipeline=mock(AdPipeline.class);service=fresh(repository,f.cpm.tokens,true);
     }
     ClickPreparationService fresh(PreparationRepository repo,DeliveryTokenCodec tokens,boolean admission) {
@@ -54,13 +58,13 @@ class ClickPreparationPostgresTest {
             var futures=new ArrayList<Future<Prepared>>();for(int i=0;i<8;i++)futures.add(pool.submit(()->service.prepare(request)));
             var first=futures.getFirst().get(10,TimeUnit.SECONDS);for(var future:futures)assertEquals(first,future.get(10,TimeUnit.SECONDS));
             assertEquals(Status.QUALIFIED,first.status());assertEquals("0.123456",f.cpm.budgets.findAccount(1,f.cpm.today()).orElseThrow().heldAmount().toPlainString());
-            assertEquals(first,fresh(new PreparationRepository(f.jdbc,ClickEventsFixture.JSON,ChargeMode.CLICK),f.cpm.tokens,true).prepare(request));
+            assertEquals(first,fresh(new PreparationRepository(sessions,ClickEventsFixture.JSON,ChargeMode.CLICK),f.cpm.tokens,true).prepare(request));
         }
         verify(pipeline,never()).run(anyLong(),any(),anyInt(),anyString(),anyString(),anyDouble());
     }
     @Test void responseLostAfterHoldRecoversWithAdmissionClosedAndWithoutReholding() {
         var request=request("10");
-        var failing=new PreparationRepository(f.jdbc,ClickEventsFixture.JSON,ChargeMode.CLICK) {
+        var failing=new PreparationRepository(sessions,ClickEventsFixture.JSON,ChargeMode.CLICK) {
             @Override public Prepared complete(Prepared p,String subject) { throw new IllegalStateException("lost after held"); }
         };
         assertThrows(IllegalStateException.class,()->fresh(failing,f.cpm.tokens,true).prepare(request));
@@ -90,7 +94,7 @@ class ClickPreparationPostgresTest {
     }
     @Test void rejectionAndReleasedPreparationStayOriginalAndCpmCannotReadClickCheckpoint() {
         var request=request("0");assertEquals(Status.INSUFFICIENT_BUDGET,service.prepare(request).status());
-        assertTrue(new PreparationRepository(f.jdbc,ClickEventsFixture.JSON).find(request.childId(),"admin").isEmpty());
+        assertTrue(new PreparationRepository(sessions,ClickEventsFixture.JSON).find(request.childId(),"admin").isEmpty());
         f.cpm.budgets.setLimit(BudgetCommand.parse(1,UUID.randomUUID().toString(),f.cpm.today().toString(),"CNY","10",1,"admin"));
         assertEquals(Status.INSUFFICIENT_BUDGET,service.prepare(request).status());
         var q=query();var c=service.candidates(q).getFirst();var funded=new Prepare(q.operationId(),q.subject(),q.userId(),c.childId(),1,c.offerToken());
@@ -124,6 +128,6 @@ class ClickPreparationPostgresTest {
         BudgetConfiguration.transactions(f.ds,5).executeWithoutResult(tx->assertThrows(IllegalStateException.class,()->service.prepare(request)));
         f.jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=repeat('0',64) WHERE version=11");
         assertThrows(IllegalStateException.class,repository::verifySchema);
-        assertThrows(IllegalArgumentException.class,()->fresh(new PreparationRepository(f.jdbc,ClickEventsFixture.JSON),f.cpm.tokens,true));
+        assertThrows(IllegalArgumentException.class,()->fresh(new PreparationRepository(sessions,ClickEventsFixture.JSON),f.cpm.tokens,true));
     }
 }

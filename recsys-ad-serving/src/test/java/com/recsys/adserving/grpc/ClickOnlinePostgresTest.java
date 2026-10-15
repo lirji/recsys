@@ -115,6 +115,7 @@ class ClickOnlinePostgresTest {
         contexts.withUserConfiguration(PreparationConfiguration.class,ClickPreparationConfiguration.class,ImpressionReceiptConfiguration.class)
                 .withPropertyValues(flags).withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.ad)
                 .withBean("adDbDataSource",javax.sql.DataSource.class,()->f.adDs)
+                .withBean("adDbSqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.sessions)
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ClickOnlineFixture.JSON)
                 .withBean(com.recsys.ad.AdPipeline.class,()->f.pipeline).withBean(ClickQuoteRepository.class,()->f.quotes)
                 .withBean(ClickSettlementService.class,()->f.settlements).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.sessions))

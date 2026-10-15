@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import java.util.Map;
 
 /** 新交付 owner 使用专用密钥环；开关关闭不要求密钥或迁移。 */
@@ -27,8 +27,8 @@ public class PreparationConfiguration {
     }
     /** V004 校验失败不能以半套能力接单。 */
     @Bean
-    public PreparationRepository preparationRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc, ObjectMapper json) {
-        var repository = new PreparationRepository(jdbc, json);
+    public PreparationRepository preparationRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, ObjectMapper json) {
+        var repository = new PreparationRepository(sessions, json);
         repository.verifySchema();
         return repository;
     }

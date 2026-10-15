@@ -112,7 +112,7 @@ class FeedExposureBrowserAcceptanceTest {
                         group*100+1,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+2,group,group==1?"NORMAL":"BUDGET_DENIED",group*100+3,group,group==1?"NORMAL":"BUDGET_DENIED");
             }
             var budget=new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),ds,5);
-            var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var preparations=new PreparationRepository(adDb,JSON);
+            var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var preparations=new PreparationRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON);
             var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);tx.setTimeout(5);
             for(long advertiser:List.of(1L,2L)) budget.setLimit(BudgetCommand.parse(advertiser,UUID.randomUUID().toString(),reservations.databaseNow().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().toString(),"CNY",advertiser==1?"100":"0",0,"browser-admin"));
             var reservationService=new ReservationService(reservations,quotes,tx,true);
@@ -125,7 +125,7 @@ class FeedExposureBrowserAcceptanceTest {
             var preparation=new SandboxPreparationService(pipeline,preparations,quotes,reservationService,adTokens);
             var frequency=new FeedCandidateRepository(adDb);frequency.verifySchema();
             var candidates=new FeedCandidateService(preparation,frequency,true,1,8);
-            var capture=new ImpressionReceiptService(new ImpressionReceiptRepository(adDb,JSON),preparations,reservations,quotes,adTokens,tx,true);
+            var capture=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),preparations,reservations,quotes,adTokens,tx,true);
             var local=new InProcessAdServingGateway(pipeline) {
                 @Override public List<Candidate> sandboxFeedCandidates(Query query) {
                     if(mode==Mode.CANDIDATE_DOWN) throw new IllegalStateException("fixture candidate down");

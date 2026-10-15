@@ -75,9 +75,9 @@
 | [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | TODO |
 | [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | TODO |
 | [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | TODO |
-| [com/recsys/ad/billing/ImpressionReceiptRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptRepository.java) | 7 | 10 | TODO |
+| [com/recsys/ad/billing/ImpressionReceiptRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptRepository.java) | 7 | 10 | DONE MP08c：见MP08C_RESULT |
 | [com/recsys/ad/billing/PreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationConfiguration.java) | 14 | 0 | TODO |
-| [com/recsys/ad/billing/PreparationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationRepository.java) | 6 | 8 | TODO |
+| [com/recsys/ad/billing/PreparationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationRepository.java) | 6 | 8 | DONE MP08c：见MP08C_RESULT |
 | [com/recsys/ad/billing/ReconciliationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationConfiguration.java) | 6 | 0 | TODO |
 | [com/recsys/ad/billing/ReconciliationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationRepository.java) | 6 | 36 | TODO |
 | [com/recsys/ad/billing/ReservationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationConfiguration.java) | 9 | 0 | TODO |

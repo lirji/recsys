@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ImpressionReceiptMapper">
+    <resultMap id="receipt" type="com.recsys.ad.persistence.mapper.addb.ImpressionReceiptMapper$Stored">
+        <constructor><arg column="subject_key" javaType="string"/><arg column="payload_hash" javaType="string"/>
+            <arg column="qualification_id" javaType="java.util.UUID"/><arg column="status" javaType="string"/>
+            <arg column="ledger_id" javaType="java.util.UUID"/><arg column="canonical_receipt_id" javaType="java.util.UUID"/>
+            <arg column="charged_amount" javaType="java.math.BigDecimal"/><arg column="budget_date" javaType="java.time.LocalDate"/>
+            <arg column="accepted_at" javaType="java.time.OffsetDateTime"/><arg column="decided_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <resultMap id="captured" type="com.recsys.ad.persistence.mapper.addb.ImpressionReceiptMapper$Captured">
+        <constructor><arg column="ledger_id" javaType="java.util.UUID"/><arg column="receipt_id" javaType="java.util.UUID"/>
+            <arg column="amount" javaType="java.math.BigDecimal"/><arg column="budget_date" javaType="java.time.LocalDate"/>
+            <arg column="accepted_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=5</select>
+    <select id="verifyReceipt" resultType="map">SELECT receipt_id,ledger_id,status FROM ad_impression_receipt LIMIT 0</select>
+    <select id="verifyLedger" resultType="map">SELECT ledger_id,qualification_id FROM ad_billing_ledger LIMIT 0</select>
+    <select id="verifyOutbox" resultType="map">SELECT event_id,payload_json,published_at FROM ad_billing_outbox LIMIT 0</select>
+    <insert id="claim">
+        INSERT INTO ad_impression_receipt(receipt_id,qualification_id,subject_key,payload_hash,visible_duration_ms,min_visible_ratio_bps,page_visible)
+        VALUES(#{receiptId},#{qualificationId},#{subject},#{payloadHash},#{visibleDurationMs},#{minVisibleRatioBps},#{pageVisible}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="find" resultMap="receipt">
+        SELECT subject_key,payload_hash,qualification_id,status,ledger_id,canonical_receipt_id,charged_amount,budget_date,accepted_at,decided_at
+        FROM ad_impression_receipt WHERE receipt_id=#{receiptId}
+    </select>
+    <select id="alreadyCaptured" resultMap="captured">
+        SELECT ledger_id,receipt_id,amount,budget_date,accepted_at FROM ad_billing_ledger WHERE qualification_id=#{qualificationId}
+    </select>
+    <insert id="appendLedger">
+        INSERT INTO ad_billing_ledger(ledger_id,qualification_id,receipt_id,operation_id,advertiser_id,ad_id,creative_id,user_id,slot,
+            traffic_class,currency,budget_date,amount,account_version,accepted_at)
+        VALUES(#{ledgerId},#{qualificationId},#{receiptId},#{operationId},#{advertiserId},#{adId},#{creativeId},#{userId},#{slot},
+            'SANDBOX','CNY',#{budgetDate},#{amount},#{accountVersion},#{acceptedAt})
+    </insert>
+    <insert id="appendOutbox">
+        INSERT INTO ad_billing_outbox(event_id,event_type,schema_version,destination,partition_key,payload_json)
+        VALUES(#{eventId},#{eventType},#{schemaVersion},#{destination},#{partitionKey},#{payloadJson})
+    </insert>
+    <update id="complete">
+        UPDATE ad_impression_receipt SET status=#{status},ledger_id=#{ledgerId},canonical_receipt_id=#{canonicalReceiptId},charged_amount=#{chargedAmount},
+            budget_date=#{budgetDate},accepted_at=#{acceptedAt},decided_at=#{decidedAt} WHERE receipt_id=#{receiptId} AND status='PENDING'
+    </update>
+</mapper>

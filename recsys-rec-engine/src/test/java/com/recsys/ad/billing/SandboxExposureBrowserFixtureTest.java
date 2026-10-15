@@ -172,10 +172,10 @@ class SandboxExposureBrowserFixtureTest {
                     },(int)invocation.getArgument(2)));
             var budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(adDs,5));
             budgets.setLimit(BudgetCommand.parse(1,UUID.randomUUID().toString(),LocalDate.now(ZoneId.of("Asia/Shanghai")).toString(),"CNY","100",0,"fixture"));
-            var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var prepared=new PreparationRepository(ad,JSON);
+            var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var prepared=new PreparationRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON);
             var tokens=new DeliveryTokenCodec(JSON,"browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
             preparation=new SandboxPreparationService(pipeline,prepared,quotes,new ReservationService(reservations,quotes,BudgetConfiguration.transactions(adDs,5),true),tokens);
-            receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(ad,JSON),prepared,reservations,quotes,tokens,BudgetConfiguration.transactions(adDs,5),true);
+            receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),prepared,reservations,quotes,tokens,BudgetConfiguration.transactions(adDs,5),true);
             String topic="browser-billing-"+UUID.randomUUID();
             try(var kafkaAdmin=Admin.create(Map.of("bootstrap.servers",bootstrap))){
                 kafkaAdmin.createTopics(List.of(new NewTopic(topic,2,(short)1).configs(Map.of("cleanup.policy","delete","retention.ms","-1")))).all().get(15,TimeUnit.SECONDS);

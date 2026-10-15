@@ -48,10 +48,10 @@ class BillingEventsFixture {
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
-        var preparations=new PreparationRepository(jdbc,JSON);
+        var preparations=new PreparationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON);
         prepare=new SandboxPreparationService(mock(AdPipeline.class),preparations,quotes,
                 new ReservationService(reservations,quotes,BudgetConfiguration.transactions(ds,5),true),tokens);
-        receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(jdbc,JSON),preparations,reservations,quotes,tokens,
+        receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),preparations,reservations,quotes,tokens,
                 BudgetConfiguration.transactions(ds,5),true);
         outbox=new BillingOutboxRepository(jdbc);outbox.verifySchema();
         projection=new BillingProjectionService(new BillingProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));

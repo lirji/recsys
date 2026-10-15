@@ -34,6 +34,7 @@ class ImpressionReceiptPostgresTest {
     static final AtomicLong IDS = new AtomicLong(50000);
     static DriverManagerDataSource ds;
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static BudgetAccountService budgets;
     static CpmQuoteRepository quotes;
     static ReservationRepository reservations;
@@ -45,6 +46,7 @@ class ImpressionReceiptPostgresTest {
     static ImpressionReceiptService service;
     @BeforeAll static void setup() throws Exception {
         ds = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()); jdbc = new JdbcTemplate(ds);
+        sessions = new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"));
         for (String script : List.of(BudgetRepository.MIGRATION, CpmQuoteRepository.MIGRATION, ReservationRepository.MIGRATION,
                 PreparationRepository.MIGRATION, ImpressionReceiptRepository.MIGRATION)) {
             try (var c=ds.getConnection(); var stmt=c.createStatement()) {
@@ -55,7 +57,7 @@ class ImpressionReceiptPostgresTest {
         budgets = new BudgetConfiguration().budgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))), ds, 5);
         quotes = new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); reservations = new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         reservationService = new ReservationService(reservations, quotes, BudgetConfiguration.transactions(ds,5), true);
-        preparations = new PreparationRepository(jdbc,JSON); receipts = new ImpressionReceiptRepository(jdbc,JSON); receipts.verifySchema();
+        preparations = new PreparationRepository(sessions,JSON); receipts = new ImpressionReceiptRepository(sessions,JSON); receipts.verifySchema();
         tokens = new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         preparationService = new SandboxPreparationService(mock(AdPipeline.class), preparations, quotes, reservationService, tokens);
         service = fresh(receipts,reservations);
@@ -97,7 +99,7 @@ class ImpressionReceiptPostgresTest {
         assertEquals("0.123456",first.chargedAmount()); assertEquals("0.000000",account(fixture).heldAmount().toPlainString());
         assertEquals("0.123456",account(fixture).chargedAmount().toPlainString()); assertEquals(3,account(fixture).version());
         assertEquals(1,count("ad_billing_ledger","qualification_id",fixture.id())); assertEquals(1,count("ad_billing_outbox","event_id",first.ledgerId()));
-        assertEquals(first,fresh(new ImpressionReceiptRepository(jdbc,JSON),reservations).accept(command));
+        assertEquals(first,fresh(new ImpressionReceiptRepository(sessions,JSON),reservations).accept(command));
         assertEquals(first,service.find(command.receiptId(),"admin").orElseThrow());
     }
     @Test void differentReceiptIdsShareOneSemanticCaptureAndOneOutbox() throws Exception {
@@ -134,7 +136,7 @@ class ImpressionReceiptPostgresTest {
     @Test void eachFailureBoundaryRollsBackMoneyReservationReceiptLedgerAndOutbox() throws Exception {
         for (int point=0;point<4;point++) {
             var fixture=fixture(); var command=fixture.command(); final int failurePoint=point;
-            var faultyReceipts=new ImpressionReceiptRepository(jdbc,JSON) {
+            var faultyReceipts=new ImpressionReceiptRepository(sessions,JSON) {
                 @Override public void appendLedger(UUID ledgerId,Command c,Qualification q,Reservation r,long v,Instant at) {
                     super.appendLedger(ledgerId,c,q,r,v,at); if(failurePoint==1) throw new IllegalStateException("after ledger");
                 }
@@ -220,7 +222,7 @@ class ImpressionReceiptPostgresTest {
         assertEquals(original,fresh.accept(command));
         assertThrows(InvalidProof.class,()->fresh.accept(fixture.command()));
         var other=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
-        assertThrows(IllegalArgumentException.class,()->new ImpressionReceiptService(new ImpressionReceiptRepository(new JdbcTemplate(other),JSON),
+        assertThrows(IllegalArgumentException.class,()->new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(other, "classpath*:mapper/ad/addb/**/*.xml")),JSON),
                 preparations,reservations,quotes,tokens,BudgetConfiguration.transactions(ds,5),true));
     }
     @Test void inconsistentLedgerAndReservationFailClosedInsteadOfReturningSuccessfulDuplicate() {
@@ -239,6 +241,17 @@ class ImpressionReceiptPostgresTest {
         assertEquals(result,paused.accept(command)); assertEquals(result,paused.find(command.receiptId(),"admin").orElseThrow());
         assertThrows(IllegalStateException.class,()->paused.accept(fixture.command()));
         assertEquals("0.123456",account(fixture).chargedAmount().toPlainString());
+    }
+
+    /** 故障注入只在隔离库；空结果字段不能掩盖已提交PENDING，也不能绕过主体校验。 */
+    @Test void unfinishedReceiptIsRejectedBeforeNullableResultMapping() {
+        var fixture = fixture(); var command = fixture.command();
+        assertTrue(receipts.claim(command, fixture.id()));
+        assertThrows(Reservation.AccessDenied.class, () -> receipts.find(command.receiptId(), "other"));
+        var failure = assertThrows(IllegalStateException.class, () -> receipts.find(command.receiptId(), "admin"));
+        assertEquals("出现未完成的已提交回执", failure.getMessage());
+        assertEquals("0.000000", account(fixture).chargedAmount().toPlainString());
+        assertEquals(0, count("ad_billing_ledger", "qualification_id", fixture.id()));
     }
 
     @Test void columnsAreDocumentedAndTerminalStateCannotHaveMissingReason() {
