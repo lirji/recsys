@@ -387,8 +387,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Sandbox 表单已有冻结用户/场景；窄屏隐藏重复全局输入，避免挤出身份菜单。
   const sandboxNarrow =
-    import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' &&
-    location.pathname === '/search-ads' &&
+    ((import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' &&
+      location.pathname === '/search-ads') ||
+      (import.meta.env.VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED === 'true' &&
+        ['/recommend', '/search'].includes(location.pathname))) &&
     !screens.md;
   const debugContext = showsDebugContext(location.pathname) && !sandboxNarrow;
 

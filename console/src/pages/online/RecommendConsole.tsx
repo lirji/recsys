@@ -1,3 +1,5 @@
+import SandboxNaturalConsole from './SandboxNaturalConsole';
+import { NaturalKind } from '../../api/naturalExposure';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Typography } from 'antd';
@@ -32,7 +34,7 @@ type RecParams = {
 
 const label = (p: RecParams) => `u${p.userId} · size ${p.size} · ${p.scene}${p.q ? ` · q="${p.q}"` : ''}`;
 
-export default function RecommendConsole() {
+function LegacyRecommendConsole() {
   const { userId, scene, setUserId, setScene } = useGlobalUser();
   const { message } = App.useApp();
   const { initial, write } = useUrlParams<RecParams>({ userId, size: 10, scene, q: '' });
@@ -242,5 +244,13 @@ export default function RecommendConsole() {
         )}
       </Modal>
     </Space>
+  );
+}
+
+export default function RecommendConsole() {
+  return import.meta.env.VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED === 'true' ? (
+    <SandboxNaturalConsole mode={NaturalKind.RECOMMEND} />
+  ) : (
+    <LegacyRecommendConsole />
   );
 }

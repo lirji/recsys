@@ -1,3 +1,5 @@
+import SandboxNaturalConsole from './SandboxNaturalConsole';
+import { NaturalKind } from '../../api/naturalExposure';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Typography } from 'antd';
@@ -31,7 +33,7 @@ type SearchParams = {
 
 const label = (p: SearchParams) => `u${p.userId} · size ${p.size} · q="${p.q}"`;
 
-export default function SearchConsole() {
+function LegacySearchConsole() {
   const { userId, setUserId } = useGlobalUser();
   const { message } = App.useApp();
   const { initial, write } = useUrlParams<SearchParams>({ userId, size: 10, q: 'action' });
@@ -236,5 +238,13 @@ export default function SearchConsole() {
         )}
       </Modal>
     </Space>
+  );
+}
+
+export default function SearchConsole() {
+  return import.meta.env.VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED === 'true' ? (
+    <SandboxNaturalConsole mode={NaturalKind.SEARCH} />
+  ) : (
+    <LegacySearchConsole />
   );
 }

@@ -70,7 +70,7 @@ export interface ImpressionResult {
   acceptedAt: string | null;
   decidedAt: string;
 }
-function options(identity: ExposureIdentity, signal?: AbortSignal) {
+export function exposureRequestOptions(identity: ExposureIdentity, signal?: AbortSignal) {
   return {
     expectedExposureScope: identity.scope,
     expectedExposureEpoch: identity.epoch,
@@ -88,7 +88,7 @@ export async function putSandboxDelivery(
     await http.put<SandboxDeliveryView>(
       '/api/sandbox/search-ad-deliveries/' + encodeURIComponent(id),
       input,
-      options(identity, signal),
+      exposureRequestOptions(identity, signal),
     )
   ).data;
 }
@@ -100,7 +100,7 @@ export async function getSandboxDelivery(
   return (
     await http.get<SandboxDeliveryView>(
       '/api/sandbox/search-ad-deliveries/' + encodeURIComponent(id),
-      options(identity, signal),
+      exposureRequestOptions(identity, signal),
     )
   ).data;
 }
@@ -116,7 +116,7 @@ export async function putImpression(
       '/api/sandbox/ad-impressions/' + encodeURIComponent(id),
       input,
       {
-        ...options(identity, signal),
+        ...exposureRequestOptions(identity, signal),
         validateStatus: (status) =>
           status === HttpStatusCode.Ok || status === HttpStatusCode.UnprocessableEntity,
       },
@@ -127,7 +127,7 @@ export async function getImpression(id: string, identity: ExposureIdentity, sign
   return (
     await http.get<ImpressionResult>(
       '/api/sandbox/ad-impressions/' + encodeURIComponent(id),
-      options(identity, signal),
+      exposureRequestOptions(identity, signal),
     )
   ).data;
 }

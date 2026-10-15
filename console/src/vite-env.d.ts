@@ -2,6 +2,8 @@
 
 // 构建期注入的认证配置(见 src/config/auth.ts,唯一消费出口)。
 interface ImportMetaEnv {
+  /** 自然图文 sandbox 显式启用，默认关闭。 */
+  readonly VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED?: string;
   /** legacy(默认,演示登录) | oidc(Casdoor 统一登录) */
   readonly VITE_AUTH_MODE?: string;
   readonly VITE_CASDOOR_ISSUER?: string;

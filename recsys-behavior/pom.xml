@@ -79,6 +79,13 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- S09 独占浏览器宿主复用真实 engine；仅测试依赖，避免污染 engine 的宽包扫描测试。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-rec-engine</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

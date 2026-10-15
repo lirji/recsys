@@ -36,7 +36,7 @@ engine primary PG 保存整次交付、原请求/政策、最终文本/位置/�
 
 行为事务按 receipt 唯一键→qualification 锁排序，锁后取 clock_timestamp，5 秒事务/语句上限、4 秒锁等待上限。资格锁竞争跨过期限仍拒绝；事实、Outbox、原结果整体提交。提交时约束拒绝 PENDING 半成品及缺失 Outbox，复合 FK 绑定 canonical receipt/acceptedAt。事实、资格和终态不可 UPDATE/DELETE；不能通过改历史补偿。单条外部持久化失败/未知由原 ID 恢复，不访问 MQ/Redis。
 
-Outbox 本片仅持久化，没有发布器。`published_at` 保持空且当前版本禁止修改；S15 用新迁移与可靠发布协议演进，不能拿事件落表宣称已到 Kafka。自然 UI 在 S09，当前未接入浏览器采集。
+Outbox 本片仅持久化，没有发布器。`published_at` 保持空且当前版本禁止修改；S15 用新迁移与可靠发布协议演进，不能拿事件落表宣称已到 Kafka。S09 已接入 /recommend、/search 浏览器采集，构建开关默认关闭；feed 仍由 S10 接入。
 
 ## 检查与保留
 
@@ -65,3 +65,17 @@ mvn -pl recsys-rec-engine,recsys-behavior,recsys-gateway -am test -Dgroups=natur
 ```
 
 需本地 Docker，测试容器生命周期由 Testcontainers 管理，不操作 dev_infra 的实例。完整结果见 [S08 参数化机制验收](ER-S08_RESULT.md)；当前任务不授予真实账户收费或生产部署。
+
+## S09 浏览器启用与恢复
+
+仅在两个 sandbox owner 都完成本手册显式迁移、政策/key 配置和 ADMIN 接入后，用 `VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED=true` 构建/启动 console。该前端开关不是后端来源授权；服务端仍独立验证身份、签名和期限。默认 false 保留旧页，不自动打开共享环境。
+
+用户点击新交付才发 PUT；推荐页空词是 RECOMMEND，有词是 SEARCH，搜索页词必填。原请求未确认时用“恢复原操作”，不要换 ID 猜测成功；刷新只查同认证范围的原 ID。当前表单编辑不会改变已交付卡片的用户或内容。大 ID 保持十进制字符串。
+
+正文实际达到 50% 连续 1 秒后进入自然队列，离屏/hidden/pagehide/打开历史或对比重置；历史重跑明确是新交付。自然状态只表示曝光事实接受，无金额或收费含义。UNKNOWN 同 ID 查询后才尝试原请求；过期后只查，404 不表示一定未接受。原操作进行中时历史重跑按钮禁用。
+
+自然与广告使用独立 sessionStorage 队列，各 100 条、512 KiB、1h、最多 2 并发/6 自动轮；两者总上界 200 条/1 MiB/4 并发。只保存达标原信号与同 receiptId，终态移除资格票据，已知结果字段白名单；不保存 Bearer。退出/切主体清理两队列及三个在线页面意图；同主体续期保留恢复。浏览器关页/存储失效仍可能丢失未提交观测，事件可靠性承诺从服务端 accepted 起。
+
+本地验收：`python3 scripts/test-natural-exposure.py`，需要现有 Docker/JDK21/Node/console 依赖及 Playwright Chromium；自动临时 PG、两个 owner schema、数据库内容种子、测试登录适配器，宿主仅 loopback，结束核对事实/Outbox。不会修改共享库。证据在 `recsys-rec-engine/target/natural-browser-evidence` 与 `natural-browser-backend.log`；使用 behavior 测试宿主，test-scope 复用 engine，生产依赖不变。此宿主同 JVM、不代表跨进程故障、生产 gateway/OIDC 或 Kafka 已投递。详细结果见 [S09 验收](ER-S09_RESULT.md)。
+
+回退关闭前端开关并重建；已提交事实不能由关闭页面撤销。暂停新增应使用 owner admission 配置并保留查询/原决定恢复，不直接丢弃在途未知结果。

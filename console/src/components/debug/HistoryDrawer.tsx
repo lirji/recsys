@@ -21,6 +21,7 @@ export default function HistoryDrawer<P, D>({
   selected,
   onToggleSelect,
   onRerun,
+  rerunDisabled = false,
   onCompare,
   onClear,
   renderSummary,
@@ -31,6 +32,7 @@ export default function HistoryDrawer<P, D>({
   selected: string[];
   onToggleSelect: (id: string) => void;
   onRerun: (e: HistoryEntry<P, D>) => void;
+  rerunDisabled?: boolean;
   onCompare: () => void;
   onClear: () => void;
   renderSummary: (e: HistoryEntry<P, D>) => ReactNode;
@@ -84,7 +86,7 @@ export default function HistoryDrawer<P, D>({
                     <Tag className="mono">{e.durationMs}ms</Tag>
                   </Space>
                   <Space size={4}>
-                    <Button size="small" onClick={() => onRerun(e)}>
+                    <Button size="small" disabled={rerunDisabled} onClick={() => onRerun(e)}>
                       重跑
                     </Button>
                     <Button size="small" type={sel ? 'primary' : 'default'} onClick={() => onToggleSelect(e.id)}>

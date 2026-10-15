@@ -111,6 +111,8 @@ jobs:
           npm run build
       - name: Isolated browser, PostgreSQL and Kafka acceptance
         run: python3 scripts/test-sandbox-exposure.py
+      - name: Isolated natural browser and PostgreSQL acceptance
+        run: python3 scripts/test-natural-exposure.py
       - name: Upload sandbox browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,6 +121,8 @@ jobs:
           path: |
             recsys-rec-engine/target/browser-evidence/
             recsys-rec-engine/target/sandbox-browser-backend.log
+            recsys-rec-engine/target/natural-browser-evidence/
+            recsys-rec-engine/target/natural-browser-backend.log
           if-no-files-found: ignore
 
   # P3 供应链安全:Trivy 文件系统扫描——后端 Maven / 前端 npm 依赖漏洞(SCA)+ IaC/配置误配。

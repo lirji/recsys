@@ -14,7 +14,14 @@ export function onExposureRevoked(listener: () => void) {
 export function revokeExposureSession() {
   epoch += 1;
   try {
-    sessionStorage.removeItem('recsys.sandbox.delivery.v1');
+    for (const key of [
+      'recsys.sandbox.delivery.v1',
+      'recsys.sandbox.receipts.v1',
+      'recsys.sandbox.natural.receipts.v1',
+      'recsys.sandbox.natural.recommend.v1',
+      'recsys.sandbox.natural.search.v1',
+    ])
+      sessionStorage.removeItem(key);
   } catch {
     /* 存储禁用不阻止内存撤销。 */
   }

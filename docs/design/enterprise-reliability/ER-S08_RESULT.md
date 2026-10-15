@@ -40,4 +40,4 @@ SKILL_HANDOFF: backend-implementation → implementation-validation → update-p
 
 `fix/browser-fixture-cleanup` 仅修独占测试浏览器生命周期：正常 Browser.close 后等待 close 事件；超时才逐级终止本函数子进程，等待有界；退出后仅对 mkdtemp 的专用目录有界重试，避免后代最终写盘窗口导致 ENOTEMPTY。启动异常路径也等待退出再清理。未修改曝光/资金业务、用户目录或共享环境。
 
-`/tmp/recsys-browser-cleanup-validation.log`：4 项 Playwright 全通过，隔离 PG/Kafka 宿主最终资金对账 PASS；typecheck、该文件 ESLint、Prettier 与 diff 检查 PASS。Code Hygiene 有根级无 formatter 限制（前端文件实际已用既有 Prettier 校验）。补丁推送后继续核验远程 CI；S09 沿原计划推进。
+`/tmp/recsys-browser-cleanup-validation.log`：4 项 Playwright 全通过，隔离 PG/Kafka 宿主最终资金对账 PASS；typecheck、该文件 ESLint、Prettier 与 diff 检查 PASS。Code Hygiene 有根级无 formatter 限制（前端文件实际已用既有 Prettier 校验）。补丁 `4b09d44e` 已正常合并推送 main；CI 38678472988 与 console-ci 38678472943 均 SUCCESS，已核验恢复全绿。S09 沿原计划推进。
