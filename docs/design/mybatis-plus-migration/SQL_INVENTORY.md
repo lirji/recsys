@@ -175,8 +175,8 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/rank/DienRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DienRankService.java) | 22 | 1 | TODO |
-| [com/recsys/rank/DinRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DinRankService.java) | 22 | 1 | TODO |
+| [com/recsys/rank/DienRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DienRankService.java) | 22 | 1 | MP03d DONE：RatingSequenceMapper.xml；见MP03D_RESULT |
+| [com/recsys/rank/DinRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DinRankService.java) | 22 | 1 | MP03d DONE：RatingSequenceMapper.xml；见MP03D_RESULT |
 
 ### recsys-rec-engine
 

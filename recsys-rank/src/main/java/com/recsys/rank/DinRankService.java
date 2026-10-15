@@ -19,7 +19,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.rank.persistence.mapper.RatingSequenceMapper;
+import com.recsys.rank.persistence.model.RatingSequenceRow;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -60,14 +61,9 @@ import java.util.Set;
 public class DinRankService implements RankService {
 
     private static final Logger log = LoggerFactory.getLogger(DinRankService.class);
-    // 序列取数带上 ts(epoch 秒),既排序又作 Redis ZSet 的 score(与近线增量 ZADD 口径一致)
-    private static final String SEQ_SQL =
-            "SELECT item_id, extract(epoch from ts) AS ts FROM user_behavior "
-                    + "WHERE user_id=? AND action='RATING' AND value>=4 ORDER BY ts DESC LIMIT ?";
-
     private final FeatureService featureService;
     private final ContentService contentService;
-    private final JdbcTemplate jdbc;
+    private final RatingSequenceMapper mapper;
     private final ObjectProvider<StringRedisTemplate> redisProvider;
     private final RankProperties props;
 
@@ -78,11 +74,11 @@ public class DinRankService implements RankService {
     private volatile boolean ready = false;
 
     public DinRankService(FeatureService featureService, ContentService contentService,
-                          JdbcTemplate jdbc, ObjectProvider<StringRedisTemplate> redisProvider,
+                          RatingSequenceMapper mapper, ObjectProvider<StringRedisTemplate> redisProvider,
                           RankProperties props) {
         this.featureService = featureService;
         this.contentService = contentService;
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.redisProvider = redisProvider;
         this.props = props;
     }
@@ -217,9 +213,11 @@ public class DinRankService implements RankService {
     /** 查 DB 近 limit 条 ≥4 正反馈,返回 [itemId, tsEpoch] 列表,oldest→newest。 */
     private List<long[]> readDbSeq(long userId, int limit) {
         try {
-            List<long[]> recentFirst = jdbc.query(SEQ_SQL,
-                    (rs, n) -> new long[]{rs.getLong("item_id"), (long) rs.getDouble("ts")},
-                    userId, limit);
+            List<RatingSequenceRow> rows = mapper.latestRatedItems(userId, limit);
+            List<long[]> recentFirst = new ArrayList<>(rows.size());
+            for (RatingSequenceRow row : rows) {
+                recentFirst.add(row.asTimestampPair());
+            }
             Collections.reverse(recentFirst);  // DESC → oldest→newest
             return recentFirst;
         } catch (Exception e) {

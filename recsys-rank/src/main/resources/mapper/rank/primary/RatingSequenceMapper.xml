@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.rank.persistence.mapper.RatingSequenceMapper">
+    <resultMap id="ratedItem" type="com.recsys.rank.persistence.model.RatingSequenceRow">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="ts" javaType="java.lang.Double"/></constructor>
+    </resultMap>
+    <select id="latestRatedItems" resultMap="ratedItem">
+        SELECT COALESCE(item_id, 0) AS item_id, extract(epoch from ts) AS ts FROM user_behavior
+        WHERE user_id=#{userId} AND action='RATING' AND value>=4 ORDER BY ts DESC LIMIT #{limit}
+    </select>
+</mapper>
