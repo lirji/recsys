@@ -5,39 +5,38 @@ import com.recsys.advertiser.dto.AdView;
 import com.recsys.advertiser.dto.AdvertiserView;
 import com.recsys.advertiser.dto.BidwordView;
 import com.recsys.advertiser.dto.CreativeView;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import com.recsys.advertiser.persistence.mapper.primary.AdvertiserMapper;
+import com.recsys.advertiser.persistence.mapper.derived.AdvertiserItemEmbeddingMapper;
+import com.recsys.advertiser.persistence.model.GeneratedId;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 广告主侧真源读写(JDBC):advertiser / ad / ad_creative / bidword / ad_embedding。
+ * 广告主侧真源读写(Mapper/XML):advertiser / ad / ad_creative / bidword / ad_embedding。
  *
  * <p>只负责库内一致性;Redis 倒排与向量的在线同步在 {@link AdvertiserService} 编排
  * (借 {@link AdEmbeddingRepository} 等),因此本类不感知 Redis。
  * <p>主键全部由 <b>ShardingSphere 的 Snowflake keyGenerator</b> 生成(见 sharding.yaml):insert 不带主键列,
  * ShardingSphere 注入 8 字节、时间有序、去中心化的 id,并按分片键路由到 ds_0 / ds_1;生成值经
- * {@code Statement.getGeneratedKeys()}({@link KeyHolder})回传。advertiser 按 advertiser_id 分库,
- * ad/bidword/ad_creative 按 ad_id 分库(三者绑定)。这替代了单库 IDENTITY——分库后跨库自增会冲突。
+ * {@code Statement.getGeneratedKeys()}({@code useGeneratedKeys})回传。advertiser 按 advertiser_id 分库,
+ * ad 与 advertiser 按 advertiser_id 同库；bidword/ad_creative 按 ad_id 分库。这替代了单库 IDENTITY——分库后跨库自增会冲突。
  */
 @Repository
 public class AdvertiserRepository {
 
-    private final JdbcTemplate jdbc;
-    private final JdbcTemplate derived;   // #3:item_embedding 读走 rec-serving 派生库(默认 recsys)
-    private final AdReportReader reportReader;   // #3:ad_event 聚合来源(db 直读 / grpc 调 ad-serving)
+    private final AdvertiserMapper mapper;
+    private final AdvertiserItemEmbeddingMapper embeddings;
+    private final AdReportReader reportReader;
 
-    public AdvertiserRepository(JdbcTemplate jdbc,
-                                @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+    /** 数据路由由Mapper绑定负责，业务编排继续保持原报告来源。 */
+    public AdvertiserRepository(AdvertiserMapper mapper, AdvertiserItemEmbeddingMapper embeddings,
                                 AdReportReader reportReader) {
-        this.jdbc = jdbc;
-        this.derived = derived;
+        this.mapper = mapper;
+        this.embeddings = embeddings;
         this.reportReader = reportReader;
     }
 
@@ -45,98 +44,67 @@ public class AdvertiserRepository {
 
     /** 插入广告主,advertiser_id 由 ShardingSphere Snowflake 生成、getGeneratedKeys 回传。 */
     public long insertAdvertiser(String name, double dailyBudget, String status) {
-        return insertReturningKey("advertiser_id",
-                "INSERT INTO advertiser(name,daily_budget,status) VALUES(?,?,?)",
-                name, dailyBudget, status);
-    }
-
-    /**
-     * 执行 insert 并回传 ShardingSphere 生成的主键(Snowflake)。不在 SQL 里写主键列,由 keyGenerator 注入;
-     * 经 {@code prepareStatement(sql, new String[]{keyColumn})} + {@link KeyHolder} 取回生成值。
-     */
-    private long insertReturningKey(String keyColumn, String sql, Object... args) {
-        KeyHolder kh = new GeneratedKeyHolder();
-        jdbc.update(con -> {
-            PreparedStatement ps = con.prepareStatement(sql, new String[]{keyColumn});
-            for (int i = 0; i < args.length; i++) {
-                ps.setObject(i + 1, args[i]);
-            }
-            return ps;
-        }, kh);
-        Number key = kh.getKey();
-        return key == null ? 0L : key.longValue();
+        GeneratedId key = new GeneratedId();
+        mapper.insertAdvertiser(key, name, dailyBudget, status);
+        return key.valueOrZero();
     }
 
     /** 部分更新:仅非 null 字段写库(COALESCE 保留原值)。返回受影响行数。 */
     public int updateAdvertiser(long id, String name, Double dailyBudget, String status) {
-        return jdbc.update(
-                "UPDATE advertiser SET name=COALESCE(?,name), daily_budget=COALESCE(?,daily_budget), " +
-                "status=COALESCE(?,status) WHERE advertiser_id=?",
-                name, dailyBudget, status, id);
+        return mapper.updateAdvertiser(id, name, dailyBudget, status);
     }
 
+    /** 存在性检查仍走广告主分片，供服务校验归属对象。 */
     public boolean advertiserExists(long id) {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM advertiser WHERE advertiser_id=?", Integer.class, id);
-        return n != null && n > 0;
+        return mapper.countAdvertiser(id) > 0;
     }
 
     /** 不含预算消耗(spentToday/remaining 由 service 从 Redis 补)。 */
     public AdvertiserView findAdvertiserRaw(long id) {
-        List<AdvertiserView> rows = jdbc.query(
-                "SELECT advertiser_id,name,daily_budget,status FROM advertiser WHERE advertiser_id=?",
-                (rs, n) -> new AdvertiserView(rs.getLong("advertiser_id"), rs.getString("name"),
-                        rs.getDouble("daily_budget"), rs.getString("status"), null, null),
-                id);
+        var rows = mapper.findAdvertiser(id);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** 按广告主ID稳定排序，消耗预算仍由服务补充。 */
     public List<AdvertiserView> listAdvertisersRaw() {
-        return jdbc.query(
-                "SELECT advertiser_id,name,daily_budget,status FROM advertiser ORDER BY advertiser_id",
-                (rs, n) -> new AdvertiserView(rs.getLong("advertiser_id"), rs.getString("name"),
-                        rs.getDouble("daily_budget"), rs.getString("status"), null, null));
+        return mapper.listAdvertisers();
     }
 
     // ---------------- ad ----------------
 
-    /** 插入广告,ad_id 由 ShardingSphere Snowflake 生成、getGeneratedKeys 回传(分库键=ad_id)。 */
+    /** 插入广告,ad_id 由 ShardingSphere Snowflake 生成、getGeneratedKeys 回传(分库键=advertiser_id)。 */
     public long insertAd(long advertiserId, long itemId, String title, String landingUrl,
                          double qualityScore, String status, String reviewStatus,
                          String optimizationType, Double targetCpa, Long audienceId) {
-        return insertReturningKey("ad_id",
-                "INSERT INTO ad(advertiser_id,item_id,title,landing_url,quality_score,status," +
-                        "review_status,optimization_type,target_cpa,audience_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                advertiserId, itemId, title, landingUrl, qualityScore, status, reviewStatus,
-                optimizationType, targetCpa, audienceId);
+        GeneratedId key = new GeneratedId();
+        mapper.insertAd(key, advertiserId, itemId, title, landingUrl, qualityScore, status, reviewStatus, optimizationType, targetCpa, audienceId);
+        return key.valueOrZero();
     }
 
+    /** 新广告生成ID后回填默认落地地址。 */
     public void setAdLandingUrl(long adId, String url) {
-        jdbc.update("UPDATE ad SET landing_url=? WHERE ad_id=?", url, adId);
+        mapper.setAdLandingUrl(adId, url);
     }
 
-    /** 部分更新。targetCpa 单独处理(null 也可能是"清空目标 CPA"的合法值,这里 COALESCE 表示不改)。 */
+    /** 部分更新。targetCpa=null表示不改，audienceId=null则显式清空定向。 */
     public int updateAd(long adId, Long itemId, String title, String landingUrl, Double qualityScore,
                         String status, String optimizationType, Double targetCpa, Long audienceId) {
-        return jdbc.update(
-                "UPDATE ad SET item_id=COALESCE(?,item_id), title=COALESCE(?,title), " +
-                "landing_url=COALESCE(?,landing_url), quality_score=COALESCE(?,quality_score), " +
-                "status=COALESCE(?,status), optimization_type=COALESCE(?,optimization_type), " +
-                "target_cpa=COALESCE(?,target_cpa), audience_id=? WHERE ad_id=?",
-                itemId, title, landingUrl, qualityScore, status, optimizationType, targetCpa, audienceId, adId);
+        return mapper.updateAd(adId, itemId, title, landingUrl, qualityScore, status, optimizationType, targetCpa, audienceId);
     }
 
+    /** 保存服务层已经校验的启停状态，返回实际更新数。 */
     public int setAdStatus(long adId, String status) {
-        return jdbc.update("UPDATE ad SET status=? WHERE ad_id=?", status, adId);
+        return mapper.setAdStatus(adId, status);
     }
 
+    /** 区分不存在广告与后续无子资源的广告。 */
     public boolean adExists(long adId) {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM ad WHERE ad_id=?", Integer.class, adId);
-        return n != null && n > 0;
+        return mapper.countAd(adId) > 0;
     }
 
+    /** 查询归属供服务鉴权；缺失返回null。 */
     public Long advertiserOfAd(long adId) {
-        List<Long> rows = jdbc.query("SELECT advertiser_id FROM ad WHERE ad_id=?",
-                (rs, n) -> rs.getLong("advertiser_id"), adId);
+        var rows = mapper.advertiserOfAd(adId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -146,39 +114,18 @@ public class AdvertiserRepository {
      * (分片内),再单查 ad_embedding 补 hasEmbedding 标志。
      */
     public AdRow findAdRow(long adId) {
-        List<AdRow> rows = jdbc.query(SELECT_AD + " WHERE ad_id=?", (rs, n) -> mapAd(rs, false), adId);
-        if (rows.isEmpty()) {
-            return null;
-        }
-        return withEmbedding(rows.get(0), embeddingExists(adId));
+        List<AdRow> rows = mapper.findAd(adId);
+        return rows.isEmpty() ? null : withEmbedding(rows.get(0), embeddingExists(adId));
     }
 
+    /** 按广告主读取广告，批量补充向量存在标志。 */
     public List<AdRow> listAdRows(long advertiserId) {
-        List<AdRow> ads = jdbc.query(SELECT_AD + " WHERE advertiser_id=? ORDER BY ad_id",
-                (rs, n) -> mapAd(rs, false), advertiserId);
-        if (ads.isEmpty()) {
-            return ads;
-        }
-        // ad_embedding 单表(ds_0):批量查哪些 ad 有向量
+        List<AdRow> ads = mapper.listAds(advertiserId);
+        if (ads.isEmpty()) return ads;
+        // 广告向量单表与分片广告分开访问，继续一次批量读取避免N+1。
         Long[] ids = ads.stream().map(AdRow::adId).toArray(Long[]::new);
-        java.util.Set<Long> withEmb = new java.util.HashSet<>();
-        jdbc.query("SELECT ad_id FROM ad_embedding WHERE ad_id = ANY(?)",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                (java.sql.ResultSet rs) -> { withEmb.add(rs.getLong("ad_id")); });
+        var withEmb = new java.util.HashSet<>(mapper.embeddingAdIds(ids));
         return ads.stream().map(r -> withEmbedding(r, withEmb.contains(r.adId()))).toList();
-    }
-
-    private static final String SELECT_AD =
-            "SELECT ad_id,advertiser_id,item_id,title,landing_url,quality_score,status," +
-            "review_status,optimization_type,target_cpa,audience_id FROM ad";
-
-    private static AdRow mapAd(java.sql.ResultSet rs, boolean hasEmbedding) throws java.sql.SQLException {
-        Double cpa = (Double) rs.getObject("target_cpa");
-        Long aud = (Long) rs.getObject("audience_id");
-        return new AdRow(rs.getLong("ad_id"), rs.getLong("advertiser_id"), rs.getLong("item_id"),
-                rs.getString("title"), rs.getString("landing_url"), rs.getDouble("quality_score"),
-                rs.getString("status"), rs.getString("review_status"),
-                rs.getString("optimization_type"), cpa, aud, hasEmbedding);
     }
 
     private static AdRow withEmbedding(AdRow r, boolean hasEmbedding) {
@@ -189,123 +136,105 @@ public class AdvertiserRepository {
 
     /** 审核决定落库(A2):设 review_status + review_reason。 */
     public int setAdReview(long adId, String reviewStatus, String reason) {
-        return jdbc.update("UPDATE ad SET review_status=?, review_reason=? WHERE ad_id=?",
-                reviewStatus, reason, adId);
+        return mapper.setAdReview(adId, reviewStatus, reason);
     }
 
     private boolean embeddingExists(long adId) {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM ad_embedding WHERE ad_id=?", Integer.class, adId);
-        return n != null && n > 0;
+        return mapper.countEmbedding(adId) > 0;
     }
 
     /** 删除广告及其子资源(creative/bidword/embedding/事件保留作审计)。Redis 倒排清理在 service 层。 */
     public void deleteAd(long adId) {
-        jdbc.update("DELETE FROM bidword WHERE ad_id=?", adId);
-        jdbc.update("DELETE FROM ad_creative WHERE ad_id=?", adId);
-        jdbc.update("DELETE FROM ad_embedding WHERE ad_id=?", adId);
-        jdbc.update("DELETE FROM ad WHERE ad_id=?", adId);
+        mapper.deleteAdBidwords(adId);
+        mapper.deleteAdCreatives(adId);
+        mapper.deleteEmbedding(adId);
+        mapper.deleteAd(adId);
     }
 
+    /** 校验关联内容是否存在，不引入跨分片关联查询。 */
     public boolean itemExists(long itemId) {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM item WHERE item_id=?", Integer.class, itemId);
-        return n != null && n > 0;
+        return mapper.countItem(itemId) > 0;
     }
 
     // ---------------- bidword ----------------
 
+    /** 新增竞价词并回填分片驱动生成的ID。 */
     public long insertBidword(long adId, String keyword, String matchType, double bid, String bidMode) {
-        return insertReturningKey("id",
-                "INSERT INTO bidword(ad_id,keyword,match_type,bid,bid_mode) VALUES(?,?,?,?,?)",
-                adId, keyword, matchType, bid, bidMode);
+        GeneratedId key = new GeneratedId();
+        mapper.insertBidword(key, adId, keyword, matchType, bid, bidMode);
+        return key.valueOrZero();
     }
 
+    /** 只更新非null字段，保留原出价模式和匹配规则。 */
     public int updateBidword(long id, String keyword, String matchType, Double bid, String bidMode) {
-        return jdbc.update(
-                "UPDATE bidword SET keyword=COALESCE(?,keyword), match_type=COALESCE(?,match_type), " +
-                "bid=COALESCE(?,bid), bid_mode=COALESCE(?,bid_mode) WHERE id=?",
-                keyword, matchType, bid, bidMode, id);
+        return mapper.updateBidword(id, keyword, matchType, bid, bidMode);
     }
 
+    /** 删除单个词，调用者依据影响行数判断是否存在。 */
     public int deleteBidword(long id) {
-        return jdbc.update("DELETE FROM bidword WHERE id=?", id);
+        return mapper.deleteBidword(id);
     }
 
+    /** 读取词及广告归属供更新前校验；缺失返回null。 */
     public BidwordView findBidword(long id) {
-        List<BidwordView> rows = jdbc.query(
-                "SELECT id,ad_id,keyword,match_type,bid,bid_mode FROM bidword WHERE id=?",
-                AdvertiserRepository::mapBidword, id);
+        var rows = mapper.findBidword(id);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** 按ID保序读取子资源，供目录事件和视图组装。 */
     public List<BidwordView> listBidwords(long adId) {
-        return jdbc.query(
-                "SELECT id,ad_id,keyword,match_type,bid,bid_mode FROM bidword WHERE ad_id=? ORDER BY id",
-                AdvertiserRepository::mapBidword, adId);
-    }
-
-    private static BidwordView mapBidword(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
-        return new BidwordView(rs.getLong("id"), rs.getLong("ad_id"), rs.getString("keyword"),
-                rs.getString("match_type"), rs.getDouble("bid"), rs.getString("bid_mode"));
+        return mapper.listBidwords(adId);
     }
 
     // ---------------- ad_creative ----------------
 
+    /** 新增创意并回填分片驱动生成的ID。 */
     public long insertCreative(long adId, String title, String landingUrl, String status) {
-        return insertReturningKey("creative_id",
-                "INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(?,?,?,?)",
-                adId, title, landingUrl, status);
+        GeneratedId key = new GeneratedId();
+        mapper.insertCreative(key, adId, title, landingUrl, status);
+        return key.valueOrZero();
     }
 
+    /** 仅修改非null创意字段，返回实际更新数。 */
     public int updateCreative(long creativeId, String title, String landingUrl, String status) {
-        return jdbc.update(
-                "UPDATE ad_creative SET title=COALESCE(?,title), landing_url=COALESCE(?,landing_url), " +
-                "status=COALESCE(?,status) WHERE creative_id=?",
-                title, landingUrl, status, creativeId);
+        return mapper.updateCreative(creativeId, title, landingUrl, status);
     }
 
+    /** 删除单创意，调用者依据影响行数处理缺失。 */
     public int deleteCreative(long creativeId) {
-        return jdbc.update("DELETE FROM ad_creative WHERE creative_id=?", creativeId);
+        return mapper.deleteCreative(creativeId);
     }
 
+    /** 查询创意归属广告，供服务层进行权限校验。 */
     public Long adOfCreative(long creativeId) {
-        List<Long> rows = jdbc.query("SELECT ad_id FROM ad_creative WHERE creative_id=?",
-                (rs, n) -> rs.getLong("ad_id"), creativeId);
+        var rows = mapper.adOfCreative(creativeId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** 按创意ID稳定排序，供目录事件和视图使用。 */
     public List<CreativeView> listCreatives(long adId) {
-        return jdbc.query(
-                "SELECT creative_id,ad_id,title,landing_url,status FROM ad_creative WHERE ad_id=? ORDER BY creative_id",
-                (rs, n) -> new CreativeView(rs.getLong("creative_id"), rs.getLong("ad_id"),
-                        rs.getString("title"), rs.getString("landing_url"), rs.getString("status")),
-                adId);
+        return mapper.listCreatives(adId);
     }
 
     // ---------------- ad_embedding(在线语义召回依赖)----------------
 
     /** 从 item_embedding 拷贝该广告关联 item 的向量(item 无向量则 0 行)。upsert 语义。
-     *  #3 拆库:item_embedding(派生库)与 ad_embedding(分片库)可能不同库,拆读(derived,text 传输)+写(jdbc)。 */
+     *  #3 拆库:item_embedding(派生库)与 ad_embedding(分片库)可能不同库,拆读(derived,text 传输)+写(primary Mapper)。 */
     public int copyEmbeddingFromItem(long adId, long itemId) {
-        List<String[]> v = derived.query(
-                "SELECT embedding::text AS e, model FROM item_embedding WHERE item_id=?",
-                (rs, n) -> new String[]{rs.getString("e"), rs.getString("model")}, itemId);
-        if (v.isEmpty() || v.get(0)[0] == null) {
-            return 0;
-        }
-        return jdbc.update(
-                "INSERT INTO ad_embedding(ad_id, embedding, model) VALUES(?, CAST(? AS vector), ?) " +
-                "ON CONFLICT (ad_id) DO UPDATE SET embedding=EXCLUDED.embedding, model=EXCLUDED.model",
-                adId, v.get(0)[0], v.get(0)[1]);
+        var rows = embeddings.find(itemId);
+        if (rows.isEmpty() || rows.get(0) == null || rows.get(0).embedding() == null) return 0;
+        var row = rows.get(0);
+        return mapper.upsertEmbedding(adId, row.embedding(), row.model());
     }
 
+    /** 删除向量投影，广告及其其他子资源由对应用例管理。 */
     public void deleteEmbedding(long adId) {
-        jdbc.update("DELETE FROM ad_embedding WHERE ad_id=?", adId);
+        mapper.deleteEmbedding(adId);
     }
 
     /** #3:读 item 向量(pgvector ::text 形式),供广告目录事件携带(拆库后 ad-serving 消费端写自有 ad_embedding)。null=无向量。 */
     public String itemEmbeddingText(long itemId) {
-        List<String> rows = derived.query("SELECT embedding::text FROM item_embedding WHERE item_id=?",
-                (rs, n) -> rs.getString(1), itemId);
+        List<String> rows = embeddings.text(itemId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -315,15 +244,13 @@ public class AdvertiserRepository {
      * 某广告主下各广告的曝光/点击/转化/花费聚合。
      *
      * <p>分库后 {@code ad}(分片)与 {@code ad_event}(单表 ds_0)的 JOIN 会跨分片边界、需 SQL federation,
-     * 故拆成两步各自在分片内执行:① 取该广告主的广告(按 advertiser_id 过滤 → ad 非分片键 → 广播合并);
+     * 故拆成两步各自在分片内执行:① 取该广告主的广告(按 advertiser_id 过滤 → 定位广告主所在分片);
      * ② {@code ad_event} 单表按 ad_id 聚合。无事件的广告也返回(计数 0)。
      */
     public List<AdReportRow> reportByAdvertiser(long advertiserId) {
         // ① 广告(保序)
         Map<Long, String> ads = new LinkedHashMap<>();
-        jdbc.query("SELECT ad_id, title FROM ad WHERE advertiser_id=? ORDER BY ad_id",
-                (java.sql.ResultSet rs) -> { ads.put(rs.getLong("ad_id"), rs.getString("title")); },
-                advertiserId);
+        mapper.adTitles(advertiserId).forEach(row -> ads.put(row.adId(), row.title()));
         if (ads.isEmpty()) {
             return List.of();
         }

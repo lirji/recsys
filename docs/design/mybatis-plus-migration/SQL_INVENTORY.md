@@ -87,9 +87,9 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/advertiser/AdvertiserDataSourceConfig.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserDataSourceConfig.java) | 6 | 0 | TODO |
-| [com/recsys/advertiser/AdvertiserRepository.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserRepository.java) | 8 | 35 | TODO |
-| [com/recsys/advertiser/DbAdReportReader.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/DbAdReportReader.java) | 4 | 1 | TODO |
+| [com/recsys/advertiser/AdvertiserDataSourceConfig.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserDataSourceConfig.java) | 6 | 0 | MP04b复核：原连接装配保留，无业务SQL |
+| [com/recsys/advertiser/AdvertiserRepository.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserRepository.java) | 8 | 35 | DONE MP04b |
+| [com/recsys/advertiser/DbAdReportReader.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/DbAdReportReader.java) | 4 | 1 | DONE MP04b |
 
 ### recsys-behavior
 

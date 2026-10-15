@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.AdvertiserMapper">
+    <resultMap id="advertiser" type="com.recsys.advertiser.dto.AdvertiserView">
+        <constructor>
+            <arg column="advertiser_id" javaType="_long"/>
+            <arg column="name" javaType="string"/>
+            <arg column="daily_budget" javaType="_double"/>
+            <arg column="status" javaType="string"/>
+            <arg column="spent_today" javaType="java.lang.Double"/>
+            <arg column="remaining_budget" javaType="java.lang.Double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="ad" type="com.recsys.advertiser.AdvertiserRepository$AdRow">
+        <constructor>
+            <arg column="ad_id" javaType="_long"/>
+            <arg column="advertiser_id" javaType="_long"/>
+            <arg column="item_id" javaType="_long"/>
+            <arg column="title" javaType="string"/>
+            <arg column="landing_url" javaType="string"/>
+            <arg column="quality_score" javaType="_double"/>
+            <arg column="status" javaType="string"/>
+            <arg column="review_status" javaType="string"/>
+            <arg column="optimization_type" javaType="string"/>
+            <arg column="target_cpa" javaType="java.lang.Double"/>
+            <arg column="audience_id" javaType="java.lang.Long"/>
+            <arg column="has_embedding" javaType="_boolean"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="bidword" type="com.recsys.advertiser.dto.BidwordView">
+        <constructor>
+            <arg column="id" javaType="_long"/>
+            <arg column="ad_id" javaType="_long"/>
+            <arg column="keyword" javaType="string"/>
+            <arg column="match_type" javaType="string"/>
+            <arg column="bid" javaType="_double"/>
+            <arg column="bid_mode" javaType="string"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="creative" type="com.recsys.advertiser.dto.CreativeView">
+        <constructor>
+            <arg column="creative_id" javaType="_long"/>
+            <arg column="ad_id" javaType="_long"/>
+            <arg column="title" javaType="string"/>
+            <arg column="landing_url" javaType="string"/>
+            <arg column="status" javaType="string"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="adTitle" type="com.recsys.advertiser.persistence.mapper.primary.AdvertiserMapper$AdTitle">
+        <constructor>
+            <arg column="ad_id" javaType="_long"/>
+            <arg column="title" javaType="string"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="reportStats" type="com.recsys.advertiser.persistence.mapper.primary.AdvertiserMapper$ReportStats">
+        <constructor>
+            <arg column="ad_id" javaType="_long"/>
+            <arg column="impr" javaType="_long"/>
+            <arg column="clk" javaType="_long"/>
+            <arg column="conv" javaType="_long"/>
+            <arg column="spend" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <insert id="insertAdvertiser" useGeneratedKeys="true" keyProperty="key.value" keyColumn="advertiser_id">
+        INSERT INTO advertiser(name,daily_budget,status) VALUES(#{name},#{dailyBudget},#{status})
+    </insert>
+    <update id="updateAdvertiser">
+        UPDATE advertiser SET name=COALESCE(#{name},name),daily_budget=COALESCE(#{dailyBudget},daily_budget),status=COALESCE(#{status},status) WHERE advertiser_id=#{id}
+    </update>
+    <select id="countAdvertiser" resultType="int">
+        SELECT COUNT(*) FROM advertiser WHERE advertiser_id=#{id}
+    </select>
+    <select id="findAdvertiser" resultMap="advertiser">
+        SELECT advertiser_id,name,COALESCE(daily_budget,0) AS daily_budget,status,NULL AS spent_today,NULL AS remaining_budget FROM advertiser WHERE advertiser_id=#{id}
+    </select>
+    <select id="listAdvertisers" resultMap="advertiser">
+        SELECT advertiser_id,name,COALESCE(daily_budget,0) AS daily_budget,status,NULL AS spent_today,NULL AS remaining_budget FROM advertiser ORDER BY advertiser_id
+    </select>
+    <insert id="insertAd" useGeneratedKeys="true" keyProperty="key.value" keyColumn="ad_id">
+        INSERT INTO ad(advertiser_id,item_id,title,landing_url,quality_score,status,review_status,optimization_type,target_cpa,audience_id) VALUES(#{advertiserId},#{itemId},#{title},#{landingUrl},#{qualityScore},#{status},#{reviewStatus},#{optimizationType},#{targetCpa},#{audienceId})
+    </insert>
+    <update id="setAdLandingUrl">
+        UPDATE ad SET landing_url=#{url} WHERE ad_id=#{adId}
+    </update>
+    <update id="updateAd">
+        UPDATE ad SET item_id=COALESCE(#{itemId},item_id),title=COALESCE(#{title},title),landing_url=COALESCE(#{landingUrl},landing_url),quality_score=COALESCE(#{qualityScore},quality_score),status=COALESCE(#{status},status),optimization_type=COALESCE(#{optimizationType},optimization_type),target_cpa=COALESCE(#{targetCpa},target_cpa),audience_id=#{audienceId} WHERE ad_id=#{adId}
+    </update>
+    <update id="setAdStatus">
+        UPDATE ad SET status=#{status} WHERE ad_id=#{adId}
+    </update>
+    <select id="countAd" resultType="int">
+        SELECT COUNT(*) FROM ad WHERE ad_id=#{adId}
+    </select>
+    <select id="advertiserOfAd" resultType="long">
+        SELECT COALESCE(advertiser_id,0) FROM ad WHERE ad_id=#{adId}
+    </select>
+    <select id="findAd" resultMap="ad">
+        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding FROM ad WHERE ad_id=#{adId}
+    </select>
+    <select id="listAds" resultMap="ad">
+        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding FROM ad WHERE advertiser_id=#{advertiserId} ORDER BY ad_id
+    </select>
+    <select id="embeddingAdIds" resultType="long">
+        SELECT ad_id FROM ad_embedding WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <update id="setAdReview">
+        UPDATE ad SET review_status=#{reviewStatus},review_reason=#{reason} WHERE ad_id=#{adId}
+    </update>
+    <select id="countEmbedding" resultType="int">
+        SELECT COUNT(*) FROM ad_embedding WHERE ad_id=#{adId}
+    </select>
+    <delete id="deleteAdBidwords">
+        DELETE FROM bidword WHERE ad_id=#{adId}
+    </delete>
+    <delete id="deleteAdCreatives">
+        DELETE FROM ad_creative WHERE ad_id=#{adId}
+    </delete>
+    <delete id="deleteEmbedding">
+        DELETE FROM ad_embedding WHERE ad_id=#{adId}
+    </delete>
+    <delete id="deleteAd">
+        DELETE FROM ad WHERE ad_id=#{adId}
+    </delete>
+    <select id="countItem" resultType="int">
+        SELECT COUNT(*) FROM item WHERE item_id=#{itemId}
+    </select>
+    <insert id="insertBidword" useGeneratedKeys="true" keyProperty="key.value" keyColumn="id">
+        INSERT INTO bidword(ad_id,keyword,match_type,bid,bid_mode) VALUES(#{adId},#{keyword},#{matchType},#{bid},#{bidMode})
+    </insert>
+    <update id="updateBidword">
+        UPDATE bidword SET keyword=COALESCE(#{keyword},keyword),match_type=COALESCE(#{matchType},match_type),bid=COALESCE(#{bid},bid),bid_mode=COALESCE(#{bidMode},bid_mode) WHERE id=#{id}
+    </update>
+    <delete id="deleteBidword">
+        DELETE FROM bidword WHERE id=#{id}
+    </delete>
+    <select id="findBidword" resultMap="bidword">
+        SELECT id,COALESCE(ad_id,0) AS ad_id,keyword,match_type,COALESCE(bid,0) AS bid,bid_mode FROM bidword WHERE id=#{id}
+    </select>
+    <select id="listBidwords" resultMap="bidword">
+        SELECT id,COALESCE(ad_id,0) AS ad_id,keyword,match_type,COALESCE(bid,0) AS bid,bid_mode FROM bidword WHERE ad_id=#{adId} ORDER BY id
+    </select>
+    <insert id="insertCreative" useGeneratedKeys="true" keyProperty="key.value" keyColumn="creative_id">
+        INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(#{adId},#{title},#{landingUrl},#{status})
+    </insert>
+    <update id="updateCreative">
+        UPDATE ad_creative SET title=COALESCE(#{title},title),landing_url=COALESCE(#{landingUrl},landing_url),status=COALESCE(#{status},status) WHERE creative_id=#{creativeId}
+    </update>
+    <delete id="deleteCreative">
+        DELETE FROM ad_creative WHERE creative_id=#{creativeId}
+    </delete>
+    <select id="adOfCreative" resultType="long">
+        SELECT COALESCE(ad_id,0) FROM ad_creative WHERE creative_id=#{creativeId}
+    </select>
+    <select id="listCreatives" resultMap="creative">
+        SELECT creative_id,COALESCE(ad_id,0) AS ad_id,title,landing_url,status FROM ad_creative WHERE ad_id=#{adId} ORDER BY creative_id
+    </select>
+    <insert id="upsertEmbedding">
+        INSERT INTO ad_embedding(ad_id,embedding,model) VALUES(#{adId},CAST(#{embedding} AS vector),#{model}) ON CONFLICT (ad_id) DO UPDATE SET embedding=EXCLUDED.embedding,model=EXCLUDED.model
+    </insert>
+    <select id="adTitles" resultMap="adTitle">
+        SELECT ad_id,title FROM ad WHERE advertiser_id=#{advertiserId} ORDER BY ad_id
+    </select>
+    <select id="reportStats" resultMap="reportStats">
+        SELECT ad_id,SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS impr,SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk,SUM(CASE WHEN event_type='CONVERSION' THEN 1 ELSE 0 END) AS conv,COALESCE(SUM(CASE WHEN event_type='CLICK' THEN charged_price ELSE 0 END),0) AS spend FROM ad_event WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler}) GROUP BY ad_id
+    </select>
+</mapper>
