@@ -39,13 +39,8 @@ public class UserProfileService {
         log.info("更新用户 {} 偏好类目: {}", userId, categories);
     }
 
-    /** 读取用户偏好类目;无画像返回空列表。 */
+    /** 无画像才返回空；查询异常交给调用边界，避免用户把故障当成偏好已清空。 */
     public List<String> getInterests(long userId) {
-        try {
-            return profiles.findInterests(userId);
-        } catch (Exception e) {
-            log.debug("读取用户 {} 偏好类目失败: {}", userId, e.getMessage());
-            return List.of();
-        }
+        return profiles.findInterests(userId);
     }
 }

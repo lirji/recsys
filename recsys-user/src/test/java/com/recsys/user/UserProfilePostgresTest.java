@@ -114,9 +114,9 @@ class UserProfilePostgresTest {
     }
 
     @Test
-    void malformedCategoryShapeKeepsExistingReadFallback() {
+    void malformedCategoryShapeDoesNotPretendToBeEmptyInterests() {
         jdbc.update("INSERT INTO app_user(user_id,profile) VALUES (5,'{\"categories\":{\"bad\":true}}')");
-        assertThat(service.getInterests(5)).isEmpty();
+        assertThatThrownBy(() -> service.getInterests(5)).isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test

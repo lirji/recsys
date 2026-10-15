@@ -14,6 +14,26 @@ import static org.mockito.Mockito.*;
 
 /** 真实RPC保护读失败与写入未知的状态；失败不得生成兴趣已保存的ACK。 */
 class UserGrpcErrorContractTest {
+    /** 使用真实owner，防止owner吞掉持久化异常后RPC错误测试仍因mock而假绿。 */
+    @org.junit.jupiter.api.Test
+    void persistenceFailureInActualOwnerBecomesSafeRpcFailure() throws Exception {
+        var mapper = mock(com.recsys.user.persistence.mapper.UserProfileMapper.class);
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("private SQL token")).when(mapper).findInterests(1);
+        var server = ServerBuilder.forPort(0).addService(new UserGrpcService(new UserProfileService(mapper))).build().start();
+        var channel = ManagedChannelBuilder.forAddress("localhost", server.getPort()).usePlaintext().build();
+        try {
+            var stub = UserProfileServiceGrpc.newBlockingStub(channel).withDeadlineAfter(5, TimeUnit.SECONDS);
+            var failure = assertThrows(StatusRuntimeException.class, () -> stub.getInterests(UserId.newBuilder().setUserId(1).build()));
+            assertEquals(Status.Code.UNKNOWN, failure.getStatus().getCode());
+            assertEquals(ErrorCode.RPC_USER_QUERY_FAILED.code(), failure.getTrailers().get(GrpcErrors.ERROR_CODE));
+            assertEquals(ErrorCode.RPC_USER_QUERY_FAILED.displayMessage(), failure.getStatus().getDescription());
+            assertFalse(failure.getMessage().contains("private"));
+        } finally {
+            channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+            server.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void failureNeverBecomesSuccessAndKeepsExistingStatus(boolean write) throws Exception {

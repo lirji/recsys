@@ -1,6 +1,9 @@
 package com.recsys.recengine.user;
 
 import com.recsys.common.user.UserProfileReader;
+import com.recsys.common.error.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -17,14 +20,23 @@ import java.util.List;
 @ConditionalOnProperty(name = "recsys.user.serving.mode", havingValue = "grpc")
 public class GrpcUserProfileReader implements UserProfileReader {
 
+    private static final Logger log = LoggerFactory.getLogger(GrpcUserProfileReader.class);
+
     private final UserGateway userGateway;
 
     public GrpcUserProfileReader(UserGateway userGateway) {
         this.userGateway = userGateway;
     }
 
+    /** 推荐允许用冷启动策略继续；该降级不再影响用户主动查询的真实性。 */
     @Override
     public List<String> categories(long userId) {
-        return userGateway.getInterests(userId);
+        try {
+            return userGateway.getInterests(userId);
+        } catch (RuntimeException failure) {
+            log.warn("{}；推荐按冷启动降级，userId={} failureType={}",
+                    ErrorCode.USER_INTEREST_QUERY_FAILED.displayMessage(), userId, failure.getClass().getSimpleName());
+            return List.of();
+        }
     }
 }

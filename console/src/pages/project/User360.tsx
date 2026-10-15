@@ -149,7 +149,7 @@ export default function User360() {
               </Descriptions.Item>
               <Descriptions.Item label="兴趣画像(rec-engine)" span={2}>
                 {interests.isError ? (
-                  <Typography.Text type="secondary">兴趣接口不可用</Typography.Text>
+                  <Typography.Text type="danger">{toApiError(interests.error).message}</Typography.Text>
                 ) : interests.data?.categories?.length ? (
                   interests.data.categories.map((c) => <Tag key={c} color="purple">{c}</Tag>)
                 ) : (

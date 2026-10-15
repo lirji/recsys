@@ -540,6 +540,10 @@ export const errorCodes = {
     message: '兴趣保存结果未知，请稍后核查',
     httpStatus: 503,
   },
+  USER_INTEREST_QUERY_FAILED: {
+    message: '兴趣信息暂时无法读取，请稍后重试',
+    httpStatus: 503,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

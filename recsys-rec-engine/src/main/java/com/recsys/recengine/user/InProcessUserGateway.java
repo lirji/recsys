@@ -1,6 +1,8 @@
 package com.recsys.recengine.user;
 
 import com.recsys.user.UserProfileService;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +22,14 @@ public class InProcessUserGateway implements UserGateway {
         this.userProfile = userProfile;
     }
 
+    /** 进程内查询同样区分真实空与不可读取，不能依赖RPC模式才暴露故障。 */
     @Override
     public List<String> getInterests(long userId) {
-        return userProfile.getInterests(userId);
+        try {
+            return userProfile.getInterests(userId);
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.USER_INTEREST_QUERY_FAILED, failure);
+        }
     }
 
     @Override

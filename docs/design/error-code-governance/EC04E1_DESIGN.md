@@ -1,0 +1,19 @@
+# EC04e1 兴趣查询失败与推荐降级分开
+
+基线e94cdac66beec1705a84b605f41ac75ee1d3bcce，继续父EC04。只处理用户兴趣严格查询，以及复用该查询的推荐读取边界；不改持久化SQL/事务、推荐排序/冷启动策略、其他RPC/资金/配置或新依赖。其余console公开对象放后续EC04e2。
+
+## 证据与决定
+
+UserProfileService.getInterests把所有DB异常当空兴趣；GrpcUserGateway的读fallback又把所有RPC错误当空。UserInterestController与GrpcUserProfileReader复用gateway，故用户主动查询的失败被误报为真实空，不能靠取消所有降级修复。
+
+选择让owner读取异常传播给已有RPC安全边界；GrpcUserGateway保留现有Retry/CircuitBreaker及状态/重试谓词，只将重试耗尽/不可重试/熔断的最终fallback改为PublicErrorException(USER_INTEREST_QUERY_FAILED)，HTTP503。方法内不提前包装RPC错误，以免破坏瞬时读重试；不经过Spring代理的直接RPC调用仍保留安全StatusRuntimeException。InProcessUserGateway将owner读取异常转同一公开503；无画像/NULL画像/空兴趣的正常200保持。新目录文案为“兴趣信息暂时无法读取，请稍后重试”，不将依赖内部身份问题误报用户403。
+
+推荐专用GrpcUserProfileReader在读取失败时仍返回空，日志用受控目录和异常类型；进程内推荐本就走独立DbUserProfileReader，其降级保持。UserGateway文档更新职责边界，不增加空透传服务或RPC。写入和EC04d未知结果语义保持。
+
+前端ColdStartInterests已有公共错误展示，失败不渲染空表单；User360兴趣区域的固定“接口不可用”替换为toApiError，使该局部错误带稳定code。保持页面/路由/接口成功结构，不做中大型前端重构。
+
+## 验证与兼容
+
+先运行原真实PG用户/召回及RPC/重试基线；新增真实TCP+Spring AOP+Controller测试成功/真空、瞬时错误原次数重试和恢复、永久错误不重试、熔断零调用、失败HTTP503且不泄漏，推荐Reader仍可降级。真实PG坏JSON形状不再假空，NULL/缺失/空/重复/事务与映射保护不变；实际UserProfileService→RPC安全边界验证。前端真实组件渲染验证失败code、无伪空表单、正常空可编辑。目录/生成物、必要相邻普通写回归、全仓compile与hygiene。
+
+有意行为变化为用户主动查询失败时从空200变503；RPC owner的DB异常从成功空回复变UNKNOWN（已有异常协议），推荐仍空降级。滚动升级期间旧客户端可能仍将新owner失败降级，最终完整行为依赖owner与engine都升级；旧前端对未知新code仍安全fallback。无schema变化，代码回退会恢复旧假空。广告主report源码核实无catch，其成功聚合中缺少某ad统计时置零是合法事实，本片不修改。

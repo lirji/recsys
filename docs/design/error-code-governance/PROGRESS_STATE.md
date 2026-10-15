@@ -15,3 +15,5 @@ EC04b DONE/PASS（本地验证）：三个sandbox客户端、四服务caller码�
 EC04c DONE/PASS（本地）：三普通服务8方法与四类客户端8入口目录化，总133码。真实TCP证实旧Runtime异常统一UNKNOWN并保持，避免误触发读重试；正常ACK/重复false及fallback保持，后续EC04d修复HTTP假成功。13项基线、83项专项、149前端、24模块编译、生成与SQL守卫通过；Hygiene无阻断、Java工具限制保持。见EC04C_RESULT。EC04b已正常ff/push ba09172f，新CI38798495615尚运行，非最终全绿。
 
 EC04d DONE/PASS：普通广告/兴趣写入的RPC失败、丢应答、熔断及非成功ACK返回受控503；正常outcome重复false保持，无写重试。总135码。44旧专项、8旧HTTP刻画、69新专项、426资金/74类、151前端及build、24模块compile、目录/SQL守卫通过。Hygiene无阻断，Java工具限制保持。见EC04D_DESIGN/RESULT。EC04c 1a61da1b已ff/push，CI38799881069四门SUCCESS、build仍运行；EC04b CI38798495615终态CANCELLED（钱与build取消，另外三门成功），不称五门通过。父EC04e及EC05～08继续。
+
+EC04e1 DONE/PASS（本地）：严格兴趣查询故障从空200改受控503，推荐专用Reader保留冷启动降级；原读重试和普通写语义保持。总136码，User360局部错误也展示code。18基线、56专项/7类、154前端/21文件、24模块compile及目录/SQL/hygiene通过，见EC04E1_DESIGN/RESULT。无新增依赖/SQL/事务；父EC04的console边界及EC05～08继续。EC04d已ff/push e94cdac6，新CI38801955042运行；C的CI38799881069仅build取消、另四门成功。

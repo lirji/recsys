@@ -34,7 +34,7 @@ public class GrpcUserGateway implements UserGateway {
     @GrpcClient("user")
     private UserProfileServiceGrpc.UserProfileServiceBlockingStub stub;
 
-    // getInterests 是幂等读:@Retry 对瞬时错误重试,重试耗尽/非瞬时才落 fallback(按冷启动);@CircuitBreaker 内层无 fallback。
+    // getInterests 是幂等读:@Retry 对瞬时错误重试,重试耗尽/非瞬时才落安全错误fallback;@CircuitBreaker 内层无 fallback。
     // updateInterests 是非幂等写(下方),不挂 @Retry(避免重复写)。
     @Override
     @Retry(name = "user-grpc", fallbackMethod = "getInterestsFallback")
@@ -61,10 +61,10 @@ public class GrpcUserGateway implements UserGateway {
         }
     }
 
-    /** 读兴趣降级(P1):user-service 不可达时返回空(视为冷启动),推荐照常走冷启动兜底。 */
+    /** 先保留原RPC状态完成读重试，再报告查询失败；推荐降级由专用Reader决定。 */
     List<String> getInterestsFallback(long userId, Throwable t) {
-        log.warn("{}；降级为冷启动，userId={} failureType={}", ErrorCode.RPC_USER_QUERY_FAILED.displayMessage(), userId, t.getClass().getSimpleName());
-        return List.of();
+        log.warn("{} userId={} failureType={}", ErrorCode.USER_INTEREST_QUERY_FAILED.displayMessage(), userId, t.getClass().getSimpleName());
+        throw new PublicErrorException(ErrorCode.USER_INTEREST_QUERY_FAILED, t);
     }
 
     /** 写入未知不能继续返回ok=true；熔断快速拒绝也走同一安全错误。 */
