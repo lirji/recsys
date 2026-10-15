@@ -576,6 +576,14 @@ export const errorCodes = {
     message: '诊断数据缺失或无效，暂时无法判定正常',
     httpStatus: 0,
   },
+  CONSOLE_REPORT_UNAVAILABLE: {
+    message: '报表暂时不可用，请检查数据源或稍后重试',
+    httpStatus: 503,
+  },
+  CONSOLE_REPORT_READ_FAILED: {
+    message: '报表内容无法读取，请检查文件或稍后重试',
+    httpStatus: 500,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

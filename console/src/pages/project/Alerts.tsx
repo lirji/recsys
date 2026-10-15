@@ -47,7 +47,7 @@ export default function Alerts() {
         <ChartSkeleton height={280} />
       ) : alerts.length === 0 ? (
         <Card>
-          <Empty description="当前无告警 · 系统健康" />
+          <Empty description="当前已取得的信号未发现告警" />
         </Card>
       ) : (
         <Card size="small">

@@ -8,11 +8,12 @@ import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+import com.recsys.platform.web.PublicHttpException;
 import com.recsys.console.persistence.mapper.primary.ReportMapper;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -69,107 +70,114 @@ public class ReportService {
         log.info("离线报表: DB(eval_report)优先, 回退目录 {}", this.evalDir);
     }
 
-    /** 数据库有报表时优先返回，缺失或失败时沿用本地CSV目录。 */
+    /** 有效CSV保持可用；数据源失败又没有回退时，不能把未知目录当作空目录。 */
     public List<ReportFileInfo> list() {
-        List<ReportFileInfo> fromDb = listDb();
-        if (fromDb != null && !fromDb.isEmpty()) {
-            return fromDb;
-        }
-        return listCsv();
+        return catalog().files();
     }
 
-    /**
-     * 取某分类下最新一份报表(list 已按 created_at/mtime 倒序,取首条并读取);
-     * 无该分类报表或读取失败返回 null。供一键诊断 / 告警面板复用。
-     */
+    /** 最新仅指当前可读来源内的顺序；失败不得被说成该类别没有报表。 */
     @Nullable
     public ReportTable latest(String category) {
-        try {
-            for (ReportFileInfo info : list()) {
-                if (category.equals(info.category())) {
-                    return read(info.fileName());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("取最新 {} 报表失败: {}", category, e.getMessage());
+        Catalog catalog = catalog();
+        for (ReportFileInfo info : catalog.files()) {
+            if (category.equals(info.category())) return read(info.fileName());
         }
+        if (catalog.databaseFailure() != null) throw unavailable(catalog.databaseFailure());
         return null;
     }
 
-    /** 文件名先经过允许列表校验，数据库JSON不可用时回退同名CSV。 */
+    /** 文件名先经过允许列表；坏DB数据仍可用同名CSV恢复，但未知不能变404。 */
     public ReportTable read(String name) {
         if (name == null || !SAFE_NAME.matcher(name).matches()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "非法文件名");
+            throw new PublicHttpException(ErrorCode.BAD_REQUEST);
         }
-        ReportTable fromDb = readDb(name);
-        if (fromDb != null) {
-            return fromDb;
+        Exception databaseFailure = null;
+        if (reports != null) {
+            try {
+                ReportTable fromDb = readDb(name);
+                if (fromDb != null) return fromDb;
+            } catch (IOException | RuntimeException failure) {
+                databaseFailure = failure;
+                logFallback(failure);
+            }
         }
-        return readCsv(name);
+        try {
+            return readCsv(name);
+        } catch (PublicHttpException absent) {
+            if (databaseFailure != null) throw unavailable(databaseFailure);
+            throw absent;
+        }
     }
 
     // ---------- DB(eval_report)----------
 
-    @Nullable
-    private List<ReportFileInfo> listDb() {
-        if (reports == null) {
-            return null;
+    /** 仅内部保留DB失败上下文，防止其他类别的CSV误证明当前类别不存在。 */
+    private record Catalog(List<ReportFileInfo> files, RuntimeException databaseFailure) { }
+
+    private Catalog catalog() {
+        RuntimeException databaseFailure = null;
+        if (reports != null) {
+            try {
+                List<ReportFileInfo> files = reports.list().stream().map(row -> new ReportFileInfo(
+                        row.category(), row.name(), row.ts(), row.sizeBytes(),
+                        row.createdAt() == null ? 0L : row.createdAt().getTime())).toList();
+                if (!files.isEmpty()) return new Catalog(files, null);
+            } catch (RuntimeException failure) {
+                databaseFailure = failure;
+                logFallback(failure);
+            }
         }
-        try {
-            return reports.list().stream().map(row -> new ReportFileInfo(
-                    row.category(), row.name(), row.ts(), row.sizeBytes(),
-                    row.createdAt() == null ? 0L : row.createdAt().getTime())).toList();
-        } catch (Exception e) {
-            log.debug("eval_report 读取失败,回退 CSV: {}", e.getMessage());
-            return null;
-        }
+        List<ReportFileInfo> files = listCsv();
+        if (files.isEmpty() && databaseFailure != null) throw unavailable(databaseFailure);
+        return new Catalog(files, databaseFailure);
     }
 
     @Nullable
-    private ReportTable readDb(String name) {
-        if (reports == null) {
-            return null;
+    private ReportTable readDb(String name) throws IOException {
+        var row = reports.read(name);
+        if (row == null) return null;
+        List<String> columns = mapper.readValue(row.columnsJson(), COLS);
+        List<List<String>> rows = mapper.readValue(row.rowsJson(), ROWS);
+        if (columns == null || rows == null || columns.stream().anyMatch(java.util.Objects::isNull)
+                || rows.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new IOException(ErrorCode.CONSOLE_REPORT_READ_FAILED.code());
         }
-        try {
-            var row = reports.read(name);
-            if (row == null) return null;
-            try {
-                List<String> columns = mapper.readValue(row.columnsJson(), COLS);
-                List<List<String>> rows = mapper.readValue(row.rowsJson(), ROWS);
-                return new ReportTable(name, row.category(), columns, rows);
-            } catch (IOException ex) {
-                throw new IllegalStateException("解析 eval_report JSON 失败", ex);
-            }
-        } catch (Exception e) {
-            log.debug("eval_report 单条读取失败,回退 CSV: {}", e.getMessage());
-            return null;
-        }
+        return new ReportTable(name, row.category(), columns, rows);
+    }
+
+    private static void logFallback(Exception failure) {
+        log.debug("{}；尝试CSV回退，failureType={}", ErrorCode.CONSOLE_REPORT_UNAVAILABLE.displayMessage(),
+                failure.getClass().getSimpleName());
+    }
+
+    private static PublicErrorException unavailable(Throwable failure) {
+        return new PublicErrorException(ErrorCode.CONSOLE_REPORT_UNAVAILABLE, failure);
     }
 
     // ---------- CSV 回退 ----------
 
     private List<ReportFileInfo> listCsv() {
-        if (!Files.isDirectory(evalDir)) {
-            return List.of();
-        }
+        if (Files.notExists(evalDir)) return List.of();
+        if (!Files.isDirectory(evalDir)) throw unavailable(null);
         try (Stream<Path> files = Files.list(evalDir)) {
             return files
                     .filter(p -> p.getFileName().toString().endsWith(".csv"))
+                    .filter(p -> !Files.isDirectory(p))
                     .map(this::toInfo)
                     .sorted(Comparator.comparingLong(ReportFileInfo::modifiedAt).reversed())
                     .toList();
-        } catch (IOException e) {
-            log.warn("列出报表目录失败: {}", e.getMessage());
-            return List.of();
+        } catch (IOException | java.io.UncheckedIOException failure) {
+            throw unavailable(failure);
         }
     }
 
     private ReportTable readCsv(String name) {
         Path file = evalDir.resolve(name).normalize();
         // 规范化后必须仍在 eval 目录下(防 ../ 穿越)。
-        if (!file.getParent().equals(evalDir) || !Files.isRegularFile(file)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "报表不存在: " + name);
+        if (!file.getParent().equals(evalDir) || Files.notExists(file) || Files.isDirectory(file)) {
+            throw new PublicHttpException(ErrorCode.NOT_FOUND);
         }
+        if (!Files.isRegularFile(file)) throw unavailable(null);
         String category = categoryOf(name);
         List<String> columns = new ArrayList<>();
         List<List<String>> rows = new ArrayList<>();
@@ -185,8 +193,8 @@ public class ReportService {
                 }
                 rows.add(row);
             }
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "解析报表失败: " + e.getMessage());
+        } catch (IOException | RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.CONSOLE_REPORT_READ_FAILED, failure);
         }
         return new ReportTable(name, category, columns, rows);
     }
@@ -198,8 +206,9 @@ public class ReportService {
         try {
             size = Files.size(p);
             mtime = Files.getLastModifiedTime(p).toMillis();
-        } catch (IOException ignored) {
-            // 用默认 0
+        } catch (IOException failure) {
+            // 无法取得元数据时不能伪造时间与大小，影响最新排序的错误必须可见。
+            throw unavailable(failure);
         }
         return new ReportFileInfo(categoryOf(name), name, timestampOf(name), size, mtime);
     }

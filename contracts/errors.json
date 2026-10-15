@@ -1015,6 +1015,20 @@
       "httpStatus": 0,
       "message": "诊断数据缺失或无效，暂时无法判定正常",
       "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_REPORT_UNAVAILABLE",
+      "code": "CONSOLE_REPORT_UNAVAILABLE",
+      "httpStatus": 503,
+      "message": "报表暂时不可用，请检查数据源或稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_REPORT_READ_FAILED",
+      "code": "CONSOLE_REPORT_READ_FAILED",
+      "httpStatus": 500,
+      "message": "报表内容无法读取，请检查文件或稍后重试",
+      "httpDefault": false
     }
   ],
   "families": [

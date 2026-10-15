@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static com.recsys.console.diagnosis.DiagnosisReport.State.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -22,9 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DiagnosisErrorTest {
     @Test void completeHealthySignalsKeepPassAndThresholdBreachesRemainWarn() {
         var fixture = new Fixture();
-        assertEquals("PASS", fixture.service.diagnose().overall());
+        assertEquals(PASS, fixture.service.diagnose().overall());
         when(fixture.reports.latest("data-quality")).thenReturn(quality("item_embedding_coverage", "0.5"));
-        assertEquals("WARN", fixture.service.diagnose().overall());
+        assertEquals(WARN, fixture.service.diagnose().overall());
         assertTrue(check(fixture, "data-quality").detail().contains("覆盖率偏低"));
     }
 
@@ -39,7 +40,7 @@ class DiagnosisErrorTest {
             default -> when(fixture.reports.latest(key)).thenThrow(failure);
         }
         var check = check(fixture, key);
-        assertEquals("WARN", check.status());
+        assertEquals(WARN, check.status());
         assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage(), check.detail());
         var body = MockMvcBuilders.standaloneSetup(new DiagnosisController(fixture.service)).build()
                 .perform(get("/api/console/diagnosis")).andExpect(status().isOk())
@@ -53,14 +54,14 @@ class DiagnosisErrorTest {
     void invalidQualityValuesAreUnknownInsteadOfPassingDefaults(String metric, String value) {
         var fixture = new Fixture();
         when(fixture.reports.latest("data-quality")).thenReturn(quality(metric, value));
-        assertEquals("WARN", fixture.service.diagnose().overall());
+        assertEquals(WARN, fixture.service.diagnose().overall());
         assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(), check(fixture, "data-quality").detail());
     }
 
     @Test void missingQualityColumnsDoNotCountAsFullyHealthy() {
         var fixture = new Fixture();
         when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable("quality.csv", "data-quality", List.of("wrong"), List.of()));
-        assertEquals("WARN", check(fixture, "data-quality").status());
+        assertEquals(WARN, check(fixture, "data-quality").status());
         assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(), check(fixture, "data-quality").detail());
     }
 
@@ -71,7 +72,7 @@ class DiagnosisErrorTest {
         rows.add(List.of("breach", "private SQL password"));
         when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable(good.fileName(), good.category(), good.columns(), rows));
         var check = check(fixture, "data-quality");
-        assertEquals("WARN", check.status());
+        assertEquals(WARN, check.status());
         assertTrue(check.detail().contains("1 项越阈值"));
         assertFalse(check.detail().contains("private"));
     }
@@ -79,12 +80,12 @@ class DiagnosisErrorTest {
     @Test void unavailableMetricsAndEmptyTargetsAreNotOverallPass() {
         var fixture = new Fixture();
         when(fixture.metrics.metrics()).thenReturn(new SystemMetrics(false, "unavailable", "private upstream", null, null, null, null, 1));
-        assertEquals("WARN", fixture.service.diagnose().overall());
+        assertEquals(WARN, fixture.service.diagnose().overall());
         assertEquals(ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage(), check(fixture, "latency").detail());
         when(fixture.metrics.metrics()).thenReturn(new SystemMetrics(true, "prometheus", "none", null, null, null, null, 1));
-        assertEquals("INFO", check(fixture, "latency").status());
+        assertEquals(INFO, check(fixture, "latency").status());
         when(fixture.health.health()).thenReturn(List.of());
-        assertEquals("WARN", fixture.service.diagnose().overall());
+        assertEquals(WARN, fixture.service.diagnose().overall());
         assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(), check(fixture, "service").detail());
     }
 

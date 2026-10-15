@@ -1,89 +1,49 @@
 package com.recsys.console.alerts;
 
-import com.recsys.console.report.MetricTable;
-import com.recsys.console.report.ReportService;
-import com.recsys.console.report.ReportTable;
-import com.recsys.console.system.SystemHealthService;
-import com.recsys.console.system.SystemMetrics;
-import com.recsys.console.system.SystemMetricsService;
-import com.recsys.console.system.SystemOverview.ServiceHealth;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.recsys.console.diagnosis.DiagnosisReport;
+import com.recsys.console.diagnosis.DiagnosisService;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
-/**
- * 告警面板:从既有信号(服务健康 / 数据质量报表 / 链路延迟)派生一份当前告警列表,复用现有服务,
- * 不新增探针、不落库。每来源独立 try/catch;按 level(ERROR→WARN→INFO)再 ts 倒序。
- */
+/** 告警复用诊断信号规则；失败和缺失保留可见状态，避免两份阈值及异常处理漂移。 */
 @Service
 public class AlertsService {
+    private final DiagnosisService diagnosis;
 
-    private static final Logger log = LoggerFactory.getLogger(AlertsService.class);
-    private static final double P99_WARN_MS = 500.0;
-    private static final Map<String, Integer> LEVEL_ORDER = Map.of("ERROR", 0, "WARN", 1, "INFO", 2);
-
-    private final SystemHealthService healthService;
-    private final SystemMetricsService metricsService;
-    private final ReportService reportService;
-
-    public AlertsService(SystemHealthService healthService, SystemMetricsService metricsService,
-                         ReportService reportService) {
-        this.healthService = healthService;
-        this.metricsService = metricsService;
-        this.reportService = reportService;
+    public AlertsService(DiagnosisService diagnosis) {
+        this.diagnosis = diagnosis;
     }
 
+    /** 仅投影原service/data-quality/latency来源，不因聚合复用扩大探测范围。 */
     public List<AlertItem> alerts() {
-        long now = Instant.now().toEpochMilli();
-        List<AlertItem> out = new ArrayList<>();
-
-        // 服务健康:app 服务 DOWN=ERROR、UNKNOWN=WARN
-        try {
-            for (ServiceHealth h : healthService.health()) {
-                if (!"app".equalsIgnoreCase(h.kind())) {
-                    continue;
-                }
-                if ("DOWN".equalsIgnoreCase(h.status())) {
-                    out.add(new AlertItem("ERROR", "service", h.name() + " 不可达(DOWN)", now));
-                } else if (!"UP".equalsIgnoreCase(h.status())) {
-                    out.add(new AlertItem("WARN", "service", h.name() + " 状态未知(" + h.status() + ")", now));
-                }
-            }
-        } catch (Exception e) {
-            log.debug("告警-服务健康失败: {}", e.getMessage());
+        DiagnosisReport snapshot = diagnosis.signalSnapshot();
+        List<AlertItem> alerts = new ArrayList<>();
+        for (DiagnosisReport.Check check : snapshot.checks()) {
+            AlertItem.Source source = sourceOf(check.key());
+            if (source == null) continue;
+            AlertItem.Level level = switch (check.status()) {
+                case PASS -> null;
+                case FAIL -> AlertItem.Level.ERROR;
+                case WARN -> AlertItem.Level.WARN;
+                case INFO -> AlertItem.Level.INFO;
+            };
+            // 被动模块本来不参与在线告警；延迟无观测值仍可用INFO明确说明未知。
+            if (level == null || (level == AlertItem.Level.INFO && source == AlertItem.Source.SERVICE)) continue;
+            alerts.add(new AlertItem(level, source, check.name() + " · " + check.detail(), snapshot.checkedAt()));
         }
-
-        // 数据质量:最新报表的每条 breach → WARN
-        try {
-            ReportTable dq = reportService.latest("data-quality");
-            if (dq != null) {
-                for (String breach : MetricTable.of(dq).breaches()) {
-                    out.add(new AlertItem("WARN", "data-quality", breach, now));
-                }
-            }
-        } catch (Exception e) {
-            log.debug("告警-数据质量失败: {}", e.getMessage());
-        }
-
-        // 链路延迟:推荐 P99 越界 → WARN
-        try {
-            SystemMetrics m = metricsService.metrics();
-            if (m.available() && m.recommendP99Ms() != null && m.recommendP99Ms() > P99_WARN_MS) {
-                out.add(new AlertItem("WARN", "latency",
-                        String.format("推荐链路 P99 %.0fms 超阈值 %.0fms", m.recommendP99Ms(), P99_WARN_MS), now));
-            }
-        } catch (Exception e) {
-            log.debug("告警-延迟失败: {}", e.getMessage());
-        }
-
-        out.sort(Comparator.comparingInt((AlertItem a) -> LEVEL_ORDER.getOrDefault(a.level(), 3))
+        alerts.sort(Comparator.comparingInt((AlertItem item) -> item.level().priority())
                 .thenComparing(Comparator.comparingLong(AlertItem::ts).reversed()));
-        return out;
+        return alerts;
+    }
+
+    private static AlertItem.Source sourceOf(String key) {
+        if (key.startsWith(AlertItem.Source.SERVICE.code() + ":")) return AlertItem.Source.SERVICE;
+        for (AlertItem.Source source : AlertItem.Source.values()) {
+            if (source.code().equals(key)) return source;
+        }
+        return null;
     }
 }

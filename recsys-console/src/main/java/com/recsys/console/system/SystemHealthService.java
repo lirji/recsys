@@ -22,7 +22,7 @@ import static com.recsys.console.system.SystemOverview.ServiceHealth;
 public class SystemHealthService {
 
     /** 主动探测只接受已知状态；稳定code用于响应，不使用ordinal或枚举名隐式持久化。 */
-    private enum ProbeStatus {
+    public enum ProbeStatus {
         UP("UP", null),
         DOWN("DOWN", ErrorCode.CONSOLE_HEALTH_UNHEALTHY),
         OUT_OF_SERVICE("OUT_OF_SERVICE", ErrorCode.CONSOLE_HEALTH_UNHEALTHY),
@@ -32,7 +32,8 @@ public class SystemHealthService {
         private final ErrorCode error;
         ProbeStatus(String code, ErrorCode error) { this.code = code; this.error = error; }
 
-        static ProbeStatus from(Object value) {
+        /** 远端文本和诊断读取都使用同一受控状态映射，未知值保持UNKNOWN。 */
+        public static ProbeStatus from(Object value) {
             if (value instanceof String text) {
                 for (ProbeStatus status : values()) if (status.code.equalsIgnoreCase(text)) return status;
             }

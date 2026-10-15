@@ -183,4 +183,78 @@ class ConsoleReadPostgresTest {
             assertThat(report().read("metrics-one.csv").rows()).containsExactly(List.of("x"));
         } finally { jdbc.execute("ALTER TABLE unavailable_report RENAME TO eval_report"); }
     }
+
+    @Test void failedDatabaseWithoutMatchingCsvDoesNotPretendTheReportIsAbsent() throws Exception {
+        jdbc.execute("ALTER TABLE eval_report RENAME TO unavailable_report");
+        try {
+            var reports = report();
+            assertUnavailable(reports::list);
+            assertUnavailable(() -> reports.latest("eval"));
+            var mvc = reportHttp(reports);
+            var body = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/report/index"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isServiceUnavailable())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("CONSOLE_REPORT_UNAVAILABLE"))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(body).doesNotContain("unavailable_report", "SELECT", "jdbc:");
+            Files.writeString(evalDir.resolve("ad-report-one.csv"), "a\nx\n");
+            assertThat(reports.list()).hasSize(1);
+            assertThat(reports.latest("ad-report").rows()).containsExactly(List.of("x"));
+            assertUnavailable(() -> reports.latest("eval"));
+            assertUnavailable(() -> reports.read("metrics-absent.csv"));
+            // 同名有效文件可恢复读取；失败上下文不能阻止已有的真实回退能力。
+            Files.writeString(evalDir.resolve("metrics-one.csv"), "a\ny\n");
+            assertThat(reports.latest("eval").rows()).containsExactly(List.of("y"));
+        } finally { jdbc.execute("ALTER TABLE unavailable_report RENAME TO eval_report"); }
+    }
+
+    @Test void malformedDatabaseJsonWithoutValidFallbackIsUnavailableNot404() throws Exception {
+        jdbc.execute("INSERT INTO eval_report VALUES('metrics-bad.csv','eval','bad',1,NULL,'{}','[]')");
+        var reports = report();
+        assertUnavailable(() -> reports.latest("eval"));
+        assertUnavailable(() -> reports.read("metrics-bad.csv"));
+        reportHttp(reports).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/report/file").param("name", "metrics-bad.csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isServiceUnavailable())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("CONSOLE_REPORT_UNAVAILABLE"));
+        jdbc.execute("UPDATE eval_report SET columns_json='[]',rows_json='[null]'");
+        assertUnavailable(() -> reports.read("metrics-bad.csv"));
+        Files.writeString(evalDir.resolve("metrics-bad.csv"), "a\nrestored\n");
+        assertThat(reports.read("metrics-bad.csv").rows()).containsExactly(List.of("restored"));
+    }
+
+    @Test void invalidCsvAndUnreadableCatalogReturnSafeErrors() throws Exception {
+        var reports = new ReportService(evalDir.toString(), null, new ObjectMapper());
+        Files.writeString(evalDir.resolve("metrics-private.csv"), "a\n\"private unclosed value\n");
+        var body = reportHttp(reports).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/report/file").param("name", "metrics-private.csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isInternalServerError())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("CONSOLE_REPORT_READ_FAILED"))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("private", evalDir.toString());
+        Path invalidDirectory = Files.createTempFile(evalDir, "not-a-directory", ".txt");
+        assertUnavailable(() -> new ReportService(invalidDirectory.toString(), null, new ObjectMapper()).list());
+        Files.createSymbolicLink(evalDir.resolve("metrics-missing.csv"), evalDir.resolve("nonexistent-target"));
+        assertUnavailable(reports::list); // 目录项无法stat不能伪造成0字节、0时间。
+    }
+
+    @Test void trueMissingAndInvalidFileNamesKeepTheirHttpCodes() throws Exception {
+        var mvc = reportHttp(report());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/report/file").param("name", "../private.csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("BAD_REQUEST"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/report/file").param("name", "missing.csv"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("NOT_FOUND"));
+        assertThat(report().latest("eval")).isNull();
+    }
+
+    private static void assertUnavailable(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+        assertThatThrownBy(action).isInstanceOf(com.recsys.common.error.PublicErrorException.class)
+                .satisfies(failure -> assertThat(((com.recsys.common.error.PublicErrorException) failure).errorCode())
+                        .isEqualTo(com.recsys.common.error.ErrorCode.CONSOLE_REPORT_UNAVAILABLE));
+    }
+
+    private static org.springframework.test.web.servlet.MockMvc reportHttp(ReportService reports) {
+        return org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new com.recsys.console.report.ReportController(reports))
+                .setControllerAdvice(new com.recsys.platform.web.GlobalExceptionHandler()).build();
+    }
 }

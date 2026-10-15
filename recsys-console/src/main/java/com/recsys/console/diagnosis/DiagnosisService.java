@@ -1,6 +1,8 @@
 package com.recsys.console.diagnosis;
 
 import com.recsys.common.error.ErrorCode;
+import com.recsys.console.diagnosis.DiagnosisReport.State;
+import static com.recsys.console.diagnosis.DiagnosisReport.State.*;
 import com.recsys.console.report.MetricTable;
 import com.recsys.console.report.ReportService;
 import com.recsys.console.report.ReportTable;
@@ -41,12 +43,21 @@ public class DiagnosisService {
 
     /** 汇总已取得的证据，缺失或失败的关键检查不能用正常默认值补齐。 */
     public DiagnosisReport diagnose() {
+        return snapshot(true);
+    }
+
+    /** 告警只消费既有三类信号，不额外读eval，也不复制阈值与故障判定。 */
+    public DiagnosisReport signalSnapshot() {
+        return snapshot(false);
+    }
+
+    private DiagnosisReport snapshot(boolean includeEvaluation) {
         long now = Instant.now().toEpochMilli();
         List<DiagnosisReport.Check> checks = new ArrayList<>();
 
         checks.addAll(serviceChecks());
         checks.add(dataQualityCheck());
-        checks.add(evalCheck());
+        if (includeEvaluation) checks.add(evalCheck());
         checks.add(latencyCheck());
 
         return new DiagnosisReport(worst(checks), checks, now);
@@ -58,14 +69,17 @@ public class DiagnosisService {
         List<DiagnosisReport.Check> out = new ArrayList<>();
         try {
             for (ServiceHealth h : healthService.health()) {
-                String status;
+                State status;
                 if ("app".equalsIgnoreCase(h.kind())) {
                     // 在线服务:UP=PASS、DOWN=FAIL、其余(UNKNOWN)=WARN
-                    status = "UP".equalsIgnoreCase(h.status()) ? "PASS"
-                            : ("DOWN".equalsIgnoreCase(h.status()) ? "FAIL" : "WARN");
+                    status = switch (SystemHealthService.ProbeStatus.from(h.status())) {
+                        case UP -> PASS;
+                        case DOWN -> FAIL;
+                        default -> WARN;
+                    };
                 } else {
                     // 库/被动目标非在线服务,给 INFO(不影响 overall 的 FAIL 判定)
-                    status = "INFO";
+                    status = INFO;
                 }
                 out.add(new DiagnosisReport.Check(
                         "service:" + h.service(), h.name() + " · 健康", status,
@@ -74,7 +88,7 @@ public class DiagnosisService {
         } catch (Exception e) {
             out.add(failedCheck("service", "服务健康", e));
         }
-        if (out.isEmpty()) out.add(new DiagnosisReport.Check("service", "服务健康", "WARN",
+        if (out.isEmpty()) out.add(new DiagnosisReport.Check("service", "服务健康", WARN,
                 ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage()));
         return out;
     }
@@ -85,7 +99,7 @@ public class DiagnosisService {
         try {
             ReportTable dq = reportService.latest("data-quality");
             if (dq == null) {
-                return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN", ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
+                return new DiagnosisReport.Check("data-quality", "数据质量巡检", WARN, ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
             MetricTable mt = MetricTable.of(dq);
             double breaches = mt.number("breaches", Double.NaN);
@@ -94,22 +108,22 @@ public class DiagnosisService {
             double ece = mt.number("pctr_ece", Double.NaN);
             if (!Double.isFinite(breaches) || breaches < 0 || breaches != Math.rint(breaches)
                     || !ratio(itemCov) || !ratio(userCov) || !ratio(ece)) {
-                return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN",
+                return new DiagnosisReport.Check("data-quality", "数据质量巡检", WARN,
                         ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
-            String status = "PASS";
+            State status = PASS;
             List<String> reasons = new ArrayList<>();
             if (breaches > 0 || !mt.breaches().isEmpty()) {
-                status = "WARN";
+                status = WARN;
                 // 报表的自由文本可能来自旧作业异常，只呈现安全计数与下面的受控数值说明。
                 reasons.add(String.format("报表记录 %.0f 项越阈值，请检查对应指标", Math.max(breaches, mt.breaches().size())));
             }
             if (itemCov < MIN_COVERAGE || userCov < MIN_COVERAGE) {
-                status = "WARN";
+                status = WARN;
                 reasons.add(String.format("embedding 覆盖率偏低(item %.3f / user %.3f)", itemCov, userCov));
             }
             if (ece > MAX_ECE) {
-                status = "WARN";
+                status = WARN;
                 if (reasons.isEmpty()) {
                     reasons.add(String.format("pCTR ECE %.3f > %.2f", ece, MAX_ECE));
                 }
@@ -127,8 +141,8 @@ public class DiagnosisService {
         try {
             ReportTable eval = reportService.latest("eval");
             return eval != null
-                    ? new DiagnosisReport.Check("eval", "离线评估", "PASS", "最新评估报表 " + eval.fileName())
-                    : new DiagnosisReport.Check("eval", "离线评估", "WARN", ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
+                    ? new DiagnosisReport.Check("eval", "离线评估", PASS, "最新评估报表 " + eval.fileName())
+                    : new DiagnosisReport.Check("eval", "离线评估", WARN, ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
         } catch (Exception e) {
             return failedCheck("eval", "离线评估", e);
         }
@@ -140,13 +154,13 @@ public class DiagnosisService {
         try {
             SystemMetrics m = metricsService.metrics();
             if (m.available() && m.recommendP99Ms() != null) {
-                String status = m.recommendP99Ms() > P99_WARN_MS ? "WARN" : "PASS";
+                State status = m.recommendP99Ms() > P99_WARN_MS ? WARN : PASS;
                 return new DiagnosisReport.Check("latency", "推荐链路延迟", status,
                         String.format("P99 %.0fms(阈值 %.0fms)", m.recommendP99Ms(), P99_WARN_MS));
             }
             return m.available()
-                    ? new DiagnosisReport.Check("latency", "推荐链路延迟", "INFO", "当前窗口无可用延迟指标")
-                    : new DiagnosisReport.Check("latency", "推荐链路延迟", "WARN", ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage());
+                    ? new DiagnosisReport.Check("latency", "推荐链路延迟", INFO, "当前窗口无可用延迟指标")
+                    : new DiagnosisReport.Check("latency", "推荐链路延迟", WARN, ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage());
         } catch (Exception e) {
             return failedCheck("latency", "推荐链路延迟", e);
         }
@@ -160,21 +174,21 @@ public class DiagnosisService {
     private static DiagnosisReport.Check failedCheck(String key, String name, Exception failure) {
         log.debug("{} check={} failureType={}", ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage(),
                 key, failure.getClass().getSimpleName());
-        return new DiagnosisReport.Check(key, name, "WARN", ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage());
+        return new DiagnosisReport.Check(key, name, WARN, ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage());
     }
 
     // ---------- 汇总 ----------
 
-    private static String worst(List<DiagnosisReport.Check> checks) {
+    private static State worst(List<DiagnosisReport.Check> checks) {
         boolean warn = false;
         for (DiagnosisReport.Check c : checks) {
-            if ("FAIL".equals(c.status())) {
-                return "FAIL";
+            if (c.status() == FAIL) {
+                return FAIL;
             }
-            if ("WARN".equals(c.status())) {
+            if (c.status() == WARN) {
                 warn = true;
             }
         }
-        return warn ? "WARN" : "PASS";
+        return warn ? WARN : PASS;
     }
 }
