@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.HotScoreMapper">
+    <resultMap id="score" type="com.recsys.offline.persistence.mapper.primary.HotScoreMapper$Score">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="hot" column="hot" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <select id="scan" resultMap="score" useCache="false">
+        SELECT COALESCE(item_id,0) AS item_id,
+               SUM(CASE action WHEN 'CLICK' THEN 1.0 WHEN 'LIKE' THEN 2.0 WHEN 'PLAY' THEN 1.0
+                   WHEN 'RATING' THEN COALESCE(value,1.0) ELSE 0.0 END) AS hot
+        FROM
+        <choose>
+            <when test="source.name() == 'BEHAVIOR_LOG'">behavior_log</when>
+            <otherwise>user_behavior</otherwise>
+        </choose>
+        <where>
+            <if test="recentDays &gt; 0">ts &gt;= now() - (#{recentDays} * INTERVAL '1 day')</if>
+            <if test="maxTs != null">AND extract(epoch from ts) &lt;= #{maxTs}</if>
+        </where>
+        GROUP BY item_id ORDER BY hot DESC LIMIT #{limit}
+    </select>
+</mapper>

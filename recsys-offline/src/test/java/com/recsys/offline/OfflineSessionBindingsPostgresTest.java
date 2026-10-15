@@ -60,7 +60,7 @@ class OfflineSessionBindingsPostgresTest {
             assertSame(context.getBean("sqlSessionTemplate"), feedbackFactory.getSqlSession());
             for (var binding : Map.of("seedAdMapper", "shardedSqlSessionTemplate",
                     "seedAdVectorMapper", "adDbSqlSessionTemplate", "seedItemVectorMapper", "derivedSqlSessionTemplate",
-                    "lookalikeMapper", "derivedSqlSessionTemplate").entrySet()) {
+                    "lookalikeMapper", "derivedSqlSessionTemplate", "hotScoreMapper", "sqlSessionTemplate").entrySet()) {
                 var factory = context.getBean("&" + binding.getKey(), MapperFactoryBean.class);
                 assertSame(context.getBean(binding.getValue()), factory.getSqlSession());
             }

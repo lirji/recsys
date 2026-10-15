@@ -404,3 +404,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13c7最终验证
 
 见MP13C7_RESULT。旧PG/Redis7、新关联10、完整离线160/30类、全仓24 reactor测试编译/hygiene通过。5源指纹0a13c2eb9f87a11123643b5206e420aba2ce3dbefd72e1f4f8e54bf33a070843；重复/NULL种子、ANN NULL身份0、默认1000、指定0与负limit、缺表和旧包边界保持。四SQL进入派生Mapper/XML，未新增透传层。继续MP13d1 HotJob，历史SQL/用户保护不变。
+
+## MP13d1入口
+
+旧HotJob真实PG/Redis6项通过：原CLICK/LIKE/PLAY/RATING权重、NULL评分兜底1、未知行为0/负评分、NULL身份0、主/读仓来源、微秒严格max-ts、recent-days含未来行、默认1000及空榜/零limit/查询失败不覆盖。聚合迁入主源HotScoreMapper/XML，来源用枚举封闭分支，天数/截点/limit绑定；保留原同分未稳定排序及Redis删后写窗口，不借SQL迁移改变排名或发布契约。
+
+## MP13d1最终验证
+
+见MP13D1_RESULT。旧6、新专项7、完整离线167/31类、全仓24 reactor测试编译/hygiene通过。5源指纹26131843d1dc77ab4f0dd8ad9ee44b07eea31cd9d0040644cd0e0e79c0443c2e；权重/NULL/负分/双来源/微秒截点/时间窗口/1000上限与旧榜保留保持，补NULL与实际0分组对照。c7=2075bcb2已本地提交，main/origin仍R9=df2ca1a2；继续ColdBanditStats后相邻片正常ff/push。

@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.HotScoreMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
@@ -24,59 +24,40 @@ public class HotJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(HotJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final HotScoreMapper mapper;
     private final StringRedisTemplate redis;
 
-    public HotJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 主源Mapper负责聚合，作业保留Redis榜单发布规则。 */
+    public HotJob(HotScoreMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保持热榜重建命令。 */
     @Override
     public String name() {
         return "hot";
     }
 
+    /** 空结果保留旧榜单，完整查询成功后才按原顺序发布。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int recentDays = intArg(args, "recent-days", 0);
         int topN = intArg(args, "topn", 1000);
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只统计切分点前的热度
-        String bt = BehaviorQuery.table(args);    // #2:行为读来源表(默认 user_behavior)
-
-        // 在 SQL 内完成加权聚合,避免把全量行为拉进内存
-        StringBuilder sql = new StringBuilder(
-                "SELECT item_id, SUM(" +
-                "  CASE action " +
-                "    WHEN 'CLICK' THEN 1.0 " +
-                "    WHEN 'LIKE'  THEN 2.0 " +
-                "    WHEN 'PLAY'  THEN 1.0 " +
-                "    WHEN 'RATING' THEN COALESCE(value, 1.0) " +
-                "    ELSE 0.0 END) AS hot " +
-                "FROM " + bt + " ");
-        java.util.List<String> conds = new java.util.ArrayList<>();
-        if (recentDays > 0) {
-            conds.add("ts >= now() - INTERVAL '" + recentDays + " days'");
-        }
-        if (maxTs != null) {
-            conds.add("extract(epoch from ts) <= " + maxTs);   // maxTs 已解析为 long,内联安全
-        }
-        if (!conds.isEmpty()) {
-            sql.append("WHERE ").append(String.join(" AND ", conds)).append(' ');
-        }
-        sql.append("GROUP BY item_id ORDER BY hot DESC LIMIT ?");
+        var source = BehaviorQuery.source(args);
 
         Set<ZSetOperations.TypedTuple<String>> tuples = new LinkedHashSet<>();
-        jdbc.query(sql.toString(), rs -> {
-            tuples.add(ZSetOperations.TypedTuple.of(
-                    String.valueOf(rs.getLong("item_id")), rs.getDouble("hot")));
-        }, topN);
+        mapper.scan(source, recentDays, maxTs, topN, context -> {
+            var row = context.getResultObject();
+            tuples.add(ZSetOperations.TypedTuple.of(String.valueOf(row.itemId()), row.hot()));
+        });
 
         if (tuples.isEmpty()) {
             log.warn("无行为数据,recall:hot 未更新;先跑 --job=import-behavior");
             return;
         }
-        // 原子替换:删旧 key 再整榜写入
+        // 沿用删旧key后整榜写入；这两条Redis命令之间仍存在原有窗口。
         redis.delete(RedisKeys.HOT_RECALL);
         redis.opsForZSet().add(RedisKeys.HOT_RECALL, tuples);
         log.info("hot 完成:recall:hot 写入 {} 条(recent-days={}, topn={})",
