@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.derived.SemanticIdMapper">
+    <update id="truncateAll">TRUNCATE item_semantic_id</update>
+    <insert id="upsert">
+        INSERT INTO item_semantic_id(item_id,c0,c1,c2,model)
+        VALUES(#{row.itemId},#{row.c0},#{row.c1},#{row.c2},#{row.model,jdbcType=VARCHAR})
+        ON CONFLICT(item_id) DO UPDATE
+        SET c0=EXCLUDED.c0,c1=EXCLUDED.c1,c2=EXCLUDED.c2,model=EXCLUDED.model
+    </insert>
+    <select id="countAll" resultType="java.lang.Long" useCache="false">
+        SELECT count(*) FROM item_semantic_id
+    </select>
+</mapper>

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID修复52f9fba8及连接探针773cf8c3已ff/push main；MP13b7=ac21c920已ff/push main；MP13b8=42b2de17已ff/push main；MP13c1=cd144c02已ff/push main；MP13c2=38e404f1已ff/push main；MP13c3=9d7897b5已ff/push main；MP13c4本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID修复52f9fba8及连接探针773cf8c3已ff/push main；MP13b7=ac21c920已ff/push main；MP13b8=42b2de17已ff/push main；MP13c1=cd144c02已ff/push main；MP13c2=38e404f1已ff/push main；MP13c3=9d7897b5已ff/push main；MP13c4=e527177c本地提交，MP13c5本地DONE/PASS，两片准备正常ff/push main。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -79,7 +79,7 @@ MP00～MP12及MP13a1/a2、b1～b6已交付。当前修复共用正反馈Mapper�
 
 ## 下一步
 
-1. MP13c4本地完成并保存提交；继续MP13c5 ImportSemanticIdJob旧PG保护，再正常ff/push已验证提交。
+1. MP13c4/c5均完成验证，正常ff/push后继续MP13c6 R9三组向量发布的真实事务保护。
 2. 继续MP13～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -388,3 +388,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13c4最终验证
 
 见MP13C4_RESULT。旧6两次、新7+装配1、完整离线139/27类、24 reactor测试编译及hygiene通过。6源指纹8bdebbded8f54f5b84e60133656df7bec59c1a2cbb376b04ba43715444a2658b；默认64维、重复ID后写覆盖、500行失败边界与DDL/批次同源事务保持。继续MP13c5语义ID导入。9d7897b5的CI38754987441三门禁SUCCESS、两项进行中；本片先本地提交，后续正常ff/push，不记远程已交付。
+
+## MP13c5最终验证
+
+见MP13C5_RESULT。旧5两次、新关联14、完整离线145/28类、24 reactor测试编译/hygiene通过。6源指纹7d0df28a39b598a70659692705a144bf8cefe08c308bd3de20fe745b1fbe1511；宽松CSV/数值边界/500行重复覆盖与失败、bootstrap/事务保持。9d7897b5的CI38754987441五门禁全部SUCCESS，前序连接探针失败已由后续完整成功关闭。继续MP13c6 ImportR9EmbeddingsJob，先测三组版本与原手动事务。

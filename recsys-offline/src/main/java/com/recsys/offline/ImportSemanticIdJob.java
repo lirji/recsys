@@ -3,7 +3,8 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.SemanticIdStore;
+import com.recsys.offline.persistence.mapper.derived.SemanticIdMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -31,17 +32,20 @@ public class ImportSemanticIdJob implements OfflineJob {
     private static final String DEFAULT_FILE = "train/item_semantic_id.csv";
     private static final int BATCH = 500;
 
-    private final JdbcTemplate jdbc;
+    private final SemanticIdStore persistence;
 
-    public ImportSemanticIdJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 解析逻辑保留在作业，500行写入和bootstrap交给同源持久层。 */
+    public ImportSemanticIdJob(SemanticIdStore persistence) {
+        this.persistence = persistence;
     }
 
+    /** 保留既有训练产物导入入口。 */
     @Override
     public String name() {
         return "import-semantic-id";
     }
 
+    /** 保留缺文件返回、清表、宽松CSV解析与重复编码后写覆盖。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String file = stringArg(args, "file", DEFAULT_FILE);
@@ -52,10 +56,9 @@ public class ImportSemanticIdJob implements OfflineJob {
             return;
         }
 
-        ensureTable();
-        jdbc.update("TRUNCATE item_semantic_id");
+        persistence.rebuild();
 
-        List<Object[]> batch = new ArrayList<>(BATCH);
+        List<SemanticIdMapper.Row> batch = new ArrayList<>(BATCH);
         int total = 0, bad = 0;
         try (BufferedReader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
@@ -74,41 +77,22 @@ public class ImportSemanticIdJob implements OfflineJob {
                     int c0 = Integer.parseInt(p[1].trim());
                     int c1 = Integer.parseInt(p[2].trim());
                     int c2 = Integer.parseInt(p[3].trim());
-                    batch.add(new Object[]{itemId, c0, c1, c2, model});
+                    batch.add(new SemanticIdMapper.Row(itemId, c0, c1, c2, model));
                 } catch (NumberFormatException e) {
                     bad++;   // 表头/脏行,跳过
                     continue;
                 }
                 if (batch.size() >= BATCH) {
-                    total += flush(batch);
+                    total += persistence.writeBatch(batch);
                     batch.clear();
                 }
             }
         }
         if (!batch.isEmpty()) {
-            total += flush(batch);
+            total += persistence.writeBatch(batch);
         }
-        Long cnt = jdbc.queryForObject("SELECT count(*) FROM item_semantic_id", Long.class);
+        Long cnt = persistence.count();
         log.info("import-semantic-id 完成:写入 {} 条(跳过脏行 {}),item_semantic_id 总数 {}", total, bad, cnt);
-    }
-
-    private int flush(List<Object[]> batch) {
-        // upsert:item 外键要求 item 已存在(import-items 先跑)
-        int[] r = jdbc.batchUpdate(
-                "INSERT INTO item_semantic_id(item_id,c0,c1,c2,model) VALUES(?,?,?,?,?) " +
-                "ON CONFLICT(item_id) DO UPDATE SET c0=EXCLUDED.c0, c1=EXCLUDED.c1, " +
-                "c2=EXCLUDED.c2, model=EXCLUDED.model",
-                batch);
-        return r.length;
-    }
-
-    private void ensureTable() {
-        // #3:去 REFERENCES item 外键(派生库拆分后跨库不成立)
-        jdbc.execute("CREATE TABLE IF NOT EXISTS item_semantic_id (" +
-                "item_id BIGINT PRIMARY KEY, " +
-                "c0 INT NOT NULL, c1 INT NOT NULL, c2 INT NOT NULL, model TEXT)");
-        jdbc.execute("COMMENT ON TABLE item_semantic_id IS '生成式召回模型生成的物品分层语义编码'");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_semid_prefix ON item_semantic_id (c0, c1, c2)");
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
