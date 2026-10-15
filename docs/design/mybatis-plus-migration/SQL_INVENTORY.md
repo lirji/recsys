@@ -67,7 +67,7 @@
 | [com/recsys/ad/billing/ConversionPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionPreparationConfiguration.java) | 10 | 0 | TODO |
 | [com/recsys/ad/billing/ConversionProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionProjectionRepository.java) | 3 | 3 | TODO |
 | [com/recsys/ad/billing/ConversionQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteConfiguration.java) | 6 | 0 | TODO |
-| [com/recsys/ad/billing/ConversionQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteRepository.java) | 5 | 9 | TODO |
+| [com/recsys/ad/billing/ConversionQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteRepository.java) | 5 | 9 | DONE MP10a：见MP10A_RESULT |
 | [com/recsys/ad/billing/ConversionSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementConfiguration.java) | 10 | 0 | TODO |
 | [com/recsys/ad/billing/ConversionSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementRepository.java) | 6 | 24 | TODO |
 | [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | TODO |

@@ -2,7 +2,10 @@ package com.recsys.ad.billing;
 
 import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.billing.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.ConversionQuoteMapper;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.dao.support.DataAccessUtils;
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
@@ -10,13 +13,15 @@ import java.util.*;
 /** 转化报价唯一写入口；无预算副作用，冻结价格后由后续准备用例占用完整义务。 */
 public class ConversionQuoteRepository {
     public static final String MIGRATION = "db/ad-billing/V012__conversion_quote.sql";
-    private final JdbcTemplate jdbc;
-    public ConversionQuoteRepository(JdbcTemplate jdbc) {
-        this.jdbc = new JdbcTemplate(Objects.requireNonNull(jdbc.getDataSource()));
-        this.jdbc.setQueryTimeout(5);
+    private final ConversionQuoteMapper mapper;
+    private final DataSource dataSource;
+    /** 实际会话工厂提供owner资源身份，XML保留每条语句原5秒查询超时。 */
+    public ConversionQuoteRepository(SqlSessionTemplate sessions) {
+        this.mapper = sessions.getMapper(ConversionQuoteMapper.class);
+        this.dataSource = sessions.getSqlSessionFactory().getConfiguration().getEnvironment().getDataSource();
     }
     /** 后续资金事务必须绑定同一资源，不以连接URL相同代替同一个连接池。 */
-    public javax.sql.DataSource dataSource() { return jdbc.getDataSource(); }
+    public javax.sql.DataSource dataSource() { return dataSource; }
     /** 只有最终选择后的服务端候选才能形成此命令；没有客户端自报金额入口。 */
     public record Draft(UUID quoteId, UUID operationId, String subject, long userId, long advertiserId,
                         long adId, long creativeId, long itemId, int slot, String title, ConversionPrice price) {
@@ -28,25 +33,19 @@ public class ConversionQuoteRepository {
     }
     /** 显式迁移才可启用，不在应用启动时自动改共享库。 */
     public void verifySchema() {
-        if (!BudgetRepository.migrationSha256(MIGRATION).equals(jdbc.queryForObject(
-                "SELECT script_sha256 FROM ad_billing_schema_history WHERE version=12", String.class))) {
+        if (!BudgetRepository.migrationSha256(MIGRATION).equals(DataAccessUtils.requiredSingleResult(mapper.migrationHashes()))) {
             throw new IllegalStateException("转化报价V012缺失或摘要漂移");
         }
-        jdbc.queryForList("SELECT quote_id,bid_type,payload_hash FROM ad_conversion_quote LIMIT 0");
+        mapper.verifyQuote();
     }
     /** 候选deadline只限制首次签发；同命令并发、丢响应和重启都恢复原金额及原期限。 */
     public Optional<FrozenConversionQuote> freezeBefore(Draft d, Instant candidateDeadline) {
         Objects.requireNonNull(candidateDeadline);
         var basis = d.price().basis();
-        jdbc.update("""
-                WITH issued AS (SELECT clock_timestamp() AS instant)
-                INSERT INTO ad_conversion_quote(quote_id,operation_id,subject_key,user_id,advertiser_id,ad_id,creative_id,item_id,
-                    slot,title,bid_type,amount,threshold,bill_factor,increment_amount,floor_amount,cap_amount,payload_hash,issued_at,expires_at)
-                SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,instant,instant+interval '5 minutes'
-                FROM issued WHERE instant<? ON CONFLICT DO NOTHING
-                """, d.quoteId(),d.operationId(),d.subject(),d.userId(),d.advertiserId(),d.adId(),d.creativeId(),d.itemId(),
-                d.slot(),d.title(),d.price().bidType().name(),d.price().amount(),basis.threshold().toPlainString(),
-                basis.billFactor().toPlainString(),basis.increment(),basis.floor(),basis.cap(),hash(d),java.sql.Timestamp.from(candidateDeadline));
+        mapper.freeze(new ConversionQuoteMapper.Draft(d.quoteId(), d.operationId(), d.subject(), d.userId(), d.advertiserId(), d.adId(),
+                d.creativeId(), d.itemId(), d.slot(), d.title(), d.price().bidType().name(), d.price().amount(),
+                basis.threshold().toPlainString(), basis.billFactor().toPlainString(), basis.increment(), basis.floor(), basis.cap(),
+                hash(d), java.sql.Timestamp.from(candidateDeadline)));
         var stored = find(d.quoteId(),d.subject());
         if (stored.isPresent()) {
             var q = stored.get();
@@ -56,9 +55,8 @@ public class ConversionQuoteRepository {
             return stored;
         }
         // 同最终位置已存在另一报价属于冲突；不能因当前deadline也已过而掩盖身份重用。
-        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ad_conversion_quote WHERE operation_id=? AND slot=?)",
-                Boolean.class,d.operationId(),d.slot()))) throw new FrozenConversionQuote.Conflict();
-        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT clock_timestamp()<?",Boolean.class,java.sql.Timestamp.from(candidateDeadline)))) {
+        if (mapper.atPosition(d.operationId(), d.slot())) throw new FrozenConversionQuote.Conflict();
+        if (!mapper.beforeDeadline(java.sql.Timestamp.from(candidateDeadline))) {
             return Optional.empty();
         }
         throw new IllegalStateException("转化报价写入结果未确认");
@@ -66,22 +64,19 @@ public class ConversionQuoteRepository {
     /** 原主体验证在结果返回前完成；报价可查不表示其预算已准备或已收费。 */
     public Optional<FrozenConversionQuote> find(UUID id,String subject) {
         Objects.requireNonNull(id); Reservation.validateSubject(subject);
-        return jdbc.query("SELECT * FROM ad_conversion_quote WHERE quote_id=?",(rs,row)->{
-            if (!subject.equals(rs.getString("subject_key"))) throw new Reservation.AccessDenied();
-            var price = new ConversionPrice(new GspPrice(
-                    new BigDecimal(rs.getString("threshold")),new BigDecimal(rs.getString("bill_factor")),
-                    rs.getBigDecimal("increment_amount"),rs.getBigDecimal("floor_amount"),rs.getBigDecimal("cap_amount")));
-            var q = new FrozenConversionQuote(id,rs.getObject("operation_id",UUID.class),subject,rs.getLong("user_id"),
-                    rs.getLong("advertiser_id"),rs.getLong("ad_id"),rs.getLong("creative_id"),rs.getLong("item_id"),
-                    rs.getInt("slot"),rs.getString("title"),price,rs.getObject("issued_at",OffsetDateTime.class).toInstant(),
-                    rs.getObject("expires_at",OffsetDateTime.class).toInstant());
+        return mapper.find(id).stream().findFirst().map(row -> {
+            if (!subject.equals(row.subject())) throw new Reservation.AccessDenied();
+            var price = new ConversionPrice(new GspPrice(new BigDecimal(row.threshold()), new BigDecimal(row.billFactor()),
+                    row.increment(), row.floor(), row.cap()));
+            var q = new FrozenConversionQuote(id, row.operationId(), subject, row.userId(), row.advertiserId(), row.adId(), row.creativeId(),
+                    row.itemId(), row.slot(), row.title(), price, row.issuedAt().toInstant(), row.expiresAt().toInstant());
             var draft = new Draft(q.quoteId(),q.operationId(),subject,q.userId(),q.advertiserId(),q.adId(),q.creativeId(),q.itemId(),q.slot(),q.title(),price);
-            if (!BidType.CPA.name().equals(rs.getString("bid_type")) || price.amount().compareTo(rs.getBigDecimal("amount"))!=0 || !hash(draft).equals(rs.getString("payload_hash"))
-                    || !ConversionPrice.UNIT.equals(rs.getString("price_unit")) || !ConversionPrice.VERSION.equals(rs.getString("pricing_version"))) {
+            if (!BidType.CPA.name().equals(row.bidType()) || price.amount().compareTo(row.amount()) != 0 || !hash(draft).equals(row.payloadHash())
+                    || !ConversionPrice.UNIT.equals(row.priceUnit()) || !ConversionPrice.VERSION.equals(row.pricingVersion())) {
                 throw new IllegalStateException("转化报价金额或冻结依据不一致");
             }
             return q;
-        },id).stream().findFirst();
+        });
     }
     private static String hash(Draft d) {
         var p = d.price().basis();

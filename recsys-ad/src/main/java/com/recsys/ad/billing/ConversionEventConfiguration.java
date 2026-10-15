@@ -28,7 +28,7 @@ public class ConversionEventConfiguration {
     static class Shared {
         /** 无需启用新收费或签名密钥即可续发，但必须具备已交付的原事实及投影迁移。 */
         @Bean BillingOutboxRepository conversionOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-            new BudgetRepository(sessions).verifySchema(); new ConversionQuoteRepository(jdbc).verifySchema();
+            new BudgetRepository(sessions).verifySchema(); new ConversionQuoteRepository(sessions).verifySchema();
             new ConversionSettlementRepository(jdbc,json).verifySchema();
             var repository=new BillingOutboxRepository(jdbc,EventFamily.CONVERSION);repository.verifySchema();return repository;
         }

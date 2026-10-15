@@ -37,7 +37,7 @@ class ConversionQuotePostgresTest {
                 statement.execute(new String(in.readAllBytes(),StandardCharsets.UTF_8));
             }
         }
-        repository = new ConversionQuoteRepository(jdbc); repository.verifySchema();
+        repository = new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); repository.verifySchema();
     }
     @Test void concurrentIdenticalIntentAndRestartKeepOneFrozenQuoteWithoutHoldingMoney() throws Exception {
         var d = draft(); var ready = new CountDownLatch(1); var values = new ArrayList<FrozenConversionQuote>();
@@ -49,7 +49,7 @@ class ConversionQuotePostgresTest {
         assertTrue(values.stream().allMatch(values.getFirst()::equals));
         assertEquals("0.000001",values.getFirst().price().amount().toPlainString());
         assertEquals(Duration.ofMinutes(5),Duration.between(values.getFirst().issuedAt(),values.getFirst().expiresAt()));
-        assertEquals(values.getFirst(),new ConversionQuoteRepository(jdbc).freezeBefore(d,deadline()).orElseThrow());
+        assertEquals(values.getFirst(),new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).freezeBefore(d,deadline()).orElseThrow());
         assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM ad_conversion_quote WHERE quote_id=?",Integer.class,d.quoteId()));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ad_budget_account",Integer.class));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ad_budget_reservation",Integer.class));

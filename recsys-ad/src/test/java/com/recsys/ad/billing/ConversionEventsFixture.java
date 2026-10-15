@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.billing.*;
 import com.recsys.common.ad.billing.ConversionSettlement.*;
@@ -39,7 +41,7 @@ class ConversionEventsFixture {
                 BEGIN NEW.issued_at=NEW.issued_at-interval '2 seconds'; NEW.expires_at=NEW.expires_at-interval '2 seconds'; RETURN NEW; END; $$;
                 CREATE TRIGGER test_conversion_issue_time BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_issue_time();
                 """);
-        quotes=new ConversionQuoteRepository(jdbc);
+        quotes=new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         settlement=new ConversionSettlementService(new ConversionSettlementRepository(jdbc,JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true);
         outbox=new BillingOutboxRepository(jdbc,BillingOutboxRepository.EventFamily.CONVERSION);outbox.verifySchema();

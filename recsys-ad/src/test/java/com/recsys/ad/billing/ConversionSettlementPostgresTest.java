@@ -65,7 +65,7 @@ class ConversionSettlementPostgresTest {
                 IF FOUND THEN NEW.issued_at=t; NEW.expires_at=t+interval '5 minutes'; END IF; RETURN NEW; END; $$;
                 CREATE TRIGGER test_conversion_clock BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_clock();
                 """);
-        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ConversionQuoteRepository(jdbc);
+        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         repository=new ConversionSettlementRepository(jdbc,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));

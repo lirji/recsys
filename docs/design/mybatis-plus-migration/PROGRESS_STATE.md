@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b DONE/PASS，MP09c引用核对完成；MP09整体完成，待Git后继续MP10a。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a转化报价DONE/PASS，待Git交付后继续MP10b结算。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -60,7 +60,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP09b：点击结算Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP10a：转化报价Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,7 +79,7 @@ MP01～MP03已交付。当前MP09b：点击结算Mapper/XML、Repository/配置�
 
 ## 下一步
 
-1. MP09b/c验证和引用核对完成，Git交付后继续MP10a。
+1. MP10a已验证通过，Git交付后继续MP10b。
 2. 继续MP10～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -178,3 +178,11 @@ MP09a远程CI38730596602运行中；MP08c CI38730135316因随后提交被取消�
 ## MP09b/c最终验证
 
 DONE/PASS，MP09整体完成，见MP09B_RESULT。12源文件指纹ab3a4accb08bc102054796cc22c98f1eefc9a334c4c2696b614bdcabce24512b；迁移前23项、迁移后点击准备/结算/在线与转化在线49项通过；最终全仓24 reactor完整资金链373项/68类、推荐宿主3项及hygiene通过。嵌套constructor resultMap真实PG验证成功，22条SQL、5秒超时、同一JOIN快照、全部资金/计数/版本/回滚语义保持。45历史SQL/8保护文件不变。MP09a CI38730596602全部SUCCESS。MP09c无新增SQL，其准备已MP08c迁移，原装配/消费者由专项覆盖；Outbox/投影仍MP11，engine交付仍MP12。下一步MP10a ConversionQuoteRepository/Configuration，现代码与点击报价相似但必须保留CPA bid_type强校验，不能机械照抄ClickPrice构造；V012和原摘要/五分钟期限保持，MP09b资金链作为旧路径基线。
+
+## MP10a实施检查点
+
+复用MP09b完整资金链373项作为旧路径基线。ConversionQuoteRepository六条SQL已移入独立ConversionQuoteMapper/XML，V012、CPA bid_type强校验、原hash函数字节、金额/文本精度、位置冲突先于过期、五分钟TTL及每句5秒超时保持。配置/ConversionEventConfiguration与全部构造调用同步，迁移后专项进行中：/tmp/recsys-mp10a-after.log。
+
+## MP10a最终验证与下一片
+
+DONE/PASS，见MP10A_RESULT。9源文件指纹0615b6d01b1118d7c1cb21c9b196bf04550a4914f90418bbc51d0672cf7236ae；迁移后49项/5类通过，推荐宿主3项、全仓24 reactor编译与hygiene通过，45历史SQL/8保护文件不变。下一片MP10b ConversionSettlementRepository已读全201行：可见回执和业务Outcome独立原决定，状态/结果仍同一JOIN快照；必须区分settled_outcome_id与event_outcome_id，不能丢advertiser过滤/映射。claimOutcome的ON CONFLICT(advertiser_id,event_id)不能改为吞掉所有冲突；原actor仅审计，当前授权actor可恢复同业务内容。保留CPA双条件、原预算日、held/charged条件更新、Outbox及5秒超时。可复用MP09b nested constructor resultMap模式但不能带入CPC rate逻辑。旧基线MP09b373资金链和本片CPA结算23/准备8/在线10已通过；先补充可见与Outcome的事务内PENDING/可空字段保护，再迁移。
