@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +30,9 @@ public class AdCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(AdCalibrateJob.class);
 
+    private static final long MIN_SAMPLES_PER_BIN = 5;
+    private static final double CALIBRATION_SCALE = 1_000_000.0;
+
     private final AdCalibrationMapper mapper;
     private final StringRedisTemplate redis;
 
@@ -48,12 +54,18 @@ public class AdCalibrateJob implements OfflineJob {
         AdEventSource source = AdEventQuery.source(args);
         String model = strArg(args, "model", "deepfm");
         int bins = intArg(args, "bins", 20);
+        // bins=0曾先覆盖成空曲线再越界，参数必须在读取及发布前拒绝。
+        if (bins <= 0) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
 
         List<AdCalibrationMapper.Sample> rows = mapper.load(source);
 
-        if (rows.size() < bins * 5L) {
-            log.warn("样本太少({} 条),先跑 --job=sim-ad-events(或灌真实曝光/点击)", rows.size());
-            return;
+        for (AdCalibrationMapper.Sample row : rows) {
+            if (!Double.isFinite(row.prediction()) || !Double.isFinite(row.clicked())) {
+                throw new PublicErrorException(ErrorCode.JOB_AD_CALIBRATION_INPUT_INVALID);
+            }
+        }
+        if (rows.size() < bins * MIN_SAMPLES_PER_BIN) {
+            throw new PublicErrorException(ErrorCode.JOB_AD_CALIBRATION_SAMPLES_INSUFFICIENT);
         }
 
         // 等频分箱
@@ -127,14 +139,20 @@ public class AdCalibrateJob implements OfflineJob {
     }
 
     private static double round6(double v) {
-        return Math.round(v * 1_000_000) / 1_000_000.0;
+        double scaled = v * CALIBRATION_SCALE;
+        // Math.round会把NaN变0、溢出变long端点，须拒绝这些无法真实发布的坐标。
+        // Long.MAX_VALUE转double等于2^63，故上界也必须排除。
+        if (!Double.isFinite(scaled) || scaled < Long.MIN_VALUE || scaled >= (double) Long.MAX_VALUE) {
+            throw new PublicErrorException(ErrorCode.JOB_AD_CALIBRATION_INPUT_INVALID);
+        }
+        return Math.round(scaled) / CALIBRATION_SCALE;
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static String strArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) ? a.getOptionValues(k).get(0) : def;
+        return JobArguments.text(a, k, def);
     }
 }

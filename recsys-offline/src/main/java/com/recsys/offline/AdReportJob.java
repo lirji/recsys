@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -43,11 +46,13 @@ public class AdReportJob implements OfflineJob {
         this.mapper = mapper;
     }
 
+    /** 保留广告报表命令入口，供Runner记录统一状态。 */
     @Override
     public String name() {
         return "ad-report";
     }
 
+    /** 风控计数不可确认时不输出完整报表，已发生的晚查询部分写入仍沿原边界保留。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         AdEventSource source = AdEventQuery.source(args);
@@ -66,8 +71,7 @@ public class AdReportJob implements OfflineJob {
         });
 
         if (rows.isEmpty()) {
-            log.warn("无广告曝光数据(ad_event)。先经 /api/search-ads 产生曝光,或跑 --job=sim-ad-events。");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_AD_REPORT_DATA);
         }
 
         Row total = new Row();
@@ -150,12 +154,17 @@ public class AdReportJob implements OfflineJob {
 
     /** 反作弊拦截的无效点击数(event_type=INVALID_CLICK),供报表展示风控效果。 */
     private long countInvalidClicks(AdEventSource source, String since) {
+        Long count;
         try {
-            Long n = mapper.countInvalidClicks(source, since);
-            return n == null ? 0 : n;
-        } catch (Exception e) {
-            return 0;
+            count = mapper.countInvalidClicks(source, since);
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_CLICK_COUNT_UNAVAILABLE, failure);
         }
+        // COUNT正常只会返回非负数；未知结果不能伪造成未发生风险事件。
+        if (count == null || count < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_CLICK_COUNT_UNAVAILABLE);
+        }
+        return count;
     }
 
     private static double ctr(Row r) {
@@ -180,7 +189,6 @@ public class AdReportJob implements OfflineJob {
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
+        return JobArguments.text(a, k, def);
     }
 }

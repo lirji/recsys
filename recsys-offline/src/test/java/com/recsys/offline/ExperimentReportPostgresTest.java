@@ -62,9 +62,33 @@ class ExperimentReportPostgresTest {
         } finally { db.execute("ALTER TABLE ad_event RENAME COLUMN hidden_bucket TO ad_bucket"); }
     }
     @Test void adEmptyAndSingleBucketAndFileFailureKeepBoundaries() throws Exception {
-        assertNoReport(run("ad")); seedAd(); db.execute("UPDATE ad_event SET ad_bucket=NULL");
+        var empty=invoke("ad",false);assertNotEquals(0,empty.status);assertTrue(empty.log.contains("[JOB_NO_AD_REPORT_DATA]"));
+        assertNoReport(empty); seedAd(); db.execute("UPDATE ad_event SET ad_bucket=NULL");
         assertFalse(content(run("ad")).contains("bucket:"));
         var failed = invoke("ad", true); assertNotEquals(0, failed.status); assertEquals("blocked", Files.readString(failed.dir.resolve("eval")));
+    }
+    @Test void adUnknownInvalidClickCountCannotClaimZeroOrCompleteAndRecovers() throws Exception {
+        seedAd();
+        for (String flag : List.of("--fixture-count-failure", "--fixture-count-null", "--fixture-count-negative")) {
+            var failed=invoke("ad",false,flag);
+            assertNotEquals(0,failed.status,failed.log);
+            assertTrue(failed.log.contains("[JOB_INVALID_CLICK_COUNT_UNAVAILABLE]"),failed.log);
+            assertFalse(failed.log.contains("ad-report 完成"),failed.log);
+            assertFalse(failed.log.contains("反作弊拦截无效点击 0"),failed.log);
+            // 原边界先建目录后查计数；目录可留，但未知计数不得生成CSV。
+            assertTrue(Files.isDirectory(failed.dir.resolve("eval")));
+            try (var files=Files.list(failed.dir.resolve("eval"))) {assertEquals(0,files.count());}
+        }
+        hash("AD_ALL",run("ad"));
+        db.execute("DELETE FROM ad_event WHERE event_type='INVALID_CLICK'");
+        var zero=run("ad");assertTrue(zero.log.contains("反作弊拦截无效点击 0"));hash("AD_ALL",zero);
+    }
+    @Test void adExplicitMissingSinceIsRejectedBeforeAnyReport() throws Exception {
+        seedAd();
+        for (String option : List.of("--since", "--since= ")) {
+            var failed=invoke("ad",false,option);assertNotEquals(0,failed.status,failed.log);
+            assertTrue(failed.log.contains("[JOB_INVALID_ARGUMENT]"),failed.log);assertNoReport(failed);
+        }
     }
     @Test void abRawWholeReportsPreserveWindowsSceneDistinctUsersAndOverrides() throws Exception {
         seedAb(); var filtered = run("ab", "--since=2026-04-01", "--until=2026-04-03", "--scene=home"); hash("AB_RAW", filtered);

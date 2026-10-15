@@ -852,6 +852,22 @@ export const errorCodes = {
     message: '广告事件来源不支持，请使用 ad_event 或 ad_event_log',
     httpStatus: 0,
   },
+  JOB_AD_CALIBRATION_SAMPLES_INSUFFICIENT: {
+    message: '广告校准样本不足，原曲线保持不变；请补齐有效曝光与点击数据或调整分箱数',
+    httpStatus: 0,
+  },
+  JOB_AD_CALIBRATION_INPUT_INVALID: {
+    message: '广告校准输入或计算结果包含无效数值，原曲线保持不变；请检查预测值与数据后重试',
+    httpStatus: 0,
+  },
+  JOB_NO_AD_REPORT_DATA: {
+    message: '没有符合条件的广告曝光数据，本次未生成报表；请检查事件采集和时间条件',
+    httpStatus: 0,
+  },
+  JOB_INVALID_CLICK_COUNT_UNAVAILABLE: {
+    message: '无效点击计数无法确认，本次报表未完成；请检查广告事件来源后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

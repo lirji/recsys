@@ -15,6 +15,6 @@ public interface AdReportMapper {
     void scanPositions(@Param("source") AdEventSource source, @Param("since") String since, ResultHandler<Position> handler);
     /** 单独保留晚查询入口，使调用方保持原部分CSV发布边界。 */
     void scanBuckets(@Param("source") AdEventSource source, @Param("since") String since, ResultHandler<Bucket> handler);
-    /** 仅无效点击本身受时间下界约束，异常降级仍由原作业负责。 */
+    /** 仅无效点击本身受时间下界约束；作业必须区分真实0与不可确认的统计。 */
     Long countInvalidClicks(@Param("source") AdEventSource source, @Param("since") String since);
 }

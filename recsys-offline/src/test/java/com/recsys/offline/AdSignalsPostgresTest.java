@@ -64,9 +64,30 @@ class AdSignalsPostgresTest {
         db.execute("INSERT INTO ad_event VALUES('r1',1,NULL,'CLICK',NULL,now()),('r6',2,NULL,'CLICK',NULL,now()),('null',1,NULL,'IMPRESSION',NULL,now())");
         calibrate.run(args("--bins=2","--model=custom"));assertEquals("{\"x\":[0.1,0.9],\"y\":[0.5,0.5]}",value(RedisKeys.adCalib("custom")));assertNull(value(RedisKeys.adCalib("deepfm")));
     }
-    @Test void insufficientCalibrationLeavesOldCurveAndZeroBinsKeepsOriginalLateFailure() {
-        redis.opsForValue().set(RedisKeys.adCalib("deepfm"),"keep");seedCalibration(99);calibrate.run(args());assertEquals("keep",value(RedisKeys.adCalib("deepfm")));
-        assertThrows(ArrayIndexOutOfBoundsException.class,()->calibrate.run(args("--bins=0")));assertEquals("{\"x\":[],\"y\":[]}",value(RedisKeys.adCalib("deepfm")));
+    @Test void insufficientCalibrationAndInvalidArgumentsCannotReplaceOldCurve(org.springframework.boot.test.system.CapturedOutput output) {
+        redis.opsForValue().set(RedisKeys.adCalib("deepfm"),"keep");seedCalibration(99);
+        assertEquals(ErrorCode.JOB_AD_CALIBRATION_SAMPLES_INSUFFICIENT, assertThrows(PublicErrorException.class,
+                () -> calibrate.run(args())).errorCode());
+        for (String option : List.of("--bins=0", "--bins=-1", "--bins", "--bins=bad", "--model", "--model= ")) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> calibrate.run(args(option))).errorCode(), option);
+            assertEquals("keep",value(RedisKeys.adCalib("deepfm")));
+        }
+        assertFalse(output.toString().contains("ad-calibrate 完成"));
+    }
+    @Test void nonFiniteOverflowAndUnpublishablePredictionsKeepOldCurveUntilDataRecovers(org.springframework.boot.test.system.CapturedOutput output) throws Exception {
+        seedCalibration(100);calibrate.run(args());String original=value(RedisKeys.adCalib("deepfm"));
+        int beforeFailures=output.toString().length();
+        // 值真实写进PG，分别覆盖非法输入、有限但舍入饱和、分箱求和溢出。
+        for (double prediction : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 1e20, -1e20, 1e308}) {
+            db.update("UPDATE ad_event SET pctr=? WHERE event_type='IMPRESSION'", prediction);
+            assertEquals(ErrorCode.JOB_AD_CALIBRATION_INPUT_INVALID, assertThrows(PublicErrorException.class,
+                    () -> calibrate.run(args())).errorCode(), Double.toString(prediction));
+            assertEquals(original,value(RedisKeys.adCalib("deepfm")));
+        }
+        assertFalse(output.toString().substring(beforeFailures).contains("ad-calibrate 完成"));
+        db.execute("TRUNCATE ad_event");seedCalibration(100);calibrate.run(args());
+        assertEquals(original,value(RedisKeys.adCalib("deepfm")));
     }
     @Test void explorationKeepsDuplicateJoinMultiplicityNullIdentityAndLargeIds() {
         seedExplore();explore.run(args());assertEquals("4,3",value(RedisKeys.adStats(1)));assertEquals("0,1",value(RedisKeys.adStats(2)));assertEquals("0,0",value(RedisKeys.adStats(3)));

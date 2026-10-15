@@ -213,7 +213,11 @@ public enum ErrorCode {
     JOB_EXPLORATION_EMPTY_SNAPSHOT("JOB_EXPLORATION_EMPTY_SNAPSHOT", "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口", 0),
     JOB_BEHAVIOR_SOURCE_INVALID("JOB_BEHAVIOR_SOURCE_INVALID", "行为数据来源不支持，请使用 user_behavior 或 behavior_log", 0),
     JOB_ITEM_SOURCE_INVALID("JOB_ITEM_SOURCE_INVALID", "物品数据来源不支持，请使用 item 或 item_local", 0),
-    JOB_AD_EVENT_SOURCE_INVALID("JOB_AD_EVENT_SOURCE_INVALID", "广告事件来源不支持，请使用 ad_event 或 ad_event_log", 0);
+    JOB_AD_EVENT_SOURCE_INVALID("JOB_AD_EVENT_SOURCE_INVALID", "广告事件来源不支持，请使用 ad_event 或 ad_event_log", 0),
+    JOB_AD_CALIBRATION_SAMPLES_INSUFFICIENT("JOB_AD_CALIBRATION_SAMPLES_INSUFFICIENT", "广告校准样本不足，原曲线保持不变；请补齐有效曝光与点击数据或调整分箱数", 0),
+    JOB_AD_CALIBRATION_INPUT_INVALID("JOB_AD_CALIBRATION_INPUT_INVALID", "广告校准输入或计算结果包含无效数值，原曲线保持不变；请检查预测值与数据后重试", 0),
+    JOB_NO_AD_REPORT_DATA("JOB_NO_AD_REPORT_DATA", "没有符合条件的广告曝光数据，本次未生成报表；请检查事件采集和时间条件", 0),
+    JOB_INVALID_CLICK_COUNT_UNAVAILABLE("JOB_INVALID_CLICK_COUNT_UNAVAILABLE", "无效点击计数无法确认，本次报表未完成；请检查广告事件来源后重试", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
