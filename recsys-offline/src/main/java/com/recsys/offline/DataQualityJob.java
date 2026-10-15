@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+import com.recsys.common.report.DataQualityCheck;
+import com.recsys.common.report.DataQualityCheck.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -11,16 +15,19 @@ import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalDouble;
 
 /**
  * 作业 data-quality(E6):数据质量 / 分布漂移巡检 —— 把"部署后悄悄劣化"的隐患显性化。
@@ -31,7 +38,7 @@ import java.util.Map;
  *   <li><b>pCTR 校准偏差(ECE)</b>:从 {@code ad_event} 按 pctr_calib 分桶比对实际 CTR;偏大 → 计费/竞价被系统性带偏;</li>
  *   <li><b>类目分布 PSI</b>:近 N 天正反馈的类目分布 vs 全历史基线;PSI 大 → 流量/兴趣漂移,离线模型可能过时。</li>
  * </ol>
- * 每项越阈值即 WARN(可被日志告警捕获),明细写 {@code eval/data-quality-<ts>.csv}。缺表的检查跳过、不影响其余。
+ * 每项越阈值即 WARN(可被日志告警捕获),明细写 {@code eval/data-quality-<ts>.csv}。缺表或无数据仍继续其余检查，但最终明确巡检未完成。
  *
  * <p>参数:--min-embedding-coverage(默认 0.9)、--max-ece(默认 0.05)、--max-psi(默认 0.25)、--days(PSI 近窗,默认 7)。
  */
@@ -50,11 +57,13 @@ public class DataQualityJob implements OfflineJob {
         this.coverage = coverage;
     }
 
+    /** 保留既有巡检命令名。 */
     @Override
     public String name() {
         return "data-quality";
     }
 
+    /** 三项独立执行后持久化实际状态；失败或缺数据不能被零告警伪装成通过。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         BehaviorSource behaviorSource = BehaviorQuery.source(args);
@@ -64,6 +73,11 @@ public class DataQualityJob implements OfflineJob {
         double maxEce = doubleArg(args, "max-ece", 0.05);
         double maxPsi = doubleArg(args, "max-psi", 0.25);
         int days = intArg(args, "days", 7);
+        if (minCoverage < 0 || minCoverage > 1 || maxEce < 0 || maxPsi < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+        Map<DataQualityCheck, Status> states = new EnumMap<>(DataQualityCheck.class);
+        List<RuntimeException> failures = new ArrayList<>();
 
         Map<String, String> report = new LinkedHashMap<>();
         List<String> breaches = new ArrayList<>();
@@ -74,6 +88,7 @@ public class DataQualityJob implements OfflineJob {
             long itemEmb = coverage.countItemEmbeddings();
             long users = inputs.countUsers(behaviorSource);
             long userEmb = coverage.countUserEmbeddings();
+            if (items < 0 || itemEmb < 0 || users < 0 || userEmb < 0) throw invalidInput();
             double itemCov = DataQuality.coverage(itemEmb, items);
             double userCov = DataQuality.coverage(userEmb, users);
             report.put("item_embedding_coverage", fmt(itemCov));
@@ -86,88 +101,110 @@ public class DataQualityJob implements OfflineJob {
             if (userCov < minCoverage) {
                 breaches.add(String.format(Locale.ROOT, "user_embedding 覆盖率 %.3f < %.2f", userCov, minCoverage));
             }
-        } catch (Exception e) {
-            log.warn("Embedding 覆盖率检查跳过(表缺失?): {}", e.getMessage());
+            states.put(DataQualityCheck.EMBEDDING, items == 0 || users == 0 ? Status.NO_DATA
+                    : itemCov < minCoverage || userCov < minCoverage ? Status.BREACHED : Status.PASSED);
+        } catch (RuntimeException failure) {
+            failed(DataQualityCheck.EMBEDDING, failure, states, failures);
         }
 
         // 2. pCTR 校准偏差(ECE),来自 ad_event
         try {
-            double ece = calibrationEce(adSource);
-            if (!Double.isNaN(ece)) {
+            OptionalDouble measured = calibrationEce(adSource);
+            if (measured.isPresent()) {
+                double ece = measured.getAsDouble();
                 report.put("pctr_ece", fmt(ece));
                 log.info("pCTR 校准偏差 ECE = {}", fmt(ece));
+                states.put(DataQualityCheck.CALIBRATION, ece > maxEce ? Status.BREACHED : Status.PASSED);
                 if (ece > maxEce) {
                     breaches.add(String.format(Locale.ROOT, "pCTR ECE %.3f > %.2f(校准可能失效)", ece, maxEce));
                 }
             } else {
-                log.info("pCTR 校准检查:ad_event 无足够曝光/校准数据,跳过");
+                states.put(DataQualityCheck.CALIBRATION, Status.NO_DATA);
             }
-        } catch (Exception e) {
-            log.warn("pCTR 校准检查跳过(ad_event 缺失?): {}", e.getMessage());
+        } catch (RuntimeException failure) {
+            failed(DataQualityCheck.CALIBRATION, failure, states, failures);
         }
 
         // 3. 类目分布 PSI(近 N 天 vs 全历史)
         try {
-            double psi = categoryPsi(behaviorSource, itemSource, days);
-            if (!Double.isNaN(psi)) {
+            OptionalDouble measured = categoryPsi(behaviorSource, itemSource, days);
+            if (measured.isPresent()) {
+                double psi = measured.getAsDouble();
                 report.put("category_psi_" + days + "d", fmt(psi));
                 report.put("category_psi_level", DataQuality.psiLevel(psi));
+                states.put(DataQualityCheck.CATEGORY, psi > maxPsi ? Status.BREACHED : Status.PASSED);
                 log.info("类目分布 PSI(近 {} 天 vs 全历史)= {}({})", days, fmt(psi), DataQuality.psiLevel(psi));
                 if (psi > maxPsi) {
                     breaches.add(String.format(Locale.ROOT, "类目 PSI %.3f > %.2f(分布显著漂移,建议重训)", psi, maxPsi));
                 }
             } else {
-                log.info("类目 PSI 检查:行为/类目数据不足,跳过");
+                states.put(DataQualityCheck.CATEGORY, Status.NO_DATA);
             }
-        } catch (Exception e) {
-            log.warn("类目 PSI 检查跳过: {}", e.getMessage());
+        } catch (RuntimeException failure) {
+            failed(DataQualityCheck.CATEGORY, failure, states, failures);
         }
 
-        writeReport(report, breaches);
+        try {
+            writeReport(report, breaches, states);
+        } catch (IOException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_REPORT_OUTPUT_FAILED, failure);
+        }
+        if (!failures.isEmpty()) {
+            throw new PublicErrorException(ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED, failures.getFirst());
+        }
+        if (states.containsValue(Status.NO_DATA)) {
+            throw new PublicErrorException(ErrorCode.JOB_DATA_QUALITY_INCOMPLETE);
+        }
 
         if (breaches.isEmpty()) {
             log.info("✅ data-quality 巡检通过,无越阈值项");
         } else {
-            log.warn("⚠️ data-quality 巡检发现 {} 项越阈值(需关注):", breaches.size());
+            log.warn("{} count={}", ErrorCode.JOB_DATA_QUALITY_BREACHED.displayMessage(), breaches.size());
             for (String b : breaches) {
                 log.warn("   - {}", b);
             }
         }
     }
 
-    /** 从 ad_event 按 pctr_calib 十分桶,比对实际 CTR,算 ECE。无数据返回 NaN。 */
-    private double calibrationEce(AdEventSource source) {
+    /** 真空样本独立于无效数值，避免把NaN当作一次正常跳过。 */
+    private OptionalDouble calibrationEce(AdEventSource source) {
         var bins = inputs.loadCalibrationBins(source);
         if (bins.isEmpty()) {
-            return Double.NaN;
+            return OptionalDouble.empty();
         }
         long[] n = new long[bins.size()];
         double[] mean = new double[bins.size()];
         double[] actual = new double[bins.size()];
+        long total = 0;
         for (int i = 0; i < bins.size(); i++) {
             var bin = bins.get(i);
             n[i] = bin.count();
             mean[i] = bin.meanPrediction();
             actual[i] = bin.actualRate();
+            if (n[i] < 0 || !Double.isFinite(mean[i]) || !Double.isFinite(actual[i])) throw invalidInput();
+            total = Math.addExact(total, n[i]);
         }
-        return DataQuality.expectedCalibrationError(n, mean, actual);
+        if (total == 0) return OptionalDouble.empty();
+        return measured(DataQuality.expectedCalibrationError(n, mean, actual));
     }
 
-    /** 近 N 天正反馈的类目分布 vs 全历史基线的 PSI。数据不足返回 NaN。 */
-    private double categoryPsi(BehaviorSource behavior, CatalogTable items, int days) {
+    /** 近窗或基线真空时明确缺数据，公式及原时间窗口不变。 */
+    private OptionalDouble categoryPsi(BehaviorSource behavior, CatalogTable items, int days) {
         Map<String, Long> base = new LinkedHashMap<>();
         Map<String, Long> recent = new LinkedHashMap<>();
         // null只表示全历史；0/负days仍是原时间下界，不能当作关闭过滤。
         inputs.scanCategories(behavior, items, null, context -> {
             var row = context.getResultObject();
+            if (row.count() <= 0) throw invalidInput();
             base.put(row.category(), row.count());
         });
         inputs.scanCategories(behavior, items, days, context -> {
             var row = context.getResultObject();
+            if (row.count() <= 0) throw invalidInput();
             recent.put(row.category(), row.count());
         });
         if (base.isEmpty() || recent.isEmpty()) {
-            return Double.NaN;
+            return OptionalDouble.empty();
         }
         // 以基线类目全集对齐(recent 缺的类目计 0,PSI 内部 EPS 平滑)
         long[] e = new long[base.size()];
@@ -178,10 +215,11 @@ public class DataQualityJob implements OfflineJob {
             a[i] = recent.getOrDefault(en.getKey(), 0L);
             i++;
         }
-        return DataQuality.psi(e, a);
+        return measured(DataQuality.psi(e, a));
     }
 
-    private void writeReport(Map<String, String> report, List<String> breaches) throws Exception {
+    private void writeReport(Map<String, String> report, List<String> breaches,
+                             Map<DataQualityCheck, Status> states) throws IOException {
         String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         Path out = Path.of(OUT_DIR, "data-quality-" + ts + ".csv");
         Files.createDirectories(out.getParent());
@@ -198,8 +236,30 @@ public class DataQualityJob implements OfflineJob {
                 w.write("breach,\"" + b.replace("\"", "'") + "\"");
                 w.newLine();
             }
+            // 追加状态而非改写既有指标和列，保留CSV读取协议及原可用数值。
+            for (DataQualityCheck check : DataQualityCheck.values()) {
+                w.write(check.metricKey() + "," + states.get(check).code());
+                w.newLine();
+            }
         }
         log.info("data-quality 报表已写入 {}", out.toAbsolutePath());
+    }
+
+    private static void failed(DataQualityCheck check, RuntimeException failure,
+                               Map<DataQualityCheck, Status> states, List<RuntimeException> failures) {
+        states.put(check, Status.FAILED);
+        failures.add(failure);
+        log.warn("{} check={} failureType={}", ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED.displayMessage(),
+                check.label(), failure.getClass().getSimpleName());
+    }
+
+    private static OptionalDouble measured(double value) {
+        if (!Double.isFinite(value) || value < 0) throw invalidInput();
+        return OptionalDouble.of(value);
+    }
+
+    private static PublicErrorException invalidInput() {
+        return new PublicErrorException(ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED);
     }
 
     private static String fmt(double v) {
@@ -207,10 +267,10 @@ public class DataQualityJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.decimal(a, k, def);
     }
 }

@@ -31,6 +31,13 @@ public final class DataQualityFixture {
                     try { job.run(options); } catch (Exception error) { throw new RuntimeException(error); }
                 });
             } else job.run(options);
+        } catch (Exception failure) {
+            for(Throwable cause=failure;cause!=null;cause=cause.getCause()) {
+                if(cause instanceof com.recsys.common.error.PublicErrorException visible) {
+                    System.out.println(visible.errorCode().displayMessage());break;
+                }
+            }
+            throw failure;
         } finally {
             var observer = new JdbcTemplate(new DriverManagerDataSource(args[0].replace("ApplicationName=dq-primary-reader","ApplicationName=dq-observer"),args[2],args[3]));
             primary.assertClosed(observer,"dq-primary-reader"); derived.assertClosed(observer,"dq-derived-reader");

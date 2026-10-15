@@ -84,10 +84,19 @@ class AlertsErrorTest {
         assertFalse(restored.toString().contains("private"));
     }
 
+    @Test void failedCategoryCheckIsVisibleEvenWhenOldMetricsAndBreachesAreHealthy() {
+        var fixture=new Fixture();var original=goodQuality();var rows=new ArrayList<>(original.rows());
+        rows.removeIf(row->row.get(0).equals("check_category_status"));rows.add(List.of("check_category_status","FAILED"));
+        when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable(original.fileName(),original.category(),original.columns(),rows));
+        var alerts=fixture.service.alerts();assertEquals(1,alerts.size());assertEquals(AlertItem.Source.DATA_QUALITY,alerts.getFirst().source());
+        assertTrue(alerts.getFirst().message().contains(ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED.displayMessage()));
+    }
+
     private static ReportTable goodQuality() {
         return new ReportTable("data-quality.csv", "data-quality", List.of("metric", "value"),
                 List.of(List.of("breaches", "0"), List.of("item_embedding_coverage", "1"),
-                        List.of("user_embedding_coverage", "1"), List.of("pctr_ece", "0.01")));
+                        List.of("user_embedding_coverage", "1"), List.of("pctr_ece", "0.01"), List.of("category_psi_7d", "0.02"),
+                        List.of("check_embedding_status", "PASSED"), List.of("check_calibration_status", "PASSED"), List.of("check_category_status", "PASSED")));
     }
 
     private static SystemOverview.ServiceHealth health(String status, String kind) {

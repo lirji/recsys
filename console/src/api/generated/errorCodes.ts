@@ -896,6 +896,18 @@ export const errorCodes = {
     message: '广告质量度发布未完成，Redis 或报表可能已部分写入；请核对已有结果并修复依赖后重试',
     httpStatus: 0,
   },
+  JOB_DATA_QUALITY_CHECK_FAILED: {
+    message: '部分数据质量检查失败，巡检尚未完成；请查看各项状态并修复数据或依赖后重试',
+    httpStatus: 0,
+  },
+  JOB_DATA_QUALITY_INCOMPLETE: {
+    message: '数据质量检查缺少有效数据或完整状态，无法确认巡检通过；请补齐数据后重新运行',
+    httpStatus: 0,
+  },
+  JOB_DATA_QUALITY_BREACHED: {
+    message: '数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

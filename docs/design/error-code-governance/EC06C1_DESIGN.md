@@ -1,0 +1,13 @@
+# EC06c1 巡检完整性生产与后台消费
+
+基线70c1d0e91843fb3aa2b40a450bde13c5bdf3062c。在原EC06范围先完成DataQuality生产端及Diagnosis/Alerts共享消费；EC06c2立即接前端DataQualityViz展示及浏览器验证，c1不宣称整个巡检展示完成。无SQL/schema/依赖/数学公式/事务变化。
+
+新增纯common契约DataQualityCheck，三检查EMBEDDING/CALIBRATION/CATEGORY及显式PASSED/BREACHED/NO_DATA/FAILED状态。既有metric,value列和原数值/越阈值行保持，在末尾追加check_embedding_status、check_calibration_status、check_category_status。旧报表没有完整状态时新后台消费为WARN/未知完整性；有效数值仍可读取。新报表需与支持状态的消费者配套发布，建议先消费者后生产端；本任务不部署。
+
+每项故障独立记录FAILED，继续其他检查，最终写诊断CSV后抛JOB_DATA_QUALITY_CHECK_FAILED；缺数据记录NO_DATA，最终JOB_DATA_QUALITY_INCOMPLETE，不能说巡检通过。覆盖率原分母0→1.0数值保持，但任一分母0即NO_DATA，不能据此判断健康。ECE/PSI真空用OptionalDouble表达，非有限统计/负计数/计数溢出归检查失败，不用NaN同时表示空输入和坏数值。三个检查都完成且有越阈值仍是成功完成的诊断，固定警告码JOB_DATA_QUALITY_BREACHED；全PASSED才打印原通过日志。所有公开失败不包含SQL/原异常message，内部cause与failureType保留；CSV输出失败复用JOB_REPORT_OUTPUT_FAILED。
+
+参数复用JobArguments：coverage阈值在[0,1]，ECE/PSI阈值非负且有限，days保留0/负数原时间下界语义。不更改coverage>1数学、PG WIDTH_BUCKET边界、distinct点击、两源隔离及PSI/ECE公式。状态说明由枚举与目录承担，避免散布提示和类型字符串。
+
+Diagnosis/Alerts必须识别三状态。缺失/未知/NO_DATA一律受控WARN；FAILED受控失败提示；BREACHED不能仅因breaches=0而PASS。旧报表仍可查看，但不能宣称三项检查完整通过。原覆盖率/ECE数值校验、阈值告警和自由文本不透传保持。
+
+验证真实双schema PG、缺表/缺列的独立失败、全部失败、全部空/部分无数据、阈值完成、正常数据补齐恢复、原六份CSV去除新增状态行后的完整SHA；后台HTTP与告警同一状态、旧/未知状态安全提示。前端生成目录57项、24compile、目录/SQL/hygiene后正常Git交付，再完成c2可见展示。其他四Job及EC07/08继续。

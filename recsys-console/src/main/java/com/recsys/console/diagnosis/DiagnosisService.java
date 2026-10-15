@@ -1,5 +1,7 @@
 package com.recsys.console.diagnosis;
 
+import com.recsys.common.report.DataQualityCheck;
+import com.recsys.common.report.DataQualityCheck.Status;
 import com.recsys.common.error.ErrorCode;
 import com.recsys.console.diagnosis.DiagnosisReport.State;
 import static com.recsys.console.diagnosis.DiagnosisReport.State.*;
@@ -102,21 +104,38 @@ public class DiagnosisService {
                 return new DiagnosisReport.Check("data-quality", "数据质量巡检", WARN, ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
             MetricTable mt = MetricTable.of(dq);
+            boolean incomplete = false, failed = false, checkBreached = false;
+            for (DataQualityCheck check : DataQualityCheck.values()) {
+                Status state = Status.fromCode(mt.values().get(check.metricKey()));
+                incomplete |= state == null || state == Status.NO_DATA;
+                failed |= state == Status.FAILED;
+                checkBreached |= state == Status.BREACHED;
+            }
+            // 旧报表仍可查看数值，但没有状态不能证明三项依赖检查完整。
+            if (failed || incomplete) {
+                ErrorCode code = failed ? ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED : ErrorCode.JOB_DATA_QUALITY_INCOMPLETE;
+                return new DiagnosisReport.Check("data-quality", "数据质量巡检", WARN, code.displayMessage());
+            }
             double breaches = mt.number("breaches", Double.NaN);
             double itemCov = mt.number("item_embedding_coverage", Double.NaN);
             double userCov = mt.number("user_embedding_coverage", Double.NaN);
             double ece = mt.number("pctr_ece", Double.NaN);
-            if (!Double.isFinite(breaches) || breaches < 0 || breaches != Math.rint(breaches)
+            var psiKeys = mt.values().keySet().stream()
+                    .filter(key -> key.matches("category_psi_-?[0-9]+d")).toList();
+            double psi = psiKeys.size() == 1 ? mt.number(psiKeys.getFirst(), Double.NaN) : Double.NaN;
+            if (!Double.isFinite(psi) || psi < 0 || !Double.isFinite(breaches) || breaches < 0 || breaches != Math.rint(breaches)
                     || !ratio(itemCov) || !ratio(userCov) || !ratio(ece)) {
                 return new DiagnosisReport.Check("data-quality", "数据质量巡检", WARN,
                         ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
             State status = PASS;
             List<String> reasons = new ArrayList<>();
-            if (breaches > 0 || !mt.breaches().isEmpty()) {
+            if (checkBreached || breaches > 0 || !mt.breaches().isEmpty()) {
                 status = WARN;
                 // 报表的自由文本可能来自旧作业异常，只呈现安全计数与下面的受控数值说明。
-                reasons.add(String.format("报表记录 %.0f 项越阈值，请检查对应指标", Math.max(breaches, mt.breaches().size())));
+                reasons.add(checkBreached && breaches == 0 && mt.breaches().isEmpty()
+                        ? ErrorCode.JOB_DATA_QUALITY_BREACHED.displayMessage()
+                        : String.format("报表记录 %.0f 项越阈值，请检查对应指标", Math.max(breaches, mt.breaches().size())));
             }
             if (itemCov < MIN_COVERAGE || userCov < MIN_COVERAGE) {
                 status = WARN;

@@ -224,7 +224,10 @@ public enum ErrorCode {
     JOB_NO_AD_QUALITY_INPUT("JOB_NO_AD_QUALITY_INPUT", "没有广告质量度所需的曝光数据，原结果保持不变；请检查事件来源和时间窗口", 0),
     JOB_NO_AD_QUALITY_OUTPUT("JOB_NO_AD_QUALITY_OUTPUT", "没有广告达到质量度计算门槛，原结果保持不变；请补齐数据或调整最少曝光数", 0),
     JOB_AD_QUALITY_INPUT_INVALID("JOB_AD_QUALITY_INPUT_INVALID", "广告质量度输入或计算结果无效，可能已有部分结果更新；请检查统计值和先验参数后重试", 0),
-    JOB_AD_QUALITY_PUBLICATION_FAILED("JOB_AD_QUALITY_PUBLICATION_FAILED", "广告质量度发布未完成，Redis 或报表可能已部分写入；请核对已有结果并修复依赖后重试", 0);
+    JOB_AD_QUALITY_PUBLICATION_FAILED("JOB_AD_QUALITY_PUBLICATION_FAILED", "广告质量度发布未完成，Redis 或报表可能已部分写入；请核对已有结果并修复依赖后重试", 0),
+    JOB_DATA_QUALITY_CHECK_FAILED("JOB_DATA_QUALITY_CHECK_FAILED", "部分数据质量检查失败，巡检尚未完成；请查看各项状态并修复数据或依赖后重试", 0),
+    JOB_DATA_QUALITY_INCOMPLETE("JOB_DATA_QUALITY_INCOMPLETE", "数据质量检查缺少有效数据或完整状态，无法确认巡检通过；请补齐数据后重新运行", 0),
+    JOB_DATA_QUALITY_BREACHED("JOB_DATA_QUALITY_BREACHED", "数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

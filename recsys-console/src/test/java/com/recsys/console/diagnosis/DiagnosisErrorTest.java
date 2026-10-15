@@ -50,7 +50,7 @@ class DiagnosisErrorTest {
 
     @ParameterizedTest
     @CsvSource({"breaches,NaN", "breaches,-1", "breaches,0.5", "item_embedding_coverage,bad",
-            "item_embedding_coverage,Infinity", "item_embedding_coverage,-0.1", "user_embedding_coverage,1.1", "pctr_ece,NaN"})
+            "item_embedding_coverage,Infinity", "item_embedding_coverage,-0.1", "user_embedding_coverage,1.1", "pctr_ece,NaN", "category_psi_7d,NaN", "category_psi_7d,-1"})
     void invalidQualityValuesAreUnknownInsteadOfPassingDefaults(String metric, String value) {
         var fixture = new Fixture();
         when(fixture.reports.latest("data-quality")).thenReturn(quality(metric, value));
@@ -62,7 +62,7 @@ class DiagnosisErrorTest {
         var fixture = new Fixture();
         when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable("quality.csv", "data-quality", List.of("wrong"), List.of()));
         assertEquals(WARN, check(fixture, "data-quality").status());
-        assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(), check(fixture, "data-quality").detail());
+        assertEquals(ErrorCode.JOB_DATA_QUALITY_INCOMPLETE.displayMessage(), check(fixture, "data-quality").detail());
     }
 
     @Test void freeTextBreachesDoNotLeakFromOldReports() {
@@ -89,6 +89,32 @@ class DiagnosisErrorTest {
         assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(), check(fixture, "service").detail());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings={"FAILED","NO_DATA","private SQL password","MISSING","LEGACY","BREACHED"})
+    void producerStatusCannotBeHiddenByZeroBreachesAndHealthyNumericValues(String status) throws Exception {
+        var fixture=new Fixture();var original=quality(null,null);var rows=new ArrayList<>(original.rows());
+        if(status.equals("LEGACY")) rows.removeIf(row->row.get(0).startsWith("check_"));
+        else {
+            rows.removeIf(row->row.get(0).equals("check_category_status"));
+            if(!status.equals("MISSING")) rows.add(List.of("check_category_status",status));
+        }
+        when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable(original.fileName(),original.category(),original.columns(),rows));
+        ErrorCode expected=switch(status){case "FAILED"->ErrorCode.JOB_DATA_QUALITY_CHECK_FAILED;case "BREACHED"->ErrorCode.JOB_DATA_QUALITY_BREACHED;default->ErrorCode.JOB_DATA_QUALITY_INCOMPLETE;};
+        assertEquals(WARN,check(fixture,"data-quality").status());assertEquals(expected.displayMessage(),check(fixture,"data-quality").detail());
+        String body=MockMvcBuilders.standaloneSetup(new DiagnosisController(fixture.service)).build()
+                .perform(get("/api/console/diagnosis")).andExpect(status().isOk()).andExpect(jsonPath("$.overall").value("WARN"))
+                .andReturn().getResponse().getContentAsString();assertFalse(body.contains("private"));
+    }
+
+    @Test void passedCategoryStateStillRequiresOneUsablePsiMetric() {
+        var fixture=new Fixture();var original=quality(null,null);var rows=new ArrayList<>(original.rows());
+        rows.removeIf(row->row.get(0).equals("category_psi_7d"));
+        when(fixture.reports.latest("data-quality")).thenReturn(new ReportTable(original.fileName(),original.category(),original.columns(),rows));
+        assertEquals(ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage(),check(fixture,"data-quality").detail());
+        rows.add(List.of("category_psi_7d","0.01"));rows.add(List.of("category_psi_0d","0.02"));
+        assertEquals(WARN,check(fixture,"data-quality").status());
+    }
+
     private static DiagnosisReport.Check check(Fixture fixture, String key) {
         return fixture.service.diagnose().checks().stream().filter(c -> c.key().equals(key)).findFirst().orElseThrow();
     }
@@ -96,9 +122,10 @@ class DiagnosisErrorTest {
     private static ReportTable quality(String metric, String value) {
         var rows = new ArrayList<List<String>>();
         for (var row : List.of(List.of("breaches", "0"), List.of("item_embedding_coverage", "1"),
-                List.of("user_embedding_coverage", "1"), List.of("pctr_ece", "0.01"))) {
+                List.of("user_embedding_coverage", "1"), List.of("pctr_ece", "0.01"), List.of("category_psi_7d", "0.02"))) {
             rows.add(row.get(0).equals(metric) ? List.of(metric, value) : row);
         }
+        for(var check:com.recsys.common.report.DataQualityCheck.values()) rows.add(List.of(check.metricKey(),"PASSED"));
         return new ReportTable("data-quality.csv", "data-quality", List.of("metric", "value"), rows);
     }
 

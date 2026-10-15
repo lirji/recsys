@@ -44,18 +44,22 @@ class DataQualityPostgresTest {
         assertEquals("0.5000",metrics.get("item_embedding_coverage")); assertEquals("0.2500",metrics.get("user_embedding_coverage"));
         assertEquals("0.2000",metrics.get("pctr_ece")); assertEquals("4",metrics.get("breaches")); assertEquals("significant",metrics.get("category_psi_level"));
         var options = run("freeze","--min-embedding-coverage=0.25","--max-ece=0.2","--max-psi=100"); hash("OPTIONS",options); assertEquals("0",metrics(options).get("breaches"));
+        assertTrue(options.log.contains("巡检通过,无越阈值项"));assertTrue(result.log.contains("[JOB_DATA_QUALITY_BREACHED]"));
+        for(String key:List.of("check_embedding_status","check_calibration_status","check_category_status")) {
+            assertEquals("BREACHED",metrics.get(key));assertEquals("PASSED",metrics(options).get(key));
+        }
         primary.execute("INSERT INTO item_local SELECT * FROM item;INSERT INTO behavior_log SELECT * FROM user_behavior;INSERT INTO ad_event_log SELECT * FROM ad_event;TRUNCATE item,user_behavior,ad_event");
         assertEquals(content(result),content(run("freeze","--item-table=item_local","--behavior-table=behavior_log","--ad-event-table=ad_event_log")));
     }
     @Test void calibrationUsesPgWidthBucketsAndDistinctClickPairsWithoutProbabilityClamp() throws Exception {
         primary.execute("INSERT INTO ad_event VALUES('negative',1,'IMPRESSION',-0.1),('zero',2,'IMPRESSION',0),('one',3,'IMPRESSION',1),('above',4,'IMPRESSION',1.1),('missing',5,'IMPRESSION',NULL),('one',3,'CLICK',NULL),('one',3,'CLICK',NULL),(NULL,2,'CLICK',NULL)");
-        var result = run("freeze"); hash("ECE_EDGES",result); assertEquals("0.3000",metrics(result).get("pctr_ece"));
+        var result = incomplete("freeze"); hash("ECE_EDGES",result); assertEquals("0.3000",metrics(result).get("pctr_ece"));
         primary.execute("INSERT INTO ad_event VALUES('one',3,'CLICK',NULL),('one',3,'CLICK',NULL)");
-        assertEquals(content(result),content(run("freeze")));
+        assertEquals(content(result),content(incomplete("freeze")));
     }
     @Test void recentDaysIncludesExactLowerBoundAndZeroOrNegativeDaysAreNotAllHistory() throws Exception {
         primary.execute("INSERT INTO item VALUES(1,'A'),(2,'B');INSERT INTO user_behavior(user_id,item_id,action,offset_s) VALUES(1,1,'CLICK',0),(2,2,'LIKE',-604800),(3,2,'PLAY',-604800.000001),(4,1,'RATING',86400),(5,2,'CLICK',86400.000001)");
-        var seven = run("freeze"); var zero = run("freeze","--days=0"); var future = run("freeze","--days=-1");
+        var seven = incomplete("freeze"); var zero = incomplete("freeze","--days=0"); var future = incomplete("freeze","--days=-1");
         hash("WINDOW_7",seven); hash("WINDOW_0",zero); hash("WINDOW_NEGATIVE",future);
         assertEquals("0.0405",metrics(seven).get("category_psi_7d"));
         assertEquals("0.2930",metrics(zero).get("category_psi_0d"));
@@ -64,45 +68,64 @@ class DataQualityPostgresTest {
     @Test void missingDerivedTableSkipsEntireCoverageButKeepsOtherChecks() throws Exception {
         seed(); derived.execute("ALTER TABLE user_embedding RENAME TO hidden_users");
         try {
-            var result = run("autocommit"); var m = metrics(result); assertFalse(m.containsKey("item_embedding_coverage")); assertFalse(m.containsKey("user_embedding_coverage"));
+            var result = failed("autocommit"); var m = metrics(result); assertFalse(m.containsKey("item_embedding_coverage")); assertFalse(m.containsKey("user_embedding_coverage"));
             assertEquals("0.2000",m.get("pctr_ece")); assertTrue(m.containsKey("category_psi_7d")); assertEquals("2",m.get("breaches"));
-            assertTrue(result.log.contains("Embedding 覆盖率检查跳过"));
+            assertEquals("FAILED",m.get("check_embedding_status"));assertEquals("BREACHED",m.get("check_calibration_status"));
         } finally { derived.execute("ALTER TABLE hidden_users RENAME TO user_embedding"); }
     }
     @Test void primaryCheckFailuresRemainIndependentInOriginalAutocommitMode() throws Exception {
         seed(); primary.execute("ALTER TABLE ad_event RENAME TO hidden_events");
-        try { var r = run("autocommit"); assertFalse(metrics(r).containsKey("pctr_ece")); assertTrue(metrics(r).containsKey("category_psi_7d")); assertTrue(metrics(r).containsKey("item_embedding_coverage")); }
+        try { var r = failed("autocommit"); assertFalse(metrics(r).containsKey("pctr_ece")); assertTrue(metrics(r).containsKey("category_psi_7d")); assertTrue(metrics(r).containsKey("item_embedding_coverage")); }
         finally { primary.execute("ALTER TABLE hidden_events RENAME TO ad_event"); }
         primary.execute("ALTER TABLE item RENAME COLUMN category TO hidden_category");
-        try { var r = run("autocommit"); assertFalse(metrics(r).containsKey("category_psi_7d")); assertEquals("0.2000",metrics(r).get("pctr_ece")); assertEquals("0.5000",metrics(r).get("item_embedding_coverage")); }
+        try { var r = failed("autocommit"); assertFalse(metrics(r).containsKey("category_psi_7d")); assertEquals("0.2000",metrics(r).get("pctr_ece")); assertEquals("0.5000",metrics(r).get("item_embedding_coverage")); }
         finally { primary.execute("ALTER TABLE item RENAME COLUMN hidden_category TO category"); }
     }
-    @Test void allFailedChecksStillKeepLegacyZeroBreachesAndCompletionLog() throws Exception {
+    @Test void allFailedChecksKeepDiagnosticCsvButNeverClaimCompleted() throws Exception {
         seed(); primary.execute("ALTER TABLE item RENAME TO hidden_items;ALTER TABLE ad_event RENAME TO hidden_events");
         try {
-            var result = run("autocommit"); assertEquals("metric,value\nbreaches,0\n",content(result));
-            assertTrue(result.log.contains("巡检通过,无越阈值项"));
+            var result = failed("autocommit"); assertEquals("metric,value\nbreaches,0\n",legacyContent(result));
+            for(String key:List.of("check_embedding_status","check_calibration_status","check_category_status")) assertEquals("FAILED",metrics(result).get(key));
         } finally { primary.execute("ALTER TABLE hidden_items RENAME TO item;ALTER TABLE hidden_events RENAME TO ad_event"); }
     }
     @Test void emptyInputsAndMissingRecentPopulationKeepOriginalSkipAndCoverageRules() throws Exception {
-        var empty = run("freeze"); assertEquals("metric,value\nitem_embedding_coverage,1.0000\nuser_embedding_coverage,1.0000\nbreaches,0\n",content(empty));
-        seed(); primary.execute("UPDATE user_behavior SET offset_s=-2592000"); var old = run("freeze"); assertFalse(metrics(old).containsKey("category_psi_7d"));
+        var empty = incomplete("freeze"); assertEquals("metric,value\nitem_embedding_coverage,1.0000\nuser_embedding_coverage,1.0000\nbreaches,0\n",legacyContent(empty));
+        for(String key:List.of("check_embedding_status","check_calibration_status","check_category_status")) assertEquals("NO_DATA",metrics(empty).get(key));
+        seed(); primary.execute("UPDATE user_behavior SET offset_s=-2592000"); var old = incomplete("freeze"); assertFalse(metrics(old).containsKey("category_psi_7d"));
         primary.execute("TRUNCATE user_behavior;INSERT INTO user_behavior(user_id,item_id,action,offset_s) VALUES(1,1,'IMPRESSION',0),(2,4,'CLICK',0),(3,999,'LIKE',0),(NULL,1,'UNKNOWN',0)");
-        assertFalse(metrics(run("freeze")).containsKey("category_psi_7d"));
+        assertFalse(metrics(incomplete("freeze")).containsKey("category_psi_7d"));
     }
     @Test void coverageCanExceedOneAndDistinctUsersExcludeNullButIncludeAllActions() throws Exception {
         primary.execute("INSERT INTO item VALUES(1,'A');INSERT INTO user_behavior(user_id,action) VALUES(1,'IMPRESSION'),(1,'CLICK'),(2,'UNKNOWN'),(NULL,'LIKE')");
         derived.execute("INSERT INTO item_embedding VALUES(1),(1);INSERT INTO user_embedding VALUES(1),(2),(3)");
-        var m = metrics(run("freeze")); assertEquals("2.0000",m.get("item_embedding_coverage")); assertEquals("1.5000",m.get("user_embedding_coverage"));
+        var m = metrics(incomplete("freeze")); assertEquals("2.0000",m.get("item_embedding_coverage")); assertEquals("1.5000",m.get("user_embedding_coverage"));
     }
     @Test void invalidArgumentsAndOutputFailureKeepEarlyAndLateBoundaries() throws Exception {
         seed();
-        for (String option : List.of("--item-table=item;SELECT 1","--behavior-table=bad","--ad-event-table=bad","--days=bad","--max-ece=bad")) {
+        for (String option : List.of("--item-table=item;SELECT 1","--behavior-table=bad","--ad-event-table=bad","--days=bad","--max-ece=bad","--days","--max-ece=NaN","--max-psi=-1","--min-embedding-coverage=-0.1","--min-embedding-coverage=1.1")) {
             var r = invoke("autocommit",false,option); assertNotEquals(0,r.status,option); assertFalse(Files.exists(r.dir.resolve("eval")));
         }
-        var failed = invoke("autocommit",true); assertNotEquals(0,failed.status); assertEquals("blocked",Files.readString(failed.dir.resolve("eval")));
+        var failed = invoke("autocommit",true); assertNotEquals(0,failed.status); assertEquals("blocked",Files.readString(failed.dir.resolve("eval")));assertTrue(failed.log.contains("[JOB_REPORT_OUTPUT_FAILED]"));
     }
 
+    @Test void malformedCalibrationIsFailureInsteadOfNoDataAndRecovers() throws Exception {
+        seed();
+        primary.execute("UPDATE ad_event SET pctr_calib='NaN'::double precision WHERE event_type='IMPRESSION'");
+        var invalid=failed("autocommit");assertEquals("FAILED",metrics(invalid).get("check_calibration_status"));
+        assertTrue(metrics(invalid).containsKey("category_psi_7d"));
+        primary.execute("UPDATE ad_event SET pctr_calib=CASE WHEN request_id='a' THEN 0.2 ELSE 0.8 END WHERE event_type='IMPRESSION'");
+        var restored=run("freeze");hash("DEFAULT",restored);
+    }
+    private Result incomplete(String mode,String...args) throws Exception {return rejected(mode,"JOB_DATA_QUALITY_INCOMPLETE",args);}
+    private Result failed(String mode,String...args) throws Exception {return rejected(mode,"JOB_DATA_QUALITY_CHECK_FAILED",args);}
+    private Result rejected(String mode,String code,String...args) throws Exception {
+        var result=invoke(mode,false,args);assertNotEquals(0,result.status,result.log);
+        assertTrue(result.log.contains("["+code+"]"),result.log);assertFalse(result.log.contains("巡检通过,无越阈值项"),result.log);return result;
+    }
+    private static String legacyContent(Result r) throws Exception {
+        // 状态为协议扩展；原数值和告警行逐字节与迁移基线核对。
+        return content(r).lines().filter(line->!line.startsWith("check_")).collect(java.util.stream.Collectors.joining("\n","","\n"));
+    }
     private static void seed() {
         primary.execute("INSERT INTO item VALUES(1,'A'),(2,'A'),(3,'B'),(4,NULL);INSERT INTO user_behavior(user_id,item_id,action,offset_s) VALUES(1,1,'CLICK',-864000),(2,2,'LIKE',-86400),(3,3,'PLAY',-864000),(4,3,'RATING',-1728000),(4,3,'IMPRESSION',0),(NULL,999,'CLICK',0)");
         primary.execute("UPDATE user_behavior SET ts=now()+offset_s*interval '1 second'");
@@ -136,6 +159,6 @@ class DataQualityPostgresTest {
                 "WINDOW_7", "e284ed57a0cb0270491a91ec88acae0cf3cc5784f56c4fc749f95e7d1e9c1e7e",
                 "WINDOW_0", "d198a880ba4d458780357a2ec5355a3f0d295c47b2de4610917c14ddc27a43c2",
                 "WINDOW_NEGATIVE", "8b6234360b5d3598a5f90fca58626e39fbe0980d2f5cffb912448a5bc2e607b3").get(name);
-        assertEquals(expected,HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content(r).getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+        assertEquals(expected,HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(legacyContent(r).getBytes(java.nio.charset.StandardCharsets.UTF_8))));
     }
 }
