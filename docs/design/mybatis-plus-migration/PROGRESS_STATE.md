@@ -448,3 +448,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13e1最终验证
 
 见MP13E1_RESULT。旧6两次、新关联11、完整离线197/36类、全仓24 reactor编译/hygiene通过。5源指纹07ded30b86c19e7a7d0c29745da368c042764307a8bcb44ea6ac2112e56f16ae；默认/增量/双读仓三个完整模型摘要一致，原无序物品池/NULL/阈值/失败边界保持。前批939a8ade CI38762149367五门禁全部SUCCESS；d5与本片正常ff/push后继续MP13e2三类自然样本生成，重复输入查询集中复用，CSV仅临时目录子进程验证。
+
+## MP13e2本地最终验证
+
+见MP13E2_RESULT。旧7、新关联8、完整离线204/37类、24 reactor测试编译/hygiene通过。8源指纹dcad79a688e772d32e1c837f1c579784b8535401fe68a42ef707e4e358c1a26d；三类样本六份完整CSV与旧一致、同秒/窗口/负采样/NULL/来源/部分失败边界保持。前批6a05f2ec已ff/push；CI38764359355资金门禁ConversionOnlinePostgresTest跨广告主预期403实际400，诊断未完成，其他三专项成功/build在途。本片只本地提交，不以新push跳过失败；先查明并关闭，再继续e3。

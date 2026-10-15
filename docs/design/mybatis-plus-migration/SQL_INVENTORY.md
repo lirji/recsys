@@ -136,9 +136,9 @@
 | [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | DONE MP13e1：主源TrainingCatalogMapper；见MP13E1_RESULT |
 | [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | TODO |
 | [com/recsys/offline/GenAdUpliftSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdUpliftSamplesJob.java) | 7 | 2 | TODO |
-| [com/recsys/offline/GenSamplesImprJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesImprJob.java) | 7 | 4 | TODO |
-| [com/recsys/offline/GenSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesJob.java) | 8 | 3 | TODO |
-| [com/recsys/offline/GenSamplesMtJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesMtJob.java) | 7 | 3 | TODO |
+| [com/recsys/offline/GenSamplesImprJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesImprJob.java) | 7 | 4 | DONE MP13e2：共享TrainingSampleMapper/XML；见MP13E2_RESULT |
+| [com/recsys/offline/GenSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesJob.java) | 8 | 3 | DONE MP13e2：共享TrainingSampleMapper/XML；见MP13E2_RESULT |
+| [com/recsys/offline/GenSamplesMtJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesMtJob.java) | 7 | 3 | DONE MP13e2：共享TrainingSampleMapper/XML；见MP13E2_RESULT |
 | [com/recsys/offline/HotJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/HotJob.java) | 9 | 1 | DONE MP13d1：主源加权聚合/Redis榜单；见MP13D1_RESULT |
 | [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | DONE MP13d4：词干/df/text数组与Redis发布；见MP13D4_RESULT |
 | [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | DONE MP13b1；见MP13B1_RESULT |

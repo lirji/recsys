@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper">
+    <resultMap id="rating" type="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper$RatingEvent">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="value" column="value" javaType="_double"/>
+            <arg name="ts" column="ts" javaType="_long"/>
+            <arg name="category" column="category" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="category" type="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper$CatalogCategory">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="category" column="category" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="weightedItem" type="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper$WeightedItem">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="popularity" column="popularity" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="impression" type="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper$Impression">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="position" column="position" javaType="_int"/>
+            <arg name="ts" column="ts" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="response" type="com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper$Response">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="action" column="action" javaType="java.lang.String"/>
+            <arg name="value" column="value" javaType="_double"/>
+            <arg name="ts" column="ts" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <sql id="behaviorTable">
+        <choose><when test="source.name() == 'BEHAVIOR_LOG'">behavior_log</when><otherwise>user_behavior</otherwise></choose>
+    </sql>
+    <sql id="catalogTable">
+        <choose><when test="table.name() == 'REPLICA'">item_local</when><otherwise>item</otherwise></choose>
+    </sql>
+    <select id="ratings" resultMap="rating" useCache="false">
+        SELECT COALESCE(b.user_id,0) AS user_id,COALESCE(b.item_id,0) AS item_id,
+               COALESCE(b.value,0) AS value,COALESCE(extract(epoch from b.ts)::bigint,0) AS ts,i.category
+        FROM <include refid="behaviorTable"/> b LEFT JOIN <include refid="catalogTable"/> i ON b.item_id=i.item_id
+        WHERE b.action='RATING'
+    </select>
+    <select id="scanCategories" resultMap="category" useCache="false">
+        SELECT COALESCE(item_id,0) AS item_id,category FROM <include refid="catalogTable"/>
+    </select>
+    <select id="scanWeightedItems" resultMap="weightedItem" useCache="false">
+        SELECT COALESCE(item_id,0) AS item_id,GREATEST(popularity,1) AS popularity FROM <include refid="catalogTable"/>
+    </select>
+    <select id="impressions" resultMap="impression" useCache="false">
+        SELECT COALESCE(user_id,0) AS user_id,COALESCE(item_id,0) AS item_id,
+               COALESCE(position,value::int,0) AS position,COALESCE(extract(epoch from ts)::bigint,0) AS ts
+        FROM <include refid="behaviorTable"/> WHERE action='IMPRESSION'
+    </select>
+    <select id="scanResponses" resultMap="response" useCache="false">
+        SELECT COALESCE(user_id,0) AS user_id,COALESCE(item_id,0) AS item_id,action,COALESCE(value,0) AS value,
+               COALESCE(extract(epoch from ts)::bigint,0) AS ts
+        FROM <include refid="behaviorTable"/> WHERE action IN ('CLICK','LIKE','PLAY','RATING')
+    </select>
+</mapper>

@@ -4,7 +4,10 @@ import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper.RatingEvent;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -65,10 +68,11 @@ public class GenSamplesMtJob implements OfflineJob {
     private static final int DEFAULT_SEQ_LEN = 20;
     private static final char SEQ_DELIM = '|';
 
-    private final JdbcTemplate jdbc;
+    private final TrainingSampleMapper inputs;
 
-    public GenSamplesMtJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 三类样本复用输入Mapper，采样、时间序列与CSV协议仍由原作业定义。 */
+    public GenSamplesMtJob(TrainingSampleMapper inputs) {
+        this.inputs = inputs;
     }
 
     @Override
@@ -76,14 +80,10 @@ public class GenSamplesMtJob implements OfflineJob {
         return "gen-samples-mt";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item)
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
+        CatalogTable table = ItemQuery.source(args);
         int negRatio = intArg(args, "neg-ratio", 2);
         double hardNegRatio = doubleArg(args, "hard-neg-ratio", 0.0);  // S6:同类目 hard negative 占比(0=纯热度随机)
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -93,35 +93,35 @@ public class GenSamplesMtJob implements OfflineJob {
         int maxPosition = intArg(args, "max-position", 10);
         Random rnd = new Random(seed);
 
-        List<Event> events = loadEvents();
+        List<RatingEvent> events = inputs.ratings(source, table);
         if (events.isEmpty()) {
             log.warn("无评分事件;先跑 import-behavior");
             return;
         }
-        events.sort((a, b) -> Long.compare(a.ts, b.ts));
+        events.sort((a, b) -> Long.compare(a.ts(), b.ts()));
 
         Map<Long, Set<Long>> ratedByUser = new HashMap<>();
         Map<Long, Long> userCnt = new HashMap<>();
         Map<Long, Long> itemCnt = new HashMap<>();
         List<Long> allTs = new ArrayList<>(events.size());
-        for (Event e : events) {
-            ratedByUser.computeIfAbsent(e.userId, k -> new HashSet<>()).add(e.itemId);
-            userCnt.merge(e.userId, 1L, Long::sum);
-            itemCnt.merge(e.itemId, 1L, Long::sum);
-            allTs.add(e.ts);
+        for (RatingEvent e : events) {
+            ratedByUser.computeIfAbsent(e.userId(), k -> new HashSet<>()).add(e.itemId());
+            userCnt.merge(e.userId(), 1L, Long::sum);
+            itemCnt.merge(e.itemId(), 1L, Long::sum);
+            allTs.add(e.ts());
         }
         // 时间切分点:用全部交互 ts(click 正例覆盖所有评分,口径与 gen-samples 的正例分位点同源)
         allTs.sort(Long::compare);
         long splitTs = allTs.get((int) ((1 - validFrac) * (allTs.size() - 1)));
         log.info("评分事件 {} 条,时间切分点 ts={}(valid-frac={}),seq-len={}", events.size(), splitTs, validFrac, seqLen);
 
-        WeightedPool pool = loadItemPool();
+        WeightedPool pool = loadItemPool(table);
         log.info("负采样物品池 {} 个,neg-ratio={}", pool.size(), negRatio);
 
         long maxUserCnt = userCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
         long maxItemCnt = itemCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
         AsOfFeatureBuilder asOf = new AsOfFeatureBuilder(Math.log1p(maxUserCnt), Math.log1p(maxItemCnt));
-        Map<Long, String> catMap = loadCategoryMap();
+        Map<Long, String> catMap = loadCategoryMap(table);
         // S6 hard negative:类目→物品倒排,用于采「同类目、更难区分」的负例(比纯热度随机更有信息量,
         // 让模型学到细粒度偏好而非只会区分冷热)。仅 hard-neg-ratio>0 时构建。
         Map<String, List<Long>> itemsByCat = new HashMap<>();
@@ -155,17 +155,17 @@ public class GenSamplesMtJob implements OfflineJob {
                     + ",seq_items,seq_cats,seq_len,position,split");
             w.newLine();
 
-            for (Event e : events) {
+            for (RatingEvent e : events) {
                 // 在 apply 本次事件之前 snapshot:特征与序列都「截至 ts 不含本次」
-                Map<String, Double> uf = asOf.snapshotUser(e.userId);
-                Deque<Long> dq = seqByUser.get(e.userId);
+                Map<String, Double> uf = asOf.snapshotUser(e.userId());
+                Deque<Long> dq = seqByUser.get(e.userId());
                 String[] seq = encodeSeq(dq, catMap);  // [seq_items, seq_cats, seq_len]
 
                 // 正样本:每条评分事件都是 click 正例;like = (value≥4)
-                int like = e.value >= 4.0 ? 1 : 0;
-                String split = e.ts <= splitTs ? "train" : "valid";
-                int posPosition = posBucket.getOrDefault(e.itemId, 0);
-                writeRow(w, 1, like, e.userId, e.itemId, e.category, uf, asOf.snapshotItem(e.itemId),
+                int like = e.value() >= 4.0 ? 1 : 0;
+                String split = e.ts() <= splitTs ? "train" : "valid";
+                int posPosition = posBucket.getOrDefault(e.itemId(), 0);
+                writeRow(w, 1, like, e.userId(), e.itemId(), e.category(), uf, asOf.snapshotItem(e.itemId()),
                         seq, posPosition, split, denseOrder);
                 posClick++;
                 if (like == 1) {
@@ -173,8 +173,8 @@ public class GenSamplesMtJob implements OfflineJob {
                 }
 
                 // 负样本:click=0/like=0,与正样本共享同一用户序列
-                Set<Long> rated = ratedByUser.getOrDefault(e.userId, Set.of());
-                List<Long> catPool = hardNegRatio > 0 && e.category != null ? itemsByCat.get(e.category) : null;
+                Set<Long> rated = ratedByUser.getOrDefault(e.userId(), Set.of());
+                List<Long> catPool = hardNegRatio > 0 && e.category() != null ? itemsByCat.get(e.category()) : null;
                 int got = 0, tries = 0;
                 while (got < negRatio && tries < negRatio * 20) {
                     tries++;
@@ -188,17 +188,17 @@ public class GenSamplesMtJob implements OfflineJob {
                         continue;
                     }
                     String negSplit = rnd.nextDouble() < validFrac ? "valid" : "train";
-                    writeRow(w, 0, 0, e.userId, negItem, catMap.get(negItem),
+                    writeRow(w, 0, 0, e.userId(), negItem, catMap.get(negItem),
                             uf, asOf.snapshotItem(negItem), seq, posBucket.getOrDefault(negItem, 0), negSplit, denseOrder);
                     got++;
                     neg++;
                 }
 
                 // apply 本次事件(在 snapshot 之后,保证序列/特征不含本次)
-                asOf.apply(e.userId, e.itemId, e.value, e.category);
-                if (e.value >= 4.0) {
-                    Deque<Long> d = seqByUser.computeIfAbsent(e.userId, k -> new ArrayDeque<>());
-                    d.addLast(e.itemId);
+                asOf.apply(e.userId(), e.itemId(), e.value(), e.category());
+                if (e.value() >= 4.0) {
+                    Deque<Long> d = seqByUser.computeIfAbsent(e.userId(), k -> new ArrayDeque<>());
+                    d.addLast(e.itemId());
                     while (d.size() > seqLen) {
                         d.removeFirst();
                     }
@@ -262,39 +262,22 @@ public class GenSamplesMtJob implements OfflineJob {
         return bucket;
     }
 
-    /** 全量评分事件(join 类目),供 as-of 流式聚合、序列构造与时间切分。 */
-    private List<Event> loadEvents() {
-        List<Event> events = new ArrayList<>();
-        jdbc.query("SELECT b.user_id, b.item_id, b.value, "
-                        + "extract(epoch from b.ts)::bigint AS ts, i.category "
-                        + "FROM " + bt + " b LEFT JOIN " + it + " i ON b.item_id = i.item_id "
-                        + "WHERE b.action='RATING'",
-                rs -> {
-                    events.add(new Event(
-                            rs.getLong("user_id"), rs.getLong("item_id"),
-                            rs.getDouble("value"), rs.getLong("ts"), rs.getString("category")));
-                });
-        return events;
-    }
-
-    private Map<Long, String> loadCategoryMap() {
+    private Map<Long, String> loadCategoryMap(CatalogTable table) {
         Map<Long, String> map = new HashMap<>();
-        jdbc.query("SELECT item_id, category FROM " + it,
-                rs -> {
-                    map.put(rs.getLong("item_id"), rs.getString("category"));
-                });
+        inputs.scanCategories(table, context -> {
+            var row = context.getResultObject();
+            map.put(row.itemId(), row.category());
+        });
         return map;
     }
 
-    private record Event(long userId, long itemId, double value, long ts, String category) {
-    }
-
-    private WeightedPool loadItemPool() {
+    private WeightedPool loadItemPool(CatalogTable table) {
         List<Long> ids = new ArrayList<>();
         List<Double> w = new ArrayList<>();
-        jdbc.query("SELECT item_id, GREATEST(popularity, 1) AS pop FROM " + it, rs -> {
-            ids.add(rs.getLong("item_id"));
-            w.add(rs.getDouble("pop"));
+        inputs.scanWeightedItems(table, context -> {
+            var row = context.getResultObject();
+            ids.add(row.itemId());
+            w.add(row.popularity());
         });
         return new WeightedPool(ids, w);
     }

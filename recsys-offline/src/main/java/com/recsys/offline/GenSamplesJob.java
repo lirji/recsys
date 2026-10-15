@@ -5,7 +5,10 @@ import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper.RatingEvent;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -51,11 +54,12 @@ public class GenSamplesJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(GenSamplesJob.class);
     private static final String OUT = "train/samples.csv";
 
-    private final JdbcTemplate jdbc;
+    private final TrainingSampleMapper inputs;
     private final FeatureService featureService;
 
-    public GenSamplesJob(JdbcTemplate jdbc, FeatureService featureService) {
-        this.jdbc = jdbc;
+    /** 三类样本复用输入Mapper，采样、时间序列与CSV协议仍由原作业定义。 */
+    public GenSamplesJob(TrainingSampleMapper inputs, FeatureService featureService) {
+        this.inputs = inputs;
         this.featureService = featureService;
     }
 
@@ -64,14 +68,10 @@ public class GenSamplesJob implements OfflineJob {
         return "gen-samples";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item),run() 起始由 --item-table 覆盖
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
+        CatalogTable table = ItemQuery.source(args);
         int negRatio = intArg(args, "neg-ratio", 2);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         long seed = (long) doubleArg(args, "seed", 42);
@@ -79,24 +79,24 @@ public class GenSamplesJob implements OfflineJob {
         Random rnd = new Random(seed);
 
         // 1. 全量评分事件(带类目),按 ts 升序 —— as-of 流式聚合与时间切分都依赖它
-        List<Event> events = loadEvents();
+        List<RatingEvent> events = inputs.ratings(source, table);
         if (events.isEmpty()) {
             log.warn("无评分事件;先跑 import-behavior");
             return;
         }
-        events.sort((a, b) -> Long.compare(a.ts, b.ts));
+        events.sort((a, b) -> Long.compare(a.ts(), b.ts()));
 
         // 每用户已评分集合(负采样排除)+ 归一化分母(全量最大计数,纯尺度因子)
         Map<Long, Set<Long>> ratedByUser = new HashMap<>();
         Map<Long, Long> userCnt = new HashMap<>();
         Map<Long, Long> itemCnt = new HashMap<>();
         List<Long> posTs = new ArrayList<>();
-        for (Event e : events) {
-            ratedByUser.computeIfAbsent(e.userId, k -> new HashSet<>()).add(e.itemId);
-            userCnt.merge(e.userId, 1L, Long::sum);
-            itemCnt.merge(e.itemId, 1L, Long::sum);
-            if (e.value >= 4.0) {
-                posTs.add(e.ts);
+        for (RatingEvent e : events) {
+            ratedByUser.computeIfAbsent(e.userId(), k -> new HashSet<>()).add(e.itemId());
+            userCnt.merge(e.userId(), 1L, Long::sum);
+            itemCnt.merge(e.itemId(), 1L, Long::sum);
+            if (e.value() >= 4.0) {
+                posTs.add(e.ts());
             }
         }
         if (posTs.isEmpty()) {
@@ -108,7 +108,7 @@ public class GenSamplesJob implements OfflineJob {
         log.info("评分事件 {} 条,正样本 {} 条,时间切分点 ts={}(valid-frac={}),模式={}",
                 events.size(), posTs.size(), splitTs, validFrac, leaky ? "leaky(全量,有穿越)" : "as-of(无穿越)");
 
-        WeightedPool pool = loadItemPool();
+        WeightedPool pool = loadItemPool(table);
         log.info("负采样物品池 {} 个,neg-ratio={}", pool.size(), negRatio);
 
         long maxUserCnt = userCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
@@ -117,7 +117,7 @@ public class GenSamplesJob implements OfflineJob {
                 Math.log1p(maxUserCnt), Math.log1p(maxItemCnt));
 
         // 全量类目表(负样本/leaky 模式取类目用;as-of 模式正样本类目随事件携带)
-        Map<Long, String> catMap = loadCategoryMap();
+        Map<Long, String> catMap = loadCategoryMap(table);
 
         // leaky 模式的 Redis 特征缓存(仅 leaky 用)
         Map<Long, Map<String, Double>> userFeatCache = new HashMap<>();
@@ -138,20 +138,20 @@ public class GenSamplesJob implements OfflineJob {
             w.newLine();
 
             // 按 ts 升序遍历:正样本在「apply 本次事件之前」snapshot,得到无穿越特征
-            for (Event e : events) {
-                if (e.value >= 4.0) {
-                    String split = e.ts <= splitTs ? "train" : "valid";
+            for (RatingEvent e : events) {
+                if (e.value() >= 4.0) {
+                    String split = e.ts() <= splitTs ? "train" : "valid";
                     Map<String, Double> uf = leaky
-                            ? userFeatCache.computeIfAbsent(e.userId, featureService::userFeatures)
-                            : asOf.snapshotUser(e.userId);
+                            ? userFeatCache.computeIfAbsent(e.userId(), featureService::userFeatures)
+                            : asOf.snapshotUser(e.userId());
                     Map<String, Double> itf = leaky
-                            ? itemFeatCache.computeIfAbsent(e.itemId, featureService::itemFeatures)
-                            : asOf.snapshotItem(e.itemId);
-                    writeAssembled(w, 1, e.userId, e.itemId, e.category, uf, itf, split, denseOrder);
+                            ? itemFeatCache.computeIfAbsent(e.itemId(), featureService::itemFeatures)
+                            : asOf.snapshotItem(e.itemId());
+                    writeAssembled(w, 1, e.userId(), e.itemId(), e.category(), uf, itf, split, denseOrder);
                     pos++;
 
                     // 负样本:用「该正样本 ts 时点」的用户快照 + 负物品当下快照(as-of);leaky 则读 Redis
-                    Set<Long> rated = ratedByUser.getOrDefault(e.userId, Set.of());
+                    Set<Long> rated = ratedByUser.getOrDefault(e.userId(), Set.of());
                     int got = 0, tries = 0;
                     while (got < negRatio && tries < negRatio * 20) {
                         tries++;
@@ -163,13 +163,13 @@ public class GenSamplesJob implements OfflineJob {
                         Map<String, Double> nItf = leaky
                                 ? itemFeatCache.computeIfAbsent(negItem, featureService::itemFeatures)
                                 : asOf.snapshotItem(negItem);
-                        writeAssembled(w, 0, e.userId, negItem, catMap.get(negItem), uf, nItf, negSplit, denseOrder);
+                        writeAssembled(w, 0, e.userId(), negItem, catMap.get(negItem), uf, nItf, negSplit, denseOrder);
                         got++;
                         neg++;
                     }
                 }
                 // 无论正负,事件都并入 as-of 聚合(在快照之后,保证「不含本次」)
-                asOf.apply(e.userId, e.itemId, e.value, e.category);
+                asOf.apply(e.userId(), e.itemId(), e.value(), e.category());
             }
         }
         log.info("gen-samples 完成({}):正 {} + 负 {} = {} 行 → {}",
@@ -195,41 +195,23 @@ public class GenSamplesJob implements OfflineJob {
         w.newLine();
     }
 
-    /** 全量评分事件(join 类目),供 as-of 流式聚合与时间切分。 */
-    private List<Event> loadEvents() {
-        List<Event> events = new ArrayList<>();
-        jdbc.query("SELECT b.user_id, b.item_id, b.value, " +
-                        "extract(epoch from b.ts)::bigint AS ts, i.category " +
-                        "FROM " + bt + " b LEFT JOIN " + it + " i ON b.item_id = i.item_id " +
-                        "WHERE b.action='RATING'",
-                rs -> {
-                    events.add(new Event(
-                            rs.getLong("user_id"), rs.getLong("item_id"),
-                            rs.getDouble("value"), rs.getLong("ts"), rs.getString("category")));
-                });
-        return events;
-    }
-
     /** 物品全集类目映射(负样本取类目用)。 */
-    private Map<Long, String> loadCategoryMap() {
+    private Map<Long, String> loadCategoryMap(CatalogTable table) {
         Map<Long, String> map = new HashMap<>();
-        jdbc.query("SELECT item_id, category FROM " + it,
-                rs -> {
-                    map.put(rs.getLong("item_id"), rs.getString("category"));
-                });
+        inputs.scanCategories(table, context -> {
+            var row = context.getResultObject();
+            map.put(row.itemId(), row.category());
+        });
         return map;
     }
 
-    /** 一条评分事件。 */
-    private record Event(long userId, long itemId, double value, long ts, String category) {
-    }
-
-    private WeightedPool loadItemPool() {
+    private WeightedPool loadItemPool(CatalogTable table) {
         List<Long> ids = new ArrayList<>();
         List<Double> w = new ArrayList<>();
-        jdbc.query("SELECT item_id, GREATEST(popularity, 1) AS pop FROM " + it, rs -> {
-            ids.add(rs.getLong("item_id"));
-            w.add(rs.getDouble("pop"));
+        inputs.scanWeightedItems(table, context -> {
+            var row = context.getResultObject();
+            ids.add(row.itemId());
+            w.add(row.popularity());
         });
         return new WeightedPool(ids, w);
     }

@@ -58,12 +58,18 @@ class OfflineSessionBindingsPostgresTest {
             assertTrue(context.getBeansOfType(com.recsys.offline.persistence.mapper.manual.R9EmbeddingMapper.class).isEmpty());
             var feedbackFactory = context.getBean("&positiveFeedbackMapper", MapperFactoryBean.class);
             assertSame(context.getBean("sqlSessionTemplate"), feedbackFactory.getSqlSession());
-            for (var binding : Map.of("seedAdMapper", "shardedSqlSessionTemplate",
-                    "seedAdVectorMapper", "adDbSqlSessionTemplate", "seedItemVectorMapper", "derivedSqlSessionTemplate",
-                    "lookalikeMapper", "derivedSqlSessionTemplate", "hotScoreMapper", "sqlSessionTemplate",
-                    "coldBanditMapper", "sqlSessionTemplate", "banditImpressionMapper", "sqlSessionTemplate",
-                    "idfCorpusMapper", "sqlSessionTemplate", "featureStatsMapper", "sqlSessionTemplate",
-                    "trainingCatalogMapper", "sqlSessionTemplate").entrySet()) {
+            for (var binding : Map.ofEntries(
+                    Map.entry("seedAdMapper", "shardedSqlSessionTemplate"),
+                    Map.entry("seedAdVectorMapper", "adDbSqlSessionTemplate"),
+                    Map.entry("seedItemVectorMapper", "derivedSqlSessionTemplate"),
+                    Map.entry("lookalikeMapper", "derivedSqlSessionTemplate"),
+                    Map.entry("hotScoreMapper", "sqlSessionTemplate"),
+                    Map.entry("coldBanditMapper", "sqlSessionTemplate"),
+                    Map.entry("banditImpressionMapper", "sqlSessionTemplate"),
+                    Map.entry("idfCorpusMapper", "sqlSessionTemplate"),
+                    Map.entry("featureStatsMapper", "sqlSessionTemplate"),
+                    Map.entry("trainingCatalogMapper", "sqlSessionTemplate"),
+                    Map.entry("trainingSampleMapper", "sqlSessionTemplate")).entrySet()) {
                 var factory = context.getBean("&" + binding.getKey(), MapperFactoryBean.class);
                 assertSame(context.getBean(binding.getValue()), factory.getSqlSession());
             }

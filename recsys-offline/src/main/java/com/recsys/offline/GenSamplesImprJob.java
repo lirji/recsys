@@ -4,7 +4,11 @@ import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper.RatingEvent;
+import com.recsys.offline.persistence.mapper.primary.TrainingSampleMapper.Impression;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -27,7 +31,7 @@ import java.util.StringJoiner;
  * <ul>
  *   <li><b>真实负样本</b>:曝光未点击(展示了但没正反馈)= 天然负样本,不再靠热度采样近似;</li>
  *   <li><b>真实位次</b>:每条曝光带 {@code position}(展示排名)→ 直接喂 PAL 位置去偏(不再休眠);</li>
- *   <li><b>标签来自归因</b>:曝光后 {@code window} 内该 (user,item) 有 CLICK/PLAY/RATING → {@code label_click=1};
+ *   <li><b>标签来自归因</b>:曝光后 {@code window} 内该 (user,item) 有 CLICK/LIKE/PLAY/RATING → {@code label_click=1};
  *       有 LIKE 或 RATING≥4 → {@code label_like=1}(ESMM 的 click/like 双标签)。</li>
  * </ul>
  *
@@ -48,10 +52,11 @@ public class GenSamplesImprJob implements OfflineJob {
     private static final int DEFAULT_SEQ_LEN = 20;
     private static final char SEQ_DELIM = '|';
 
-    private final JdbcTemplate jdbc;
+    private final TrainingSampleMapper inputs;
 
-    public GenSamplesImprJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 三类样本复用输入Mapper，采样、时间序列与CSV协议仍由原作业定义。 */
+    public GenSamplesImprJob(TrainingSampleMapper inputs) {
+        this.inputs = inputs;
     }
 
     @Override
@@ -59,48 +64,44 @@ public class GenSamplesImprJob implements OfflineJob {
         return "gen-samples-impr";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item)
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
+        CatalogTable table = ItemQuery.source(args);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
         int seqLen = intArg(args, "seq-len", DEFAULT_SEQ_LEN);
         int windowHours = intArg(args, "window-hours", 24);
         int maxPosition = intArg(args, "max-position", 10);
         long windowSec = windowHours > 0 ? (long) windowHours * 3600 : Long.MAX_VALUE;
 
-        List<Impr> imprs = loadImpressions();
+        List<Impression> imprs = inputs.impressions(source);
         if (imprs.isEmpty()) {
             log.warn("无 IMPRESSION 日志;先让 /api/recommend 产生曝光,或跑 --job=sim-rec-events(教学)");
             return;
         }
-        List<Event> ratings = loadRatings();      // 仅用于 as-of 特征/序列累加
-        Positives pos = loadPositives();          // (user,item) → 正反馈 ts 列表(归因标签)
+        List<RatingEvent> ratings = inputs.ratings(source, table);      // 仅用于 as-of 特征/序列累加
+        Positives pos = loadPositives(source);          // (user,item) → 正反馈 ts 列表(归因标签)
 
         // as-of 归一分母(口径同 gen-samples-mt)
         Map<Long, Long> userCnt = new HashMap<>();
         Map<Long, Long> itemCnt = new HashMap<>();
-        for (Event e : ratings) {
-            userCnt.merge(e.userId, 1L, Long::sum);
-            itemCnt.merge(e.itemId, 1L, Long::sum);
+        for (RatingEvent e : ratings) {
+            userCnt.merge(e.userId(), 1L, Long::sum);
+            itemCnt.merge(e.itemId(), 1L, Long::sum);
         }
         long maxU = userCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
         long maxI = itemCnt.values().stream().mapToLong(Long::longValue).max().orElse(1);
         AsOfFeatureBuilder asOf = new AsOfFeatureBuilder(Math.log1p(maxU), Math.log1p(maxI));
-        Map<Long, String> catMap = loadCategoryMap();
+        Map<Long, String> catMap = loadCategoryMap(table);
         Map<Long, Deque<Long>> seqByUser = new HashMap<>();
 
         // 合并 RATING(apply)与 IMPRESSION(emit)为按 ts 升序的事件流;同 ts 时 IMPRESSION 先(避免穿越)
         List<long[]> stream = new ArrayList<>(); // [ts, type(0=impr,1=rating), idx]
         for (int i = 0; i < imprs.size(); i++) {
-            stream.add(new long[]{imprs.get(i).ts, 0, i});
+            stream.add(new long[]{imprs.get(i).ts(), 0, i});
         }
         for (int i = 0; i < ratings.size(); i++) {
-            stream.add(new long[]{ratings.get(i).ts, 1, i});
+            stream.add(new long[]{ratings.get(i).ts(), 1, i});
         }
         stream.sort((a, b) -> a[0] != b[0] ? Long.compare(a[0], b[0]) : Long.compare(a[1], b[1]));
 
@@ -116,11 +117,11 @@ public class GenSamplesImprJob implements OfflineJob {
 
             for (long[] ev : stream) {
                 if (ev[1] == 1) {                       // RATING:并入 as-of 状态 + 序列
-                    Event e = ratings.get((int) ev[2]);
-                    asOf.apply(e.userId, e.itemId, e.value, e.category);
-                    if (e.value >= 4.0) {
-                        Deque<Long> d = seqByUser.computeIfAbsent(e.userId, k -> new ArrayDeque<>());
-                        d.addLast(e.itemId);
+                    RatingEvent e = ratings.get((int) ev[2]);
+                    asOf.apply(e.userId(), e.itemId(), e.value(), e.category());
+                    if (e.value() >= 4.0) {
+                        Deque<Long> d = seqByUser.computeIfAbsent(e.userId(), k -> new ArrayDeque<>());
+                        d.addLast(e.itemId());
                         while (d.size() > seqLen) {
                             d.removeFirst();
                         }
@@ -128,14 +129,14 @@ public class GenSamplesImprJob implements OfflineJob {
                     continue;
                 }
                 // IMPRESSION:在此刻(不含本次及之后事件)snapshot,构造一条样本
-                Impr im = imprs.get((int) ev[2]);
-                int[] label = pos.label(im.userId, im.itemId, im.ts, windowSec);
-                Map<String, Double> uf = asOf.snapshotUser(im.userId);
-                Map<String, Double> itf = asOf.snapshotItem(im.itemId);
-                String[] seq = encodeSeq(seqByUser.get(im.userId), catMap);
+                Impression im = imprs.get((int) ev[2]);
+                int[] label = pos.label(im.userId(), im.itemId(), im.ts(), windowSec);
+                Map<String, Double> uf = asOf.snapshotUser(im.userId());
+                Map<String, Double> itf = asOf.snapshotItem(im.itemId());
+                String[] seq = encodeSeq(seqByUser.get(im.userId()), catMap);
                 String split = rnd.nextDouble() < validFrac ? "valid" : "train";
-                int position = Math.max(0, Math.min(maxPosition, im.position));
-                writeRow(w, label[0], label[1], im.userId, im.itemId, catMap.get(im.itemId),
+                int position = Math.max(0, Math.min(maxPosition, im.position()));
+                writeRow(w, label[0], label[1], im.userId(), im.itemId(), catMap.get(im.itemId()),
                         uf, itf, seq, position, split);
                 rows++;
                 posClick += label[0];
@@ -182,59 +183,25 @@ public class GenSamplesImprJob implements OfflineJob {
         w.newLine();
     }
 
-    private List<Impr> loadImpressions() {
-        List<Impr> out = new ArrayList<>();
-        jdbc.query("SELECT user_id, item_id, COALESCE(position, value::int, 0) AS position, "
-                        + "extract(epoch from ts)::bigint AS ts "
-                        + "FROM " + bt + " WHERE action='IMPRESSION'",
-                rs -> {
-                    out.add(new Impr(rs.getLong("user_id"), rs.getLong("item_id"),
-                            rs.getInt("position"), rs.getLong("ts")));
-                });
-        return out;
-    }
-
-    private List<Event> loadRatings() {
-        List<Event> out = new ArrayList<>();
-        jdbc.query("SELECT b.user_id, b.item_id, b.value, extract(epoch from b.ts)::bigint AS ts, i.category "
-                        + "FROM " + bt + " b LEFT JOIN " + it + " i ON b.item_id = i.item_id "
-                        + "WHERE b.action='RATING'",
-                rs -> {
-                    out.add(new Event(rs.getLong("user_id"), rs.getLong("item_id"),
-                            rs.getDouble("value"), rs.getLong("ts"), rs.getString("category")));
-                });
-        return out;
-    }
-
-    /** 加载正反馈事件(归因标签源):click 类 = CLICK/PLAY/RATING;like 类 = LIKE/RATING≥4。 */
-    private Positives loadPositives() {
+    /** 加载正反馈事件(归因标签源):click 类 = CLICK/LIKE/PLAY/RATING;like 类 = LIKE/RATING≥4。 */
+    private Positives loadPositives(BehaviorSource source) {
         Positives p = new Positives();
-        jdbc.query("SELECT user_id, item_id, action, COALESCE(value,0) AS value, "
-                        + "extract(epoch from ts)::bigint AS ts "
-                        + "FROM " + bt + " WHERE action IN ('CLICK','LIKE','PLAY','RATING')",
-                rs -> {
-                    String action = rs.getString("action");
-                    long ts = rs.getLong("ts");
-                    boolean like = "LIKE".equals(action)
-                            || ("RATING".equals(action) && rs.getDouble("value") >= 4.0);
-                    p.add(rs.getLong("user_id"), rs.getLong("item_id"), ts, like);
-                });
+        inputs.scanResponses(source, context -> {
+            var row = context.getResultObject();
+            boolean like = "LIKE".equals(row.action())
+                    || ("RATING".equals(row.action()) && row.value() >= 4.0);
+            p.add(row.userId(), row.itemId(), row.ts(), like);
+        });
         return p;
     }
 
-    private Map<Long, String> loadCategoryMap() {
+    private Map<Long, String> loadCategoryMap(CatalogTable table) {
         Map<Long, String> map = new HashMap<>();
-        jdbc.query("SELECT item_id, category FROM " + it,
-                rs -> {
-                    map.put(rs.getLong("item_id"), rs.getString("category"));
-                });
+        inputs.scanCategories(table, context -> {
+            var row = context.getResultObject();
+            map.put(row.itemId(), row.category());
+        });
         return map;
-    }
-
-    private record Event(long userId, long itemId, double value, long ts, String category) {
-    }
-
-    private record Impr(long userId, long itemId, int position, long ts) {
     }
 
     /** (user,item) → 正反馈 ts 列表(click 类 / like 类),按曝光后窗口归因出 click/like 标签。 */
