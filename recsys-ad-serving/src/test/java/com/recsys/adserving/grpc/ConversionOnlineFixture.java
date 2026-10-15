@@ -61,7 +61,7 @@ class ConversionOnlineFixture implements AutoCloseable {
                 CREATE TRIGGER test_conversion_clock BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_clock();
                 """);
         quotes=new ConversionQuoteRepository(sessions);preparationRepository=new PreparationRepository(sessions,JSON,ChargeMode.CONVERSION);
-        settlements=new ConversionSettlementService(new ConversionSettlementRepository(ad,JSON),quotes,new ReservationRepository(sessions),tokens,
+        settlements=new ConversionSettlementService(new ConversionSettlementRepository(sessions,JSON),quotes,new ReservationRepository(sessions),tokens,
                 transactions(adDs),true,true);
         preparations=new ConversionPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
         budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(sessions),adDs,5);

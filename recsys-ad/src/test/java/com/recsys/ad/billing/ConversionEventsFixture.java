@@ -42,7 +42,7 @@ class ConversionEventsFixture {
                 CREATE TRIGGER test_conversion_issue_time BEFORE INSERT ON ad_conversion_quote FOR EACH ROW EXECUTE FUNCTION test_conversion_issue_time();
                 """);
         quotes=new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
-        settlement=new ConversionSettlementService(new ConversionSettlementRepository(jdbc,JSON),quotes,cpm.reservations,cpm.tokens,
+        settlement=new ConversionSettlementService(new ConversionSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true);
         outbox=new BillingOutboxRepository(jdbc,BillingOutboxRepository.EventFamily.CONVERSION);outbox.verifySchema();
         projection=new ConversionProjectionService(new ConversionProjectionRepository(jdbc),codec,BudgetConfiguration.transactions(ds,5));

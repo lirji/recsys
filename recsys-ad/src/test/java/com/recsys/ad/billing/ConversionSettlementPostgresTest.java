@@ -36,6 +36,7 @@ class ConversionSettlementPostgresTest {
     static final AtomicLong IDS=new AtomicLong(80000);
     static DriverManagerDataSource ds;
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static ReservationRepository accounts;
     static BudgetAccountService budgets;
     static ConversionQuoteRepository quotes;
@@ -44,6 +45,7 @@ class ConversionSettlementPostgresTest {
     static DeliveryTokenCodec tokens;
     @BeforeAll static void setup() throws Exception {
         ds=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()); jdbc=new JdbcTemplate(ds);
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/ad/addb/**/*.xml"));
         for(String path:List.of(BudgetRepository.MIGRATION,CpmQuoteRepository.MIGRATION,ReservationRepository.MIGRATION,
                 PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,BillingOutboxRepository.MIGRATION,
                 FeedCandidateRepository.MIGRATION,ClickQuoteRepository.MIGRATION,ClickSettlementRepository.MIGRATION,
@@ -67,7 +69,7 @@ class ConversionSettlementPostgresTest {
                 """);
         accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ConversionQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
-        repository=new ConversionSettlementRepository(jdbc,JSON); repository.verifySchema();
+        repository=new ConversionSettlementRepository(sessions,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         service=fresh(repository,accounts,true,true,tokens);
     }
@@ -105,6 +107,32 @@ class ConversionSettlementPostgresTest {
             start.countDown(); var results=new ArrayList<T>();
             for(var future:futures) results.add(future.get(20,TimeUnit.SECONDS)); return results;
         }
+    }
+
+    /** 两类事实都禁止提交PENDING；事务内读取也必须先拒绝半成品，不能误构造可空结果。 */
+    @Test void unfinishedVisibleAndOutcomeCannotBecomeCanonicalOrJoinedResults() {
+        var f = fixture(); var visible = f.visible(); var conversion = f.conversion();
+        UUID outcomeId = UUID.randomUUID(); var before = account(f);
+        assertThrows(DataAccessException.class, () -> repository.claimVisible(visible, f.id()));
+        assertThrows(DataAccessException.class, () -> repository.claimOutcome(outcomeId, conversion, f.id()));
+        BudgetConfiguration.transactions(ds, 5).executeWithoutResult(tx -> {
+            assertTrue(repository.lockQuote(f.id()));
+            assertTrue(repository.claimVisible(visible, f.id()));
+            assertTrue(repository.claimOutcome(outcomeId, conversion, f.id()));
+            assertEquals("发现未完成CPA可见决定", assertThrows(IllegalStateException.class,
+                    () -> repository.canonicalVisible(visible.receiptId())).getMessage());
+            assertEquals("发现未完成CPA可见决定", assertThrows(IllegalStateException.class,
+                    () -> repository.findVisible(visible.receiptId(), "viewer")).getMessage());
+            assertEquals("发现未完成CPA业务决定", assertThrows(IllegalStateException.class,
+                    () -> repository.outcome(outcomeId)).getMessage());
+            assertEquals("发现未完成CPA业务决定", assertThrows(IllegalStateException.class,
+                    () -> repository.findOutcome(conversion.advertiserId(), conversion.eventId())).getMessage());
+            assertEquals(State.HELD, repository.find(f.id(), "viewer").orElseThrow().state());
+            tx.setRollbackOnly();
+        });
+        assertTrue(repository.findVisible(visible.receiptId(), "viewer").isEmpty());
+        assertTrue(repository.findOutcome(conversion.advertiserId(), conversion.eventId()).isEmpty());
+        assertEquals(before, account(f)); assertEquals(0, ledgerCount(f.id()));
     }
 
     @Test void preparationConcurrencyAndOriginalResultNeverRenewOrRehold() throws Exception {
@@ -216,7 +244,7 @@ class ConversionSettlementPostgresTest {
     }
     @Test void failedLedgerOutboxOrOutcomeCompletionRollsBackEveryMoneyEffect() {
         for(int failure=0;failure<3;failure++) {
-            var f=fixture();service.acceptVisible(f.visible());var c=f.conversion();var bad=spy(new ConversionSettlementRepository(jdbc,JSON));
+            var f=fixture();service.acceptVisible(f.visible());var c=f.conversion();var bad=spy(new ConversionSettlementRepository(sessions,JSON));
             if(failure==0) doThrow(new IllegalStateException("ledger unavailable")).when(bad).appendLedger(any(),any(),any(),any(),any(),anyLong(),any());
             if(failure==1) doThrow(new IllegalStateException("outbox unavailable")).when(bad).appendOutbox(any());
             if(failure==2) doThrow(new IllegalStateException("outcome unavailable")).when(bad).completeOutcome(any(),any(),any(),any());
@@ -228,7 +256,7 @@ class ConversionSettlementPostgresTest {
     }
     @Test void preparationFailureRollsBackHoldAndOriginalResultSurvivesPauseAndKeyRotation() {
         long adv=IDS.incrementAndGet();budget(adv,today(),"1");var q=quote(adv,1,"0.1",accounts.databaseNow().minusSeconds(2));
-        var bad=spy(new ConversionSettlementRepository(jdbc,JSON));doThrow(new IllegalStateException("prepare result failed")).when(bad).insert(any(),anyString(),anyLong());
+        var bad=spy(new ConversionSettlementRepository(sessions,JSON));doThrow(new IllegalStateException("prepare result failed")).when(bad).insert(any(),anyString(),anyLong());
         assertThrows(IllegalStateException.class,()->fresh(bad,accounts,true,true,tokens).prepare(q.quoteId(),"viewer"));
         assertEquals("0.000000",budgets.findAccount(adv,today()).orElseThrow().heldAmount().toPlainString());
         var f=new Fixture(q,service.prepare(q.quoteId(),"viewer"));var c=f.conversion();var original=service.acceptAuthorizedConversion(c);
@@ -354,6 +382,7 @@ class ConversionSettlementPostgresTest {
         new ApplicationContextRunner().withUserConfiguration(ConversionSettlementConfiguration.class)
                 .withPropertyValues("recsys.ad.billing.sandbox-enabled=true","recsys.ad.billing.conversions-enabled=true","recsys.ad.billing.conversion-settlement-enabled=true","recsys.ad.billing.conversion-preparation-admission-enabled=false","recsys.ad.billing.conversion-receipt-admission-enabled=false")
                 .withBean("adDbJdbc",JdbcTemplate.class,()->jdbc).withBean("adDbDataSource",javax.sql.DataSource.class,()->ds)
+                .withBean("adDbSqlSessionTemplate",SqlSessionTemplate.class,()->sessions)
                 .withBean(ObjectMapper.class,()->JSON).withBean(ConversionQuoteRepository.class,()->quotes).withBean(ReservationRepository.class,()->accounts)
                 .withBean(DeliveryTokenCodec.class,()->tokens).withBean(io.micrometer.core.instrument.MeterRegistry.class,SimpleMeterRegistry::new)
                 .run(c->{assertThat(c).hasNotFailed().hasSingleBean(ConversionSettlementService.class).hasSingleBean(ConversionExpiryJob.class);

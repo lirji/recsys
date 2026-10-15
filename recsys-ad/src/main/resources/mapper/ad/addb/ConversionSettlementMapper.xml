@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper">
+    <resultMap id="snapshot" type="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$SnapshotRow">
+        <constructor><idArg column="qualification_id" javaType="java.util.UUID"/><arg column="decision" javaType="string"/>
+            <arg column="budget_date" javaType="java.time.LocalDate"/><arg column="amount" javaType="java.math.BigDecimal"/>
+            <arg column="issued_at" javaType="java.time.OffsetDateTime"/><arg column="expires_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="prepared_at" javaType="java.time.OffsetDateTime"/><arg column="qualification_token" javaType="string"/>
+            <arg column="owner_subject" javaType="string"/><arg column="state" javaType="string"/><arg column="version" javaType="_long"/>
+            <arg column="visible_receipt_id" javaType="java.util.UUID"/><arg column="settled_outcome_id" javaType="java.util.UUID"/>
+            <arg column="ledger_id" javaType="java.util.UUID"/><arg column="captured_amount" javaType="java.math.BigDecimal"/>
+            <arg column="closed_at" javaType="java.time.OffsetDateTime"/><arg column="close_reason" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="visible" type="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$VisibleRow">
+        <constructor><idArg column="receipt_id" javaType="java.util.UUID"/><arg column="qualification_id" javaType="java.util.UUID"/>
+            <arg column="status" javaType="string"/><arg column="canonical_receipt_id" javaType="java.util.UUID"/>
+            <arg column="accepted_at" javaType="java.time.OffsetDateTime"/><arg column="decided_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <resultMap id="outcome" type="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$OutcomeRow">
+        <constructor><idArg column="event_outcome_id" javaType="java.util.UUID"/><arg column="advertiser_id" javaType="_long"/>
+            <arg column="event_id" javaType="java.util.UUID"/><arg column="qualification_id" javaType="java.util.UUID"/>
+            <arg column="occurred_at" javaType="java.time.OffsetDateTime"/><arg column="received_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="status" javaType="string"/><arg column="canonical_outcome_id" javaType="java.util.UUID"/>
+            <arg column="decided_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <!-- 嵌套构造映射同一结果集，不使用select属性；两个outcome别名分别保留。 -->
+    <resultMap id="storedVisible" type="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$StoredVisibleRow">
+        <constructor><arg column="payload_hash" javaType="string"/>
+            <arg resultMap="visible" javaType="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$VisibleRow"/>
+            <arg resultMap="snapshot" javaType="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$SnapshotRow"/></constructor>
+    </resultMap>
+    <resultMap id="storedOutcome" type="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$StoredOutcomeRow">
+        <constructor><arg column="payload_hash" javaType="string"/>
+            <arg resultMap="outcome" javaType="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$OutcomeRow"/>
+            <arg resultMap="snapshot" javaType="com.recsys.ad.persistence.mapper.addb.ConversionSettlementMapper$SnapshotRow"/></constructor>
+    </resultMap>
+    <sql id="snapshotColumns">
+        s.qualification_id,s.advertiser_id,s.decision,s.budget_date,s.qualification_token,s.prepared_at,s.state,s.version,
+        s.visible_receipt_id,s.outcome_id AS settled_outcome_id,s.ledger_id,s.closed_at,s.close_reason,
+        q.subject_key AS owner_subject,q.amount,q.issued_at,q.expires_at,l.amount AS captured_amount
+    </sql>
+    <sql id="snapshotFrom">
+        FROM ad_conversion_settlement s JOIN ad_conversion_quote q ON q.quote_id=s.qualification_id
+        LEFT JOIN ad_conversion_ledger l ON l.ledger_id=s.ledger_id AND l.qualification_id=s.qualification_id
+    </sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=13</select>
+    <select id="verifySettlement" resultType="map" timeout="5">SELECT qualification_id,state FROM ad_conversion_settlement LIMIT 0</select>
+    <select id="verifyVisible" resultType="map" timeout="5">SELECT receipt_id,status FROM ad_conversion_visible LIMIT 0</select>
+    <select id="verifyOutcome" resultType="map" timeout="5">SELECT outcome_id,status FROM ad_conversion_outcome LIMIT 0</select>
+    <select id="verifyLedger" resultType="map" timeout="5">SELECT ledger_id,outcome_id FROM ad_conversion_ledger LIMIT 0</select>
+    <select id="verifyOutbox" resultType="map" timeout="5">SELECT event_id,delivery_state FROM ad_conversion_outbox LIMIT 0</select>
+    <select id="lockQuote" resultType="java.util.UUID" timeout="5" useCache="false">SELECT quote_id FROM ad_conversion_quote WHERE quote_id=#{id} FOR UPDATE</select>
+    <select id="lockOneExpired" resultType="java.util.UUID" timeout="5" useCache="false">
+        SELECT q.quote_id FROM ad_conversion_quote q JOIN ad_conversion_settlement s ON s.qualification_id=q.quote_id
+        WHERE s.state='HELD' AND q.expires_at &lt;= statement_timestamp()
+        ORDER BY q.expires_at,q.quote_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED
+    </select>
+    <select id="owner" resultType="string" timeout="5">SELECT subject_key FROM ad_conversion_quote WHERE quote_id=#{id}</select>
+    <select id="find" resultMap="snapshot" timeout="5">
+        SELECT <include refid="snapshotColumns"/> <include refid="snapshotFrom"/> WHERE s.qualification_id=#{id}
+    </select>
+    <insert id="insert" timeout="5">
+        INSERT INTO ad_conversion_settlement(qualification_id,advertiser_id,budget_date,decision,qualification_token,prepared_at,state)
+        VALUES(#{qualificationId},#{advertiserId},#{budgetDate},#{decision},#{qualificationToken},#{preparedAt},#{state})
+    </insert>
+    <select id="findForAdvertiser" resultMap="snapshot" timeout="5">
+        SELECT <include refid="snapshotColumns"/> <include refid="snapshotFrom"/> WHERE s.qualification_id=#{id} AND s.advertiser_id=#{advertiserId}
+    </select>
+    <insert id="claimVisible" timeout="5">
+        INSERT INTO ad_conversion_visible(receipt_id,qualification_id,subject_key,payload_hash,visible_duration_ms,min_visible_ratio_bps,page_visible)
+        VALUES(#{receiptId},#{qualificationId},#{subject},#{payloadHash},#{visibleDurationMs},#{minVisibleRatioBps},#{pageVisible}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="storedVisible" resultMap="storedVisible" timeout="5">
+        SELECT <include refid="snapshotColumns"/>,r.receipt_id,r.status,r.canonical_receipt_id,r.accepted_at,r.decided_at,r.payload_hash
+        <include refid="snapshotFrom"/> JOIN ad_conversion_visible r ON r.qualification_id=s.qualification_id WHERE r.receipt_id=#{id}
+    </select>
+    <select id="canonicalVisible" resultMap="visible" timeout="5">
+        SELECT receipt_id,qualification_id,status,canonical_receipt_id,accepted_at,decided_at FROM ad_conversion_visible WHERE receipt_id=#{id}
+    </select>
+    <update id="completeVisible" timeout="5">
+        UPDATE ad_conversion_visible SET status=#{status},canonical_receipt_id=#{canonicalReceiptId},accepted_at=#{acceptedAt},decided_at=#{decidedAt}
+        WHERE receipt_id=#{receiptId} AND status='PENDING'
+    </update>
+    <insert id="claimOutcome" timeout="5">
+        INSERT INTO ad_conversion_outcome(outcome_id,advertiser_id,event_id,qualification_id,actor,payload_hash,occurred_at)
+        VALUES(#{outcomeId},#{advertiserId},#{eventId},#{qualificationId},#{actor},#{payloadHash},#{occurredAt})
+        ON CONFLICT(advertiser_id,event_id) DO NOTHING
+    </insert>
+    <select id="storedOutcome" resultMap="storedOutcome" timeout="5">
+        SELECT <include refid="snapshotColumns"/>,r.outcome_id AS event_outcome_id,r.event_id,r.occurred_at,r.received_at,
+            r.status,r.canonical_outcome_id,r.decided_at,r.payload_hash
+        <include refid="snapshotFrom"/> JOIN ad_conversion_outcome r ON r.qualification_id=s.qualification_id
+        WHERE r.advertiser_id=#{advertiserId} AND r.event_id=#{eventId}
+    </select>
+    <select id="outcome" resultMap="outcome" timeout="5">
+        SELECT outcome_id AS event_outcome_id,advertiser_id,event_id,qualification_id,occurred_at,received_at,status,canonical_outcome_id,decided_at
+        FROM ad_conversion_outcome WHERE outcome_id=#{id}
+    </select>
+    <update id="completeOutcome" timeout="5">
+        UPDATE ad_conversion_outcome SET status=#{status},canonical_outcome_id=#{canonical},decided_at=#{now} WHERE outcome_id=#{id} AND status='PENDING'
+    </update>
+    <update id="advance" timeout="5">
+        UPDATE ad_conversion_settlement SET visible_receipt_id=#{visible},outcome_id=#{outcome},ledger_id=#{ledger},state=#{state},close_reason=#{reason},
+            closed_at=#{closedAt},version=version+1,updated_at=#{now} WHERE qualification_id=#{qualificationId} AND state='HELD' AND version=#{version}
+    </update>
+    <update id="debitHeld" timeout="5">
+        UPDATE ad_budget_account SET held_amount=held_amount-#{amount},charged_amount=charged_amount+#{charge},version=version+1,updated_at=#{now}
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{account.advertiserId} AND budget_date=#{account.budgetDate} AND currency='CNY'
+            AND version=#{account.version} AND held_amount &gt;= #{amount}
+    </update>
+    <insert id="appendLedger" timeout="5">
+        INSERT INTO ad_conversion_ledger(ledger_id,qualification_id,visible_receipt_id,outcome_id,operation_id,
+            advertiser_id,ad_id,creative_id,item_id,user_id,slot,bid_type,budget_date,amount,account_version,accepted_at)
+        VALUES(#{ledgerId},#{qualificationId},#{visible},#{outcome},#{operationId},#{advertiserId},#{adId},#{creativeId},#{itemId},#{userId},#{slot},
+            #{bidType},#{budgetDate},#{amount},#{accountVersion},#{acceptedAt})
+    </insert>
+    <insert id="appendOutbox" timeout="5">
+        INSERT INTO ad_conversion_outbox(event_id,event_type,schema_version,destination,partition_key,payload_json)
+        VALUES(#{eventId},#{eventType},#{schemaVersion},#{destination},#{partitionKey},#{payloadJson})
+    </insert>
+</mapper>

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a转化报价DONE/PASS，待Git交付后继续MP10b结算。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c DONE/PASS，MP10整体完成；下一片MP11a Outbox。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -54,13 +54,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP09已完成；MP10～MP15及追加统一错误码目标未完成。
+- MP00～MP10已完成；MP11～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP10a：转化报价Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP10b：转化结算Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,8 +79,8 @@ MP01～MP03已交付。当前MP10a：转化报价Mapper/XML、Repository/配置�
 
 ## 下一步
 
-1. MP10a已验证通过，Git交付后继续MP10b。
-2. 继续MP10～MP15，全部SQL完成后处理统一错误码。
+1. MP10b/c验证完成并准备Git交付，继续MP11a Outbox。
+2. 继续MP11～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -186,3 +186,19 @@ DONE/PASS，MP09整体完成，见MP09B_RESULT。12源文件指纹ab3a4accb08bc1
 ## MP10a最终验证与下一片
 
 DONE/PASS，见MP10A_RESULT。9源文件指纹0615b6d01b1118d7c1cb21c9b196bf04550a4914f90418bbc51d0672cf7236ae；迁移后49项/5类通过，推荐宿主3项、全仓24 reactor编译与hygiene通过，45历史SQL/8保护文件不变。下一片MP10b ConversionSettlementRepository已读全201行：可见回执和业务Outcome独立原决定，状态/结果仍同一JOIN快照；必须区分settled_outcome_id与event_outcome_id，不能丢advertiser过滤/映射。claimOutcome的ON CONFLICT(advertiser_id,event_id)不能改为吞掉所有冲突；原actor仅审计，当前授权actor可恢复同业务内容。保留CPA双条件、原预算日、held/charged条件更新、Outbox及5秒超时。可复用MP09b nested constructor resultMap模式但不能带入CPC rate逻辑。旧基线MP09b373资金链和本片CPA结算23/准备8/在线10已通过；先补充可见与Outcome的事务内PENDING/可空字段保护，再迁移。
+
+## MP10b迁移前检查点
+
+迁移前ConversionSettlementPostgresTest新增unfinishedVisibleAndOutcomeCannotBecomeCanonicalOrJoinedResults：两类事实独立提交PENDING均被延迟约束拒绝；持有quote锁的同源事务中claim后，canonical/同JOIN读取都先拒绝半成品，rollback后无记录且账户/账本不变。旧路径24项通过，/tmp/recsys-mp10b-before.log。
+
+计划使用独立ConversionSettlementMapper/XML，SnapshotRow17字段（outcomeId映射settled_outcome_id）、VisibleRow6字段、OutcomeRow9字段（outcomeId映射event_outcome_id）、StoredVisibleRow/StoredOutcomeRow嵌套constructor resultMap保留单次JOIN。公共snapshotColumns必须保留s.advertiser_id供OutcomeRow读取（原s.*中存在）；canonical outcome读取自身advertiser_id；两个outcome别名不能混同。共24条语句预计，必须逐方法核对。构造引用：ConversionSettlementConfiguration、ConversionEventConfiguration；ConversionSettlementPostgresTest可新增static sessions供故障spy复用；ConversionPreparationPostgresTest已有sessions；ConversionOnlineFixture/ConversionOnlinePostgresTest已有sessions/f.sessions；ConversionEventsFixture构造已throws Exception可创建模板。无CPC rate路径，不拷入计数逻辑。
+
+最新Git：MP10a=30eb28be86f408503936c1cf0beef3f1eee251df已正常推main；CI38732423173 pending。MP09b=345dcb2390fe2fe11a518ff2b618e96b4d6e0b9d，CI38732026360运行中；MP09a CI38730596602已SUCCESS。随后已完成ConversionSettlementMapper/XML、Repository/配置和构造引用适配，运行/tmp/recsys-mp10b-after.log。
+
+MP10b当前10源文件清单/tmp/recsys-mp10b-source-paths.json，指纹3f34f9b7aff5a75e278ae4a05457852990fba911062c5bd9d4680968ba68ed1b；24条Mapper/XML方法静态对应，真实PG验证中。
+
+## MP10b/c最终验证
+
+DONE/PASS，MP10整体完成，见MP10B_RESULT。10源文件指纹3f34f9b7aff5a75e278ae4a05457852990fba911062c5bd9d4680968ba68ed1b；旧24项、迁移后42项、全仓24 reactor完整资金链374项/68类、推荐宿主3项均通过；hygiene无阻塞，45历史SQL/8保护文件不变。MP10c准备与消费者无额外SQL，Outbox/投影仍属于MP11，engine交付仍MP12。MP10a CI38732423173五门禁全部SUCCESS；MP09b CI38732026360被后续提交取消。
+
+下一片MP11a BillingOutboxRepository：10条独立原子语句（三族schema探针、exhaust/claim/published/failed/replay/backlog）；固定表族移到XML choose，不再Java replace SQL，不使用用户表名。claim为UPDATE RETURNING，必须affectData=true/flushCache=true/useCache=false；保留30秒租约、20次尝试、exhaust批次100、clock_timestamp、fence+未过期条件和重放审计CTE同语句。每条5秒超时，调用方不能持数据库锁等待Kafka。构造引用为三EventConfiguration、三EventsFixture、三EventsKafkaTest故障子类及SandboxExposureBrowserFixtureTest；fixture可复用cpm.sessions避免临时checked exception。当前完整资金链374项作为旧基线；新增真实claim事务回滚、SKIP LOCKED与重放审计冲突回滚保护后再迁移。

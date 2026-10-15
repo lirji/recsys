@@ -103,7 +103,7 @@ class ConversionPreparationPostgresTest {
     }
     @Test void quoteCommittedBeforeHoldFailureRestartsWithoutRepricingOrDeadlineExtension() {
         var request=request("10");
-        var failing=new ConversionSettlementService(new ConversionSettlementRepository(f.jdbc,ConversionEventsFixture.JSON),f.quotes,f.cpm.reservations,f.cpm.tokens,
+        var failing=new ConversionSettlementService(new ConversionSettlementRepository(sessions,ConversionEventsFixture.JSON),f.quotes,f.cpm.reservations,f.cpm.tokens,
                 BudgetConfiguration.transactions(f.ds,5),true,true) {
             @Override public ConversionSettlement.Prepared prepare(UUID id,String subject) { throw new IllegalStateException("after quote before hold"); }
         };

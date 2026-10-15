@@ -124,7 +124,7 @@ class ConversionOnlinePostgresTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void businessCommitLostReplyQueriesOriginalButRevokedActorCannotRestore(boolean remote) throws Exception {
         var fail=new AtomicBoolean(true);
-        var losing=new ConversionSettlementService(new ConversionSettlementRepository(f.ad,ConversionOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
+        var losing=new ConversionSettlementService(new ConversionSettlementRepository(f.sessions,ConversionOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
                 ConversionOnlineFixture.transactions(f.adDs),true,true) {
             @Override public OutcomeResult acceptAuthorizedConversion(ConversionCommand c) {
                 var r=super.acceptAuthorizedConversion(c);if(fail.getAndSet(false))throw new IllegalStateException("lost business reply");return r;

@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
 import java.time.Duration;
@@ -18,8 +18,8 @@ import java.time.Duration;
 @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.conversions-enabled","recsys.ad.billing.conversion-settlement-enabled"},havingValue="true")
 public class ConversionSettlementConfiguration {
     /** 只校验本owner的V013，不触发环境迁移。 */
-    @Bean public ConversionSettlementRepository conversionSettlementRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-        var repository=new ConversionSettlementRepository(jdbc,json); repository.verifySchema(); return repository;
+    @Bean public ConversionSettlementRepository conversionSettlementRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
+        var repository=new ConversionSettlementRepository(sessions,json); repository.verifySchema(); return repository;
     }
     /** 金额与业务事实共用adDb短事务，暂停新增独立于回收和查询。 */
     @Bean public ConversionSettlementService conversionSettlementService(ConversionSettlementRepository repository,ConversionQuoteRepository quotes,
