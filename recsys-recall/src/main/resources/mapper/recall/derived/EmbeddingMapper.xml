@@ -11,4 +11,26 @@
         SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
         FROM item_embedding ORDER BY embedding &lt;=> #{vector,jdbcType=OTHER} LIMIT #{limit}
     </select>
+    <select id="graphUserEmbedding" resultType="string">
+        SELECT embedding::text FROM graph_user_embedding WHERE model_version=#{version} AND user_id=#{userId}
+    </select>
+    <select id="nearestGraphItems" resultMap="match">
+        SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
+        FROM graph_item_embedding WHERE model_version=#{version}
+        ORDER BY embedding &lt;=> #{vector,jdbcType=OTHER} LIMIT #{limit}
+    </select>
+    <select id="nearestMultiInterestItems" resultMap="match">
+        SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
+        FROM multi_interest_item_embedding WHERE model_version=#{version}
+        ORDER BY embedding &lt;=> #{vector,jdbcType=OTHER} LIMIT #{limit}
+    </select>
+    <select id="nearestTowerItems" resultMap="match">
+        SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
+        FROM item_tower_embedding ORDER BY embedding &lt;=> #{vector,jdbcType=OTHER} LIMIT #{limit}
+    </select>
+    <select id="scoreTowerItems" resultMap="match">
+        SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
+        FROM item_tower_embedding WHERE item_id IN
+        <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">#{itemId}</foreach>
+    </select>
 </mapper>

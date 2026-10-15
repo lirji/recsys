@@ -16,7 +16,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.Map;
 
 /**
@@ -47,7 +48,7 @@ public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
 
     private static final Logger log = LoggerFactory.getLogger(TwoTowerRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final EmbeddingMapper mapper;
     private final RecallProperties props;
 
     private OrtEnvironment env;
@@ -56,9 +57,8 @@ public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
     private int userBuckets;
     private volatile boolean ready = false;
 
-    public TwoTowerRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                            JdbcTemplate jdbc, RecallProperties props) {   // #3:item_tower_embedding 走派生库
-        this.jdbc = jdbc;
+    public TwoTowerRecaller(EmbeddingMapper mapper, RecallProperties props) {   // #3:item_tower_embedding 走派生库
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -99,15 +99,8 @@ public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
             }
             int limit = props.getQuota().getTwoTower();
             PGvector pv = new PGvector(userVec);
-            return jdbc.query(
-                    "SELECT item_id, 1 - (embedding <=> ?) AS sim " +
-                    "FROM item_tower_embedding ORDER BY embedding <=> ? LIMIT ?",
-                    ps -> {
-                        ps.setObject(1, pv);
-                        ps.setObject(2, pv);
-                        ps.setInt(3, limit);
-                    },
-                    (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("sim"), RecallChannel.TWO_TOWER));
+            return mapper.nearestTowerItems(pv, limit).stream()
+                    .map(row -> row.toRecallItem(RecallChannel.TWO_TOWER)).collect(Collectors.toList());
         } catch (Exception e) {
             log.debug("双塔召回失败 user={}: {}", ctx.userId(), e.getMessage());
             return List.of();
@@ -133,25 +126,9 @@ public class TwoTowerRecaller implements ChannelRecaller, TowerScorer {
             }
             PGvector pv = new PGvector(userVec);
             java.util.Set<Long> unique = new java.util.HashSet<>(itemIds);
-            String ph = String.join(",", java.util.Collections.nCopies(unique.size(), "?"));
             Map<Long, Double> out = new java.util.HashMap<>(unique.size() * 2);
-            Object[] argsArr = new Object[unique.size() + 1];
-            argsArr[0] = pv;
-            int i = 1;
-            for (Long id : unique) {
-                argsArr[i++] = id;
-            }
-            // 只对候选集查 item 塔向量算余弦(1 - 距离);无向量的候选自然缺席
-            jdbc.query(
-                    "SELECT item_id, 1 - (embedding <=> ?) AS sim FROM item_tower_embedding " +
-                    "WHERE item_id IN (" + ph + ")",
-                    ps -> {
-                        ps.setObject(1, pv);
-                        for (int k = 1; k < argsArr.length; k++) {
-                            ps.setObject(k + 1, argsArr[k]);
-                        }
-                    },
-                    (rs, n) -> out.put(rs.getLong("item_id"), rs.getDouble("sim")));
+            // 缺失候选继续缺席，NULL相似度则沿原JDBC映射为零。
+            mapper.scoreTowerItems(pv, unique).forEach(row -> out.put(row.itemId(), row.score()));
             return out;
         } catch (Exception e) {
             log.debug("双塔粗排打分失败 user={},退线性: {}", userId, e.getMessage());

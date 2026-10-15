@@ -10,27 +10,27 @@ import com.recsys.recall.RecallProperties;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /** LightGCN 在线图召回：取版本化 user 图向量，再对同版本 item 图向量做 ANN。 */
 @Component
 public class GraphRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(GraphRecaller.class);
-    private final JdbcTemplate jdbc;
+    private final EmbeddingMapper mapper;
     private final RecallProperties props;
     private String modelVersion;
     private volatile boolean ready;
 
-    public GraphRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                         JdbcTemplate jdbc, RecallProperties props) {
-        this.jdbc = jdbc;
+    public GraphRecaller(EmbeddingMapper mapper, RecallProperties props) {
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -61,20 +61,11 @@ public class GraphRecaller implements ChannelRecaller {
     public List<RecallItem> recall(RecallContext ctx) {
         if (!ready) return List.of();
         try {
-            List<PGvector> users = jdbc.query(
-                    "SELECT embedding FROM graph_user_embedding WHERE model_version=? AND user_id=?",
-                    (rs, n) -> new PGvector(rs.getString(1)), modelVersion, ctx.userId());
+            List<String> users = mapper.graphUserEmbedding(modelVersion, ctx.userId());
             if (users.isEmpty()) return List.of();
-            PGvector user = users.get(0);
-            return jdbc.query("SELECT item_id,1-(embedding <=> ?) AS sim FROM graph_item_embedding " +
-                            "WHERE model_version=? ORDER BY embedding <=> ? LIMIT ?",
-                    ps -> {
-                        ps.setObject(1, user);
-                        ps.setString(2, modelVersion);
-                        ps.setObject(3, user);
-                        ps.setInt(4, props.getQuota().getGraph());
-                    },
-                    (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("sim"), RecallChannel.GRAPH));
+            PGvector user = new PGvector(users.get(0));
+            return mapper.nearestGraphItems(user, modelVersion, props.getQuota().getGraph()).stream()
+                    .map(row -> row.toRecallItem(RecallChannel.GRAPH)).collect(Collectors.toList());
         } catch (Exception e) {
             log.debug("LightGCN 召回失败 user={}: {}", ctx.userId(), e.getMessage());
             return List.of();

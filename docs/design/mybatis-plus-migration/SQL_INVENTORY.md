@@ -203,15 +203,15 @@
 |---|---:|---:|---|
 | [com/recsys/recall/BehaviorSequenceSource.java](../../../recsys-recall/src/main/java/com/recsys/recall/BehaviorSequenceSource.java) | 8 | 2 | MP03b DONE：RecallInputMapper.xml；见MP03B_RESULT |
 | [com/recsys/recall/channel/DbUserProfileReader.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/DbUserProfileReader.java) | 7 | 1 | MP03b DONE：RecallInputMapper.xml；见MP03B_RESULT |
-| [com/recsys/recall/channel/GraphRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/GraphRecaller.java) | 13 | 2 | TODO |
+| [com/recsys/recall/channel/GraphRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/GraphRecaller.java) | 13 | 2 | MP03c2 DONE：EmbeddingMapper.xml；见MP03C2_RESULT |
 | [com/recsys/recall/channel/I2iRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/I2iRecaller.java) | 12 | 1 | MP03b DONE：RecallInputMapper.xml；见MP03B_RESULT |
-| [com/recsys/recall/channel/MultiInterestRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/MultiInterestRecaller.java) | 18 | 1 | TODO |
+| [com/recsys/recall/channel/MultiInterestRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/MultiInterestRecaller.java) | 18 | 1 | MP03c2 DONE：EmbeddingMapper.xml；见MP03C2_RESULT |
 | [com/recsys/recall/channel/RecentPositiveItemsSource.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/RecentPositiveItemsSource.java) | 3 | 1 | MP03b DONE：RecallInputMapper.xml；见MP03B_RESULT |
 | [com/recsys/recall/channel/SemanticIdRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SemanticIdRecaller.java) | 9 | 3 | TODO |
 | [com/recsys/recall/channel/SemanticRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SemanticRecaller.java) | 13 | 1 | MP03c1 DONE：EmbeddingMapper.xml；见MP03C1_RESULT |
 | [com/recsys/recall/channel/SwingRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SwingRecaller.java) | 12 | 1 | MP03b DONE：RecallInputMapper.xml；见MP03B_RESULT |
 | [com/recsys/recall/channel/TigerRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/TigerRecaller.java) | 17 | 5 | TODO |
-| [com/recsys/recall/channel/TwoTowerRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/TwoTowerRecaller.java) | 19 | 2 | TODO |
+| [com/recsys/recall/channel/TwoTowerRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/TwoTowerRecaller.java) | 19 | 2 | MP03c2 DONE：EmbeddingMapper.xml；见MP03C2_RESULT |
 | [com/recsys/recall/channel/VectorRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/VectorRecaller.java) | 11 | 2 | MP03c1 DONE：EmbeddingMapper.xml；见MP03C1_RESULT |
 
 ### recsys-streaming

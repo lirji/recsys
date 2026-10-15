@@ -10,6 +10,7 @@ import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import com.recsys.recall.RecallProperties;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
@@ -42,6 +43,7 @@ class R9RecallPostgresTest {
 
     static JdbcTemplate jdbc;
     static RecallInputMapper inputMapper;
+    static EmbeddingMapper embeddingMapper;
     static String version;
 
     @BeforeAll
@@ -58,6 +60,8 @@ class R9RecallPostgresTest {
         DriverManagerDataSource ds = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
+        embeddingMapper = new SqlSessionTemplate(SpringSqlSessions.create(ds,
+                "classpath*:mapper/recall/derived/**/*.xml")).getMapper(EmbeddingMapper.class);
         inputMapper = new SqlSessionTemplate(SpringSqlSessions.create(ds,
                 "classpath*:mapper/recall/primary/**/*.xml")).getMapper(RecallInputMapper.class);
         jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
@@ -82,7 +86,7 @@ class R9RecallPostgresTest {
         jdbc.update("INSERT INTO graph_item_embedding VALUES(?,?,?::vector)", version, 102L, basis(1));
 
         RecallProperties props = new RecallProperties();
-        GraphRecaller recaller = new GraphRecaller(jdbc, props);
+        GraphRecaller recaller = new GraphRecaller(embeddingMapper, props);
         recaller.load();
         assertTrue(recaller.isReady());
 
@@ -114,7 +118,7 @@ class R9RecallPostgresTest {
                 "DB 序列应过滤弱反馈、按 item 最后正反馈去重并返回 oldest→newest");
         RecallProperties props = new RecallProperties();
         props.getMultiInterest().setPerInterestLimit(3);
-        MultiInterestRecaller recaller = new MultiInterestRecaller(jdbc, props);
+        MultiInterestRecaller recaller = new MultiInterestRecaller(embeddingMapper, props);
         recaller.load();
         Assumptions.assumeTrue(recaller.isReady(),
                 "需先运行 train_mind.py 生成被 gitignore 的 mind_user.onnx");

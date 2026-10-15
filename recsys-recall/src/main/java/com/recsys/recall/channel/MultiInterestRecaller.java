@@ -15,8 +15,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -38,7 +37,7 @@ public class MultiInterestRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(MultiInterestRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final EmbeddingMapper mapper;
     private final RecallProperties props;
     private OrtEnvironment env;
     private OrtSession session;
@@ -51,9 +50,8 @@ public class MultiInterestRecaller implements ChannelRecaller {
     private int dim;
     private volatile boolean ready;
 
-    public MultiInterestRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                 JdbcTemplate jdbc, RecallProperties props) {
-        this.jdbc = jdbc;
+    public MultiInterestRecaller(EmbeddingMapper mapper, RecallProperties props) {
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -119,17 +117,8 @@ public class MultiInterestRecaller implements ChannelRecaller {
                     continue;
                 }
                 PGvector vector = new PGvector(interest);
-                jdbc.query("SELECT item_id,1-(embedding <=> ?) AS sim " +
-                                "FROM multi_interest_item_embedding WHERE model_version=? " +
-                                "ORDER BY embedding <=> ? LIMIT ?",
-                        ps -> {
-                            ps.setObject(1, vector);
-                            ps.setString(2, modelVersion);
-                            ps.setObject(3, vector);
-                            ps.setInt(4, perInterest);
-                        },
-                        (RowCallbackHandler) rs -> best.merge(
-                                rs.getLong("item_id"), rs.getDouble("sim"), Math::max));
+                mapper.nearestMultiInterestItems(vector, modelVersion, perInterest)
+                        .forEach(row -> best.merge(row.itemId(), row.score(), Math::max));
             }
             return best.entrySet().stream()
                     .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())

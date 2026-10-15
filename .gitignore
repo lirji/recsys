@@ -11,6 +11,8 @@ target/
 # 数据集与模型产物
 data/
 *.onnx
+# SQL集成测试使用的极小常量模型，不是训练/发布模型。
+!recsys-recall/src/test/resources/model/*-fixture.onnx
 
 # IDE
 .idea/
