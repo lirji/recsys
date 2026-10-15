@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper">
+    <resultMap id="account" type="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper$AccountRow">
+        <constructor><arg column="advertiser_id" javaType="_long"/><arg column="limit_amount" javaType="java.math.BigDecimal"/>
+            <arg column="held_amount" javaType="java.math.BigDecimal"/><arg column="charged_amount" javaType="java.math.BigDecimal"/>
+            <arg column="version" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="familySummary" type="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper$FamilyRow">
+        <constructor>
+            <arg column="held_count" javaType="_long"/>
+            <arg column="held_amount" javaType="java.math.BigDecimal"/>
+            <arg column="expired_held_count" javaType="_long"/>
+            <arg column="ledger_count" javaType="_long"/>
+            <arg column="ledger_amount" javaType="java.math.BigDecimal"/>
+            <arg column="missing_ledger_count" javaType="_long"/>
+            <arg column="invalid_ledger_count" javaType="_long"/>
+            <arg column="pending_outbox_count" javaType="_long"/>
+            <arg column="dead_outbox_count" javaType="_long"/>
+            <arg column="missing_outbox_count" javaType="_long"/>
+            <arg column="oldest_pending_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="fact_count" javaType="_long"/>
+            <arg column="fact_amount" javaType="java.math.BigDecimal"/>
+            <arg column="missing_fact_count" javaType="_long"/>
+            <arg column="invalid_fact_count" javaType="_long"/>
+            <arg column="unexpected_fact_count" javaType="_long"/>
+            <arg column="last_applied_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="summary_present" javaType="_boolean"/>
+            <arg column="summary_count" javaType="_long"/>
+            <arg column="summary_amount" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+    <!-- 只使用服务端封闭枚举选择固定SQL，表/列名均不接受外部插值。 -->
+    <sql id="ledger"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_ledger</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_ledger</when>
+        <otherwise>ad_billing_ledger</otherwise>
+    </choose></sql>
+    <sql id="outbox"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_outbox</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_outbox</when>
+        <otherwise>ad_billing_outbox</otherwise>
+    </choose></sql>
+    <sql id="fact"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_projection_fact</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_projection_fact</when>
+        <otherwise>ad_billing_projection_fact</otherwise>
+    </choose></sql>
+    <sql id="daily"><choose>
+        <when test="family.name() == 'CLICK'">ad_click_projection_daily</when>
+        <when test="family.name() == 'CONVERSION'">ad_conversion_projection_daily</when>
+        <otherwise>ad_billing_projection_daily</otherwise>
+    </choose></sql>
+    <sql id="countColumn"><choose>
+        <when test="family.name() == 'CLICK'">click_count</when>
+        <when test="family.name() == 'CONVERSION'">conversion_count</when>
+        <otherwise>impression_count</otherwise>
+    </choose></sql>
+    <sql id="obligations"><choose>
+        <when test="family.name() == 'CLICK'">
+            SELECT s.qualification_id,q.amount,q.expires_at,s.state,s.ledger_id
+            FROM ad_click_settlement s JOIN ad_click_quote q ON q.quote_id=s.qualification_id,scope p
+            WHERE q.advertiser_id=p.advertiser_id AND s.budget_date=p.budget_date
+        </when>
+        <when test="family.name() == 'CONVERSION'">
+            SELECT s.qualification_id,q.amount,q.expires_at,s.state,s.ledger_id
+            FROM ad_conversion_settlement s JOIN ad_conversion_quote q ON q.quote_id=s.qualification_id,scope p
+            WHERE s.advertiser_id=p.advertiser_id AND s.budget_date=p.budget_date
+        </when>
+        <otherwise>
+            SELECT r.reservation_id qualification_id,r.amount,r.expires_at,r.state,NULL::uuid ledger_id
+            FROM ad_budget_reservation r,scope p WHERE r.advertiser_id=p.advertiser_id AND r.budget_date=p.budget_date
+        </otherwise>
+    </choose></sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=#{version}</select>
+    <select id="verifyLedger" resultType="map" timeout="5">SELECT ledger_id,qualification_id,advertiser_id,budget_date,amount FROM <include refid="ledger"/> LIMIT 0</select>
+    <select id="verifyOutbox" resultType="map" timeout="5">SELECT event_id,delivery_state,created_at FROM <include refid="outbox"/> LIMIT 0</select>
+    <select id="verifyFact" resultType="map" timeout="5">SELECT event_id,qualification_id,advertiser_id,budget_date,amount,applied_at FROM <include refid="fact"/> LIMIT 0</select>
+    <select id="verifyDaily" resultType="map" timeout="5">SELECT advertiser_id,budget_date,charged_amount,<include refid="countColumn"/> FROM <include refid="daily"/> LIMIT 0</select>
+    <select id="verifyObligations" resultType="map" timeout="5">
+        WITH scope AS (SELECT 0::bigint advertiser_id,DATE '1970-01-01' budget_date)
+        <include refid="obligations"/> LIMIT 0
+    </select>
+    <select id="observedAt" resultType="java.time.OffsetDateTime" timeout="5" useCache="false">SELECT transaction_timestamp()</select>
+    <select id="account" resultMap="account" timeout="5">
+        SELECT advertiser_id,limit_amount,held_amount,charged_amount,version FROM ad_budget_account
+        WHERE traffic_class='SANDBOX' AND currency='CNY' AND advertiser_id=#{scope.advertiserId} AND budget_date=#{scope.budgetDate}
+    </select>
+    <select id="family" resultMap="familySummary" timeout="5">
+        WITH scope AS (SELECT #{scope.advertiserId}::bigint advertiser_id,#{scope.budgetDate}::date budget_date,#{observedAt}::timestamptz observed_at),
+        obligations AS (<include refid="obligations"/>),
+        ledger AS (SELECT l.* FROM <include refid="ledger"/> l,scope p WHERE l.advertiser_id=p.advertiser_id AND l.budget_date=p.budget_date),
+        facts AS (SELECT f.* FROM <include refid="fact"/> f,scope p WHERE f.advertiser_id=p.advertiser_id AND f.budget_date=p.budget_date),
+        daily AS (SELECT d.* FROM <include refid="daily"/> d,scope p WHERE d.advertiser_id=p.advertiser_id AND d.budget_date=p.budget_date)
+        SELECT
+          (SELECT count(*) FROM obligations WHERE state='HELD') held_count,
+          (SELECT coalesce(sum(amount),0) FROM obligations WHERE state='HELD') held_amount,
+          (SELECT count(*) FROM obligations,scope p WHERE state='HELD' AND expires_at&lt;=p.observed_at) expired_held_count,
+          (SELECT count(*) FROM ledger) ledger_count,(SELECT coalesce(sum(amount),0) FROM ledger) ledger_amount,
+          (SELECT count(*) FROM obligations o LEFT JOIN ledger l ON l.qualification_id=o.qualification_id
+            WHERE o.state='CAPTURED' AND l.ledger_id IS NULL) missing_ledger_count,
+          (SELECT count(*) FROM ledger l LEFT JOIN obligations o ON l.qualification_id=o.qualification_id
+            WHERE o.qualification_id IS NULL OR o.state&lt;&gt;'CAPTURED' OR o.amount&lt;&gt;l.amount
+              OR (#{ledgerIdentityRequired} AND o.ledger_id IS DISTINCT FROM l.ledger_id)) invalid_ledger_count,
+          (SELECT count(*) FROM ledger l JOIN <include refid="outbox"/> o ON o.event_id=l.ledger_id WHERE o.delivery_state IN ('READY','SENDING')) pending_outbox_count,
+          (SELECT count(*) FROM ledger l JOIN <include refid="outbox"/> o ON o.event_id=l.ledger_id WHERE o.delivery_state='DEAD') dead_outbox_count,
+          (SELECT count(*) FROM ledger l LEFT JOIN <include refid="outbox"/> o ON o.event_id=l.ledger_id WHERE o.event_id IS NULL) missing_outbox_count,
+          (SELECT min(o.created_at) FROM ledger l JOIN <include refid="outbox"/> o ON o.event_id=l.ledger_id WHERE o.delivery_state IN ('READY','SENDING')) oldest_pending_at,
+          (SELECT count(*) FROM facts) fact_count,(SELECT coalesce(sum(amount),0) FROM facts) fact_amount,
+          (SELECT count(*) FROM ledger l LEFT JOIN <include refid="fact"/> f ON f.event_id=l.ledger_id WHERE f.event_id IS NULL) missing_fact_count,
+          (SELECT count(*) FROM ledger l JOIN <include refid="fact"/> f ON f.event_id=l.ledger_id WHERE f.qualification_id&lt;&gt;l.qualification_id
+            OR f.advertiser_id&lt;&gt;l.advertiser_id OR f.budget_date&lt;&gt;l.budget_date OR f.amount&lt;&gt;l.amount) invalid_fact_count,
+          (SELECT count(*) FROM facts f LEFT JOIN ledger l ON f.event_id=l.ledger_id WHERE l.ledger_id IS NULL) unexpected_fact_count,
+          (SELECT max(applied_at) FROM facts) last_applied_at,
+          EXISTS(SELECT 1 FROM daily) summary_present,
+          coalesce((SELECT <include refid="countColumn"/> FROM daily),0) summary_count,coalesce((SELECT charged_amount FROM daily),0) summary_amount
+    </select>
+</mapper>

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b DONE/PASS，准备Git交付后继续MP11c只读对账。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c DONE/PASS，MP11整体完成，准备Git后继续MP12a候选频控。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -236,3 +236,13 @@ MP11b旧路径14项PG保护通过；三族共10条SQL已迁移独立Mapper/XML�
 DONE/PASS，见MP11B_RESULT；19源文件指纹fbc94a42c07d74a00da3d4adca642b715f25b79754839ccbf2c7bd849a56a2ac。旧14项、新三族事件与对账72项/11类、推荐宿主3项和全仓24 reactor编译全部通过；hygiene无阻塞，45历史SQL/8保护文件不变。MP11a CI38735452724浏览器/自然/security均SUCCESS，build/money仍在运行；console-ci38735452734全部SUCCESS，原生页签修复已通过远程浏览器。
 
 下一片MP11c：ReconciliationRepository/Configuration及ReconciliationPostgresTest所有构造入口改实际sessions；现有11项真实PG已在本片72项中通过，可作为旧基线。FamilySummary的20个原始字段使用显式record/resultMap，BigDecimal再由原decimal函数转文本，两个可空时间保留。固定三族表与obligations选择进入XML，CPM无ledgerId核验、CPC按quote.advertiser过滤、CPA按settlement.advertiser过滤差异保留；scope绑定、全量身份/零金额笔数及缺行检查不变。observedAt保持transaction_timestamp，所有查询5秒、STATEMENT缓存，Service强制同源/只读/RR/REQUIRES_NEW/5秒配置不改；绝不恢复暂停的S13B任务或重写V016。全部SQL迁移后跑本片PG与完整资金链（预期378项），宿主/compile/hygiene按实际结果记录。
+
+## MP11c实施检查点
+
+复用MP11b 72项中的11项真实PG对账旧基线；9条SQL已迁入ReconciliationMapper/XML，20字段原始FamilyRow和5字段AccountRow显式构造，原金额文本转换/两个可空时间/原预算日映射保持。三族固定表和obligations选择仅XML，scope绑定及ledgerIdentityRequired服务端布尔值替代原formatted拼接；Service只读/RR/REQUIRES_NEW/5秒不改。配置及所有构造调用使用实际sessions。迁移后11项通过/tmp/recsys-mp11c-after.log，完整资金链/tmp/recsys-mp11c-money.log运行中，hygiene无阻塞。5源文件指纹5865eefbd1e7944dc9276d024869d1ff0efb4f0baa4ffb79efbd58675e9f73cf，清单/tmp/recsys-mp11c-source-paths.json。MP11a CI38735452724最终cancelled（已观察浏览器成功），MP11b CI38736158900运行中。
+
+MP11c完整资金链378项/68类、全仓24 reactor测试编译通过（/tmp/recsys-mp11c-money.log）；默认关闭推荐宿主运行中。三族聚合XML展开后与原SQL归一化一致，保护8/历史45/源5摘要未变。MP11b CI38736158900钱链/自然/browser/security均SUCCESS，仅build最后观察运行中。
+
+## MP11c最终验证与MP12a入口
+
+DONE/PASS，MP11整体完成，见MP11C_RESULT。5源文件指纹5865eefbd1e7944dc9276d024869d1ff0efb4f0baa4ffb79efbd58675e9f73cf；新旧对账PG各11项、完整资金链378项/68类、全仓24 reactor测试编译及推荐宿主3项全部通过；hygiene无阻塞、8保护文件/45历史SQL不变。下一片MP12a仅FeedCandidateRepository/Configuration及两构造fixture：FeedDeliveryPostgresTest、FeedExposureBrowserAcceptanceTest。三条SQL（摘要、to_regclass索引检查、有界候选频控）进入addb Mapper/XML，候选只传adId/advertiserId目标记录，用foreach绑定VALUES；空列表仍直接返回，非法参数校验顺序保持。两个索引名称为服务端固定值，to_regclass NULL必须继续触发原缺索引错误。5秒超时、statement_timestamp上海接受日与原预算日分离、两级计数LIMIT阈值保持。现有FeedDeliveryPostgresTest11项已在378项钱链通过，其中跨用户/广告主/仅接受账本和日边界已保护；可新增缺索引NULL映射、空候选不查询账本保护后跑旧路径，再迁移。其FeedDeliveryRepository留到MP12d，不借此扩大改动。

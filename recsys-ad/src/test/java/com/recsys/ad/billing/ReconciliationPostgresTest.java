@@ -30,7 +30,7 @@ class ReconciliationPostgresTest {
                 st.execute(new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
             }
         }
-        repository=new ReconciliationRepository(f.jdbc);repository.verifySchema();service=fresh(repository);
+        repository=new ReconciliationRepository(f.cpm.sessions);repository.verifySchema();service=fresh(repository);
     }
     ReconciliationService fresh(ReconciliationRepository repo) {return new ReconciliationService(repo,ReconciliationConfiguration.transactions(f.ds));}
     Scope scope(long advertiser){return new Scope(advertiser,f.cpm.today());}
@@ -97,7 +97,7 @@ class ReconciliationPostgresTest {
         account(1,f.cpm.today());var ids=new EnumMap<ChargeMode,UUID>(ChargeMode.class);
         for(var mode:ChargeMode.values())ids.put(mode,hold(mode,1,"0.100000"));
         // 参数化观察时钟仅模拟六分钟后的核查，不宣称真实等待或恢复耗时。
-        var future=new ReconciliationRepository(f.jdbc){@Override public Instant observedAt(){return super.observedAt().plusSeconds(360);}};
+        var future=new ReconciliationRepository(f.cpm.sessions){@Override public Instant observedAt(){return super.observedAt().plusSeconds(360);}};
         var result=fresh(future).inspect(scope(1));assertEquals(FundsStatus.BALANCED,result.fundsStatus());assertEquals(new BigDecimal("0.300000"),result.account().heldAmount());
         for(var row:result.families()){assertEquals(1,row.heldCount());assertEquals(1,row.expiredHeldCount());assertEquals("0.100000",row.heldAmount());}
         new ReservationService(f.cpm.reservations,f.cpm.quotes,BudgetConfiguration.transactions(f.ds,5),true).release(ids.get(ChargeMode.IMPRESSION),"admin");
@@ -140,7 +140,7 @@ class ReconciliationPostgresTest {
     }
     @Test void concurrentCaptureBetweenAccountAndLedgerQueriesDoesNotCreateFalseDifference() throws Exception {
         account(1,f.cpm.today());var read=new CountDownLatch(1);var committed=new CountDownLatch(1);
-        var paused=new ReconciliationRepository(f.jdbc) {
+        var paused=new ReconciliationRepository(f.cpm.sessions) {
             @Override public Optional<BudgetAccount> account(Scope scope) {
                 var value=super.account(scope);read.countDown();
                 try {if(!committed.await(3,TimeUnit.SECONDS))throw new IllegalStateException("writer did not commit");}
@@ -156,7 +156,7 @@ class ReconciliationPostgresTest {
         var latest=service.inspect(scope(1));assertEquals(FundsStatus.BALANCED,latest.fundsStatus());assertEquals(1,family(latest,ChargeMode.CONVERSION).ledgerCount());
     }
     @Test void databaseEnforcesReadOnlyAndServiceRejectsOuterOrWrongResourceTransactions() {
-        account(1,f.cpm.today());var writer=new ReconciliationRepository(f.jdbc){@Override public Optional<BudgetAccount> account(Scope scope){
+        account(1,f.cpm.today());var writer=new ReconciliationRepository(f.cpm.sessions){@Override public Optional<BudgetAccount> account(Scope scope){
             f.jdbc.update("UPDATE ad_budget_account SET version=version+1 WHERE advertiser_id=1");return super.account(scope);}};
         assertThrows(DataAccessException.class,()->fresh(writer).inspect(scope(1)));
         BudgetConfiguration.transactions(f.ds,5).executeWithoutResult(tx->assertThrows(IllegalStateException.class,()->service.inspect(scope(1))));
@@ -165,7 +165,7 @@ class ReconciliationPostgresTest {
         assertThrows(IllegalArgumentException.class,()->new ReconciliationService(repository,ReconciliationConfiguration.transactions(wrong)));
     }
     @Test void dependencyFailureDoesNotReturnEmptyHealthyReportAndQueryHasDeadline() {
-        var slow=new ReconciliationRepository(f.jdbc){@Override public Optional<BudgetAccount> account(Scope scope){
+        var slow=new ReconciliationRepository(f.cpm.sessions){@Override public Optional<BudgetAccount> account(Scope scope){
             f.jdbc.execute("SELECT pg_sleep(7)");return super.account(scope);}};
         var timeout=assertThrows(org.springframework.dao.DataAccessResourceFailureException.class,()->fresh(slow).inspect(scope(1)));
         // 当前PG驱动将Statement.cancel映射为资源失败；核对数据库取消SQLSTATE，不用宽泛异常冒充超时证据。
@@ -183,7 +183,7 @@ class ReconciliationPostgresTest {
                 .run(c->{assertNull(c.getStartupFailure());assertFalse(c.containsBean("reconciliationRepository"));});
         contexts.withPropertyValues("recsys.ad.billing.sandbox-enabled=true","recsys.ad.billing.reconciliation-enabled=true",
                 "recsys.ad.billing.clicks-enabled=false","recsys.ad.billing.conversions-enabled=false")
-                .withBean("adDbJdbc",org.springframework.jdbc.core.JdbcTemplate.class,()->f.jdbc).withBean("adDbDataSource",javax.sql.DataSource.class,()->f.ds)
+                .withBean("adDbSqlSessionTemplate",org.mybatis.spring.SqlSessionTemplate.class,()->f.cpm.sessions).withBean("adDbDataSource",javax.sql.DataSource.class,()->f.ds)
                 .run(c->{assertNull(c.getStartupFailure());assertEquals(FundsStatus.ACCOUNT_MISSING,c.getBean(ReconciliationService.class).inspect(scope(1)).fundsStatus());});
         assertEquals(3,f.jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname IN ('ad_click_quote_account_idx','ad_click_settlement_day_idx','ad_conversion_settlement_account_idx')",Integer.class));
         f.jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=repeat('0',64) WHERE version=16");assertThrows(IllegalStateException.class,repository::verifySchema);
