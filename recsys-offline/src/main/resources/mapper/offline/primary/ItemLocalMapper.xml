@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.ItemLocalMapper">
+    <sql id="columns">item_id,title,category,tags,description,popularity</sql>
+    <sql id="updateColumns">
+        title=EXCLUDED.title,category=EXCLUDED.category,tags=EXCLUDED.tags,
+        description=EXCLUDED.description,popularity=EXCLUDED.popularity
+    </sql>
+    <update id="truncate">TRUNCATE item_local</update>
+    <insert id="copyLocal">
+        INSERT INTO item_local(<include refid="columns"/>) SELECT <include refid="columns"/>
+        FROM item ON CONFLICT(item_id) DO UPDATE SET <include refid="updateColumns"/>
+    </insert>
+    <insert id="upsertRows">
+        INSERT INTO item_local(<include refid="columns"/>) VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.itemId},#{row.title,jdbcType=VARCHAR},#{row.category,jdbcType=VARCHAR},
+             #{row.tags,jdbcType=ARRAY,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler},
+             #{row.description,jdbcType=VARCHAR},#{row.popularity,jdbcType=DOUBLE})
+        </foreach>
+        ON CONFLICT(item_id) DO UPDATE SET <include refid="updateColumns"/>
+    </insert>
+    <select id="count" resultType="long" useCache="false">SELECT count(*) FROM item_local</select>
+</mapper>

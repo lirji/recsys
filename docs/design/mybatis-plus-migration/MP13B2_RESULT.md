@@ -13,3 +13,5 @@ OfflineSourceSessions集中原PG环境参数和无池DriverManagerDataSource的�
 迁移后同样5项及全部离线77项/17类通过，0失败/错误/跳过（`/tmp/recsys-mp13b2-after.log`），额外确认源Mapper未被主源加载、10列注释齐全。全仓24 reactor测试编译通过（`/tmp/recsys-mp13b2-compile.log`）；hygiene无阻塞，统一Java formatter/独立静态分析未配置的既有限制保持（`/tmp/recsys-mp13b2-hygiene.json`）。普通独占PG双schema验证数据源隔离，不冒充跨集群故障或真实ShardingSphere验收。
 
 45历史SQL/8保护文件摘要不变。MP13b1=6b96d0d3本地已提交；当前ae9ec1c4的CI38744006253仍需后续核验。下一片SyncItemCatalogJob保留原全量upsert/NULL标签差异/生成列及数组映射。
+
+Hygiene异常advisory人工核验：OfflineSourceSessions仅在会话工厂装配边界捕获声明的checked Exception，携带原cause转为IllegalStateException并立即失败，不吞异常、不包裹查询循环，既有源库选择不变。
