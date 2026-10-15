@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +27,7 @@ import org.springframework.stereotype.Component;
  * <p><b>估计</b>:指数分布 MLE 即 {@code λ = 1/mean(观测延迟)}。只用已到达(转化时刻 ≤ now)的样本——
  * 这会因右删失而<b>略微高估 λ</b>(长延迟样本尚未出现),但对教学纠偏足够;真实系统应做带删失的
  * Delayed Feedback Model(Chapelle 2014)联合估计转化概率与延迟。样本过少({@code < --min-samples})则
- * 不写 Redis(下游退化为不纠偏,宁可不动也不乱估)。
+ * 不写 Redis并报告失败；原有模型保留，下游是否纠偏仍取决于原模型。
  *
  * <p>写出:Redis {@link RedisKeys#AD_DELAY_LAMBDA}(λ,1/天)+ {@link RedisKeys#AD_DELAY_MEAN_DAYS}(均值,天)。
  *
@@ -59,6 +62,10 @@ public class DelayModelJob implements OfflineJob {
         int minSamples = intArg(args, "min-samples", 50);
         double maxDelayDays = dblArg(args, "max-delay-days", 30.0);
 
+        if (minSamples <= 0 || maxDelayDays < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+
         // 已观测转化的延迟(天):转化时刻 − 其点击时刻,按 request_id+ad_id 归因点击。
         // 只取转化时刻 ≤ now(已到达)且延迟在 [0, maxDelay] 内的样本。
         Double[] agg = new Double[]{0.0, 0.0};  // [count, sumDelayDays]
@@ -72,16 +79,16 @@ public class DelayModelJob implements OfflineJob {
 
         long n = (long) (double) agg[0];
         if (n < minSamples) {
-            log.warn("ad-delay:可用延迟样本 {} < min-samples {},不更新延迟模型(下游退化为不纠偏)。"
-                    + "先跑 --job=sim-ad-events 造带延迟的转化", n, minSamples);
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_DELAY_SAMPLES_INSUFFICIENT);
         }
         double meanDays = agg[1] / n;
-        if (meanDays <= 0) {
-            log.warn("ad-delay:平均延迟 {} 非正,跳过", meanDays);
-            return;
+        if (!Double.isFinite(meanDays) || meanDays <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_DELAY_MODEL_INVALID);
         }
         double lambda = DelayModel.lambdaFromMeanDays(meanDays);
+        if (!Double.isFinite(lambda) || round6(lambda) <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_DELAY_MODEL_INVALID);
+        }
 
         redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA, String.valueOf(round6(lambda)));
         redis.opsForValue().set(RedisKeys.AD_DELAY_MEAN_DAYS, String.valueOf(round4(meanDays)));
@@ -102,10 +109,10 @@ public class DelayModelJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
+        return JobArguments.decimal(a, k, def);
     }
 }

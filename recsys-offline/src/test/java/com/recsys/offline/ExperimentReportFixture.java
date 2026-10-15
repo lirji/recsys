@@ -23,6 +23,9 @@ public final class ExperimentReportFixture {
         };
         try {
             job.run(new DefaultApplicationArguments(Arrays.copyOfRange(args, 4, args.length)));
+        } catch (com.recsys.common.error.PublicErrorException failure) {
+            System.out.println(failure.errorCode().displayMessage());
+            throw failure;
         } finally {
             source.assertClosed(new JdbcTemplate(new DriverManagerDataSource(
                     args[0].replace("ApplicationName=experiment-reader", "ApplicationName=experiment-observer"),

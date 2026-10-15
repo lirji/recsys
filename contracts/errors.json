@@ -1421,6 +1421,55 @@
       "httpStatus": 0,
       "message": "部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试",
       "httpDefault": false
+    },
+    {
+      "name": "JOB_NO_BUCKET_IMPRESSIONS",
+      "code": "JOB_NO_BUCKET_IMPRESSIONS",
+      "httpStatus": 0,
+      "message": "没有满足条件的分桶曝光数据，未生成报表；请检查曝光采集、时间窗口和筛选条件",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_CUPED_START_REQUIRED",
+      "code": "JOB_CUPED_START_REQUIRED",
+      "httpStatus": 0,
+      "message": "启用 CUPED 时必须提供 since 实验开始时间，请补齐参数后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_DELAY_SAMPLES_INSUFFICIENT",
+      "code": "JOB_DELAY_SAMPLES_INSUFFICIENT",
+      "httpStatus": 0,
+      "message": "可用转化延迟样本不足，原延迟模型保持不变；请补齐数据或调整采样条件后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_DELAY_MODEL_INVALID",
+      "code": "JOB_DELAY_MODEL_INVALID",
+      "httpStatus": 0,
+      "message": "转化延迟均值或模型参数无效，原延迟模型保持不变；请检查延迟样本后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_NO_AUDIENCE_SEEDS",
+      "code": "JOB_NO_AUDIENCE_SEEDS",
+      "httpStatus": 0,
+      "message": "没有种子人群，未更新人群包；请先写入种子用户后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_AUDIENCE_VECTORS_UNAVAILABLE",
+      "code": "JOB_AUDIENCE_VECTORS_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "有人群缺少可用种子向量，未完整更新；成功人群可能已更新，缺失人群原包保留，请补齐向量后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_EXPLORATION_EMPTY_SNAPSHOT",
+      "code": "JOB_EXPLORATION_EMPTY_SNAPSHOT",
+      "httpStatus": 0,
+      "message": "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口",
+      "httpDefault": false
     }
   ],
   "families": [

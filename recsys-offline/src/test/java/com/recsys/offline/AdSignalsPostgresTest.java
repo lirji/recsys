@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.offline.persistence.mapper.primary.AdCalibrationMapper;
 import com.recsys.offline.persistence.mapper.primary.AdExplorationMapper;
@@ -29,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** 真实PG/Redis保护广告校准、探索与延迟模型的输入口径及分步发布边界。 */
 @Testcontainers
+@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 class AdSignalsPostgresTest {
     @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
     @Container static final GenericContainer<?> REDIS=new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
@@ -69,9 +73,9 @@ class AdSignalsPostgresTest {
         assertEquals("1,0",value(RedisKeys.adStats(Long.MAX_VALUE)));assertNull(value(RedisKeys.adStats(0)));assertEquals("5",value(RedisKeys.AD_STATS_TOTAL));
         assertEquals("2,4",value(RedisKeys.adCreativeStats(1,11)));assertEquals("1,2",value(RedisKeys.adCreativeStats(1,12)));assertEquals("1,0",value(RedisKeys.adCreativeStats(0,77)));assertEquals("1,0",value(RedisKeys.adCreativeStats(Long.MAX_VALUE,Long.MAX_VALUE)));
     }
-    @Test void emptyExplorationResetsTotalButKeepsMissingAdAndCreativeKeys() {
+    @Test void emptyExplorationResetsTotalButKeepsMissingAdAndCreativeKeys(org.springframework.boot.test.system.CapturedOutput output) {
         redis.opsForValue().set(RedisKeys.adStats(99),"9,8");redis.opsForValue().set(RedisKeys.adCreativeStats(99,999),"7,6");redis.opsForValue().set(RedisKeys.AD_STATS_TOTAL,"9");
-        explore.run(args());assertEquals("0",value(RedisKeys.AD_STATS_TOTAL));assertEquals("9,8",value(RedisKeys.adStats(99)));assertEquals("7,6",value(RedisKeys.adCreativeStats(99,999)));
+        explore.run(args());assertTrue(output.toString().contains("[JOB_EXPLORATION_EMPTY_SNAPSHOT]"));assertEquals("0",value(RedisKeys.AD_STATS_TOTAL));assertEquals("9,8",value(RedisKeys.adStats(99)));assertEquals("7,6",value(RedisKeys.adCreativeStats(99,999)));
     }
     @Test void lateCreativeSqlFailurePreservesAlreadyPublishedAdStatistics() {
         seedExplore();redis.opsForValue().set(RedisKeys.adCreativeStats(1,11),"keep");db.execute("ALTER TABLE ad_event RENAME COLUMN creative_id TO hidden_creative");
@@ -89,9 +93,10 @@ class AdSignalsPostgresTest {
         redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,"keep");redis.opsForValue().set(RedisKeys.AD_DELAY_MEAN_DAYS,"keep");
         new TransactionTemplate(new DataSourceTransactionManager(source)).executeWithoutResult(status->{
             db.execute("INSERT INTO ad_event VALUES('edge',1,NULL,'CLICK',NULL,now()-interval '10 days'),('edge',1,NULL,'CONVERSION',NULL,now()-interval '9 days'),('outside',1,NULL,'CLICK',NULL,now()-interval '10 days 0.000001 seconds'),('outside',1,NULL,'CONVERSION',NULL,now()-interval '8 days')");
-            delay.run(args());assertEquals("keep",value(RedisKeys.AD_DELAY_LAMBDA));delay.run(args("--days=10","--min-samples=1"));assertEquals("1.0",value(RedisKeys.AD_DELAY_MEAN_DAYS));assertEquals("1.0",value(RedisKeys.AD_DELAY_LAMBDA));
+            assertEquals(ErrorCode.JOB_DELAY_SAMPLES_INSUFFICIENT, assertThrows(PublicErrorException.class, () -> delay.run(args())).errorCode());assertEquals("keep",value(RedisKeys.AD_DELAY_LAMBDA));delay.run(args("--days=10","--min-samples=1"));assertEquals("1.0",value(RedisKeys.AD_DELAY_MEAN_DAYS));assertEquals("1.0",value(RedisKeys.AD_DELAY_LAMBDA));
         });
-        db.execute("TRUNCATE ad_event;INSERT INTO ad_event VALUES('zero',1,NULL,'CLICK',NULL,now()),('zero',1,NULL,'CONVERSION',NULL,now())");delay.run(args("--min-samples=1"));assertEquals("1.0",value(RedisKeys.AD_DELAY_LAMBDA));
+        db.execute("TRUNCATE ad_event;INSERT INTO ad_event VALUES('zero',1,NULL,'CLICK',NULL,now()),('zero',1,NULL,'CONVERSION',NULL,now())");assertEquals(ErrorCode.JOB_DELAY_MODEL_INVALID, assertThrows(PublicErrorException.class,
+                () -> delay.run(args("--min-samples=1"))).errorCode());assertEquals("1.0",value(RedisKeys.AD_DELAY_LAMBDA));
     }
     @Test void allThreeJobsCanReadReplicaAndRejectUnknownSourceBeforeMutation() {
         seedCalibration(100);db.execute("INSERT INTO ad_event_log SELECT * FROM ad_event;TRUNCATE ad_event");
@@ -115,6 +120,32 @@ class AdSignalsPostgresTest {
             assertThrows(DataAccessException.class,()->new DelayModelJob(sessions.getMapper(AdDelayMapper.class),limited).run(args("--min-samples=6")));
             assertEquals("0.666667",value(RedisKeys.AD_DELAY_LAMBDA));assertEquals("keep",value(RedisKeys.AD_DELAY_MEAN_DAYS));
         } finally {limitedFactory.destroy();}
+    }
+    @Test void invalidDelayArgumentsAndEmptySamplesLeaveBothOldModelKeys() {
+        redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,"keep");
+        redis.opsForValue().set(RedisKeys.AD_DELAY_MEAN_DAYS,"keep-mean");
+        for (String option : List.of("--min-samples=0", "--min-samples=-1", "--min-samples",
+                "--max-delay-days=NaN", "--max-delay-days=-1", "--days=bad")) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> delay.run(args(option))).errorCode());
+        }
+        assertEquals(ErrorCode.JOB_DELAY_SAMPLES_INSUFFICIENT, assertThrows(PublicErrorException.class,
+                () -> delay.run(args("--min-samples=1"))).errorCode());
+        assertEquals("keep",value(RedisKeys.AD_DELAY_LAMBDA));assertEquals("keep-mean",value(RedisKeys.AD_DELAY_MEAN_DAYS));
+        seedDelay();delay.run(args("--min-samples=6"));
+        assertEquals("0.666667",value(RedisKeys.AD_DELAY_LAMBDA));assertEquals("1.5",value(RedisKeys.AD_DELAY_MEAN_DAYS));
+    }
+    @Test void delayRateRoundedToZeroCannotReplaceUsableOldModel() {
+        redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,"keep");
+        redis.opsForValue().set(RedisKeys.AD_DELAY_MEAN_DAYS,"keep-mean");
+        // 极端但PG可表示的历史输入，保护发布精度把正lambda舍入为0的边界。
+        db.execute("INSERT INTO ad_event VALUES('ancient',1,NULL,'CLICK',NULL,now()-interval '2100000 days'),('ancient',1,NULL,'CONVERSION',NULL,now())");
+        double observed = db.queryForObject("SELECT EXTRACT(EPOCH FROM (cvt.ts-clk.ts))/86400.0 FROM ad_event cvt JOIN ad_event clk ON cvt.request_id=clk.request_id WHERE cvt.event_type='CONVERSION' AND clk.event_type='CLICK'", Double.class);
+        System.out.println("DELAY_PRECISION_FIXTURE_DAYS=" + observed);
+        assertTrue(observed > 2_000_000 && observed < 2_200_000, Double.toString(observed));
+        assertEquals(ErrorCode.JOB_DELAY_MODEL_INVALID, assertThrows(PublicErrorException.class,
+                () -> delay.run(args("--days=0", "--min-samples=1", "--max-delay-days=2200000"))).errorCode());
+        assertEquals("keep",value(RedisKeys.AD_DELAY_LAMBDA));assertEquals("keep-mean",value(RedisKeys.AD_DELAY_MEAN_DAYS));
     }
     private static Throwable root(Throwable error){while(error.getCause()!=null)error=error.getCause();return error;}
     private static String value(String key){return redis.opsForValue().get(key);}

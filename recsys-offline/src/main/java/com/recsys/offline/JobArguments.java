@@ -27,6 +27,12 @@ final class JobArguments {
         catch (NumberFormatException failure) { throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, failure); }
     }
 
+    /** 大ID和时间戳直接按long解析，避免double转换丢失身份精度。 */
+    static long longInteger(ApplicationArguments args, String key, long fallback) {
+        try { return Long.parseLong(text(args, key, Long.toString(fallback))); }
+        catch (NumberFormatException failure) { throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, failure); }
+    }
+
     /** 非有限数会污染权重与切分，和坏字面量一起在副作用前拒绝。 */
     static double decimal(ApplicationArguments args, String key, double fallback) {
         try {

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -79,14 +82,13 @@ public class AbReportJob implements OfflineJob {
         int cupedMinUsers = intArg(args, "cuped-min-users", 30);
         String until = stringArg(args, "until", null);
         String scene = stringArg(args, "scene", null);
-        if (cupedPreDays < 0) {
-            throw new IllegalArgumentException("--cuped-pre-days 不能为负数");
+        // 极小alpha若舍入到分位点1会使置信区间溢出，也按无法计算的参数拒绝。
+        if (minImpressions < 0 || alpha <= 0 || alpha >= 1 || 1.0 - alpha / 2.0 >= 1.0
+                || power <= 0 || power >= 1 || cupedPreDays < 0 || cupedMinUsers < 2) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         }
         if (cupedPreDays > 0 && since == null) {
-            throw new IllegalArgumentException("启用 CUPED(--cuped-pre-days>0)时必须提供 --since=实验开始时间");
-        }
-        if (cupedMinUsers < 2) {
-            throw new IllegalArgumentException("--cuped-min-users 必须至少为 2");
+            throw new PublicErrorException(ErrorCode.JOB_CUPED_START_REQUIRED);
         }
         double z = AbStats.inverseNormalCdf(1.0 - alpha / 2.0);  // 双侧置信/检验的临界 z
 
@@ -121,9 +123,7 @@ public class AbReportJob implements OfflineJob {
 
         rows.removeIf(r -> r.impressions < minImpressions);
         if (rows.isEmpty()) {
-            log.warn("无分桶曝光数据(IMPRESSION 行)。线上侧需先经 rec-engine 推荐(ExposureLogger 写曝光)再统计;" +
-                    "若刚导入历史评分,user_behavior 里还没有 IMPRESSION 行。");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_BUCKET_IMPRESSIONS);
         }
 
         long totalImp = rows.stream().mapToLong(r -> r.impressions).sum();
@@ -341,15 +341,14 @@ public class AbReportJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.integer(a, k, def);
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.decimal(a, k, def);
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
+        return JobArguments.text(a, k, def);
     }
 }

@@ -810,6 +810,36 @@ export const errorCodes = {
       '部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试',
     httpStatus: 0,
   },
+  JOB_NO_BUCKET_IMPRESSIONS: {
+    message: '没有满足条件的分桶曝光数据，未生成报表；请检查曝光采集、时间窗口和筛选条件',
+    httpStatus: 0,
+  },
+  JOB_CUPED_START_REQUIRED: {
+    message: '启用 CUPED 时必须提供 since 实验开始时间，请补齐参数后重试',
+    httpStatus: 0,
+  },
+  JOB_DELAY_SAMPLES_INSUFFICIENT: {
+    message: '可用转化延迟样本不足，原延迟模型保持不变；请补齐数据或调整采样条件后重试',
+    httpStatus: 0,
+  },
+  JOB_DELAY_MODEL_INVALID: {
+    message: '转化延迟均值或模型参数无效，原延迟模型保持不变；请检查延迟样本后重试',
+    httpStatus: 0,
+  },
+  JOB_NO_AUDIENCE_SEEDS: {
+    message: '没有种子人群，未更新人群包；请先写入种子用户后重试',
+    httpStatus: 0,
+  },
+  JOB_AUDIENCE_VECTORS_UNAVAILABLE: {
+    message:
+      '有人群缺少可用种子向量，未完整更新；成功人群可能已更新，缺失人群原包保留，请补齐向量后重试',
+    httpStatus: 0,
+  },
+  JOB_EXPLORATION_EMPTY_SNAPSHOT: {
+    message:
+      '本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

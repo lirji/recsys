@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +77,7 @@ public class AdExploreStatsJob implements OfflineJob {
         log.info("ad-explore-stats 完成:写入 {} 个广告统计 + {} 个创意级统计(DCO),全局总曝光 {} → {}",
                 ads[0], cstats.size(), totalImp.get(), RedisKeys.AD_STATS_TOTAL);
         if (ads[0] == 0) {
-            log.warn("无 ad_event;先跑 --job=sim-ad-events 或积累真实曝光。新广告将全部得最大探索加成。");
+            log.warn("{}", ErrorCode.JOB_EXPLORATION_EMPTY_SNAPSHOT.displayMessage());
         }
     }
 }

@@ -107,7 +107,7 @@ class ExperimentReportPostgresTest {
         assertEquals("2", rows.get(0)[1]); assertEquals("1", rows.get(0)[6]); assertEquals("1", rows.get(0)[23]);
     }
     @Test void emptyFilteringValidationAndSqlErrorsDoNotCreateReport() throws Exception {
-        assertNoReport(run("ab")); seedAb(); assertNoReport(run("ab", "--min-impressions=10000"));
+        rejectedAb("JOB_NO_BUCKET_IMPRESSIONS"); seedAb(); rejectedAb("JOB_NO_BUCKET_IMPRESSIONS", "--min-impressions=10000");
         for (String option : List.of("--cuped-pre-days=-1", "--cuped-pre-days=2", "--cuped-min-users=1", "--behavior-table=user_behavior;SELECT 1", "--since=bad-date")) {
             var failed = invoke("ab", false, option); assertNotEquals(0, failed.status, option); assertNoReport(failed);
         }
@@ -117,9 +117,25 @@ class ExperimentReportPostgresTest {
         var failure = invoke("ab", true); assertNotEquals(0, failure.status);
     }
     @Test void parameterValuesRemainBoundAndCannotChangeSourceOrSceneFilter() throws Exception {
-        seedAb(); assertNoReport(run("ab", "--scene=home' OR 1=1 --"));
+        seedAb(); rejectedAb("JOB_NO_BUCKET_IMPRESSIONS", "--scene=home' OR 1=1 --");
         var failed = invoke("ab", false, "--since=2026-04-01' OR 1=1 --"); assertNotEquals(0, failed.status); assertNoReport(failed);
         assertEquals(4, db.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'", Integer.class));
+    }
+
+    @Test void abParameterFailuresHaveSafeCodesAndCannotProduceReports() throws Exception {
+        seedAb();
+        for (String option : List.of("--alpha=0", "--alpha=1", "--alpha=NaN", "--alpha=1e-300",
+                "--power=0", "--power=1", "--power=Infinity", "--min-impressions=-1", "--cuped-pre-days=-1",
+                "--cuped-min-users=1", "--since", "--alpha")) {
+            rejectedAb("JOB_INVALID_ARGUMENT", option);
+        }
+        rejectedAb("JOB_CUPED_START_REQUIRED", "--cuped-pre-days=2");
+        hash("AB_ALL", run("ab", "--min-impressions=0"));
+    }
+    private void rejectedAb(String code,String...options) throws Exception {
+        var failed=invoke("ab",false,options);
+        assertNotEquals(0,failed.status,failed.log);assertTrue(failed.log.contains("["+code+"]"),failed.log);
+        assertNoReport(failed);
     }
 
     private void seedAd() {

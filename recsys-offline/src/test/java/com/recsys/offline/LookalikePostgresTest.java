@@ -1,12 +1,14 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.derived.LookalikeMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.DefaultApplicationArguments;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -26,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** 真实pgvector/Redis保护质心去重、可空投影、扩散上限和失败前旧包保留。 */
 @Testcontainers
+@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 class LookalikePostgresTest {
     @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>(
             DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"));
@@ -57,13 +60,18 @@ class LookalikePostgresTest {
     @AfterAll static void close(){if(redisFactory!=null)redisFactory.destroy();}
     @BeforeEach void reset(){db.execute("TRUNCATE ad_audience_seed,user_embedding");try(var connection=redis.getConnectionFactory().getConnection()){connection.serverCommands().flushDb();}}
 
-    @Test void distinctSeedVectorsDriveCentroidAndSeedUnionReplacesOldPackage() throws Exception {
+    @Test void distinctSeedVectorsDriveCentroidAndSeedUnionReplacesOldPackage(org.springframework.boot.test.system.CapturedOutput output) throws Exception {
         db.execute("INSERT INTO ad_audience_seed VALUES(7,1),(7,1),(7,2),(7,99),(8,5),(NULL,77)");
         db.execute("INSERT INTO user_embedding VALUES(1,'[1,0]'),(2,'[0,1]'),(3,'[1,1]'),(4,'[-1,0]'),(5,NULL)");
         redis.opsForSet().add(key(7),"old");redis.opsForSet().add(key(8),"keep");
-        job.run(new DefaultApplicationArguments("--top-n=1"));
+        assertEquals(ErrorCode.JOB_AUDIENCE_VECTORS_UNAVAILABLE, assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments("--top-n=1"))).errorCode());
+        assertTrue(output.toString().contains("[JOB_AUDIENCE_VECTORS_UNAVAILABLE]"));
         assertEquals(Set.of("1","2","99","3"),members(7));
         assertEquals(Set.of("keep"),members(8));assertFalse(redis.hasKey(RedisKeys.adAudience(0L)));
+        db.execute("UPDATE user_embedding SET embedding='[0,1]' WHERE user_id=5");
+        job.run(new DefaultApplicationArguments("--top-n=1"));
+        assertTrue(members(8).contains("5"));assertFalse(members(8).contains("keep"));
         source.assertClosed(admin,"lookalike-reader");
     }
 
@@ -85,9 +93,13 @@ class LookalikePostgresTest {
 
     @Test void absentSeedsOrAllNullVectorsLeaveExistingPackage() throws Exception {
         redis.opsForSet().add(key(7),"keep");
-        job.run(new DefaultApplicationArguments());job.run(new DefaultApplicationArguments("--audience=7"));
+        assertEquals(ErrorCode.JOB_NO_AUDIENCE_SEEDS, assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments())).errorCode());
+        assertEquals(ErrorCode.JOB_AUDIENCE_VECTORS_UNAVAILABLE, assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments("--audience=7"))).errorCode());
         db.execute("INSERT INTO ad_audience_seed VALUES(7,1),(7,2);INSERT INTO user_embedding VALUES(1,NULL)");
-        job.run(new DefaultApplicationArguments("--audience=7"));
+        assertEquals(ErrorCode.JOB_AUDIENCE_VECTORS_UNAVAILABLE, assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments("--audience=7"))).errorCode());
         assertEquals(Set.of("keep"),members(7));source.assertClosed(admin,"lookalike-reader");
     }
 
@@ -102,7 +114,10 @@ class LookalikePostgresTest {
     @Test void invalidLimitFailsBeforeRedisReplacementAndConnectionCanBeReused() throws Exception {
         db.execute("INSERT INTO ad_audience_seed VALUES(7,1);INSERT INTO user_embedding VALUES(1,'[1,0]')");
         redis.opsForSet().add(key(7),"keep");
-        assertThrows(DataAccessException.class,()->job.run(new DefaultApplicationArguments("--top-n=-1")));
+        for (String option : new String[]{"--top-n=-1", "--top-n", "--audience", "--audience=9223372036854775808"}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments(option))).errorCode());
+        }
         assertEquals(Set.of("keep"),members(7));source.assertClosed(admin,"lookalike-reader");
         job.run(new DefaultApplicationArguments("--top-n=1"));assertEquals(Set.of("1"),members(7));
         source.assertClosed(admin,"lookalike-reader");
@@ -115,6 +130,13 @@ class LookalikePostgresTest {
             assertThrows(BadSqlGrammarException.class,()->job.run(new DefaultApplicationArguments()));
             assertEquals(Set.of("keep"),members(7));source.assertClosed(admin,"lookalike-reader");
         }finally{db.execute("ALTER TABLE hidden_embedding RENAME TO user_embedding");}
+    }
+
+    @Test void largestAudienceIdentityIsSelectedWithoutFloatingPointConversion() throws Exception {
+        db.execute("INSERT INTO ad_audience_seed VALUES(9223372036854775807,1);INSERT INTO user_embedding VALUES(1,'[1,0]')");
+        job.run(new DefaultApplicationArguments("--audience=9223372036854775807", "--top-n=0"));
+        assertEquals(Set.of("1"), members(Long.MAX_VALUE));
+        source.assertClosed(admin,"lookalike-reader");
     }
 
     private static String key(long audience){return RedisKeys.adAudience(audience);}

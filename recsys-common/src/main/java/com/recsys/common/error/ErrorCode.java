@@ -203,7 +203,14 @@ public enum ErrorCode {
     JOB_MODEL_HEADS_UNAVAILABLE("JOB_MODEL_HEADS_UNAVAILABLE", "没有可用的 pCTR/pCVR 模型输出，请确认多目标模型已启用且加载成功", 0),
     JOB_MODEL_HEADS_PARTIAL("JOB_MODEL_HEADS_PARTIAL", "部分候选缺少 pCTR/pCVR，已过滤这些候选；结果仅覆盖可用的模型输出", 0),
     JOB_EVALUATION_RESULT_INVALID("JOB_EVALUATION_RESULT_INVALID", "模型输出或评估计算包含无效数值，请检查模型及调参范围后重试", 0),
-    JOB_EVALUATION_PARTIAL_FAILED("JOB_EVALUATION_PARTIAL_FAILED", "部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试", 0);
+    JOB_EVALUATION_PARTIAL_FAILED("JOB_EVALUATION_PARTIAL_FAILED", "部分用户评估失败，作业未完整完成；已生成的部分结果可能保留，请修复依赖或模型输出后重试", 0),
+    JOB_NO_BUCKET_IMPRESSIONS("JOB_NO_BUCKET_IMPRESSIONS", "没有满足条件的分桶曝光数据，未生成报表；请检查曝光采集、时间窗口和筛选条件", 0),
+    JOB_CUPED_START_REQUIRED("JOB_CUPED_START_REQUIRED", "启用 CUPED 时必须提供 since 实验开始时间，请补齐参数后重试", 0),
+    JOB_DELAY_SAMPLES_INSUFFICIENT("JOB_DELAY_SAMPLES_INSUFFICIENT", "可用转化延迟样本不足，原延迟模型保持不变；请补齐数据或调整采样条件后重试", 0),
+    JOB_DELAY_MODEL_INVALID("JOB_DELAY_MODEL_INVALID", "转化延迟均值或模型参数无效，原延迟模型保持不变；请检查延迟样本后重试", 0),
+    JOB_NO_AUDIENCE_SEEDS("JOB_NO_AUDIENCE_SEEDS", "没有种子人群，未更新人群包；请先写入种子用户后重试", 0),
+    JOB_AUDIENCE_VECTORS_UNAVAILABLE("JOB_AUDIENCE_VECTORS_UNAVAILABLE", "有人群缺少可用种子向量，未完整更新；成功人群可能已更新，缺失人群原包保留，请补齐向量后重试", 0),
+    JOB_EXPLORATION_EMPTY_SNAPSHOT("JOB_EXPLORATION_EMPTY_SNAPSHOT", "本次没有广告事件，全局曝光总数已发布为 0；未出现的广告与创意旧统计保留，请确认输入窗口", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

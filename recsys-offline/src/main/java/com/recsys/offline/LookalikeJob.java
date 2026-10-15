@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
@@ -23,7 +26,7 @@ import java.util.Set;
  * 用向量相似把小种子扩成大受众的经典做法(种子人群向量扩散)。
  *
  * <p>参数:--top-n(每个人群扩散上限,默认 1000)、--audience(只处理某个 audience_id,默认全部)。
- * 种子无可用向量的人群跳过；缺表或查询失败仍向上抛出，当前人群旧包保留。
+ * 种子无可用向量的人群保留旧包并继续其他人群，最终报告未完整更新；缺表或查询失败仍向上抛出。
  */
 @Component
 public class LookalikeJob implements OfflineJob {
@@ -49,19 +52,21 @@ public class LookalikeJob implements OfflineJob {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int topN = intArg(args, "top-n", 1000);
-        Long only = args.containsOption("audience") ? Long.parseLong(args.getOptionValues("audience").get(0)) : null;
+        Long only = args.containsOption("audience") ? JobArguments.longInteger(args, "audience", 0) : null;
+        if (topN < 0) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
 
         List<Long> audiences = only != null ? List.of(only) : mapper.audienceIds();
         if (audiences.isEmpty()) {
-            log.warn("无 ad_audience_seed 种子人群;先灌种子(audience_id,user_id)再跑 lookalike");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_AUDIENCE_SEEDS);
         }
 
+        int missingVectors = 0;
         for (Long aud : audiences) {
             List<Long> seeds = mapper.seedUsers(aud);
             List<float[]> seedVecs = seedVectors(seeds);
             if (seedVecs.isEmpty()) {
-                log.warn("人群 {} 的种子无 user_embedding,跳过", aud);
+                missingVectors++;
+                log.warn("{}；人群={}", ErrorCode.JOB_AUDIENCE_VECTORS_UNAVAILABLE.displayMessage(), aud);
                 continue;
             }
             float[] centroid = centroid(seedVecs);
@@ -81,6 +86,8 @@ public class LookalikeJob implements OfflineJob {
             redis.opsForSet().add(key, pkg.toArray(new String[0]));
             log.info("lookalike 人群 {} 完成:种子 {} → 扩散 {}(top-n={})", aud, seeds.size(), pkg.size(), topN);
         }
+        // 成功人群仍沿原规则发布，但缺向量不能让DAG误判整批已完成。
+        if (missingVectors > 0) throw new PublicErrorException(ErrorCode.JOB_AUDIENCE_VECTORS_UNAVAILABLE);
     }
 
     /** 取种子用户的 user_embedding(文本解析,避免 PGvector 类型注册问题,与召回侧降级一致)。 */
@@ -123,6 +130,6 @@ public class LookalikeJob implements OfflineJob {
     }
 
     private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0).trim()) : def;
+        return JobArguments.integer(a, k, def);
     }
 }

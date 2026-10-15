@@ -38,5 +38,14 @@ class JobArgumentsTest {
             assertFalse(failure.getMessage().contains("private"));
         }
     }
+    @Test void longArgumentsKeepLargestIdentityAndRejectOverflowOrBareValues() {
+        assertEquals(42, JobArguments.longInteger(new DefaultApplicationArguments(), "audience", 42));
+        assertEquals(Long.MAX_VALUE, JobArguments.longInteger(new DefaultApplicationArguments(
+                "--audience=9223372036854775807"), "audience", 0));
+        for (String option : new String[]{"--audience", "--audience=9223372036854775808", "--audience=1.5"}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class,
+                    () -> JobArguments.longInteger(new DefaultApplicationArguments(option), "audience", 0)).errorCode());
+        }
+    }
 
 }
