@@ -19,7 +19,7 @@ import java.util.Map;
  * 物料元数据只读端点(控制台把裸 {@code #itemId} 显示成真实标题/类目的地基)。
  * 走 /api/console/** —— 网关已路由到 console:8090,无需改网关。
  *
- * <p>复用 content 库的 {@link ContentService}(默认 {@code JdbcContentService} 读主库 {@code item} 表)。
+ * <p>复用 content 库的 {@link ContentService}(默认 {@code MybatisContentService} 读主库 {@code item} 表)。
  * DB 不可用/物品缺失一律优雅降级:返回已找到子集(空则空),让前端退回 {@code #itemId} 展示。
  */
 @RestController

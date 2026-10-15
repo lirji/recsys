@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01 DONE/PASS，当前准备正常 Git 交付，下一片 MP02a。
+`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a DONE/PASS，clean宿主19项全通过；待Git交付后进入MP02b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -14,6 +14,7 @@
 
 ## 已完成
 
+- MP02a内容CRUD与共享源clean宿主19项全通过，见MP02A_RESULT。
 - MP00 全仓694测试，0失败/错误；MP01 用户8项+推荐3项真实集成全部通过。见 [MP01_RESULT](MP01_RESULT.md)。
 
 - 盘点 13 模块/131 个生产 Java 候选文件、45 个 SQL 资源。
@@ -26,11 +27,11 @@
 - 计划已批准；无需重复确认。
 - MP00、MP01 已通过；MP02～MP15 迁移/全仓验收/结构终审未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
-- MP01 Git commit / merge / push 待执行，不能提前声称已发布。
+- MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885 仍在运行，未记全绿。
 
 ## 已修改文件
 
-MP01：根 pom、新 recsys-persistence、recsys-user 的依赖/服务/Mapper/XML/装配/PG测试、本目录文档。历史SQL和原用户文件未修改。
+MP01已交付。当前MP02a：recsys-content依赖/物品服务改名/Mapper/XML/行映射/配置/PG测试、共享text[]处理器、content-service/console注释、本目录证据。历史SQL和原用户文件未修改。
 
 ## 保护内容
 
@@ -49,8 +50,8 @@ MP01：根 pom、新 recsys-persistence、recsys-user 的依赖/服务/Mapper/XM
 
 ## 下一步
 
-1. 显式路径交付 MP01，保护原有8个文件，核对远程CI。
-2. 执行 MP02a 内容 CRUD 特征测试与迁移，再执行 MP02b 全文/目录查询。
+1. 显式路径交付MP02a，核查MP01 CI 38711518885实际结论。
+2. 执行MP02b全文/目录查询特征测试与迁移。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt

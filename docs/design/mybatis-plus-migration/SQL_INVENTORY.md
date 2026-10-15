@@ -112,9 +112,9 @@
 |---|---:|---:|---|
 | [com/recsys/content/AbstractItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/AbstractItemCatalogReader.java) | 5 | 16 | TODO |
 | [com/recsys/content/DbItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/DbItemCatalogReader.java) | 4 | 0 | TODO |
-| [com/recsys/content/JdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/JdbcContentService.java) | 5 | 5 | TODO |
+| [com/recsys/content/JdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/MybatisContentService.java) | 5 | 5 | MP02a DONE：MybatisContentService / ItemMapper.xml；见MP02A_RESULT |
 | [com/recsys/content/ReplicaItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaItemCatalogReader.java) | 4 | 0 | TODO |
-| [com/recsys/content/ReplicaJdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaJdbcContentService.java) | 4 | 0 | TODO |
+| [com/recsys/content/ReplicaJdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaMybatisContentService.java) | 4 | 0 | MP02a DONE：MybatisContentService / ItemMapper.xml；见MP02A_RESULT |
 
 ### recsys-offline
 

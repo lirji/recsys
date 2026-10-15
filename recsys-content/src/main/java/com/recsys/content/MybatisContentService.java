@@ -1,12 +1,12 @@
 package com.recsys.content;
 
+import com.recsys.content.persistence.mapper.ItemMapper;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.content.persistence.model.ItemRow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
-import java.sql.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,17 +14,17 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 基于 JdbcTemplate 的物品服务实现,默认读共享 {@code item} 表。
+ * 基于 Mapper/XML 的物品服务实现,默认读共享 {@code item} 表。
  *
  * <p>#3 content 拆库:{@code findByIds} 是排序逐候选类目特征(rank×10 + ad CVR)的热路径读。item 表名由
- * {@link #table()} 给,{@code recsys.content.item-source=replica} 时激活的子类 {@link ReplicaJdbcContentService}
+ * {@link #table()} 给,{@code recsys.content.item-source=replica} 时激活的子类 {@link ReplicaMybatisContentService}
  * 覆盖为读本地副本 {@code item_local}。owner(content-service)不设该开关 → 默认 {@code db} → 读权威 {@code item}。
  */
 @Service
 @ConditionalOnProperty(name = "recsys.content.item-source", havingValue = "db", matchIfMissing = true)
-public class JdbcContentService implements ContentService {
+public class MybatisContentService implements ContentService {
 
-    private final JdbcTemplate jdbc;
+    private final ItemMapper items;
 
     // item 元数据近乎静态(title/category/tags/popularity 极少变),却在一次推荐里被粗排/精排/重排
     // 分别查库(每次全列 SELECT,含 description/tags 重字段)。进程内 TTL 缓存把 2、3 次重复读变成
@@ -37,8 +37,8 @@ public class JdbcContentService implements ContentService {
     private int cacheMaxSize = 50000;
     private final ConcurrentHashMap<Long, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    public JdbcContentService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public MybatisContentService(ItemMapper items) {
+        this.items = items;
     }
 
     /** 缓存条目:item + 过期时刻(毫秒)。 */
@@ -46,27 +46,9 @@ public class JdbcContentService implements ContentService {
     }
 
     /** item 目录表名:{@code item}(共享,默认)或子类覆盖为 {@code item_local}(本地副本)。 */
-    protected String table() {
-        return "item";
+    protected CatalogTable table() {
+        return CatalogTable.OWNED;
     }
-
-    private static final RowMapper<Item> MAPPER = (rs, n) -> {
-        Array tagsArr = rs.getArray("tags");
-        List<String> tags = new ArrayList<>();
-        if (tagsArr != null) {
-            String[] arr = (String[]) tagsArr.getArray();
-            for (String t : arr) {
-                tags.add(t);
-            }
-        }
-        return new Item(
-                rs.getLong("item_id"),
-                rs.getString("title"),
-                rs.getString("category"),
-                tags,
-                rs.getString("description"),
-                rs.getDouble("popularity"));
-    };
 
     @Override
     public Item findById(long itemId) {
@@ -119,21 +101,15 @@ public class JdbcContentService implements ContentService {
 
     /** 直读单个 item(不经缓存)。 */
     private Item fetchById(long itemId) {
-        List<Item> list = jdbc.query(
-                "SELECT item_id,title,category,tags,description,popularity FROM " + table() + " WHERE item_id=?",
-                MAPPER, itemId);
-        return list.isEmpty() ? null : list.get(0);
+        ItemRow row = table() == CatalogTable.OWNED ? items.selectById(itemId) : items.findById(table(), itemId);
+        return row == null ? null : row.toItem();
     }
 
     /** 直读一批 item(不经缓存),返回 id->Item(不存在的 id 不在 map 中)。 */
     private Map<Long, Item> fetchByIds(List<Long> itemIds) {
         Map<Long, Item> result = new HashMap<>();
-        String placeholders = String.join(",", itemIds.stream().map(x -> "?").toList());
-        List<Item> items = jdbc.query(
-                "SELECT item_id,title,category,tags,description,popularity FROM " + table()
-                        + " WHERE item_id IN (" + placeholders + ")",
-                MAPPER, itemIds.toArray());
-        for (Item it : items) {
+        for (ItemRow row : items.findByIds(table(), itemIds)) {
+            Item it = row.toItem();
             result.put(it.itemId(), it);
         }
         return result;
@@ -162,34 +138,17 @@ public class JdbcContentService implements ContentService {
 
     @Override
     public List<Long> allItemIds() {
-        return jdbc.queryForList("SELECT item_id FROM " + table() + " ORDER BY item_id", Long.class);
+        return items.allItemIds(table());
     }
 
     @Override
     public void save(Item item) {
-        // tags 作为 text[] 写入
-        String[] tagsArr = item.tags() == null ? new String[0] : item.tags().toArray(new String[0]);
-        jdbc.update(con -> {
-            var ps = con.prepareStatement(
-                    "INSERT INTO " + table() + "(item_id,title,category,tags,description,popularity) " +
-                    "VALUES(?,?,?,?,?,?) " +
-                    "ON CONFLICT(item_id) DO UPDATE SET " +
-                    "title=EXCLUDED.title,category=EXCLUDED.category,tags=EXCLUDED.tags," +
-                    "description=EXCLUDED.description,popularity=EXCLUDED.popularity");
-            ps.setLong(1, item.itemId());
-            ps.setString(2, item.title());
-            ps.setString(3, item.category());
-            ps.setArray(4, con.createArrayOf("text", tagsArr));
-            ps.setString(5, item.description());
-            ps.setDouble(6, item.popularity());
-            return ps;
-        });
+        items.upsert(table(), item, item.tags() == null ? List.of() : item.tags());
         cache.remove(item.itemId());   // 写后失效:下次读回填最新
     }
 
     @Override
     public long count() {
-        Long c = jdbc.queryForObject("SELECT count(*) FROM " + table(), Long.class);
-        return c == null ? 0 : c;
+        return table() == CatalogTable.OWNED ? items.selectCount(null) : items.countFrom(table());
     }
 }

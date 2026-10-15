@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.content.persistence.mapper.ItemMapper">
+    <resultMap id="itemRow" type="com.recsys.content.persistence.model.ItemRow">
+        <id property="itemId" column="item_id"/>
+        <result property="title" column="title"/>
+        <result property="category" column="category"/>
+        <result property="tags" column="tags" typeHandler="com.recsys.persistence.typehandler.TextListTypeHandler"/>
+        <result property="description" column="description"/>
+        <result property="popularity" column="popularity"/>
+    </resultMap>
+
+    <!-- 封闭枚举映射固定标识符，绝不把请求字符串拼成表名。 -->
+    <sql id="tableName">
+        <choose>
+            <when test="source.name() == 'REPLICA'">item_local</when>
+            <otherwise>item</otherwise>
+        </choose>
+    </sql>
+
+    <select id="findById" resultMap="itemRow">
+        SELECT item_id, title, category, tags, description, popularity
+        FROM <include refid="tableName"/>
+        WHERE item_id = #{itemId}
+    </select>
+
+    <select id="findByIds" resultMap="itemRow">
+        SELECT item_id, title, category, tags, description, popularity
+        FROM <include refid="tableName"/>
+        WHERE item_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="allItemIds" resultType="java.lang.Long">
+        SELECT item_id FROM <include refid="tableName"/> ORDER BY item_id
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO <include refid="tableName"/> (item_id, title, category, tags, description, popularity)
+        VALUES (#{item.itemId}, #{item.title}, #{item.category},
+            #{tags,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler},
+            #{item.description}, #{item.popularity})
+        ON CONFLICT (item_id) DO UPDATE SET title = EXCLUDED.title, category = EXCLUDED.category,
+            tags = EXCLUDED.tags, description = EXCLUDED.description, popularity = EXCLUDED.popularity
+    </insert>
+
+    <select id="countFrom" resultType="long">
+        SELECT count(*) FROM <include refid="tableName"/>
+    </select>
+</mapper>
