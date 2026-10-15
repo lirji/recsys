@@ -3,12 +3,11 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.AdSimulationWriter;
+import com.recsys.offline.persistence.mapper.addb.AdSimulationMapper;
+import com.recsys.offline.persistence.mapper.sharded.AdSimulationCatalogMapper;
 import org.springframework.stereotype.Component;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,16 +42,13 @@ public class SimAdEventsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SimAdEventsJob.class);
 
-    /** #3:ad_event 写走 adDbJdbc —— ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)。 */
-    private final JdbcTemplate jdbc;
-    /** 分片库:ad / ad_creative 读(ds_0/ds_1)。 */
-    private final JdbcTemplate sharded;
+    private final AdSimulationWriter writer;
+    private final AdSimulationCatalogMapper catalog;
 
-    public SimAdEventsJob(@org.springframework.beans.factory.annotation.Qualifier("adDbJdbc") JdbcTemplate jdbc,
-                          @org.springframework.beans.factory.annotation.Qualifier("adShardingJdbc")
-                          JdbcTemplate sharded) {
-        this.jdbc = jdbc;
-        this.sharded = sharded;
+    /** 广告事件批写与分片目录查询分开，保留原广告自有源/分片源边界。 */
+    public SimAdEventsJob(AdSimulationWriter writer, AdSimulationCatalogMapper catalog) {
+        this.writer = writer;
+        this.catalog = catalog;
     }
 
     @Override
@@ -68,7 +64,7 @@ public class SimAdEventsJob implements OfflineJob {
         double meanDelayDays = dblArg(args, "conv-delay-days", 3.0);
         // 注:用裸 MAX(ad_id)(不裹 COALESCE)——ShardingSphere 的聚合归并能识别裸聚合、跨分片合并成单值;
         // COALESCE(MAX(...),0) 会被当成普通投影 → 每分片各返一行 → queryForObject 报 "actual 2"。空表则 null。
-        Long maxAdId = sharded.queryForObject("SELECT MAX(ad_id) FROM ad", Long.class);
+        Long maxAdId = catalog.maxAdId();
         if (maxAdId == null || maxAdId == 0) {
             log.warn("无广告,先跑 --job=seed-ads");
             return;
@@ -82,9 +78,9 @@ public class SimAdEventsJob implements OfflineJob {
         long windowMs = (long) days * 86_400_000L;
         double meanDelayMs = meanDelayDays * 86_400_000L;
 
-        List<Object[]> impressions = new ArrayList<>();
-        List<Object[]> clicks = new ArrayList<>();
-        List<Object[]> conversions = new ArrayList<>();
+        List<AdSimulationMapper.Impression> impressions = new ArrayList<>();
+        List<AdSimulationMapper.Action> clicks = new ArrayList<>();
+        List<AdSimulationMapper.Action> conversions = new ArrayList<>();
         long observedConv = 0;                                    // 转化时刻 <= now 的(已到达)
         for (int i = 0; i < requests; i++) {
             String reqId = "sim-" + UUID.randomUUID();
@@ -99,16 +95,17 @@ public class SimAdEventsJob implements OfflineJob {
             long creativeId = pickCreative(creativesByAd.get(adId), rnd);
             double creativeFactor = creativeCtrFactor(creativeId);
             double effCtr = Math.min(0.95, trueCtr * creativeFactor);
-            impressions.add(new Object[]{reqId, userId, adId, position, pctr, charged, new Timestamp(eventTs), creativeId});
+            impressions.add(new AdSimulationMapper.Impression(reqId, userId, adId, position, pctr, charged,
+                    new Timestamp(eventTs), creativeId > 0 ? creativeId : null));
             if (rnd.nextDouble() < effCtr) {
-                clicks.add(new Object[]{reqId, userId, adId, new Timestamp(eventTs)});
+                clicks.add(new AdSimulationMapper.Action(reqId, userId, adId, new Timestamp(eventTs)));
                 // 点击后按真实 CVR 转化(教学用,给 oCPC 反馈控制 ad-ocpc 喂数据)
                 double trueCvr = 0.08 + 0.22 * rnd.nextDouble();
                 if (rnd.nextDouble() < trueCvr) {
                     // 指数延迟:delay = -mean·ln(U);转化时刻 = 点击时刻 + 延迟(可能晚于 now = 尚未到达)
                     long delayMs = (long) (-meanDelayMs * Math.log(1.0 - rnd.nextDouble()));
                     long convTs = eventTs + delayMs;
-                    conversions.add(new Object[]{reqId, userId, adId, new Timestamp(convTs)});
+                    conversions.add(new AdSimulationMapper.Action(reqId, userId, adId, new Timestamp(convTs)));
                     if (convTs <= now) {
                         observedConv++;
                     }
@@ -116,70 +113,9 @@ public class SimAdEventsJob implements OfflineJob {
             }
         }
 
-        jdbc.batchUpdate(
-                "INSERT INTO ad_event(request_id,query,user_id,ad_id,position,event_type," +
-                "pctr,pctr_calib,charged_price,ts,creative_id) VALUES(?, 'sim', ?,?,?, 'IMPRESSION', ?,?,?,?,?)",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement ps, int i) throws SQLException {
-                        Object[] r = impressions.get(i);
-                        ps.setString(1, (String) r[0]);
-                        ps.setLong(2, (Long) r[1]);
-                        ps.setLong(3, (Long) r[2]);
-                        ps.setInt(4, (Integer) r[3]);
-                        ps.setDouble(5, (Double) r[4]);  // pctr
-                        ps.setDouble(6, (Double) r[4]);  // pctr_calib(模拟时=原始,未校准)
-                        ps.setDouble(7, (Double) r[5]);  // charged_price
-                        ps.setTimestamp(8, (Timestamp) r[6]);
-                        long cid = (Long) r[7];
-                        if (cid > 0) {
-                            ps.setLong(9, cid);
-                        } else {
-                            ps.setNull(9, java.sql.Types.BIGINT);
-                        }
-                    }
-
-                    @Override
-                    public int getBatchSize() {
-                        return impressions.size();
-                    }
-                });
-
-        jdbc.batchUpdate(
-                "INSERT INTO ad_event(request_id,user_id,ad_id,event_type,ts) VALUES(?,?,?, 'CLICK', ?)",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement ps, int i) throws SQLException {
-                        Object[] r = clicks.get(i);
-                        ps.setString(1, (String) r[0]);
-                        ps.setLong(2, (Long) r[1]);
-                        ps.setLong(3, (Long) r[2]);
-                        ps.setTimestamp(4, (Timestamp) r[3]);
-                    }
-
-                    @Override
-                    public int getBatchSize() {
-                        return clicks.size();
-                    }
-                });
-
-        jdbc.batchUpdate(
-                "INSERT INTO ad_event(request_id,user_id,ad_id,event_type,ts) VALUES(?,?,?, 'CONVERSION', ?)",
-                new BatchPreparedStatementSetter() {
-                    @Override
-                    public void setValues(PreparedStatement ps, int i) throws SQLException {
-                        Object[] r = conversions.get(i);
-                        ps.setString(1, (String) r[0]);
-                        ps.setLong(2, (Long) r[1]);
-                        ps.setLong(3, (Long) r[2]);
-                        ps.setTimestamp(4, (Timestamp) r[3]);
-                    }
-
-                    @Override
-                    public int getBatchSize() {
-                        return conversions.size();
-                    }
-                });
+        writer.impressions(impressions);
+        writer.clicks(clicks);
+        writer.conversions(conversions);
 
         log.info("sim-ad-events 完成(教学用):曝光 {} / 点击 {} / 转化 {}(其中已到达 {},尚未到达 {} = 延迟删失)。"
                         + "经验 CTR≈{}。窗口 {} 天、平均转化延迟 {} 天。"
@@ -193,9 +129,10 @@ public class SimAdEventsJob implements OfflineJob {
     private Map<Long, long[]> loadCreatives() {
         Map<Long, List<Long>> tmp = new HashMap<>();
         try {
-            sharded.query("SELECT ad_id, creative_id FROM ad_creative WHERE status='active' ORDER BY ad_id, creative_id",
-                    (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                            tmp.computeIfAbsent(rs.getLong("ad_id"), k -> new ArrayList<>()).add(rs.getLong("creative_id")));
+            catalog.scanCreatives(context -> {
+                var row = context.getResultObject();
+                tmp.computeIfAbsent(row.adId(), k -> new ArrayList<>()).add(row.creativeId());
+            });
         } catch (Exception e) {
             log.warn("无 ad_creative(先跑 --job=seed-ads 造创意),曝光不归因创意: {}", e.getMessage());
             return Map.of();

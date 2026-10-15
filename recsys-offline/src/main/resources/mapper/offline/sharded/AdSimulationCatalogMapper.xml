@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.sharded.AdSimulationCatalogMapper">
+    <resultMap id="creative" type="com.recsys.offline.persistence.mapper.sharded.AdSimulationCatalogMapper$Creative">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="creativeId" column="creative_id" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <select id="maxAdId" resultType="java.lang.Long" useCache="false">SELECT MAX(ad_id) FROM ad</select>
+    <select id="scanCreatives" resultMap="creative" useCache="false">
+        SELECT ad_id,creative_id FROM ad_creative WHERE status='active' ORDER BY ad_id,creative_id
+    </select>
+</mapper>

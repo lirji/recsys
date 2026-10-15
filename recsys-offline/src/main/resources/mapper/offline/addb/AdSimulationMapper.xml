@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.addb.AdSimulationMapper">
+    <insert id="insertImpression">
+        INSERT INTO ad_event(request_id,query,user_id,ad_id,position,event_type,pctr,pctr_calib,charged_price,ts,creative_id)
+        VALUES(#{row.requestId},'sim',#{row.userId},#{row.adId},#{row.position},'IMPRESSION',
+               #{row.pctr},#{row.pctr},#{row.charged},#{row.timestamp,jdbcType=TIMESTAMP},#{row.creativeId,jdbcType=BIGINT})
+    </insert>
+    <insert id="insertClick">
+        INSERT INTO ad_event(request_id,user_id,ad_id,event_type,ts)
+        VALUES(#{row.requestId},#{row.userId},#{row.adId},'CLICK',#{row.timestamp,jdbcType=TIMESTAMP})
+    </insert>
+    <insert id="insertConversion">
+        INSERT INTO ad_event(request_id,user_id,ad_id,event_type,ts)
+        VALUES(#{row.requestId},#{row.userId},#{row.adId},'CONVERSION',#{row.timestamp,jdbcType=TIMESTAMP})
+    </insert>
+</mapper>

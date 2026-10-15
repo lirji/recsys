@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4本地提交13f6a9ef；MP13b5本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -344,3 +344,15 @@ DONE/PASS，见MP13B4_RESULT。旧PG4项、新离线85项/19类、全仓24 react
 ## MP13b5最终验证
 
 DONE/PASS，见MP13B5_RESULT。旧真实四源/双分片/Redis4项、新初次专项6项、最终全离线91项/20类、24 reactor编译和hygiene通过；14源指纹bf4d50f931376cdc6f7d46ceab1cb9aea1b3ef1a652443e64403fe58bb692f41。额外发现全NULL record投影返回null行，真实PG复现后以原跳过语义修复，不能把所有后续可空投影默认为非null对象。两次种子重建各23条分片INSERT参数/路由与旧日志一致（只排除创意生成ID），原随机算法未改。37c51498的CI38745667586五门禁全部SUCCESS，b4=13f6a9ef随本片交付；之后SimAdEventsJob等离线写入。
+
+## MP13b6入口：大批次语义必须实测（尚未改产品代码）
+
+b4=13f6a9ef、b5=abe65238均已正常ff/push main。下一片SimAdEventsJob的默认20000条曝光不能整批foreach多VALUES（9参数/行已超PG绑定上限），也不能随意拆成新事务边界。原三次JdbcTemplate.batchUpdate分别写曝光/点击/转化，外层事务可统一约束；无外层事务时pgJDBC可能在内部Sync时提交部分批次，不能推断整批天然原子。MP13b1～b4的1000行批次已有独立实证，不能泛化到此大批次。
+
+依据冻结版本[pgJDBC 42.7.3执行器](https://raw.githubusercontent.com/pgjdbc/pgjdbc/REL42.7.3/pgjdbc/src/main/java/org/postgresql/core/v3/QueryExecutorImpl.java)、[MyBatis 3.5.19 BatchExecutor](https://raw.githubusercontent.com/mybatis/mybatis-3/mybatis-3.5.19/src/main/java/org/apache/ibatis/executor/BatchExecutor.java)和[MyBatis-Spring 3.0.5资源管理](https://raw.githubusercontent.com/mybatis/spring/mybatis-spring-3.0.5/src/main/java/org/mybatis/spring/transaction/SpringManagedTransaction.java)，优先评估实际factory.openSession(ExecutorType.BATCH)内Mapper逐条addBatch、每个原逻辑batch只flushStatements一次，try-with-resources关闭；保持原DataSource实际autoCommit/Spring绑定资源，不开启新事务、不调用主动commit。SpringManagedTransaction在autoCommit或Spring事务中不自行rollback/commit，close用DataSourceUtils释放。不能直接用BATCH SqlSessionTemplate逐行调用（无事务会每条flush），也不能在已有SIMPLE事务会话上强换executor。需要保留Spring数据异常分类，检查PersistenceException/MyBatisExceptionTranslator对BatchUpdateException的翻译。候选辅助工具只能接受Mapper回调，不能接受任意SQL；是否抽共享由SimRecEvents同类真实需求决定。
+
+实施前先真实双PG分片旧测试：空MAX跨分片聚合、活动创意有序读取/缺表降级、默认20000规模成功、第二类CLICK失败保留此前曝光、曝光第15000行约束失败的实际已提交数量/连接关闭、外层事务回滚。记录实际结果后冻结批边界，不凭假设加入TransactionTemplate。测试ad_event独占schema用BIGSERIAL及CHECK(id<>15000)注入晚失败；每例TRUNCATE RESTART IDENTITY；模拟时间/UUID不变，断言事件关系/NULL列/未来转化及原序列。迁移后还应覆盖同一个外层事务中已有SIMPLE会话后执行独立batch并继续读取、提交/回滚。
+
+## MP13b6最终验证
+
+DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98项/21类、24 reactor测试编译、hygiene通过；8源指纹64f742e08116c22b7f449431a698a83117abbfd556131633d3e540e38e8730b3。实际晚失败已提交14847条（旧/新一致），CLICK失败保留5000曝光；同源Spring事务提交/回滚、已有SIMPLE会话与独立BATCH共存、连接关闭通过。SpringMapperBatches不接受SQL、不主动commit、不新增事务，需继续保持这个边界。abe65238远程CI38747583977五门禁全部SUCCESS。下一片SimRecEventsJob原单大批次、主源item/item_local选择、RATING热度和sim-rec来源清理；同样先旧PG测试，再复用batch helper。
