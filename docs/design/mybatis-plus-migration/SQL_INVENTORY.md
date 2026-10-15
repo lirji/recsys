@@ -149,11 +149,11 @@
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
-| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1：四源会话完成，旧JdbcTemplate待作业退出；见MP13A1_RESULT |
+| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1/b5：四源工厂/Mapper扫描及真实种子路由完成，旧JdbcTemplate待其余作业退出 |
 | [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
 | [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | TODO |
-| [com/recsys/offline/SeedAdsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SeedAdsJob.java) | 10 | 11 | TODO |
+| [com/recsys/offline/SeedAdsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SeedAdsJob.java) | 10 | 11 | DONE MP13b5：真实四源/双分片；见MP13B5_RESULT |
 | [com/recsys/offline/SimAdEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdEventsJob.java) | 7 | 5 | TODO |
 | [com/recsys/offline/SimAdUpliftDataJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdUpliftDataJob.java) | 7 | 2 | TODO |
 | [com/recsys/offline/SimRecEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimRecEventsJob.java) | 7 | 4 | TODO |
@@ -228,7 +228,7 @@
 
 ## 追加关联路径
 
-- `recsys-offline/.../ItemQuery.java`：来源表参数工具，无 JDBC/SQL 关键词不等于无迁移关联；与 BehaviorQuery 一并核验。
+- `recsys-offline/.../ItemQuery.java`：MP13b5已复用CatalogTable封闭枚举，SeedAds走source；其余旧作业table白名单入口待后续退出，最终核销所有调用方。
 - 各 `src/test`、`src/main/resources/application*.yml`、sharding 配置、应用启动类、pom、Testcontainers fixtures 与浏览器宿主：按 Mapper 注册/构造参数变化定位，不能只机械改上表。
 - schema/摘要校验 SELECT 属于生产查询，也迁移到明确 Mapper；连接初始化语句和 DDL 脚本 runner 属于有说明的例外。
 

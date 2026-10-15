@@ -4,10 +4,13 @@ import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.offline.persistence.mapper.primary.SeedItemMapper;
+import com.recsys.offline.persistence.mapper.derived.SeedItemVectorMapper;
+import com.recsys.offline.persistence.mapper.addb.SeedAdVectorMapper;
+import com.recsys.offline.persistence.mapper.sharded.SeedAdMapper;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -36,21 +39,16 @@ public class SeedAdsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SeedAdsJob.class);
 
-    /** 主库:item 读(content 本地副本,留主库)。 */
-    private final JdbcTemplate jdbc;
-    /** #3:ad_event/ad_embedding 写走 adDbJdbc —— ad-serving 自有库(默认 recsys,AD_PG_DB 设则拆库)。 */
-    private final JdbcTemplate adDb;
-    /** #3:item_embedding 读走派生库(默认 recsys,DERIVED_PG_DB 设则拆库)。 */
-    private final JdbcTemplate derived;
-    /** 分片库:advertiser/ad/bidword/ad_creative 写(按分片键落 ds_0/ds_1)。 */
-    private final JdbcTemplate sharded;
+    private final SeedItemMapper catalog;
+    private final SeedAdVectorMapper adDb;
+    private final SeedItemVectorMapper derived;
+    private final SeedAdMapper sharded;
     private final StringRedisTemplate redis;
 
-    public SeedAdsJob(JdbcTemplate jdbc, @Qualifier("adDbJdbc") JdbcTemplate adDb,
-                      @Qualifier("derivedJdbc") JdbcTemplate derived,
-                      @Qualifier("adShardingJdbc") JdbcTemplate sharded,
-                      StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 四路Mapper复用原逻辑数据源，种子算法和Redis编排保持在作业。 */
+    public SeedAdsJob(SeedItemMapper catalog, SeedAdVectorMapper adDb,
+                      SeedItemVectorMapper derived, SeedAdMapper sharded, StringRedisTemplate redis) {
+        this.catalog = catalog;
         this.adDb = adDb;
         this.derived = derived;
         this.sharded = sharded;
@@ -72,7 +70,7 @@ public class SeedAdsJob implements OfflineJob {
             clear();
         }
         Random rnd = new Random(seed);
-        String it = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
+        CatalogTable it = ItemQuery.source(args);   // #3:item 读来源表(默认 item)
 
         // 取一批随机 item 作为广告创意(优先有向量的 item,让 SEMANTIC_AD 可用)
         List<long[]> items = new ArrayList<>(); // [itemId]
@@ -80,15 +78,14 @@ public class SeedAdsJob implements OfflineJob {
         List<String> categories = new ArrayList<>();
         // #3 拆库:item(主库)与 item_embedding(派生库)可能不同库,拆两读 + Java 排序,等价原 ORDER BY has_vec DESC, random()
         java.util.Set<Long> withVec = new java.util.HashSet<>(
-                derived.queryForList("SELECT item_id FROM item_embedding", Long.class));
-        List<Object[]> pool = jdbc.query("SELECT item_id, title, category FROM " + it,
-                (rs, n) -> new Object[]{rs.getLong("item_id"), rs.getString("title"), rs.getString("category")});
+                derived.itemIds());
+        List<SeedItemMapper.Item> pool = catalog.items(it);
         java.util.Collections.shuffle(pool, rnd);   // random()
-        pool.sort((a, b) -> Boolean.compare(withVec.contains((Long) b[0]), withVec.contains((Long) a[0])));  // has_vec DESC(稳定排序保随机)
-        for (Object[] row : pool.subList(0, Math.min(numAds, pool.size()))) {
-            items.add(new long[]{(Long) row[0]});
-            titles.add((String) row[1]);
-            categories.add((String) row[2]);
+        pool.sort((a, b) -> Boolean.compare(withVec.contains(b.itemId()), withVec.contains(a.itemId())));  // has_vec DESC(稳定排序保随机)
+        for (SeedItemMapper.Item row : pool.subList(0, Math.min(numAds, pool.size()))) {
+            items.add(new long[]{row.itemId()});
+            titles.add(row.title());
+            categories.add(row.category());
         }
         if (items.isEmpty()) {
             log.warn("item 表为空,先跑 --job=import-items");
@@ -99,8 +96,7 @@ public class SeedAdsJob implements OfflineJob {
         // 1. 广告主:日预算对数均匀分布在 [50, 5000] 元(分片库:按 advertiser_id 落 ds_0/ds_1)
         for (int a = 1; a <= numAdvertisers; a++) {
             double budget = Math.round(50 * Math.pow(100, rnd.nextDouble())); // 50..5000
-            sharded.update("INSERT INTO advertiser(advertiser_id,name,daily_budget,status) " +
-                    "VALUES(?,?,?, 'active')", a, "advertiser-" + a, budget);
+            sharded.insertAdvertiser(a, "advertiser-" + a, budget);
         }
 
         // 2/3. 广告 + 竞价词 + Redis 倒排。显式 id 经分片键(advertiser_id/ad_id)路由;bidword.id 用自增计数
@@ -118,18 +114,15 @@ public class SeedAdsJob implements OfflineJob {
             boolean ocpc = (i % 10) < 3;
             String optType = ocpc ? "OCPC" : "CPC";
             Double targetCpa = ocpc ? round2(5 + 15 * rnd.nextDouble()) : null;
-            sharded.update("INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score," +
-                            "status,optimization_type,target_cpa) VALUES(?,?,?,?,?,?, 'active',?,?)",
-                    adId, advertiserId, itemId, title, "https://example.com/ad/" + adId, quality,
-                    optType, targetCpa);
+            sharded.insertAd(new SeedAdMapper.Ad(adId, advertiserId, itemId, title,
+                    "https://example.com/ad/" + adId, quality, optType, targetCpa));
             adItem.add(new long[]{adId, itemId});
 
             // DCO 创意(docs/05 §7 M7):每个广告 N 套创意(标题变体),多臂老虎机在线择优展示
             String[] variants = creativeTitles(title, creativesPerAd);
             for (int v = 0; v < variants.length; v++) {
                 // creative_id 不传 → ShardingSphere Snowflake keygen 填充(seed 不需要回读该 id)
-                sharded.update("INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(?,?,?, 'active')",
-                        adId, variants[v], "https://example.com/ad/" + adId + "?c=" + v);
+                sharded.insertCreative(adId, variants[v], "https://example.com/ad/" + adId + "?c=" + v);
             }
 
             Set<String> keywords = keywords(title, categories.get(i));
@@ -137,10 +130,7 @@ public class SeedAdsJob implements OfflineJob {
                 double bid = round2(clamp(Math.exp(rnd.nextGaussian() * 0.5), 0.2, 10.0)); // 对数正态≈1元
                 String matchType = kw.contains(" ") ? "PHRASE" : "EXACT";
                 long bidwordId = ++bidwordSeq;
-                sharded.update(
-                        "INSERT INTO bidword(id,ad_id,keyword,match_type,bid,bid_mode) " +
-                        "VALUES(?,?,?,?,?, 'CPC')",
-                        bidwordId, adId, kw, matchType, bid);
+                sharded.insertBidword(bidwordId, adId, kw, matchType, bid);
                 bidwordCount++;
                 // Redis 倒排:member 自包含,score=bid
                 String member = BidwordInvCodec.encode(adId, bidwordId, itemId, advertiserId, quality);
@@ -148,21 +138,15 @@ public class SeedAdsJob implements OfflineJob {
             }
         }
 
-        // 4. ad_embedding(主库单表 ds_0):按已知 (adId,itemId) 从 item_embedding 拷贝。
-        //    不能再 JOIN 分片的 ad(跨数据源),用逐条 INSERT ... SELECT(ad_embedding 与 item_embedding 同在主库)。
-        // #3 拆库:ad_embedding 与 item_embedding 可能不同库(AD_PG_DB),故从主库读向量(text 传输)→ 写 adDb。
+        // 4. 派生库读向量文本，再写广告自有库；按已知(adId,itemId)复制，避免跨源JOIN。
         int embRows = 0;
         for (long[] ai : adItem) {
-            List<String[]> vecs = derived.query(
-                    "SELECT embedding::text AS v, model FROM item_embedding WHERE item_id = ?",
-                    (rs, n) -> new String[]{rs.getString("v"), rs.getString("model")}, ai[1]);
-            if (vecs.isEmpty() || vecs.get(0)[0] == null) {
+            List<SeedItemVectorMapper.Vector> vecs = derived.vectors(ai[1]);
+            // MyBatis会把全NULL投影映射为null行；与原getString返回NULL一样跳过缺向量项。
+            if (vecs.isEmpty() || vecs.get(0) == null || vecs.get(0).vector() == null) {
                 continue;
             }
-            embRows += adDb.update(
-                    "INSERT INTO ad_embedding(ad_id, embedding, model) VALUES(?, CAST(? AS vector), ?) " +
-                    "ON CONFLICT (ad_id) DO NOTHING",
-                    ai[0], vecs.get(0)[0], vecs.get(0)[1]);
+            embRows += adDb.insertVector(ai[0], vecs.get(0).vector(), vecs.get(0).model());
         }
 
         log.info("seed-ads 完成:广告主 {} / 广告 {} / 创意 {}(每广告 {} 套,DCO 用)/ 竞价词 {} / ad_embedding {} 条;"
@@ -206,13 +190,13 @@ public class SeedAdsJob implements OfflineJob {
 
     private void clear() {
         // #3:ad_event / ad_embedding 走 ad-serving 自有库(adDb)
-        adDb.execute("TRUNCATE ad_event, ad_embedding");
+        adDb.clearData();
         // 分片库:advertiser/ad/bidword/ad_creative(ShardingSphere 把 TRUNCATE 下发到各分片;逐表避免依赖多表语法)
-        for (String t : new String[]{"bidword", "ad_creative", "ad", "advertiser"}) {
+        for (SeedAdMapper.ClearTable t : SeedAdMapper.ClearTable.values()) {
             try {
-                sharded.execute("TRUNCATE " + t);
+                sharded.truncate(t);
             } catch (Exception e) {
-                log.warn("清空分片表 {} 失败(忽略): {}", t, e.getMessage());
+                log.warn("清空分片表 {} 失败(忽略): {}", t.code(), e.getMessage());
             }
         }
         try {

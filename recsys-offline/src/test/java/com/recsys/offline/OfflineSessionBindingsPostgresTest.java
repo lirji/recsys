@@ -4,8 +4,6 @@ import org.apache.ibatis.session.LocalCacheScope;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
-import org.mybatis.spring.annotation.MapperScan;
-import org.mybatis.spring.mapper.MapperScannerConfigurer;
 import org.mybatis.spring.mapper.MapperFactoryBean;
 import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -45,15 +43,8 @@ class OfflineSessionBindingsPostgresTest {
     @Test void fourSessionsUseOriginalOwnersAndOnlyTheirOwnXml() {
         var imports=OfflineAdShardingConfig.class.getAnnotation(Import.class);
         assertNotNull(imports);
-        var scan = OfflineAdShardingConfig.class.getAnnotation(MapperScan.class);
-        assertNotNull(scan);
-        var runner=new ApplicationContextRunner().withUserConfiguration(imports.value())
-                .withBean(MapperScannerConfigurer.class, () -> {
-                    var scanner = new MapperScannerConfigurer();
-                    scanner.setBasePackage(scan.basePackageClasses()[0].getPackageName());
-                    scanner.setSqlSessionTemplateBeanName(scan.sqlSessionTemplateRef());
-                    return scanner;
-                });
+        // 宿主Import已包含实际四路Mapper扫描配置，无需在测试中复制扫描规则。
+        var runner = new ApplicationContextRunner().withUserConfiguration(imports.value());
         for(var source:SOURCES.entrySet()) {
             runner=runner.withBean(SOURCE_BEANS.get(source.getKey()),DataSource.class,source::getValue);
         }
@@ -63,6 +54,11 @@ class OfflineSessionBindingsPostgresTest {
             assertNotNull(context.getBean(PositiveFeedbackMapper.class));
             var feedbackFactory = context.getBean("&positiveFeedbackMapper", MapperFactoryBean.class);
             assertSame(context.getBean("sqlSessionTemplate"), feedbackFactory.getSqlSession());
+            for (var binding : Map.of("seedAdMapper", "shardedSqlSessionTemplate",
+                    "seedAdVectorMapper", "adDbSqlSessionTemplate", "seedItemVectorMapper", "derivedSqlSessionTemplate").entrySet()) {
+                var factory = context.getBean("&" + binding.getKey(), MapperFactoryBean.class);
+                assertSame(context.getBean(binding.getValue()), factory.getSqlSession());
+            }
             for(var source:SOURCES.entrySet()) {
                 var sessions=context.getBean(SESSION_BEANS.get(source.getKey()),SqlSessionTemplate.class);
                 var config=sessions.getSqlSessionFactory().getConfiguration();

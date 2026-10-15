@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.derived.SeedItemVectorMapper">
+    <resultMap id="vector" type="com.recsys.offline.persistence.mapper.derived.SeedItemVectorMapper$Vector">
+        <constructor>
+            <arg name="vector" column="v" javaType="java.lang.String"/>
+            <arg name="model" column="model" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <select id="itemIds" resultType="long" useCache="false">SELECT item_id FROM item_embedding</select>
+    <select id="vectors" resultMap="vector" useCache="false">
+        SELECT embedding::text AS v,model FROM item_embedding WHERE item_id=#{itemId}
+    </select>
+</mapper>

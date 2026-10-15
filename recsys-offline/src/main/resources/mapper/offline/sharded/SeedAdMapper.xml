@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.sharded.SeedAdMapper">
+    <insert id="insertAdvertiser">
+        INSERT INTO advertiser(advertiser_id,name,daily_budget,status) VALUES(#{id},#{name},#{budget},'active')
+    </insert>
+    <insert id="insertAd">
+        INSERT INTO ad(ad_id,advertiser_id,item_id,title,landing_url,quality_score,status,optimization_type,target_cpa)
+        VALUES(#{ad.adId},#{ad.advertiserId},#{ad.itemId},#{ad.title},#{ad.landingUrl},#{ad.quality},'active',
+               #{ad.optimizationType},#{ad.targetCpa,jdbcType=DOUBLE})
+    </insert>
+    <insert id="insertCreative">
+        INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(#{adId},#{title},#{landingUrl},'active')
+    </insert>
+    <insert id="insertBidword">
+        INSERT INTO bidword(id,ad_id,keyword,match_type,bid,bid_mode) VALUES(#{id},#{adId},#{keyword},#{matchType},#{bid},'CPC')
+    </insert>
+    <update id="truncate">
+        TRUNCATE
+        <choose>
+            <when test="table.name() == 'BIDWORD'">bidword</when>
+            <when test="table.name() == 'CREATIVE'">ad_creative</when>
+            <when test="table.name() == 'AD'">ad</when>
+            <otherwise>advertiser</otherwise>
+        </choose>
+    </update>
+</mapper>

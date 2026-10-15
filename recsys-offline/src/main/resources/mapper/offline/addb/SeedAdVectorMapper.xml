@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.addb.SeedAdVectorMapper">
+    <update id="clearData">TRUNCATE ad_event,ad_embedding</update>
+    <insert id="insertVector">
+        INSERT INTO ad_embedding(ad_id,embedding,model) VALUES(#{adId},CAST(#{vector} AS vector),#{model,jdbcType=VARCHAR})
+        ON CONFLICT(ad_id) DO NOTHING
+    </insert>
+</mapper>
