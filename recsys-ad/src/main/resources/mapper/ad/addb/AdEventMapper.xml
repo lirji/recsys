@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.AdEventMapper">
+    <insert id="insertImpressions">
+        INSERT INTO ad_event(request_id,query,user_id,ad_id,bidword_id,position,event_type,
+            pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,creative_id)
+        VALUES
+        <foreach collection="ads" item="ad" separator=",">
+            (#{requestId},#{query},#{userId},#{ad.adId},#{ad.bidwordId},#{ad.position},'IMPRESSION',
+            #{ad.pctr},#{ad.pctrCalibrated},#{ad.ecpm},#{ad.chargedPrice},#{ad.relevance},#{bucket},
+            <choose><when test="ad.creativeId > 0">#{ad.creativeId}</when><otherwise>NULL</otherwise></choose>)
+        </foreach>
+    </insert>
+    <select id="chargedPrice" resultType="java.lang.Double">
+        SELECT charged_price FROM ad_event WHERE request_id=#{requestId} AND ad_id=#{adId} AND event_type='IMPRESSION' LIMIT 1
+    </select>
+    <insert id="insertFeedback">
+        INSERT INTO ad_event(request_id,user_id,ad_id,event_type) VALUES(#{requestId},#{userId},#{adId},#{event})
+    </insert>
+</mapper>

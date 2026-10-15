@@ -6,7 +6,11 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.UpliftAssignmentMapper;
+import com.recsys.ad.persistence.model.UpliftAssignmentRow;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import javax.sql.DataSource;
 import org.springframework.stereotype.Service;
 
 import java.nio.ByteBuffer;
@@ -27,11 +31,14 @@ import java.util.Map;
 public class UpliftAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(UpliftAssignmentService.class);
-    private final JdbcTemplate jdbc;
+    private final UpliftAssignmentMapper mapper;
+    private final DataSource dataSource;
     private final AdProperties props;
 
-    public UpliftAssignmentService(@Qualifier("adDbJdbc") JdbcTemplate jdbc, AdProperties props) {
-        this.jdbc = jdbc; this.props = props;
+    /** SQL和DDL复用广告自有源，采样开关关闭时不建立数据库连接。 */
+    public UpliftAssignmentService(UpliftAssignmentMapper mapper, @Qualifier("adDbDataSource") DataSource dataSource,
+                                   AdProperties props) {
+        this.mapper = mapper; this.dataSource = dataSource; this.props = props;
     }
 
     @PostConstruct
@@ -39,18 +46,13 @@ public class UpliftAssignmentService {
         // 关闭采样时不要触碰广告库；表结构由 19_ad_uplift.sql/基础 schema 负责。
         if (!props.getUplift().isCollectionEnabled()) return;
         try {
-            jdbc.execute("CREATE TABLE IF NOT EXISTS ad_uplift_assignment(" +
-                    "assignment_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,user_id BIGINT NOT NULL," +
-                    "ad_id BIGINT NOT NULL,advertiser_id BIGINT NOT NULL,item_id BIGINT NOT NULL," +
-                    "treatment BOOLEAN NOT NULL,propensity DOUBLE PRECISION NOT NULL CHECK(propensity>0 AND propensity<1)," +
-                    "pctr DOUBLE PRECISION NOT NULL,pcvr DOUBLE PRECISION NOT NULL,quality DOUBLE PRECISION NOT NULL," +
-                    "relevance DOUBLE PRECISION NOT NULL,bid DOUBLE PRECISION NOT NULL,ad_bucket TEXT,model_version TEXT," +
-                    "assigned_at TIMESTAMP NOT NULL,outcome_due_at TIMESTAMP NOT NULL,UNIQUE(request_id,ad_id))");
+            new ResourceDatabasePopulator(new ClassPathResource("db/bootstrap/ad-uplift-assignment.sql")).execute(dataSource);
         } catch (Exception e) {
             log.warn("uplift assignment 表初始化失败,采样将 fail-open: {}", e.getMessage());
         }
     }
 
+    /** 仅持久化成功的控制组移除末位；冲突、窗口抑制和异常继续展示原广告。 */
     public Result collect(String requestId, long userId, List<SponsoredAd> ads,
                           List<AdCandidate> candidates, Map<Long, Double> pcvrByItem,
                           Map<Long, UpliftEstimate> estimates, String adBucket) {
@@ -69,20 +71,12 @@ public class UpliftAssignmentService {
         UpliftEstimate estimate = estimates == null ? null : estimates.get(target.adId());
         String version = estimate == null ? "baseline" : estimate.modelVersion();
         try {
-            int inserted = jdbc.update("WITH locked AS (SELECT pg_advisory_xact_lock(hashtextextended(?,0))) " +
-                            "INSERT INTO ad_uplift_assignment(" +
-                            "assignment_id,request_id,user_id,ad_id,advertiser_id,item_id,treatment,propensity," +
-                            "pctr,pcvr,quality,relevance,bid,ad_bucket,model_version,assigned_at,outcome_due_at) " +
-                            "SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM locked WHERE NOT EXISTS(" +
-                            "SELECT 1 FROM ad_uplift_assignment WHERE user_id=? AND advertiser_id=? AND outcome_due_at>?) " +
-                            "ON CONFLICT DO NOTHING",
-                    userId + ":" + target.advertiserId(),
-                    requestId + ":" + target.adId(), requestId, userId, target.adId(), target.advertiserId(),
-                    target.itemId(), treatment, treatmentPropensity, target.pctr(),
-                    pcvrByItem.getOrDefault(target.itemId(), 0.0), candidate.quality(), target.relevance(),
-                    candidate.bid(), adBucket, version, Timestamp.from(now),
-                    Timestamp.from(now.plus(cfg.getOutcomeHorizonDays(), ChronoUnit.DAYS)),
-                    userId, target.advertiserId(), Timestamp.from(now));
+            var row = new UpliftAssignmentRow(requestId + ":" + target.adId(), requestId, userId,
+                    target.adId(), target.advertiserId(), target.itemId(), treatment, treatmentPropensity,
+                    target.pctr(), pcvrByItem.getOrDefault(target.itemId(), 0.0), candidate.quality(),
+                    target.relevance(), candidate.bid(), adBucket, version, Timestamp.from(now),
+                    Timestamp.from(now.plus(cfg.getOutcomeHorizonDays(), ChronoUnit.DAYS)));
+            int inserted = mapper.insertIfEligible(userId + ":" + target.advertiserId(), row);
             if (inserted != 1) return new Result(ads, false, false);
         } catch (Exception e) {
             log.warn("uplift assignment 落库失败,fail-open 展示 req={}: {}", requestId, e.getMessage());

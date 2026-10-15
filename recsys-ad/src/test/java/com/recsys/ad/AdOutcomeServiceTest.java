@@ -1,7 +1,9 @@
 package com.recsys.ad;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.AdConversionFactMapper;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyDouble;
 
 import java.time.Instant;
 
@@ -18,10 +20,10 @@ class AdOutcomeServiceTest {
 
     @Test
     void duplicateEventIdIsReportedAsIdempotentRetry() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.update(anyString(), any(), any(), any(), any(), any(), any()))
+        AdConversionFactMapper mapper = mock(AdConversionFactMapper.class);
+        when(mapper.insert(anyString(), anyLong(), anyLong(), anyString(), anyDouble(), any(java.sql.Timestamp.class)))
                 .thenReturn(1, 0);
-        AdOutcomeService service = new AdOutcomeService(jdbc);
+        AdOutcomeService service = new AdOutcomeService(mapper);
         Instant occurredAt = Instant.parse("2026-09-01T00:00:00Z");
 
         assertTrue(service.record("evt-1", 10L, 20L, "purchase", 99.0, occurredAt));
@@ -30,11 +32,11 @@ class AdOutcomeServiceTest {
 
     @Test
     void invalidOutcomeDoesNotReachDatabase() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        AdOutcomeService service = new AdOutcomeService(jdbc);
+        AdConversionFactMapper mapper = mock(AdConversionFactMapper.class);
+        AdOutcomeService service = new AdOutcomeService(mapper);
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.record("", 10L, 20L, "purchase", 1.0, Instant.now()));
-        verifyNoInteractions(jdbc);
+        verifyNoInteractions(mapper);
     }
 }

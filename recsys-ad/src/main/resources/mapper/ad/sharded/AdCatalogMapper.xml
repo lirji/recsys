@@ -45,4 +45,10 @@
         SELECT ad_id, id AS bidword_id, keyword, bid FROM bidword
         WHERE keyword = ANY(#{keywords,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}) ORDER BY bid DESC LIMIT #{limit}
     </select>
+    <resultMap id="attribution" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$Attribution">
+        <constructor><arg column="advertiser_id" javaType="java.lang.Long"/><arg column="optimization_type" javaType="string"/></constructor>
+    </resultMap>
+    <select id="attribution" resultMap="attribution">
+        SELECT advertiser_id,optimization_type FROM ad WHERE ad_id=#{adId}
+    </select>
 </mapper>

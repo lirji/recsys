@@ -5,14 +5,11 @@ import com.recsys.common.constant.RedisKeys;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
+import com.recsys.ad.persistence.mapper.addb.AdEventMapper;
+import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -35,9 +32,9 @@ public class AdEventLogger {
     private static final Duration ATTRIBUTION_TTL = Duration.ofHours(2);
 
     /** 主库:ad_event(单表 ds_0,不分片)。 */
-    private final JdbcTemplate jdbc;
+    private final AdEventMapper events;
     /** 分片库:ad 表(查广告主归因用),按 advertiser_id 分布在 ds_0/ds_1。 */
-    private final JdbcTemplate sharded;
+    private final AdCatalogMapper catalog;
     private final StringRedisTemplate redis;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ad-event-logger");
@@ -45,11 +42,10 @@ public class AdEventLogger {
         return t;
     });
 
-    public AdEventLogger(@Qualifier("adDbJdbc") JdbcTemplate jdbc, @Qualifier("adShardingJdbc") JdbcTemplate sharded,
-                         StringRedisTemplate redis) {
-        // #3:ad_event 读写走 adDbJdbc(默认 recsys,AD_PG_DB 设则 ad-serving 自有库);ad 表仍走 sharded。
-        this.jdbc = jdbc;
-        this.sharded = sharded;
+    /** 事件与归属Mapper分别绑定广告自有库和分片目录，不能跨源JOIN。 */
+    public AdEventLogger(AdEventMapper events, AdCatalogMapper catalog, StringRedisTemplate redis) {
+        this.events = events;
+        this.catalog = catalog;
         this.redis = redis;
     }
 
@@ -67,39 +63,8 @@ public class AdEventLogger {
     private void insertImpressions(String requestId, String query, long userId,
                                    List<SponsoredAd> ads, String adBucket) {
         try {
-            jdbc.batchUpdate(
-                    "INSERT INTO ad_event(request_id,query,user_id,ad_id,bidword_id,position,event_type," +
-                    "pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,creative_id) " +
-                    "VALUES(?,?,?,?,?,?, 'IMPRESSION', ?,?,?,?,?,?,?)",
-                    new BatchPreparedStatementSetter() {
-                        @Override
-                        public void setValues(PreparedStatement ps, int i) throws SQLException {
-                            SponsoredAd a = ads.get(i);
-                            ps.setString(1, requestId);
-                            ps.setString(2, query);
-                            ps.setLong(3, userId);
-                            ps.setLong(4, a.adId());
-                            ps.setLong(5, a.bidwordId());
-                            ps.setInt(6, a.position());
-                            ps.setDouble(7, a.pctr());
-                            ps.setDouble(8, a.pctrCalibrated());
-                            ps.setDouble(9, a.ecpm());
-                            ps.setDouble(10, a.chargedPrice());
-                            ps.setDouble(11, a.relevance());
-                            ps.setString(12, adBucket);
-                            // DCO:展示创意归因(0/默认创意 → NULL,便于按真实创意聚合 CTR)
-                            if (a.creativeId() > 0) {
-                                ps.setLong(13, a.creativeId());
-                            } else {
-                                ps.setNull(13, java.sql.Types.BIGINT);
-                            }
-                        }
-
-                        @Override
-                        public int getBatchSize() {
-                            return ads.size();
-                        }
-                    });
+            // 调用方传入本页最终广告；同一INSERT保持原PG JDBC批次的整批失败语义。
+            events.insertImpressions(requestId, query, userId, ads, adBucket);
         } catch (Exception e) {
             log.warn("广告曝光落库失败 req={}: {}", requestId, e.getMessage());
         }
@@ -139,17 +104,14 @@ public class AdEventLogger {
         }
         // 分库:ad_event(主库单表)与 ad(分片库)不能跨源 JOIN —— 先主库取计费额,再分片库按 ad_id 取广告主+计费模式。
         try {
-            Double charged = jdbc.queryForObject(
-                    "SELECT charged_price FROM ad_event " +
-                    "WHERE request_id = ? AND ad_id = ? AND event_type = 'IMPRESSION' LIMIT 1",
-                    Double.class, requestId, adId);
+            Double charged = events.chargedPrice(requestId, adId);
             if (charged == null) {
                 return null;
             }
-            var row = sharded.queryForMap(
-                    "SELECT advertiser_id, optimization_type FROM ad WHERE ad_id = ?", adId);
-            Long advertiserId = ((Number) row.get("advertiser_id")).longValue();
-            String bidType = (String) row.get("optimization_type");
+            var row = catalog.attribution(adId);
+            if (row == null || row.advertiserId() == null) return null;
+            Long advertiserId = row.advertiserId();
+            String bidType = row.bidType();
             return new ClickAttribution(advertiserId, charged, bidType == null ? "CPC" : bidType);
         } catch (Exception e) {
             return null;
@@ -159,9 +121,7 @@ public class AdEventLogger {
     /** 同步落点击/转化反馈行。event 为 CLICK / CONVERSION。 */
     public void logFeedback(String requestId, long adId, long userId, String event) {
         try {
-            jdbc.update(
-                    "INSERT INTO ad_event(request_id,user_id,ad_id,event_type) VALUES(?,?,?,?)",
-                    requestId, userId, adId, event);
+            events.insertFeedback(requestId, adId, userId, event);
         } catch (Exception e) {
             log.warn("广告反馈落库失败 req={} ad={} event={}: {}", requestId, adId, event, e.getMessage());
         }

@@ -97,6 +97,15 @@ class ShardedAdCatalogPostgresTest {
     }
 
     @Test
+    void attributionReadsOwnersFromBothPhysicalShards() {
+        var mapper = context.getBean(AdCatalogMapper.class);
+        assertThat(mapper.attribution(101)).isEqualTo(new AdCatalogMapper.Attribution(1L, "OCPC"));
+        assertThat(mapper.attribution(102)).isEqualTo(new AdCatalogMapper.Attribution(2L, "CPC"));
+        assertThat(mapper.attribution(108)).isEqualTo(new AdCatalogMapper.Attribution(2L, null));
+        assertThat(mapper.attribution(999)).isNull();
+    }
+
+    @Test
     void filteredAndFullCatalogQueriesKeepServingRulesAcrossBothShards() {
         assertThat(catalog.activeAdDetails(null)).containsOnlyKeys(101L, 102L, 108L, 111L);
         assertThat(catalog.activeAdDetails(List.of(101L, 102L, 103L, 104L, 106L)))

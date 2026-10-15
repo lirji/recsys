@@ -48,4 +48,9 @@ public interface AdCatalogMapper {
             return bid == null ? 0 : bid;
         }
     }
+    /** 归因回退只读广告归属和优化方式，保持单行查询的重复行失败语义。 */
+    Attribution attribution(@Param("adId") long adId);
+
+    /** 归属允许NULL，调用者继续按原规则将无效归属作为无归因。 */
+    record Attribution(Long advertiserId, String bidType) { }
 }

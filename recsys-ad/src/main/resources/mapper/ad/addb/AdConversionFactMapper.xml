@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.AdConversionFactMapper">
+    <insert id="insert">
+        INSERT INTO ad_conversion_fact(event_id,advertiser_id,user_id,objective,conversion_value,occurred_at)
+        VALUES(#{eventId},#{advertiserId},#{userId},#{objective},#{value},#{occurredAt}) ON CONFLICT(event_id) DO NOTHING
+    </insert>
+</mapper>

@@ -4,7 +4,9 @@ import com.recsys.common.ad.AdCandidate;
 import com.recsys.common.ad.AdChannel;
 import com.recsys.common.ad.SponsoredAd;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.UpliftAssignmentMapper;
+import com.recsys.ad.persistence.model.UpliftAssignmentRow;
+import javax.sql.DataSource;
 
 import java.util.List;
 import java.util.Map;
@@ -38,22 +40,24 @@ class UpliftAssignmentServiceTest {
 
     @Test
     void disabledCollectionDoesNotTouchDatabaseAtStartup() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        UpliftAssignmentService service = new UpliftAssignmentService(jdbc, new AdProperties());
+        UpliftAssignmentMapper mapper = mock(UpliftAssignmentMapper.class);
+        DataSource dataSource = mock(DataSource.class);
+        UpliftAssignmentService service = new UpliftAssignmentService(mapper, dataSource, new AdProperties());
 
         service.ensureTables();
 
-        verifyNoInteractions(jdbc);
+        verifyNoInteractions(mapper, dataSource);
     }
 
     @Test
     void persistedControlAssignmentReallyRemovesLastSlot() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+        UpliftAssignmentMapper mapper = mock(UpliftAssignmentMapper.class);
+        DataSource dataSource = mock(DataSource.class);
+        when(mapper.insertIfEligible(anyString(), any(UpliftAssignmentRow.class))).thenReturn(1);
         AdProperties props = new AdProperties();
         props.getUplift().setCollectionEnabled(true);
         props.getUplift().setControlRate(0.5);
-        UpliftAssignmentService service = new UpliftAssignmentService(jdbc, props);
+        UpliftAssignmentService service = new UpliftAssignmentService(mapper, dataSource, props);
         long controlUser = 1L;
         while (UpliftAssignmentService.uniform(controlUser, props.getUplift().getSalt()) < 0.5) {
             controlUser++;
@@ -70,6 +74,6 @@ class UpliftAssignmentServiceTest {
         assertTrue(result.assigned());
         assertFalse(result.treatment());
         assertTrue(result.ads().isEmpty(), "control 必须真的留空，不能形成曝光/扣费输入");
-        verify(jdbc).update(anyString(), any(Object[].class));
+        verify(mapper).insertIfEligible(anyString(), any(UpliftAssignmentRow.class));
     }
 }

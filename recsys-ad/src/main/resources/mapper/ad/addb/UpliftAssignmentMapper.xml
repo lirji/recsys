@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.UpliftAssignmentMapper">
+    <insert id="insertIfEligible">
+        WITH locked AS (SELECT pg_advisory_xact_lock(hashtextextended(#{lockKey},0)))
+        INSERT INTO ad_uplift_assignment(assignment_id,request_id,user_id,ad_id,advertiser_id,item_id,treatment,propensity,
+            pctr,pcvr,quality,relevance,bid,ad_bucket,model_version,assigned_at,outcome_due_at)
+        SELECT #{row.assignmentId},#{row.requestId},#{row.userId},#{row.adId},#{row.advertiserId},#{row.itemId},
+            #{row.treatment},#{row.propensity},#{row.pctr},#{row.pcvr},#{row.quality},#{row.relevance},#{row.bid},
+            #{row.bucket},#{row.modelVersion},#{row.assignedAt},#{row.outcomeDueAt}
+        FROM locked WHERE NOT EXISTS(SELECT 1 FROM ad_uplift_assignment
+            WHERE user_id=#{row.userId} AND advertiser_id=#{row.advertiserId} AND outcome_due_at > #{row.assignedAt})
+        ON CONFLICT DO NOTHING
+    </insert>
+</mapper>

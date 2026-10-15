@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户已批准整体计划；MP00～MP03已交付，MP04a=1f000266、MP04b=d8ad16eb已交付；MP04c DONE/PASS，联合29项真实/契约/宿主测试通过，MP04整体完成。继续MP05，不等待重复确认。
+`IN_PROGRESS`。整体计划已批准；MP00～MP04全部已交付，MP04c=2cad7dbc。MP05a DONE/PASS，最终34项联合测试通过，准备交付后继续MP05b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP05a广告事件/归因/uplift完成，见MP05A_RESULT。
 
 - MP04c目录副本/报表/DDL资源提取完成，MP04整体DONE，见MP04C_RESULT。
 
@@ -44,7 +46,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP04c：ad-serving两个Repository、adDb Mapper/XML/配置、DDL资源、真实PG测试及依赖、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP05a：ad事件/归因/uplift、Mapper/XML/行模型/DDL、对应单测与真实PG测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -63,8 +65,8 @@ MP01～MP03已交付。当前MP04c：ad-serving两个Repository、adDb Mapper/XM
 
 ## 下一步
 
-1. MP04b已交付d8ad16eb，MP04c已完成，准备Git交付。
-2. 继续MP05～MP15，全部SQL完成后处理统一错误码。
+1. MP04c已交付2cad7dbc，MP05a已完成，准备Git交付。
+2. 继续MP05b～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -92,3 +94,7 @@ DONE/PASS，见MP04B_RESULT；AdvertiserDataSourceConfig连接装配原样保留
 ## MP04c检查点
 
 DONE/PASS，见MP04C_RESULT；29项联合验证全通过。下一片MP05a：AdEventLogger、AdOutcomeService、UpliftAssignmentService；原Jdbc batch曝光写入需保留参数/创意NULL、异步及异常降级，新增真实PG验证批量失败语义；uplift advisory lock+条件插入、转换事实ON CONFLICT幂等、开关关闭不建表及运行时DDL资源提取。已有两个纯Mock测试需随构造器迁移并以真实PG补证。
+
+## MP05a检查点
+
+DONE/PASS，见MP05A_RESULT。当前页曝光多VALUES写入的整批失败语义已由新旧真实PG验证；原异步生命周期保留。继续MP05b：分片预算/两次创意查询、主源GD合约、派生源候选向量。可扩展已有真实双分片/向量测试以复用隔离容器，先运行旧实现保护，再迁移；GD需覆盖PG bigint舍入及缺失/NULL数值。
