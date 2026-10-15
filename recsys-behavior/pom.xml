@@ -84,6 +84,7 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-rec-engine</artifactId>
             <version>${project.version}</version>
+            <classifier>test-support</classifier>
             <scope>test</scope>
         </dependency>
     </dependencies>

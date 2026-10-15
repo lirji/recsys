@@ -45,3 +45,18 @@
 开关与恢复步骤见 [自然曝光 runbook](NATURAL_EXPOSURE_RUNBOOK.md)。关闭新页面不能撤销已提交事实。用户六个既有文件和本地测试/忽略产物保留，不纳入本片；没有新增 worktree。Git 交付后核对远程 CI 并继续 ER-S10 的 feed 最终位置/资格与自然降级，不把 S09 完成当整体完成。
 
 SKILL_HANDOFF: frontend-implementation → implementation-validation → update-progress-docs；slice=ER-S09；status=COMPLETED，gate=PASS；变更及可观察验收均在 C09，生产启用/部署未执行。
+
+## S09 完整打包修复与交付后验证
+
+原提交 `e070b157` 的远程 CI `38681250358`：自然专项、资金专项、浏览器门禁和安全扫描通过，build 在 behavior 测试编译失败；console-ci `38681250352` 通过。原因是 engine 在 `verify` 生命周期先被重打包为 Spring Boot 可执行 JAR，普通 test-scope 依赖不能读取 `BOOT-INF/classes`；之前的 `mvn test` 使用类目录，因此未暴露问题。
+
+修复仅调整两个 POM：复用 Maven 已有 `maven-jar-plugin`（原 effective POM 版本 3.4.1），在 `process-classes` 附加 `test-support` 普通类包；behavior 仍仅 test-scope 引用。支持包放 `target/test-support/`，现有镜像 `target/recsys-rec-engine-*.jar` 仍只匹配原可执行应用包。无新依赖版本、业务源码/契约/UI 改动。该插件原已在默认 Maven 生命周期执行，hygiene 文本扫描的“新增插件”提示按真实 effective POM 证据归为复用。
+
+验证：
+
+- `mvn -B -e clean verify`：23 模块全 SUCCESS，463 项测试、0 failures/errors、3 项原有 opt-in/条件跳过；`/tmp/recsys-s09-reactor-verify.log`。
+- `python3 scripts/test-natural-exposure.py`：5 浏览器测试与宿主真实 PG 检查 PASS，证明 `test` 生命周期依赖同样可解析；`/tmp/recsys-s09-reactor-browser.log`。
+- 实际检查 JAR：运行包含 `BOOT-INF/classes`，支持包含根类路径且无 BOOT-INF；behavior 运行包不含 engine；Docker 原 glob 恰好匹配一个 JAR。
+- ONNX 10 个模型自包含、Python/Java 共用的 10 个 golden 固件跨语言校验 PASS。`git diff --check` PASS；根级 formatter 缺失仍是既有限制。
+
+`clean` 前将本片浏览器证据复制到 `/tmp/recsys-s09-browser-evidence-archive/`，用户已有 `console/test-results/` 未清理。当前修复不改 UI，沿用已审查的 S09 视觉证据。修复通过后正常合并推送 main，继续 S10；远程结论随该提交核对。

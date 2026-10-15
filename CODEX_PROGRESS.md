@@ -11,7 +11,7 @@
 - S01 `9cad79fc`、S02 `f05eb60b`、S02A `56259727`、S03 `7b6636df`、S04 `9c95f2dc`、S05 `7834ad3b`、S06 `3955e29f`、S07 `8b84b468` + `b9a6d8dc` 均已合并推送 main。预算/定价/预占/交付/回执/资金 Outbox/Kafka 以及广告浏览器闭环完成；每片 RESULT 有真实证据。
 - S08 / S08A `a8701bf88a02023ab0252e698ee3d2de59e1112e` 已合并推送：common 自然 nq1 签名/golden、engine 原子冻结交付、behavior 独立 PG 幂等可见回执/事实/Outbox、双路由、显式政策默认关闭。50 专项（23 真实 PG）+12 旧回归通过；详见 ER-S08_RESULT。
 - S08 CI 38677748671 后端全部通过，浏览器因独占 Chromium 临时目录 ENOTEMPTY 失败。修复 `4b09d44e021d33480af798e1d485770fa033511a` 已合并推送：等 close 后有界清理自身目录；4 浏览器/PG/Kafka 验收通过，远程 CI 38678472988、console-ci 38678472943 均 SUCCESS。
-- S09 DONE / PASS，当前分支 `feat/natural-exposure-console`、基线 `4b09d44e`，尚待本片 Git 交付。自然推荐/搜索默认关闭新分支、显式交付/原意图恢复、冻结正文可见测量、类型化自然结果；共享队列抽取，广告兼容。C09_DESIGN / CONTRACTS C09 / ER-S09_RESULT / runbook 已记录。
+- S09 DONE / PASS，提交 `e070b157` 已正常合并并推送 main。已建 `feat/sandbox-feed-exposure`；当前先在 `fix/natural-browser-reactor-package` 修复交付后 CI 打包失败。自然推荐/搜索默认关闭新分支、显式交付/原意图恢复、冻结正文可见测量、类型化自然结果；共享队列抽取，广告兼容。C09_DESIGN / CONTRACTS C09 / ER-S09_RESULT / runbook 已记录。
 - S09 最终：93 前端单测，5 自然浏览器+真实 PG（唯一事实+Outbox），4 广告浏览器+PG/Kafka 资金对账，5 旧页面浏览器，50 natural-exposure 后端专项全部通过。7 张桌面/窄屏/历史/对比/空/202/错误截图已实际查看。typecheck/build/lint 0 errors、既有16 warnings，Code Hygiene 只有根级无 formatter 限制。
 
 ## 已修改文件
@@ -27,7 +27,7 @@ S09 当前范围：
 
 ## 未完成
 
-- S09 需核对允许路径、提交、正常 ff 合并并推送 main，随后核对远程 CI。不得把用户文件/测试产物纳入提交。
+- S09 原 CI 38681250358 的自然/资金/浏览器门禁成功，但 build 的 behavior 测试编译因可执行 engine JAR 类布局失败；console-ci 38681250352 成功。当前最小 POM 修复已通过完整 clean verify（23模块、463测试/3原有跳过）、5自然浏览器/PG，待提交合并推送及远程核对。
 - S10～S25 待做；下一主路径 S10 feed（deps S04/S07/S08 已满足）。按原 PLAN 冻结该片 C10，不重做总规划或要求再次授权。继续剩余切片，整体目标未完成。
 - CPA 归因/迟到窗口、正式来源/期初资金、容量与恢复目标仍待后续决定；不阻碍 S10 或独立片。
 
@@ -41,12 +41,13 @@ S09 当前范围：
 
 ## 下一步建议
 
-1. S09 源码已冻结、验证通过；完成文档链接/原27节点DAG/六文件哈希核对及显式路径 Git 交付。最终日志见下；Git 后把提交与 CI 写回进度。
+1. 交付 S09 最小打包修复（两个 POM、ER-S09_RESULT 与本文件）；通过后回到 `feat/sandbox-feed-exposure` 并 fast-forward main。C10 尚未冻结，尚未修改 S10 产品代码。
 2. 开始 S10：读 FeedOrchestrator、AdMixer、FeedEntry、DeliveryOperationService/Repository、NaturalDeliveryService/Repository、FeedConsole 与 C04/C08。明确先最终混排再签资格/预占；被剔除项不能计费，恢复不能重混排或改最终位置，自然降级与广告未知恢复分清。沿既有前端审查，不新增导航/总体框架。
 3. 继续验证双模式和真实浏览器；后续 S11 CPC、S12 CPA 等按 DAG 推进，不因一片交付停止。
 
 ## 重要上下文与证据
 
+- S09 CI 修复：`maven-jar-plugin` 原已在 effective POM，不新增版本；process-classes 生成 classifier=test-support 普通类包到子目录，不改变运行包或 Docker glob。`/tmp/recsys-s09-reactor-verify.log`、`/tmp/recsys-s09-reactor-browser.log`；原证据已备份到 `/tmp/recsys-s09-browser-evidence-archive/`。
 - S09 日志：`/tmp/recsys-s09-unit-final.log`、`/tmp/recsys-s09-build-final.log`、`/tmp/recsys-s09-lint-final.log`、`/tmp/recsys-s09-browser-final.log`、`/tmp/recsys-s09-ad-browser-regression.log`、`/tmp/recsys-s09-legacy-browser-final.log`、`/tmp/recsys-s09-natural-backend.log`、`/tmp/recsys-er-s09-hygiene.json`。
 - S09 浏览器最终5项含历史重跑新资格、进行中禁重跑；最后 literal→DeliveryState 等价提取后已重跑类型/93单测/build/5旧浏览器。截图 UI 未因该常量变化改变；图标修正后3张状态图再次查看。
 - 新自然API仅 ADMIN `/api/sandbox/natural-deliveries/{operationId}`（engine）与 `/api/sandbox/natural-impressions/{receiptId}`（behavior）。natural-text-v1、big ID 字符串、自然无金额。Engine V002、behavior V001 均已交付，不改已执行脚本。C08 原资格二进制/hash/租约/期限细节见 CONTRACTS 与 C08_DESIGN。
@@ -55,4 +56,4 @@ S09 当前范围：
 
 ## 恢复 Prompt
 
-请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成部分连续实施。当前 S09 已通过验证待 Git 交付，随后 S10。已批准 sandbox、金额/时区、硬预算和广告/自然图文政策，不重复询问；保留用户已有改动，逐片验证、写进度、正常合并推送 main。不要求我反复说继续，不执行真实收费切换或生产部署。
+请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成部分连续实施。S09 已交付 e070b157，当前从 S10 继续。已批准 sandbox、金额/时区、硬预算和广告/自然图文政策，不重复询问；保留用户已有改动，逐片验证、写进度、正常合并推送 main。不要求我反复说继续，不执行真实收费切换或生产部署。

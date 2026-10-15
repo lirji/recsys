@@ -145,6 +145,26 @@
 
     <build>
         <plugins>
+            <!-- 浏览器宿主只依赖普通类包；不能把 BOOT-INF/classes 布局的可执行包当作测试类库。
+                 提前到 process-classes 生成，使 test 和 verify 两种 reactor 生命周期一致。
+                 放入子目录，避免运行镜像原有 target/*.jar 选择器把测试支持包当成应用包。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>browser-test-support</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>test-support</classifier>
+                            <outputDirectory>${project.build.directory}/test-support</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
