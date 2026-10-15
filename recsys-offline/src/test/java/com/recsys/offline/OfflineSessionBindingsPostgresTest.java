@@ -4,6 +4,10 @@ import org.apache.ibatis.session.LocalCacheScope;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
+import org.mybatis.spring.annotation.MapperScan;
+import org.mybatis.spring.mapper.MapperScannerConfigurer;
+import org.mybatis.spring.mapper.MapperFactoryBean;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,13 +45,24 @@ class OfflineSessionBindingsPostgresTest {
     @Test void fourSessionsUseOriginalOwnersAndOnlyTheirOwnXml() {
         var imports=OfflineAdShardingConfig.class.getAnnotation(Import.class);
         assertNotNull(imports);
-        var runner=new ApplicationContextRunner().withUserConfiguration(imports.value());
+        var scan = OfflineAdShardingConfig.class.getAnnotation(MapperScan.class);
+        assertNotNull(scan);
+        var runner=new ApplicationContextRunner().withUserConfiguration(imports.value())
+                .withBean(MapperScannerConfigurer.class, () -> {
+                    var scanner = new MapperScannerConfigurer();
+                    scanner.setBasePackage(scan.basePackageClasses()[0].getPackageName());
+                    scanner.setSqlSessionTemplateBeanName(scan.sqlSessionTemplateRef());
+                    return scanner;
+                });
         for(var source:SOURCES.entrySet()) {
             runner=runner.withBean(SOURCE_BEANS.get(source.getKey()),DataSource.class,source::getValue);
         }
         runner.run(context->{
             assertNull(context.getStartupFailure());
             assertEquals(4,context.getBeansOfType(SqlSessionTemplate.class).size());
+            assertNotNull(context.getBean(PositiveFeedbackMapper.class));
+            var feedbackFactory = context.getBean("&positiveFeedbackMapper", MapperFactoryBean.class);
+            assertSame(context.getBean("sqlSessionTemplate"), feedbackFactory.getSqlSession());
             for(var source:SOURCES.entrySet()) {
                 var sessions=context.getBean(SESSION_BEANS.get(source.getKey()),SqlSessionTemplate.class);
                 var config=sessions.getSqlSessionFactory().getConfiguration();

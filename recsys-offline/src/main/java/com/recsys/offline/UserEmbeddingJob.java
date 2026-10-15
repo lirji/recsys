@@ -5,6 +5,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -27,12 +30,13 @@ public class UserEmbeddingJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(UserEmbeddingJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final PositiveFeedbackMapper feedback;
     private final JdbcTemplate derived;   // #3:item_embedding 读 + user_embedding 写走派生库(user_behavior 读留 @Primary)
 
-    public UserEmbeddingJob(JdbcTemplate jdbc,
+    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
+    public UserEmbeddingJob(PositiveFeedbackMapper feedback,
                             @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived) {
-        this.jdbc = jdbc;
+        this.feedback = feedback;
         this.derived = derived;
     }
 
@@ -47,13 +51,12 @@ public class UserEmbeddingJob implements OfflineJob {
         boolean rebuild = !args.containsOption("no-rebuild");
         double halfLifeDays = doubleArg(args, "half-life-days", 180.0);  // 时间衰减半衰期(天);<=0 关闭
         Long maxTs = BehaviorQuery.maxTs(args);   // 严格 eval:只用切分点前的行为聚合用户向量
-        String bt = BehaviorQuery.table(args);    // #2:行为读来源表(默认 user_behavior)
+        BehaviorSource bt = BehaviorQuery.source(args);    // #2:行为读来源表(默认 user_behavior)
 
         // 时间衰减参考时刻:正反馈集里最近一次行为(严格 eval 下 ≤ maxTs)。相对它算每条行为的"年龄",
         // 越久远权重越低,让 user_embedding 偏向近期兴趣,修 VECTOR 召回"纯长期、无新鲜度"。
         Double refEpoch = halfLifeDays > 0
-                ? jdbc.queryForObject(BehaviorQuery.positiveFeedbackSql(bt, "max(extract(epoch from ts))", maxTs),
-                        Double.class, BehaviorQuery.params(minRating, maxTs))
+                ? feedback.maxEpoch(new PositiveFeedbackFilter(bt, minRating, maxTs))
                 : null;
         final boolean decayOn = halfLifeDays > 0 && refEpoch != null;
         final double refTs = refEpoch != null ? refEpoch : 0.0;
@@ -72,20 +75,18 @@ public class UserEmbeddingJob implements OfflineJob {
         Map<Long, float[]> acc = new HashMap<>();
         Map<Long, Double> wsum = new HashMap<>();
         int[] hit = {0};
-        jdbc.query(
-                BehaviorQuery.positiveFeedbackSql(bt,
-                        "user_id, item_id, action, value, extract(epoch from ts) AS ts_epoch", maxTs),
-                rs -> {
-                    long u = rs.getLong("user_id");
-                    long it = rs.getLong("item_id");
+        feedback.scanWeighted(new PositiveFeedbackFilter(bt, minRating, maxTs), context -> {
+                    var row = context.getResultObject();
+                    long u = row.userId();
+                    long it = row.itemId();
                     float[] v = itemVecs.get(it);
                     if (v == null) {
                         return; // 该物品无向量,跳过
                     }
-                    double w = weight(rs.getString("action"), rs.getDouble("value"));
+                    double w = weight(row.action(), row.value() == null ? 0.0 : row.value());
                     if (decayOn) {
                         // 半衰期时间衰减:age=halfLife → 权重减半;近期行为权重≈1,久远行为趋 0
-                        double ageDays = (refTs - rs.getDouble("ts_epoch")) / 86400.0;
+                        double ageDays = (refTs - (row.epoch() == null ? 0.0 : row.epoch())) / 86400.0;
                         if (ageDays > 0) {
                             w *= Math.pow(0.5, ageDays / halfLifeDays);
                         }
@@ -96,8 +97,7 @@ public class UserEmbeddingJob implements OfflineJob {
                     }
                     wsum.merge(u, w, Double::sum);
                     hit[0]++;
-                },
-                BehaviorQuery.params(minRating, maxTs));
+                });
         log.info("命中带向量的正反馈 {} 条,覆盖用户 {} 个", hit[0], acc.size());
         if (acc.isEmpty()) {
             log.warn("无用户产出向量(可能正反馈物品都未灌向量)");

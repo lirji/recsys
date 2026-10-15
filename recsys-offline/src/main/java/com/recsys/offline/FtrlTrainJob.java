@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -37,11 +39,14 @@ public class FtrlTrainJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(FtrlTrainJob.class);
 
     private final JdbcTemplate jdbc;
+    private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public FtrlTrainJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
+    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
+    public FtrlTrainJob(PositiveFeedbackMapper feedback, JdbcTemplate jdbc, StringRedisTemplate redis) {
         this.jdbc = jdbc;
+        this.feedback = feedback;
         this.redis = redis;
     }
 
@@ -76,10 +81,10 @@ public class FtrlTrainJob implements OfflineJob {
         }
         // 正样本 (user,item)
         List<long[]> pos = new ArrayList<>();
-        jdbc.query(BehaviorQuery.positiveFeedbackSql(bt, "user_id, item_id", maxTs),
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        pos.add(new long[]{rs.getLong("user_id"), rs.getLong("item_id")}),
-                BehaviorQuery.params(minRating, maxTs));
+        feedback.scanPairs(new PositiveFeedbackFilter(BehaviorQuery.source(args), minRating, maxTs), context -> {
+            var row = context.getResultObject();
+            pos.add(new long[]{row.userId(), row.itemId()});
+        });
         if (pos.size() < 100) {
             log.warn("正样本太少({} 条),先跑 import-behavior", pos.size());
             return;

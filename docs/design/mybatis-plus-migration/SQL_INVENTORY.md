@@ -126,14 +126,14 @@
 | [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | TODO |
 | [com/recsys/offline/AttributionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AttributionJob.java) | 6 | 1 | TODO |
 | [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | TODO |
-| [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | TODO |
-| [com/recsys/offline/BehaviorQuery.java](../../../recsys-offline/src/main/java/com/recsys/offline/BehaviorQuery.java) | 51 | 1 | TODO |
+| [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | PARTIAL MP13a2：正反馈完成，其余SQL待迁移；见MP13A2_RESULT |
+| [com/recsys/offline/BehaviorQuery.java](../../../recsys-offline/src/main/java/com/recsys/offline/BehaviorQuery.java) | 51 | 1 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | TODO |
 | [com/recsys/offline/ColdBanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ColdBanditStatsJob.java) | 8 | 1 | TODO |
 | [com/recsys/offline/DataQualityJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DataQualityJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |
 | [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | TODO |
-| [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | TODO |
+| [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | PARTIAL MP13a2：正反馈完成，其余SQL待迁移；见MP13A2_RESULT |
 | [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | TODO |
 | [com/recsys/offline/GenAdUpliftSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdUpliftSamplesJob.java) | 7 | 2 | TODO |
 | [com/recsys/offline/GenSamplesImprJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesImprJob.java) | 7 | 4 | TODO |
@@ -145,7 +145,7 @@
 | [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | TODO |
 | [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | TODO |
 | [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | TODO |
-| [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | TODO |
+| [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
@@ -157,13 +157,13 @@
 | [com/recsys/offline/SimAdEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdEventsJob.java) | 7 | 5 | TODO |
 | [com/recsys/offline/SimAdUpliftDataJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdUpliftDataJob.java) | 7 | 2 | TODO |
 | [com/recsys/offline/SimRecEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimRecEventsJob.java) | 7 | 4 | TODO |
-| [com/recsys/offline/SwingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SwingJob.java) | 9 | 0 | TODO |
+| [com/recsys/offline/SwingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SwingJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/SyncAdEventLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncAdEventLogJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/SyncBehaviorLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncBehaviorLogJob.java) | 6 | 10 | TODO |
 | [com/recsys/offline/SyncItemCatalogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncItemCatalogJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/TuneFusionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/TuneFusionJob.java) | 11 | 1 | TODO |
-| [com/recsys/offline/UserCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserCfJob.java) | 9 | 0 | TODO |
-| [com/recsys/offline/UserEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserEmbeddingJob.java) | 7 | 4 | TODO |
+| [com/recsys/offline/UserCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
+| [com/recsys/offline/UserEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserEmbeddingJob.java) | 7 | 4 | PARTIAL MP13a2：正反馈完成，其余SQL待迁移；见MP13A2_RESULT |
 
 ### recsys-query
 

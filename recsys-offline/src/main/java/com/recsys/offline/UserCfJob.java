@@ -6,7 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -39,11 +41,12 @@ public class UserCfJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(UserCfJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
 
-    public UserCfJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
+    public UserCfJob(PositiveFeedbackMapper feedback, StringRedisTemplate redis) {
+        this.feedback = feedback;
         this.redis = redis;
     }
 
@@ -62,7 +65,7 @@ public class UserCfJob implements OfflineJob {
 
         // 1. 正反馈:user -> Set<item>(--max-ts 时只用切分点前的行为,供严格 eval)
         Long maxTs = BehaviorQuery.maxTs(args);
-        String bt = BehaviorQuery.table(args);   // #2
+        BehaviorSource bt = BehaviorQuery.source(args);   // #2
         Map<Long, Set<Long>> userItems = loadUserItems(bt, minRating, maxUserItems, maxTs);
         log.info("正反馈用户数 {};min-rating={}, topk={}, sim-users={}, max-ts={}", userItems.size(), minRating,
                 topK, simUsers, maxTs == null ? "全量" : maxTs);
@@ -166,16 +169,12 @@ public class UserCfJob implements OfflineJob {
         return written[0];
     }
 
-    private Map<Long, Set<Long>> loadUserItems(String table, double minRating, int maxUserItems, Long maxTs) {
+    private Map<Long, Set<Long>> loadUserItems(BehaviorSource table, double minRating, int maxUserItems, Long maxTs) {
         Map<Long, Set<Long>> userItems = new HashMap<>();
-        jdbc.query(
-                BehaviorQuery.positiveFeedbackSql(table, "user_id, item_id", maxTs),
-                rs -> {
-                    long u = rs.getLong(1);
-                    long it = rs.getLong(2);
-                    userItems.computeIfAbsent(u, k -> new HashSet<>()).add(it);
-                },
-                BehaviorQuery.params(minRating, maxTs));
+        feedback.scanPairs(new PositiveFeedbackFilter(table, minRating, maxTs), context -> {
+            var row = context.getResultObject();
+            userItems.computeIfAbsent(row.userId(), k -> new HashSet<>()).add(row.itemId());
+        });
         userItems.replaceAll((u, items) -> {
             if (items.size() <= maxUserItems) {
                 return items;

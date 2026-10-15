@@ -6,7 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -35,11 +37,12 @@ public class ItemCfJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(ItemCfJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
 
-    public ItemCfJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
+    public ItemCfJob(PositiveFeedbackMapper feedback, StringRedisTemplate redis) {
+        this.feedback = feedback;
         this.redis = redis;
     }
 
@@ -56,7 +59,7 @@ public class ItemCfJob implements OfflineJob {
 
         // 1. 加载正反馈:user -> [items](--max-ts 时只用切分点前的行为,供严格 eval)
         Long maxTs = BehaviorQuery.maxTs(args);
-        String bt = BehaviorQuery.table(args);   // #2:行为读来源表(默认 user_behavior)
+        BehaviorSource bt = BehaviorQuery.source(args);   // #2:行为读来源表(默认 user_behavior)
         Map<Long, List<Long>> userItems = loadPositiveFeedback(bt, minRating, maxUserItems, maxTs);
         log.info("正反馈用户数 {};min-rating={}, topk={}, max-ts={}", userItems.size(), minRating, topK,
                 maxTs == null ? "全量" : maxTs);
@@ -91,16 +94,12 @@ public class ItemCfJob implements OfflineJob {
         log.info("item-cf 完成:写入 {} 个物品的 i2i 倒排到 Redis", written);
     }
 
-    private Map<Long, List<Long>> loadPositiveFeedback(String table, double minRating, int maxUserItems, Long maxTs) {
+    private Map<Long, List<Long>> loadPositiveFeedback(BehaviorSource table, double minRating, int maxUserItems, Long maxTs) {
         Map<Long, List<Long>> userItems = new HashMap<>();
-        jdbc.query(
-                BehaviorQuery.positiveFeedbackSql(table, "user_id, item_id", maxTs),
-                rs -> {
-                    long u = rs.getLong(1);
-                    long it = rs.getLong(2);
-                    userItems.computeIfAbsent(u, k -> new ArrayList<>()).add(it);
-                },
-                BehaviorQuery.params(minRating, maxTs));
+        feedback.scanPairs(new PositiveFeedbackFilter(table, minRating, maxTs), context -> {
+            var row = context.getResultObject();
+            userItems.computeIfAbsent(row.userId(), k -> new ArrayList<>()).add(row.itemId());
+        });
         // 截断超活跃用户,避免共现规模爆炸(O(|N(u)|^2))
         userItems.replaceAll((u, items) ->
                 items.size() > maxUserItems ? items.subList(0, maxUserItems) : items);

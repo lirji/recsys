@@ -5,6 +5,8 @@ import com.recsys.persistence.spring.AdDbMybatisConfiguration;
 import com.recsys.persistence.spring.DerivedMybatisConfiguration;
 import com.recsys.persistence.spring.ShardedMybatisConfiguration;
 import com.zaxxer.hikari.HikariDataSource;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -33,6 +35,7 @@ import javax.sql.DataSource;
 @Configuration
 @Import({PrimaryMybatisConfiguration.class, AdDbMybatisConfiguration.class,
         DerivedMybatisConfiguration.class, ShardedMybatisConfiguration.class})
+@MapperScan(basePackageClasses=PositiveFeedbackMapper.class,sqlSessionTemplateRef="sqlSessionTemplate")
 public class OfflineAdShardingConfig {
 
     /** 保留宿主主库配置来源，避免持久框架自行创建第二套连接池。 */

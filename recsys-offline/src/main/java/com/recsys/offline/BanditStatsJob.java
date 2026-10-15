@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
@@ -46,14 +48,17 @@ public class BanditStatsJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(BanditStatsJob.class);
 
     private final JdbcTemplate jdbc;
+    private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
     private final FeatureService featureService;
     private final ContentService contentService;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public BanditStatsJob(JdbcTemplate jdbc, StringRedisTemplate redis,
+    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
+    public BanditStatsJob(PositiveFeedbackMapper feedback, JdbcTemplate jdbc, StringRedisTemplate redis,
                           FeatureService featureService, ContentService contentService) {
         this.jdbc = jdbc;
+        this.feedback = feedback;
         this.redis = redis;
         this.featureService = featureService;
         this.contentService = contentService;
@@ -93,9 +98,10 @@ public class BanditStatsJob implements OfflineJob {
 
         // 正反馈集合作 reward 标签(与 gen-samples/FtrlTrainJob 同口径:CLICK/LIKE/PLAY 或 RATING≥min)
         Set<String> positives = new HashSet<>();
-        jdbc.query(BehaviorQuery.positiveFeedbackSql(bt, "user_id, item_id", maxTs),
-                (RowCallbackHandler) rs -> positives.add(rs.getLong("user_id") + ":" + rs.getLong("item_id")),
-                BehaviorQuery.params(minRating, maxTs));
+        feedback.scanPairs(new PositiveFeedbackFilter(BehaviorQuery.source(args), minRating, maxTs), context -> {
+            var row = context.getResultObject();
+            positives.add(row.userId() + ":" + row.itemId());
+        });
 
         // 模型:warm-start(增量)或全新
         LinUcbModel model = incremental ? loadOrFresh(d, lambda) : LinUcbModel.create(d, lambda);

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1本地DONE/PASS，待Git交付及MP12d远程CI完成；MP13业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1已本地提交6e307304；MP13a2共用正反馈本地DONE/PASS，待一并ff/push。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -54,13 +54,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP10已完成；MP11～MP15及追加统一错误码目标未完成。
+- MP00～MP12已完成；MP13剩余离线作业、MP14、MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP10b：转化结算Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP00～MP12已交付。当前MP13a2共用正反馈Mapper/XML及六个作业、装配和真实PG保护；具体见MP13A2_RESULT。根恢复文档只更新入口，旧暂停交接字节保留。
 
 ## 保护内容
 
@@ -320,3 +320,7 @@ MP13a1旧64项/13类全部通过；offline已明确声明原冻结依赖并在�
 ## MP13a1最终验证
 
 本地DONE/PASS，见MP13A1_RESULT。旧64项/13类、新65项/14类及全仓24 reactor编译通过；依赖树保持MP3.5.17/MyBatis3.5.19/mybatis-spring3.0.5，hygiene按已批准artifact名称重跑无阻塞。7源指纹8353c708fe8ed5b8cf3b671fb62afdf1b59aca343e7f355f1638ddb91d74da11。当前541651d7 CI38741661134仍运行，暂不推送下一批以免取消原生窗口修复验证；没有新增技术取舍或待用户确认项。
+
+## MP13a2最终验证
+
+DONE/PASS，见MP13A2_RESULT。旧PG3项、新专项4项、全部离线68项/15类及全仓24 reactor测试编译通过；14源指纹958df7bfff535d2dcae07f4b9710a78b725d740a1011979661c6342cc2a01087。第一次after异常包装预期失败已按真实框架语义精确断言同一个根因，资源关闭/后续读取检查保留。ItemCf/Swing/UserCf及BehaviorQuery业务SQL已核销，其他三作业仅PARTIAL。MP13a1本地提交6e307304，待与本片一并ff/push。MP12d远程五门禁CI38741661134全部SUCCESS，窗口夹具问题闭环，历史失败不改记成功。
