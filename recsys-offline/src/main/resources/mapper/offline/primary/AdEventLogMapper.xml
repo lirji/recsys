@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdEventLogMapper">
+    <sql id="columns">id,request_id,query,user_id,ad_id,bidword_id,position,event_type,pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,ts,creative_id</sql>
+    <update id="truncate">TRUNCATE ad_event_log</update>
+    <select id="watermark" resultType="long" useCache="false">SELECT COALESCE(MAX(id),0) FROM ad_event_log</select>
+    <insert id="copyLocal">
+        INSERT INTO ad_event_log(<include refid="columns"/>) SELECT <include refid="columns"/>
+        FROM ad_event WHERE id &gt; #{since} ON CONFLICT(id) DO NOTHING
+    </insert>
+    <insert id="insertRows">
+        INSERT INTO ad_event_log(<include refid="columns"/>) VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.id,jdbcType=BIGINT},#{row.requestId,jdbcType=VARCHAR},#{row.query,jdbcType=VARCHAR},#{row.userId,jdbcType=BIGINT},
+             #{row.adId,jdbcType=BIGINT},#{row.bidwordId,jdbcType=BIGINT},#{row.position,jdbcType=INTEGER},#{row.eventType,jdbcType=VARCHAR},
+             #{row.pctr,jdbcType=DOUBLE},#{row.pctrCalib,jdbcType=DOUBLE},#{row.ecpm,jdbcType=DOUBLE},#{row.chargedPrice,jdbcType=DOUBLE},
+             #{row.relevance,jdbcType=DOUBLE},#{row.adBucket,jdbcType=VARCHAR},#{row.timestamp,jdbcType=TIMESTAMP},#{row.creativeId,jdbcType=BIGINT})
+        </foreach>
+        ON CONFLICT(id) DO NOTHING
+    </insert>
+    <select id="count" resultType="long" useCache="false">SELECT count(*) FROM ad_event_log</select>
+</mapper>

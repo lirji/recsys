@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.source.AdEventCopySourceMapper">
+    <resultMap id="event" type="com.recsys.offline.persistence.model.AdEventLogRow">
+        <constructor>
+            <arg name="id" column="id" javaType="_long"/>
+            <arg name="requestId" column="request_id" javaType="java.lang.String"/>
+            <arg name="query" column="query" javaType="java.lang.String"/>
+            <arg name="userId" column="user_id" javaType="java.lang.Long"/>
+            <arg name="adId" column="ad_id" javaType="java.lang.Long"/>
+            <arg name="bidwordId" column="bidword_id" javaType="java.lang.Long"/>
+            <arg name="position" column="position" javaType="java.lang.Integer"/>
+            <arg name="eventType" column="event_type" javaType="java.lang.String"/>
+            <arg name="pctr" column="pctr" javaType="java.lang.Double"/>
+            <arg name="pctrCalib" column="pctr_calib" javaType="java.lang.Double"/>
+            <arg name="ecpm" column="ecpm" javaType="java.lang.Double"/>
+            <arg name="chargedPrice" column="charged_price" javaType="java.lang.Double"/>
+            <arg name="relevance" column="relevance" javaType="java.lang.Double"/>
+            <arg name="adBucket" column="ad_bucket" javaType="java.lang.String"/>
+            <arg name="timestamp" column="ts" javaType="java.sql.Timestamp"/>
+            <arg name="creativeId" column="creative_id" javaType="java.lang.Long"/>
+        </constructor>
+    </resultMap>
+    <select id="since" resultMap="event" useCache="false">
+        SELECT id,request_id,query,user_id,ad_id,bidword_id,position,event_type,pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,ts,creative_id
+        FROM ad_event WHERE id &gt; #{since} ORDER BY id
+    </select>
+</mapper>

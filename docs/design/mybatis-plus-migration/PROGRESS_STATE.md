@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1本地提交6b96d0d3；MP13b2本地提交dcac4a8d；MP13b3本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -336,3 +336,7 @@ DONE/PASS，见MP13B2_RESULT。旧PG5项、新离线77项/17类、24 reactor编�
 ## MP13b3最终验证
 
 DONE/PASS，见MP13B3_RESULT。旧PG4项、新离线81项/18类、24 reactor编译通过；8源指纹9315f90a39fe9d502886074b7b261c3569341544623eb91017b8dfc46a6787ae。原NULL标签跨库/同库差异、元素顺序/NULL/重复、全列覆盖、生成列/GIN、1000批失败及外层回滚保持。ae9ec1c4的CI38744006253五门禁全部SUCCESS，现将MP13b1/b2与本片正常ff/push；之后SyncAdEventLogJob。
+
+## MP13b4最终验证
+
+DONE/PASS，见MP13B4_RESULT。旧PG4项、新离线85项/19类、全仓24 reactor编译、hygiene通过；8源指纹d124be7baec0a5351c77d18d60d29fbf84b147f8ce549b96c978a0a1311ab261。16列/NULL/Long大值/微秒/绑定文本、源连接关闭、1000批失败、外层full回滚和三索引保持，bootstrap16列注释齐全。MP13b1～b3已ff/push main=37c51498；下一片SeedAdsJob真实四源/分片/向量复制。
