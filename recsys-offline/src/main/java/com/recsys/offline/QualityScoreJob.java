@@ -5,7 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.AdQualityMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -50,23 +51,25 @@ public class QualityScoreJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(QualityScoreJob.class);
     private static final String OUT_DIR = "eval";
 
-    private final JdbcTemplate jdbc;
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
+    private final AdQualityMapper mapper;
     private final StringRedisTemplate redis;
 
-    public QualityScoreJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 复用原主源Mapper，报表算法和发布边界保持在作业内。 */
+    public QualityScoreJob(AdQualityMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "ad-quality";
     }
 
+    /** 单次来源显式传递，保留原统计口径与输出失败处理。 */
     @Override
     public void run(ApplicationArguments args) {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 30);
         int minImpr = intArg(args, "min-impr", 20);
         double wRel = dblArg(args, "w-rel", 0.3);
@@ -77,7 +80,6 @@ public class QualityScoreJob implements OfflineJob {
         double compClamp = dblArg(args, "comp-clamp", 0.5);
         double priorImpr = dblArg(args, "prior-impr", 200);
         double priorClick = dblArg(args, "prior-click", 20);
-        String since = days > 0 ? "ts >= now() - interval '" + days + " days'" : "TRUE";
         double wSum = wRel + wCtr + wCvr;
         if (wSum <= 0) {
             log.warn("权重之和 {} 非正,跳过", wSum);
@@ -86,29 +88,22 @@ public class QualityScoreJob implements OfflineJob {
 
         // 每广告聚合:曝光数 + 相关性和、点击数、转化数(点击/转化按 request 去重)
         Map<Long, double[]> agg = new HashMap<>();   // adId → [impr, relSum, clicks, conv]
-        jdbc.query("SELECT ad_id, COUNT(*) AS impr, SUM(COALESCE(relevance,0)) AS relsum " +
-                        "FROM " + aet + " WHERE event_type='IMPRESSION' AND " + since + " GROUP BY ad_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    double[] a = agg.computeIfAbsent(rs.getLong("ad_id"), k -> new double[4]);
-                    a[0] = rs.getDouble("impr");
-                    a[1] = rs.getDouble("relsum");
-                });
-        jdbc.query("SELECT ad_id, COUNT(DISTINCT request_id) AS c " +
-                        "FROM " + aet + " WHERE event_type='CLICK' AND " + since + " GROUP BY ad_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    double[] a = agg.get(rs.getLong("ad_id"));
-                    if (a != null) {
-                        a[2] = rs.getDouble("c");
-                    }
-                });
-        jdbc.query("SELECT ad_id, COUNT(DISTINCT request_id) AS c " +
-                        "FROM " + aet + " WHERE event_type='CONVERSION' AND " + since + " GROUP BY ad_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    double[] a = agg.get(rs.getLong("ad_id"));
-                    if (a != null) {
-                        a[3] = rs.getDouble("c");
-                    }
-                });
+        mapper.scanImpressions(source, days, context -> {
+            var row = context.getResultObject();
+            double[] a = agg.computeIfAbsent(row.adId(), k -> new double[4]);
+            a[0] = row.count();
+            a[1] = row.relevanceSum();
+        });
+        mapper.scanClicks(source, days, context -> {
+            var row = context.getResultObject();
+            double[] a = agg.get(row.adId());
+            if (a != null) a[2] = row.count();
+        });
+        mapper.scanConversions(source, days, context -> {
+            var row = context.getResultObject();
+            double[] a = agg.get(row.adId());
+            if (a != null) a[3] = row.count();
+        });
 
         if (agg.isEmpty()) {
             log.warn("无曝光事件,先跑 --job=sim-ad-events(或灌真实曝光/点击/转化)");

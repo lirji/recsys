@@ -3,8 +3,8 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import com.recsys.offline.persistence.mapper.primary.AdAttributionMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -48,23 +48,40 @@ public class AttributionJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(AttributionJob.class);
     private static final String OUT_DIR = "eval";
-    private static final int IMPRESSION = 0, CLICK = 1, CONVERSION = 2;
+    private static final int IMPRESSION = AttributionKind.IMPRESSION.pathCode;
+    private static final int CLICK = AttributionKind.CLICK.pathCode;
+    private static final int CONVERSION = AttributionKind.CONVERSION.pathCode;
 
-    private final JdbcTemplate jdbc;   // 主库:ad_event 单表(ds_0),无需分片库
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
-
-    public AttributionJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 归因输入类型对应数据库事件码与旧路径数值码，区别于计费Outbox表族，不使用ordinal。 */
+    private enum AttributionKind {
+        IMPRESSION("IMPRESSION", 0), CLICK("CLICK", 1), CONVERSION("CONVERSION", 2);
+        private final String code;
+        private final int pathCode;
+        AttributionKind(String code, int pathCode) { this.code = code; this.pathCode = pathCode; }
+        /** SQL限定三类输入，仍保留旧解析对其他值退回曝光的行为。 */
+        static AttributionKind fromCode(String code) {
+            for (AttributionKind type : values()) if (type.code.equals(code)) return type;
+            return IMPRESSION;
+        }
     }
 
+    private final AdAttributionMapper mapper;
+
+    /** 复用原主源Mapper，报表算法和发布边界保持在作业内。 */
+    public AttributionJob(AdAttributionMapper mapper) {
+        this.mapper = mapper;
+    }
+
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "ad-attribution";
     }
 
+    /** 单次来源显式传递，保留原统计口径与输出失败处理。 */
     @Override
     public void run(ApplicationArguments args) {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 30);
         String model = stringArg(args, "model", "position").toLowerCase();
         double halfLife = dblArg(args, "half-life-days", 3.0);
@@ -76,21 +93,16 @@ public class AttributionJob implements OfflineJob {
             log.warn("未知 model={},支持 linear|position|time-decay;退回 position", model);
             model = "position";
         }
-        String since = days > 0 ? "ts >= now() - interval '" + days + " days'" : "TRUE";
 
         // 按 user_id, ts 升序流式载入窗口内事件(教学规模,内存聚路径)。ep=epoch 秒,便于算 age。
         Map<Long, List<double[]>> byUser = new HashMap<>();  // user → [ep, adId, typeCode] 列表(已按 ts 升序)
-        jdbc.query("SELECT user_id, ad_id, event_type, EXTRACT(EPOCH FROM ts) AS ep FROM " + aet + " " +
-                        "WHERE event_type IN ('IMPRESSION','CLICK','CONVERSION') AND " + since +
-                        " ORDER BY user_id, ep",
-                (RowCallbackHandler) rs -> {
-                    long u = rs.getLong("user_id");
-                    long adId = rs.getLong("ad_id");
-                    double ep = rs.getDouble("ep");
-                    String t = rs.getString("event_type");
-                    int code = "CONVERSION".equals(t) ? CONVERSION : "CLICK".equals(t) ? CLICK : IMPRESSION;
-                    byUser.computeIfAbsent(u, k -> new ArrayList<>()).add(new double[]{ep, adId, code});
-                });
+        mapper.scan(source, days, context -> {
+            var row = context.getResultObject();
+            int code = AttributionKind.fromCode(row.eventType()).pathCode;
+            // 沿用原double路径表示（大身份存在既有舍入问题），不将身份修复混入SQL迁移。
+            byUser.computeIfAbsent(row.userId(), k -> new ArrayList<>())
+                    .add(new double[]{row.epoch(), row.adId(), code});
+        });
 
         if (byUser.isEmpty()) {
             log.warn("无广告事件,先跑 --job=sim-ad-events(或灌真实曝光/点击/转化)");

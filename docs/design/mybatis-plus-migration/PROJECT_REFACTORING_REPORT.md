@@ -65,12 +65,14 @@
 
 证据入口：PLAN、SQL_INVENTORY、BACKEND_ARCHITECTURE、TECH_SELECTION、PROGRESS_STATE；本轮编译日志 `/tmp/recsys-mybatis-baseline-compile.log`。
 
-## 当前增量状态（MP13f2）
+## 当前增量状态（MP13f3）
 
-前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5及f1/f2（f2本地）；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线241/42类通过，全仓24 reactor测试编译通过，不代表最终全仓验收。
+前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5及f1～f3；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线252/43类通过；随后仅私有枚举更名，最终受影响12与全仓24 reactor测试编译/hygiene再通过，不代表最终全仓验收。
 
 新增已证实技术债：ImportR9EmbeddingsJob原手动事务会提交/回滚外层先行工作，迁移R9EmbeddingStore保持该边界并用真实PG保护；未来事务治理须独立决定传播策略。Lookalike/Hot沿用两条Redis命令删除后写入，窗口仍存在，不能宣称原子替换；查询失败发生在删除前时旧数据保留已实证，见MP13C7_RESULT/MP13D1_RESULT。
 
 后续错误提示治理补充：Bandit增量成功日志lambda可与实际模型不一致，writeModel捕获写失败后仍可能记录已写；保持本次SQL兼容，见MP13D3_RESULT。
 
 后续错误提示/参数治理补充：AdCalibrateJob的bins=0会先发布空曲线再越界报错，已用真实PG/Redis固定原行为，见MP13F1_RESULT；后续统一校验须在发布前拒绝。
+
+后续类型与失败提示治理补充：Attribution原double[]路径会损失超过2^53的广告ID精度（9007199254740993→9007199254740992），本轮保留旧报表行为并用真实PG保护；应在明确输出变化的修复中改long具名路径。Attribution/Quality捕获CSV或部分Redis失败后仍记完成，后续统一提示需区分成功/部分失败。见MP13F3_RESULT。

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdAttributionMapper">
+    <resultMap id="event" type="com.recsys.offline.persistence.mapper.primary.AdAttributionMapper$Event">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="eventType" column="event_type" javaType="java.lang.String"/>
+            <arg name="epoch" column="ep" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <select id="scan" resultMap="event" useCache="false">
+        SELECT COALESCE(e.user_id,0) AS user_id,COALESCE(e.ad_id,0) AS ad_id,e.event_type,
+               COALESCE(EXTRACT(EPOCH FROM e.ts),0) AS ep FROM
+        <choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose> e
+        WHERE e.event_type IN ('IMPRESSION','CLICK','CONVERSION')
+        <if test="days &gt; 0">AND e.ts&gt;=now()-#{days}*interval '1 day'</if>
+        <!-- 原NULL用户/时间排在非NULL之后，不能按COALESCE后的别名排序。 -->
+        ORDER BY e.user_id,EXTRACT(EPOCH FROM e.ts)
+    </select>
+</mapper>
