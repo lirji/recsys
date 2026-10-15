@@ -141,7 +141,7 @@
 | [com/recsys/offline/GenSamplesMtJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesMtJob.java) | 7 | 3 | TODO |
 | [com/recsys/offline/HotJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/HotJob.java) | 9 | 1 | TODO |
 | [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | TODO |
-| [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | TODO |
+| [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | DONE MP13b1；见MP13B1_RESULT |
 | [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | TODO |
 | [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | TODO |
 | [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | TODO |
