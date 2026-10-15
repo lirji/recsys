@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.junit.jupiter.api.*;
 import com.recsys.offline.persistence.SemanticIdStore;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -47,7 +50,8 @@ class ImportSemanticIdPostgresTest {
         for(int i=2;i<=500;i++)lines.add(i+",1,2,3");
         lines.add("1,-2147483648,2147483647,-7,ignored,extra");
         lines.add("9223372036854775807,8,9,10");
-        job.run(args(csv("codes.csv",lines),"--model=  model'中文  "));
+        var input = args(csv("codes.csv",lines),"--model=  model'中文  ");
+        assertEquals(ErrorCode.JOB_IMPORT_PARTIAL_FAILED, assertThrows(PublicErrorException.class, () -> job.run(input)).errorCode());
         assertEquals(501,count());
         assertEquals(5,db.queryForObject("SELECT count(*) FROM pg_attribute WHERE attrelid='item_semantic_id'::regclass AND attnum>0 AND col_description(attrelid,attnum) IS NOT NULL",Integer.class));
         assertEquals(List.of(Integer.MIN_VALUE,Integer.MAX_VALUE,-7),db.queryForObject("SELECT c0,c1,c2 FROM item_semantic_id WHERE item_id=1",(rs,n)->List.of(rs.getInt(1),rs.getInt(2),rs.getInt(3))));
@@ -59,9 +63,9 @@ class ImportSemanticIdPostgresTest {
     }
 
     @Test void missingFilePreservesDataWhileExistingEmptyFileClearsIt() throws Exception {
-        Path missing=files.resolve("missing.csv");job.run(args(missing));
+        Path missing=files.resolve("missing.csv");assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class, () -> job.run(args(missing))).errorCode());
         assertNull(admin.queryForObject("SELECT to_regclass('item_semantic_id')::text",String.class));
-        initializeOldRow();job.run(args(missing));assertEquals(1,count());
+        initializeOldRow();assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class, () -> job.run(args(missing))).errorCode());assertEquals(1,count());
         assertEquals("rqvae",db.queryForObject("SELECT model FROM item_semantic_id WHERE item_id=9800",String.class));
         job.run(args(csv("empty.csv",List.of())));assertEquals(0,count());
         source.assertClosed(admin,"semantic-id-import-writer");
@@ -106,6 +110,13 @@ class ImportSemanticIdPostgresTest {
         });
         assertEquals(1000,count());
         source.assertClosed(admin,"semantic-id-import-writer");
+    }
+
+    @Test void trainingHeaderIsSuccessfulInputRatherThanDirtyData() throws Exception {
+        job.run(args(csv("header.csv", List.of(" ", "item_id,c0,c1,c2", "7,1,2,3"))));
+        assertEquals(1, count());
+        assertEquals(7L, db.queryForObject("SELECT item_id FROM item_semantic_id", Long.class));
+        source.assertClosed(admin, "semantic-id-import-writer");
     }
 
     private void initializeOldRow() throws Exception { job.run(args(csv("init.csv",List.of("9800,1,2,3")))); }

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -18,7 +21,7 @@ import java.util.List;
  * 作业 import-semantic-id:把 {@code train_rqvae.py} 离线产出的 RQ-VAE 语义 ID CSV 灌入
  * {@code item_semantic_id}(供在线 {@link com.recsys.recall} 的生成式召回做前缀检索,docs/04 §14)。
  *
- * <p>CSV 格式:每行 {@code item_id,c0,c1,c2}(可含表头,自动跳过非数字行),3 层 codeword。
+ * <p>CSV 格式:每行 {@code item_id,c0,c1,c2}(支持训练脚本的首行表头，脏行计数并报告部分失败),3 层 codeword。
  *
  * <p>建表:自带 {@code CREATE TABLE IF NOT EXISTS}(已存在 pgdata 卷不会自动跑 03_semantic_id.sql),
  * 然后 TRUNCATE 整表重建 + 批量 upsert。
@@ -45,21 +48,19 @@ public class ImportSemanticIdJob implements OfflineJob {
         return "import-semantic-id";
     }
 
-    /** 保留缺文件返回、清表、宽松CSV解析与重复编码后写覆盖。 */
+    /** 缺文件拒绝；保留清表、逐行容错与重复编码后写覆盖，最终报告部分失败。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        String file = stringArg(args, "file", DEFAULT_FILE);
-        String model = stringArg(args, "model", "rqvae");
+        String file = JobArguments.text(args, "file", DEFAULT_FILE);
+        String model = JobArguments.text(args, "model", "rqvae");
         Path path = Path.of(file);
-        if (!Files.exists(path)) {
-            log.warn("语义 ID 文件不存在: {};先跑 train_rqvae.py", path.toAbsolutePath());
-            return;
-        }
+        JobArguments.readableInput(path);
 
         persistence.rebuild();
 
         List<SemanticIdMapper.Row> batch = new ArrayList<>(BATCH);
         int total = 0, bad = 0;
+        boolean firstRow = true;
         try (BufferedReader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
             while ((line = r.readLine()) != null) {
@@ -68,6 +69,11 @@ public class ImportSemanticIdJob implements OfflineJob {
                     continue;
                 }
                 String[] p = line.split(",");
+                // 训练脚本的首行是真实契约，不能把合法header算成失败数据。
+                boolean header = firstRow && p.length == 4 && "item_id".equals(p[0].trim())
+                        && "c0".equals(p[1].trim()) && "c1".equals(p[2].trim()) && "c2".equals(p[3].trim());
+                firstRow = false;
+                if (header) continue;
                 if (p.length < 4) {
                     bad++;
                     continue;
@@ -79,7 +85,7 @@ public class ImportSemanticIdJob implements OfflineJob {
                     int c2 = Integer.parseInt(p[3].trim());
                     batch.add(new SemanticIdMapper.Row(itemId, c0, c1, c2, model));
                 } catch (NumberFormatException e) {
-                    bad++;   // 表头/脏行,跳过
+                    bad++;   // 脏行继续，但汇总不能标为完整成功
                     continue;
                 }
                 if (batch.size() >= BATCH) {
@@ -91,12 +97,9 @@ public class ImportSemanticIdJob implements OfflineJob {
         if (!batch.isEmpty()) {
             total += persistence.writeBatch(batch);
         }
+        if (bad > 0) throw new PublicErrorException(ErrorCode.JOB_IMPORT_PARTIAL_FAILED);
         Long cnt = persistence.count();
         log.info("import-semantic-id 完成:写入 {} 条(跳过脏行 {}),item_semantic_id 总数 {}", total, bad, cnt);
     }
 
-    private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
-    }
 }

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
 import org.slf4j.Logger;
@@ -49,6 +52,7 @@ public class ImportItemsJob implements OfflineJob {
         return "import-items";
     }
 
+    /** 保留原逐项/批次写入，输入错误与部分完成必须让调度方可见。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         Path dir = Path.of(movielensPath);
@@ -58,20 +62,24 @@ public class ImportItemsJob implements OfflineJob {
             downloadAndUnzip(dir);
         }
 
+        JobArguments.readableInput(moviesCsv);
         // 1. 统计 popularity(评分数)
         Map<Long, Integer> ratingCount = countRatings(dir.resolve("ratings.csv"));
 
         // 2. 读 movies.csv 并写库
-        int imported = 0;
+        int imported = 0, bad = 0;
         try (BufferedReader br = Files.newBufferedReader(moviesCsv, StandardCharsets.UTF_8)) {
             String header = br.readLine(); // 跳过表头
             String line;
             while ((line = br.readLine()) != null) {
                 String[] cols = parseCsvLine(line);
                 if (cols.length < 3) {
+                    bad++;
                     continue;
                 }
-                long movieId = Long.parseLong(cols[0].trim());
+                long movieId;
+                try { movieId = Long.parseLong(cols[0].trim()); }
+                catch (NumberFormatException failure) { throw new PublicErrorException(ErrorCode.JOB_INPUT_INVALID, failure); }
                 String title = cols[1].trim();
                 String genresRaw = cols[2].trim();
                 List<String> genres = new ArrayList<>();
@@ -91,13 +99,14 @@ public class ImportItemsJob implements OfflineJob {
                 }
             }
         }
+        if (bad > 0) throw new PublicErrorException(ErrorCode.JOB_IMPORT_PARTIAL_FAILED);
         log.info("import-items 完成:共导入 {} 部电影,item 表当前总数 {}", imported, contentService.count());
     }
 
     private Map<Long, Integer> countRatings(Path ratingsCsv) {
         Map<Long, Integer> counts = new HashMap<>();
         if (!Files.exists(ratingsCsv)) {
-            log.warn("无 ratings.csv,popularity 全部置 0");
+            log.warn("{}", ErrorCode.JOB_POPULARITY_FALLBACK.displayMessage());
             return counts;
         }
         try (BufferedReader br = Files.newBufferedReader(ratingsCsv, StandardCharsets.UTF_8)) {
@@ -106,14 +115,16 @@ public class ImportItemsJob implements OfflineJob {
             while ((line = br.readLine()) != null) {
                 int firstComma = line.indexOf(',');
                 int secondComma = line.indexOf(',', firstComma + 1);
-                if (secondComma < 0) {
-                    continue;
+                if (firstComma < 0 || secondComma < 0) {
+                    throw new PublicErrorException(ErrorCode.JOB_INPUT_INVALID);
                 }
                 long movieId = Long.parseLong(line.substring(firstComma + 1, secondComma).trim());
                 counts.merge(movieId, 1, Integer::sum);
             }
-        } catch (IOException e) {
-            log.warn("读取 ratings.csv 失败: {}", e.getMessage());
+        } catch (IOException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INPUT_UNAVAILABLE, failure);
+        } catch (NumberFormatException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INPUT_INVALID, failure);
         }
         return counts;
     }

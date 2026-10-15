@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.offline.persistence.mapper.primary.BehaviorImportMapper;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -56,8 +59,10 @@ class ImportBehaviorPostgresTest {
 
     @Test void repeatedImportKeepsDuplicatesNullBucketAndOtherScenes() throws Exception {
         csv("1,10,4.5,100\n1,10,4.5,100\nmalformed\n2,11,3,101\n");
-        job.run(new DefaultApplicationArguments());
-        job.run(new DefaultApplicationArguments());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertEquals(ErrorCode.JOB_IMPORT_PARTIAL_FAILED, assertThrows(PublicErrorException.class,
+                    () -> job.run(new DefaultApplicationArguments())).errorCode());
+        }
         assertEquals(4, count());
         assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM user_behavior WHERE user_id=1 AND item_id=10 AND action='RATING' AND value=4.5 AND bucket IS NULL AND ts=to_timestamp(100)", Integer.class));
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM user_behavior WHERE scene='online' AND bucket='control'", Integer.class));
@@ -65,7 +70,8 @@ class ImportBehaviorPostgresTest {
     }
 
     @Test void missingFileDoesNotClearExistingRows() throws Exception {
-        job.run(new DefaultApplicationArguments());
+        assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class,
+                () -> job.run(new DefaultApplicationArguments())).errorCode());
         assertEquals(2, count());
     }
 
@@ -91,6 +97,16 @@ class ImportBehaviorPostgresTest {
         assertEquals(2, count());
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM user_behavior WHERE user_id=9800", Integer.class));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM user_behavior WHERE user_id=1", Integer.class));
+    }
+
+    @Test void malformedNumbersAndOverflowUseSafeCodeWithoutTouchingOtherScenes() throws Exception {
+        for (String row : java.util.List.of("private,10,1,100", "1,10,NaN,100", "1,10,1,9223372036854775807")) {
+            csv(row + "\n");
+            var failure = assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments()));
+            assertEquals(ErrorCode.JOB_INPUT_INVALID, failure.errorCode());
+            assertFalse(failure.getMessage().contains("private"));
+            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM user_behavior WHERE scene='online'", Integer.class));
+        }
     }
 
     private void csv(String rows) throws Exception {

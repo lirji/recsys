@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,16 +49,14 @@ public class ImportTowerJob implements OfflineJob {
         return "import-tower";
     }
 
-    /** 缺文件先返回；存在的文件继续按原规则清表、跳脏行和分批覆盖。 */
+    /** 保留原逐项/批次写入，输入错误与部分完成必须让调度方可见。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        String file = stringArg(args, "file", DEFAULT_FILE);
-        int dim = intArg(args, "dim", 64);
+        String file = JobArguments.text(args, "file", DEFAULT_FILE);
+        int dim = JobArguments.integer(args, "dim", 64);
+        if (dim <= 0) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         Path path = Path.of(file);
-        if (!Files.exists(path)) {
-            log.warn("item 塔向量文件不存在: {};先跑 train_two_tower.py", path.toAbsolutePath());
-            return;
-        }
+        JobArguments.readableInput(path);
 
         persistence.rebuild();
 
@@ -94,16 +95,9 @@ public class ImportTowerJob implements OfflineJob {
         if (!batch.isEmpty()) {
             total += persistence.writeBatch(batch);
         }
+        if (bad > 0) throw new PublicErrorException(ErrorCode.JOB_IMPORT_PARTIAL_FAILED);
         Long cnt = persistence.count();
         log.info("import-tower 完成:写入 {} 条(跳过脏行 {}),item_tower_embedding 总数 {}", total, bad, cnt);
     }
 
-    private static String stringArg(ApplicationArguments a, String k, String def) {
-        return a.containsOption(k) && !a.getOptionValues(k).isEmpty()
-                ? a.getOptionValues(k).get(0).trim() : def;
-    }
-
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0).trim()) : def;
-    }
 }

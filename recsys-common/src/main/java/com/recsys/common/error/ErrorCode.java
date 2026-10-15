@@ -167,7 +167,16 @@ public enum ErrorCode {
     JOB_EMBEDDING_INVALID_RESULT("JOB_EMBEDDING_INVALID_RESULT", "向量结果的维度或数值不合法，请检查模型配置与响应", 0),
     JOB_REPORT_INPUT_UNAVAILABLE("JOB_REPORT_INPUT_UNAVAILABLE", "报表输入目录不存在或不可读取，请检查 --eval-dir 与上游产物", 0),
     JOB_REPORT_PARTIAL_FAILED("JOB_REPORT_PARTIAL_FAILED", "部分报表未能发布，已发布结果保留，请修复输入或数据源后重试", 0),
-    JOB_INTERRUPTED("JOB_INTERRUPTED", "作业被中断，可能已有部分结果，请核对后再运行", 0);
+    JOB_INTERRUPTED("JOB_INTERRUPTED", "作业被中断，可能已有部分结果，请核对后再运行", 0),
+    JOB_INPUT_UNAVAILABLE("JOB_INPUT_UNAVAILABLE", "导入文件不存在或不可读取，请检查输入路径并先生成上游产物", 0),
+    JOB_INPUT_INVALID("JOB_INPUT_INVALID", "输入数据格式或数值不合法，请检查输入文件；可能已有部分结果", 0),
+    JOB_IMPORT_PARTIAL_FAILED("JOB_IMPORT_PARTIAL_FAILED", "部分输入行未能导入，已有结果保留，请修复文件后重跑", 0),
+    JOB_R9_REQUIRED_GROUP_EMPTY("JOB_R9_REQUIRED_GROUP_EMPTY", "R9 要求三组向量均非空，请先生成全部输入产物", 0),
+    JOB_R9_INVALID_VECTOR("JOB_R9_INVALID_VECTOR", "R9 向量须为64维有限数值并近似L2归一化，请检查训练产物", 0),
+    JOB_R9_INVALID_IDENTITY("JOB_R9_INVALID_IDENTITY", "R9 向量版本为空或同组身份重复，请检查输入文件", 0),
+    JOB_R9_VERSION_MISMATCH("JOB_R9_VERSION_MISMATCH", "R9 三组向量必须使用同一个模型版本，请检查输入产物", 0),
+    JOB_R9_NO_INPUT("JOB_R9_NO_INPUT", "没有可发布的R9向量，本次未发布，请先生成输入产物", 0),
+    JOB_POPULARITY_FALLBACK("JOB_POPULARITY_FALLBACK", "缺少可选评分文件，本次使用0热度导入物品，后续补齐评分后可重跑", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

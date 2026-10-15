@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import com.recsys.offline.persistence.TowerEmbeddingStore;
 import com.recsys.persistence.spring.SpringSqlSessions;
@@ -55,7 +58,8 @@ class ImportTowerPostgresTest {
         lines.add(row(1, 64, 0)); lines.add(row(1, 64, 1));
         for (int i=2;i<=500;i++) lines.add(row(i, 64, 0));
         lines.add(row(1, 64, 2)); lines.add(row(501, 64, 1));
-        job.run(args(csv("duplicates.csv", lines)));
+        var input = args(csv("duplicates.csv", lines));
+        assertEquals(ErrorCode.JOB_IMPORT_PARTIAL_FAILED, assertThrows(PublicErrorException.class, () -> job.run(input)).errorCode());
         assertEquals(501, count()); assertVector(1, 64, 2); assertVector(501, 64, 1);
         assertEquals("vector(64)", dimension());
         assertEquals(2, db.queryForObject("SELECT count(*) FROM pg_attribute WHERE attrelid='item_tower_embedding'::regclass AND attnum>0 AND col_description(attrelid,attnum) IS NOT NULL", Integer.class));
@@ -67,11 +71,11 @@ class ImportTowerPostgresTest {
 
     @Test void missingFileDoesNotBootstrapOrClearAndEmptyFileDoesClear() throws Exception {
         Path missing = files.resolve("missing.csv");
-        job.run(args(missing));
+        assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class, () -> job.run(args(missing))).errorCode());
         assertNull(admin.queryForObject("SELECT to_regclass('item_tower_embedding')::text", String.class));
         Path empty = csv("empty.csv", List.of()); job.run(args(empty));
         db.update("INSERT INTO item_tower_embedding VALUES(9800,?::vector)", new PGvector(vector(64, 0)).toString());
-        job.run(args(missing)); assertEquals(1, count());
+        assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class, () -> job.run(args(missing))).errorCode()); assertEquals(1, count());
         job.run(args(empty)); assertEquals(0, count());
         source.assertClosed(admin, "tower-import-writer");
     }
@@ -130,6 +134,16 @@ class ImportTowerPostgresTest {
             assertEquals(1000, count());
         });
         assertEquals(1000, count());
+        source.assertClosed(admin, "tower-import-writer");
+    }
+
+    @Test void invalidArgumentsFailBeforeRebuildingExistingProjection() throws Exception {
+        initializeOldRow(); Path file = csv("valid.csv", List.of(row(1,64,0)));
+        for (String option : List.of("--dim=0", "--dim=-1", "--dim=private", "--dim")) {
+            var failure = assertThrows(PublicErrorException.class, () -> job.run(args(file, option)));
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, failure.errorCode());
+            assertEquals(List.of(9800L), db.queryForList("SELECT item_id FROM item_tower_embedding", Long.class));
+        }
         source.assertClosed(admin, "tower-import-writer");
     }
 

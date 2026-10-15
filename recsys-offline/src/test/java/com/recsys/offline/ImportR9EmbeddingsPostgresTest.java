@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.offline.persistence.R9EmbeddingStore;
 import com.recsys.persistence.spring.SpringSqlSessions;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -82,19 +85,28 @@ class ImportR9EmbeddingsPostgresTest {
     @Test void validationFinishesBeforeAnyBootstrapOrMutation() throws Exception {
         Path good=write("good.csv",List.of(row("v1",1,0)));
         Path missing=files.resolve("missing.csv");
-        assertThrows(IllegalArgumentException.class,()->job.run(args(good,good,missing)));
+        assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE,assertThrows(PublicErrorException.class,()->job.run(args(good,good,missing))).errorCode());
         Path duplicate=write("duplicate.csv",List.of(row("v1",1,0),row("v1",1,1)));
-        assertThrows(IllegalArgumentException.class,()->job.run(args(good,duplicate,good)));
+        assertEquals(ErrorCode.JOB_R9_INVALID_IDENTITY,assertThrows(PublicErrorException.class,()->job.run(args(good,duplicate,good))).errorCode());
         Path mismatch=write("version.csv",List.of(row("v2",1,0)));
-        assertThrows(IllegalArgumentException.class,()->job.run(args(good,mismatch,good)));
+        assertEquals(ErrorCode.JOB_R9_VERSION_MISMATCH,assertThrows(PublicErrorException.class,()->job.run(args(good,mismatch,good))).errorCode());
         Path empty=write("empty.csv",List.of());
-        assertThrows(IllegalArgumentException.class,()->job.run(args(good,empty,good)));
+        assertEquals(ErrorCode.JOB_R9_REQUIRED_GROUP_EMPTY,assertThrows(PublicErrorException.class,()->job.run(args(good,empty,good))).errorCode());
+        for(String table:TABLES)assertNull(admin.queryForObject("SELECT to_regclass(?)::text",String.class,table));
+        source.assertClosed(admin,"r9-publish-writer");
+    }
+
+    @Test void misspelledRequireAllDoesNotSilentlyPublishPartialGroups() throws Exception {
+        Path good=write("good.csv",List.of(row("v1",1,0)));
+        Path missing=files.resolve("missing.csv");
+        assertEquals(ErrorCode.JOB_INVALID_ARGUMENT,assertThrows(PublicErrorException.class,
+                ()->job.run(args(good,missing,missing,"--require-all=private-typo"))).errorCode());
         for(String table:TABLES)assertNull(admin.queryForObject("SELECT to_regclass(?)::text",String.class,table));
         source.assertClosed(admin,"r9-publish-writer");
     }
 
     @Test void allOptionalMissingFilesReturnWithoutCreatingTables() throws Exception {
-        Path missing=files.resolve("missing.csv");job.run(args(missing,missing,missing,"--require-all=false"));
+        Path missing=files.resolve("missing.csv");assertEquals(ErrorCode.JOB_R9_NO_INPUT,assertThrows(PublicErrorException.class,()->job.run(args(missing,missing,missing,"--require-all=false"))).errorCode());
         for(String table:TABLES)assertNull(admin.queryForObject("SELECT to_regclass(?)::text",String.class,table));
         source.assertClosed(admin,"r9-publish-writer");
     }

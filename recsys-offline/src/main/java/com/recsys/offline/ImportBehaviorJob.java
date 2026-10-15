@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,32 +51,37 @@ public class ImportBehaviorJob implements OfflineJob {
         return "import-behavior";
     }
 
+    /** 保留原逐项/批次写入，输入错误与部分完成必须让调度方可见。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         Path ratings = Path.of(movielensPath).resolve("ratings.csv");
-        if (!Files.exists(ratings)) {
-            log.error("未找到 {};请先跑 --job=import-items(会自动下载 MovieLens)", ratings);
-            return;
-        }
+        JobArguments.readableInput(ratings);
 
         int deleted = persistence.deleteScene(SCENE);
         log.info("清理旧的 {} 行为 {} 条", SCENE, deleted);
 
         List<BehaviorImportMapper.Rating> batch = new ArrayList<>(BATCH);
         long total = 0;
+        int bad = 0;
         try (BufferedReader br = Files.newBufferedReader(ratings, StandardCharsets.UTF_8)) {
             br.readLine(); // 表头 userId,movieId,rating,timestamp
             String line;
             while ((line = br.readLine()) != null) {
                 String[] c = line.split(",");
                 if (c.length < 4) {
+                    bad++;
                     continue;
                 }
-                long userId = Long.parseLong(c[0].trim());
-                long itemId = Long.parseLong(c[1].trim());
-                double rating = Double.parseDouble(c[2].trim());
-                long tsMs = Long.parseLong(c[3].trim()) * 1000L;
-                batch.add(new BehaviorImportMapper.Rating(userId, itemId, rating, SCENE, new Timestamp(tsMs)));
+                try {
+                    long userId = Long.parseLong(c[0].trim());
+                    long itemId = Long.parseLong(c[1].trim());
+                    double rating = Double.parseDouble(c[2].trim());
+                    if (!Double.isFinite(rating)) throw new NumberFormatException();
+                    long tsMs = Math.multiplyExact(Long.parseLong(c[3].trim()), 1000L);
+                    batch.add(new BehaviorImportMapper.Rating(userId, itemId, rating, SCENE, new Timestamp(tsMs)));
+                } catch (NumberFormatException | ArithmeticException failure) {
+                    throw new PublicErrorException(ErrorCode.JOB_INPUT_INVALID, failure);
+                }
                 if (batch.size() >= BATCH) {
                     total += flush(batch);
                     batch.clear();
@@ -83,6 +91,7 @@ public class ImportBehaviorJob implements OfflineJob {
         if (!batch.isEmpty()) {
             total += flush(batch);
         }
+        if (bad > 0) throw new PublicErrorException(ErrorCode.JOB_IMPORT_PARTIAL_FAILED);
         log.info("import-behavior 完成:写入 {} 条行为;user_behavior 总数 {}",
                 total, persistence.count());
     }

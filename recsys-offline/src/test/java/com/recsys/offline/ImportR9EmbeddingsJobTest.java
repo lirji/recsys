@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,12 +29,12 @@ class ImportR9EmbeddingsJobTest {
 
         Path bad = dir.resolve("bad.csv");
         Files.writeString(bad, "v1,7,NaN\n");
-        assertThrows(IllegalArgumentException.class, () -> ImportR9EmbeddingsJob.read(bad, true));
+        assertEquals(ErrorCode.JOB_R9_INVALID_VECTOR, assertThrows(PublicErrorException.class, () -> ImportR9EmbeddingsJob.read(bad, true)).errorCode());
     }
 
     @Test
     void missingRequiredArtifactFailsFast() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ImportR9EmbeddingsJob.read(dir.resolve("missing.csv"), true));
+        assertEquals(ErrorCode.JOB_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class,
+                () -> ImportR9EmbeddingsJob.read(dir.resolve("missing.csv"), true)).errorCode());
     }
 }

@@ -665,6 +665,42 @@ export const errorCodes = {
     message: '作业被中断，可能已有部分结果，请核对后再运行',
     httpStatus: 0,
   },
+  JOB_INPUT_UNAVAILABLE: {
+    message: '导入文件不存在或不可读取，请检查输入路径并先生成上游产物',
+    httpStatus: 0,
+  },
+  JOB_INPUT_INVALID: {
+    message: '输入数据格式或数值不合法，请检查输入文件；可能已有部分结果',
+    httpStatus: 0,
+  },
+  JOB_IMPORT_PARTIAL_FAILED: {
+    message: '部分输入行未能导入，已有结果保留，请修复文件后重跑',
+    httpStatus: 0,
+  },
+  JOB_R9_REQUIRED_GROUP_EMPTY: {
+    message: 'R9 要求三组向量均非空，请先生成全部输入产物',
+    httpStatus: 0,
+  },
+  JOB_R9_INVALID_VECTOR: {
+    message: 'R9 向量须为64维有限数值并近似L2归一化，请检查训练产物',
+    httpStatus: 0,
+  },
+  JOB_R9_INVALID_IDENTITY: {
+    message: 'R9 向量版本为空或同组身份重复，请检查输入文件',
+    httpStatus: 0,
+  },
+  JOB_R9_VERSION_MISMATCH: {
+    message: 'R9 三组向量必须使用同一个模型版本，请检查输入产物',
+    httpStatus: 0,
+  },
+  JOB_R9_NO_INPUT: {
+    message: '没有可发布的R9向量，本次未发布，请先生成输入产物',
+    httpStatus: 0,
+  },
+  JOB_POPULARITY_FALLBACK: {
+    message: '缺少可选评分文件，本次使用0热度导入物品，后续补齐评分后可重跑',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +29,9 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(ImportR9EmbeddingsJob.class);
     private static final int DIM = 64;
+    /** 既有近似单位向量容忍区间，使用平方范数避免额外开方误差。 */
+    private static final double MIN_NORM_SQUARED = 0.81;
+    private static final double MAX_NORM_SQUARED = 1.21;
     private final R9EmbeddingStore persistence;
 
     /** 作业负责输入验证，存储层保持原三组共同的手动发布事务。 */
@@ -39,20 +45,19 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
     /** 所有文件校验成功后才触发建表与版本替换。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        Path mindPath = Path.of(arg(args, "mind-file", "train/mind_item_embedding.csv"));
-        Path graphUserPath = Path.of(arg(args, "graph-user-file", "train/graph_user_embedding.csv"));
-        Path graphItemPath = Path.of(arg(args, "graph-item-file", "train/graph_item_embedding.csv"));
-        boolean requireAll = Boolean.parseBoolean(arg(args, "require-all", "true"));
+        Path mindPath = Path.of(JobArguments.text(args, "mind-file", "train/mind_item_embedding.csv"));
+        Path graphUserPath = Path.of(JobArguments.text(args, "graph-user-file", "train/graph_user_embedding.csv"));
+        Path graphItemPath = Path.of(JobArguments.text(args, "graph-item-file", "train/graph_item_embedding.csv"));
+        boolean requireAll = JobArguments.bool(args, "require-all", true);
 
         List<Row> mind = read(mindPath, requireAll);
         List<Row> graphUsers = read(graphUserPath, requireAll);
         List<Row> graphItems = read(graphItemPath, requireAll);
         if (requireAll && (mind.isEmpty() || graphUsers.isEmpty() || graphItems.isEmpty())) {
-            throw new IllegalArgumentException("R9 require-all=true 时三组向量都必须非空");
+            throw new PublicErrorException(ErrorCode.JOB_R9_REQUIRED_GROUP_EMPTY);
         }
         if (mind.isEmpty() && graphUsers.isEmpty() && graphItems.isEmpty()) {
-            log.warn("R9 没有可导入向量");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_R9_NO_INPUT);
         }
         String version = singleVersion(mind, graphUsers, graphItems);
         persistence.publish(version, mind, graphUsers, graphItems);
@@ -62,39 +67,42 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
 
     static List<Row> read(Path path, boolean required) throws Exception {
         if (!Files.exists(path)) {
-            if (required) throw new IllegalArgumentException("R9 向量文件不存在: " + path.toAbsolutePath());
+            if (required) throw new PublicErrorException(ErrorCode.JOB_INPUT_UNAVAILABLE);
             return List.of();
         }
+        JobArguments.readableInput(path);
         List<Row> out = new ArrayList<>();
         Set<Long> ids = new HashSet<>();
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
-            int number = 0;
             while ((line = reader.readLine()) != null) {
-                number++;
                 if (line.isBlank()) continue;
                 String[] parts = line.trim().split(",");
                 if (parts.length > 0 && "model_version".equalsIgnoreCase(parts[0].trim())) continue;
                 if (parts.length != DIM + 2) {
-                    throw new IllegalArgumentException(path + ":" + number + " 维度不是 " + DIM);
+                    throw new PublicErrorException(ErrorCode.JOB_R9_INVALID_VECTOR);
                 }
                 String version = parts[0].trim();
                 long id = Long.parseLong(parts[1].trim());
                 if (version.isBlank() || !ids.add(id)) {
-                    throw new IllegalArgumentException(path + ":" + number + " 版本为空或 ID 重复");
+                    throw new PublicErrorException(ErrorCode.JOB_R9_INVALID_IDENTITY);
                 }
                 float[] vector = new float[DIM];
                 double norm = 0.0;
                 for (int i = 0; i < DIM; i++) {
                     vector[i] = Float.parseFloat(parts[i + 2].trim());
-                    if (!Float.isFinite(vector[i])) throw new IllegalArgumentException(path + ":" + number + " 非有限值");
+                    if (!Float.isFinite(vector[i])) throw new PublicErrorException(ErrorCode.JOB_R9_INVALID_VECTOR);
                     norm += vector[i] * vector[i];
                 }
-                if (norm < 0.81 || norm > 1.21) {
-                    throw new IllegalArgumentException(path + ":" + number + " 向量未近似 L2 归一化,norm2=" + norm);
+                if (norm < MIN_NORM_SQUARED || norm > MAX_NORM_SQUARED) {
+                    throw new PublicErrorException(ErrorCode.JOB_R9_INVALID_VECTOR);
                 }
                 out.add(new Row(version, id, new PGvector(vector)));
             }
+        } catch (java.io.IOException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INPUT_UNAVAILABLE, failure);
+        } catch (NumberFormatException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_INPUT_INVALID, failure);
         }
         return List.copyOf(out);
     }
@@ -103,12 +111,8 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
     private static String singleVersion(List<Row>... groups) {
         Set<String> versions = new HashSet<>();
         for (List<Row> rows : groups) for (Row row : rows) versions.add(row.version());
-        if (versions.size() != 1) throw new IllegalArgumentException("R9 三组向量必须只有一个共同版本: " + versions);
+        if (versions.size() != 1) throw new PublicErrorException(ErrorCode.JOB_R9_VERSION_MISMATCH);
         return versions.iterator().next();
     }
 
-    private static String arg(ApplicationArguments args, String key, String def) {
-        List<String> values = args.getOptionValues(key);
-        return values == null || values.isEmpty() ? def : values.get(0).trim();
-    }
 }
