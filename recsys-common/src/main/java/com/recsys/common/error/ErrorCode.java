@@ -227,7 +227,11 @@ public enum ErrorCode {
     JOB_AD_QUALITY_PUBLICATION_FAILED("JOB_AD_QUALITY_PUBLICATION_FAILED", "广告质量度发布未完成，Redis 或报表可能已部分写入；请核对已有结果并修复依赖后重试", 0),
     JOB_DATA_QUALITY_CHECK_FAILED("JOB_DATA_QUALITY_CHECK_FAILED", "部分数据质量检查失败，巡检尚未完成；请查看各项状态并修复数据或依赖后重试", 0),
     JOB_DATA_QUALITY_INCOMPLETE("JOB_DATA_QUALITY_INCOMPLETE", "数据质量检查缺少有效数据或完整状态，无法确认巡检通过；请补齐数据后重新运行", 0),
-    JOB_DATA_QUALITY_BREACHED("JOB_DATA_QUALITY_BREACHED", "数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标", 0);
+    JOB_DATA_QUALITY_BREACHED("JOB_DATA_QUALITY_BREACHED", "数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标", 0),
+    JOB_NO_OCPC_TARGET("JOB_NO_OCPC_TARGET", "未找到可校准的 oCPC 广告目标，请补齐广告配置后重试", 0),
+    JOB_OCPC_DELAY_MISSING("JOB_OCPC_DELAY_MISSING", "延迟转化模型缺失，本次使用原始转化计数；可先生成延迟模型再重新校准", 0),
+    JOB_OCPC_INVALID_DATA("JOB_OCPC_INVALID_DATA", "oCPC 校准数据或模型无效；部分广告主系数可能已更新，请修复数据后重新运行", 0),
+    JOB_OCPC_FAILED("JOB_OCPC_FAILED", "oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

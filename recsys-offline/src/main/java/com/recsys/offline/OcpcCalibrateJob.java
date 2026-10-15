@@ -1,10 +1,13 @@
 package com.recsys.offline;
 
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.dao.DataAccessException;
 import com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper;
 import com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper;
 import com.recsys.offline.persistence.model.AdEventSource;
@@ -36,13 +39,15 @@ import java.util.Map;
  * 把"还在路上"的转化补回来,得无偏的"终值转化数"再算 CPA。λ 缺失或 {@code --delay-correct=false}
  * → 退化为原始计数(不纠偏)。{@code --min-completion} 给权重设上限(防极近点击权重爆炸)。
  *
- * <p>参数:--days(默认 7,只看近 N 天;<=0 表示全部)、--alpha(默认 0.5)、
+ * <p>参数:--days(默认 7,只看近 N 天;<=0 保留 epoch 下界)、--alpha(默认 0.5)、
  * --min(默认 0.2)、--max(默认 5.0)、--delay-correct(默认 true)、--min-completion(默认 0.05)。
  */
 @Component
 public class OcpcCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(OcpcCalibrateJob.class);
+    private static final double INITIAL_K = 1.0;
+    private static final double COEFFICIENT_SCALE = 10_000.0;
 
     private final OcpcFeedbackMapper feedback;
     private final OcpcTargetMapper targets;
@@ -55,20 +60,43 @@ public class OcpcCalibrateJob implements OfflineJob {
         this.redis = redis;
     }
 
+    /** 保留既有离线校准命令名。 */
     @Override
     public String name() {
         return "ad-ocpc";
     }
 
+    /** 逐广告主发布可能部分生效；故障不能被当作模型缺失或全批完成。 */
     @Override
     public void run(ApplicationArguments args) {
+        try {
+            calibrate(args);
+        } catch (PublicErrorException failure) {
+            throw failure;
+        } catch (RuntimeException failure) {
+            // ResultHandler 的受控数据校验会被 MyBatis 包装；保留原目录码而非误报依赖故障。
+            if (failure instanceof DataAccessException access
+                    && access.getMostSpecificCause() instanceof PublicErrorException controlled) {
+                throw controlled;
+            }
+            throw new PublicErrorException(ErrorCode.JOB_OCPC_FAILED, failure);
+        }
+    }
+
+    private void calibrate(ApplicationArguments args) {
         AdEventSource source = AdEventQuery.source(args);
-        int days = intArg(args, "days", 7);
-        double alpha = dblArg(args, "alpha", 0.5);
-        double kMin = dblArg(args, "min", 0.2);
-        double kMax = dblArg(args, "max", 5.0);
-        boolean delayCorrect = boolArg(args, "delay-correct", true);
-        double minCompletion = dblArg(args, "min-completion", 0.05);
+        int days = JobArguments.integer(args, "days", 7);
+        double alpha = JobArguments.decimal(args, "alpha", 0.5);
+        double kMin = JobArguments.decimal(args, "min", 0.2);
+        double kMax = JobArguments.decimal(args, "max", 5.0);
+        // 原命令支持裸开关；有值时必须严格解析，不能把拼错当关闭。
+        boolean delayCorrect = args.containsOption("delay-correct") && args.getOptionValues("delay-correct").isEmpty()
+                || JobArguments.bool(args, "delay-correct", true);
+        double minCompletion = JobArguments.decimal(args, "min-completion", 0.05);
+
+        if (alpha < 0 || kMin <= 0 || kMax < kMin || minCompletion <= 0 || minCompletion > 1) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
 
         // 延迟转化模型:λ(1/天)。开启纠偏且 Redis 有 λ 时,对转化做 Horvitz–Thompson 加权;否则原始计数。
         double lambda = delayCorrect ? readLambda() : 0.0;
@@ -81,11 +109,11 @@ public class OcpcCalibrateJob implements OfflineJob {
         Map<Long, Double> targetCpa = new HashMap<>();
         targets.scanTargets(context -> {
             var row = context.getResultObject();
+            requirePositive(row.targetCpa());
             targetCpa.put(row.advertiserId(), row.targetCpa());
         });
         if (targetCpa.isEmpty()) {
-            log.warn("无 OCPC 广告(先 --job=seed-ads),跳过");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_OCPC_TARGET);
         }
         Map<Long, Long> adToAdv = new HashMap<>();
         targets.scanOwners(context -> {
@@ -100,6 +128,7 @@ public class OcpcCalibrateJob implements OfflineJob {
             var row = context.getResultObject();
             Long adv = adToAdv.get(row.adId());
             if (adv != null) {
+                requireNonnegative(row.amount());
                 spend.merge(adv, row.amount(), Double::sum);
             }
         });
@@ -114,6 +143,9 @@ public class OcpcCalibrateJob implements OfflineJob {
             if (adv == null) {
                 return;
             }
+            if (correcting && !Double.isFinite(row.elapsedDays())) {
+                throw new PublicErrorException(ErrorCode.JOB_OCPC_INVALID_DATA);
+            }
             double w = correcting ? DelayModel.htWeight(lambda, row.elapsedDays(), minCompletion) : 1.0;
             conversions.merge(adv, w, Double::sum);
             rawConv.merge(adv, 1L, Long::sum);
@@ -127,14 +159,19 @@ public class OcpcCalibrateJob implements OfflineJob {
             double conv = conversions.getOrDefault(adv, 0.0);   // 终值转化数(纠偏后)
             long raw = rawConv.getOrDefault(adv, 0L);           // 已观测原始转化数
             double cost = spend.getOrDefault(adv, 0.0);
+            requireNonnegative(conv);
+            requireNonnegative(cost);
             if (conv <= 0 || cost <= 0) {
                 held++;
                 log.debug("广告主 {} 无转化/花费,保持 k={}", adv, round4(kOld));
                 continue;
             }
             double actualCpa = cost / conv;
-            double kNew = clamp(kOld * Math.pow(target / actualCpa, alpha), kMin, kMax);
-            redis.opsForValue().set(RedisKeys.adOcpc(adv), String.valueOf(round4(kNew)));
+            requirePositive(actualCpa);
+            double adjusted = kOld * Math.pow(target / actualCpa, alpha);
+            requirePositive(adjusted);
+            double kNew = clamp(adjusted, kMin, kMax);
+            redis.opsForValue().set(RedisKeys.adOcpc(adv), String.valueOf(publishedCoefficient(kNew)));
             updated++;
             log.info("广告主 {} 目标CPA={} 实际CPA={} (花费{}/转化{}{}) k {}→{}",
                     adv, round2(target), round2(actualCpa), round2(cost),
@@ -147,35 +184,42 @@ public class OcpcCalibrateJob implements OfflineJob {
                 correcting ? "λ=" + round6(lambda) + "(1/天)" : (delayCorrect ? "λ缺失→关闭" : "关闭"));
     }
 
+    /** 仅真正缺失使用初始系数；坏值或读取失败不得触发覆盖旧模型。 */
     private double readK(long advertiserId) {
-        try {
-            String s = redis.opsForValue().get(RedisKeys.adOcpc(advertiserId));
-            if (s != null && !s.isBlank()) {
-                double k = Double.parseDouble(s.trim());
-                if (Double.isFinite(k) && k > 0) {
-                    return k;
-                }
-            }
-        } catch (Exception ignored) {
-            // 缺失/异常 → 从 1.0 起步
-        }
-        return 1.0;
+        String value = redis.opsForValue().get(RedisKeys.adOcpc(advertiserId));
+        return value == null ? INITIAL_K : storedPositive(value);
     }
 
-    /** 读延迟模型速率 λ(ad:delay:lambda,1/天);缺失/异常/非正 → 0(调用方据此关闭纠偏)。 */
+    /** 延迟模型缺失允许原始计数降级，故障和损坏须失败且保留旧系数。 */
     private double readLambda() {
-        try {
-            String s = redis.opsForValue().get(RedisKeys.AD_DELAY_LAMBDA);
-            if (s != null && !s.isBlank()) {
-                double v = Double.parseDouble(s.trim());
-                if (Double.isFinite(v) && v > 0) {
-                    return v;
-                }
-            }
-        } catch (Exception ignored) {
-            // 缺失/异常 → 不纠偏
+        String value = redis.opsForValue().get(RedisKeys.AD_DELAY_LAMBDA);
+        if (value == null) {
+            ErrorCode code = ErrorCode.JOB_OCPC_DELAY_MISSING;
+            log.warn("[{}] {}", code.code(), code.message());
+            return 0.0;
         }
-        return 0.0;
+        return storedPositive(value);
+    }
+
+    private static double storedPositive(String value) {
+        try {
+            double parsed = Double.parseDouble(value.trim());
+            requirePositive(parsed);
+            return parsed;
+        } catch (NumberFormatException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_OCPC_INVALID_DATA, failure);
+        }
+    }
+
+    private static void requireNonnegative(double value) {
+        if (!Double.isFinite(value) || value < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_OCPC_INVALID_DATA);
+        }
+    }
+
+    private static void requirePositive(double value) {
+        requireNonnegative(value);
+        if (value == 0) throw new PublicErrorException(ErrorCode.JOB_OCPC_INVALID_DATA);
     }
 
     private static double clamp(double v, double lo, double hi) {
@@ -186,27 +230,21 @@ public class OcpcCalibrateJob implements OfflineJob {
         return Math.round(v * 100) / 100.0;
     }
 
+    private static double publishedCoefficient(double v) {
+        // Math.round 会把NaN变0、溢出变long饱和值；发布前显式拒绝不可表示的系数。
+        double scaled = v * COEFFICIENT_SCALE;
+        if (!Double.isFinite(scaled) || scaled >= Long.MAX_VALUE || Math.round(scaled) <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_OCPC_INVALID_DATA);
+        }
+        return Math.round(scaled) / COEFFICIENT_SCALE;
+    }
+
     private static double round4(double v) {
-        return Math.round(v * 10000) / 10000.0;
+        return Math.round(v * COEFFICIENT_SCALE) / COEFFICIENT_SCALE;
     }
 
     private static double round6(double v) {
         return Math.round(v * 1_000_000) / 1_000_000.0;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static boolean boolArg(ApplicationArguments a, String k, boolean def) {
-        if (!a.containsOption(k)) {
-            return def;
-        }
-        var vals = a.getOptionValues(k);
-        return vals.isEmpty() || Boolean.parseBoolean(vals.get(0));
-    }
 }

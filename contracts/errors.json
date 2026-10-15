@@ -1589,6 +1589,34 @@
       "httpStatus": 0,
       "message": "数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标",
       "httpDefault": false
+    },
+    {
+      "name": "JOB_NO_OCPC_TARGET",
+      "code": "JOB_NO_OCPC_TARGET",
+      "httpStatus": 0,
+      "message": "未找到可校准的 oCPC 广告目标，请补齐广告配置后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_OCPC_DELAY_MISSING",
+      "code": "JOB_OCPC_DELAY_MISSING",
+      "httpStatus": 0,
+      "message": "延迟转化模型缺失，本次使用原始转化计数；可先生成延迟模型再重新校准",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_OCPC_INVALID_DATA",
+      "code": "JOB_OCPC_INVALID_DATA",
+      "httpStatus": 0,
+      "message": "oCPC 校准数据或模型无效；部分广告主系数可能已更新，请修复数据后重新运行",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_OCPC_FAILED",
+      "code": "JOB_OCPC_FAILED",
+      "httpStatus": 0,
+      "message": "oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试",
+      "httpDefault": false
     }
   ],
   "families": [

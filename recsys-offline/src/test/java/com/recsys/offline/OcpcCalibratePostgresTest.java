@@ -1,6 +1,11 @@
 package com.recsys.offline;
 
 import com.recsys.common.error.PublicErrorException;
+import com.recsys.common.error.ErrorCode;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 
 import com.recsys.common.constant.RedisKeys;
 import com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper;
@@ -44,6 +49,7 @@ class OcpcCalibratePostgresTest {
     static StringRedisTemplate redis;
     static OcpcFeedbackMapper feedback;
     static OcpcTargetMapper targets;
+    final ListAppender<ILoggingEvent> logs = new ListAppender<>();
 
     @BeforeAll static void prepare() throws Exception {
         ds0 = pool(ZERO); ds1 = pool(ONE); zero = new JdbcTemplate(ds0); one = new JdbcTemplate(ds1);
@@ -75,10 +81,12 @@ class OcpcCalibratePostgresTest {
         if (sharded instanceof AutoCloseable closeable) closeable.close();
     }
     @BeforeEach void reset() {
+        logs.start(); ((Logger) LoggerFactory.getLogger(OcpcCalibrateJob.class)).addAppender(logs);
         zero.execute("TRUNCATE ad"); one.execute("TRUNCATE ad"); events.execute("TRUNCATE ad_event,ad_event_log");
         try (var connection = redisFactory.getConnection()) { connection.serverCommands().flushDb(); }
     }
     @AfterEach void connectionsReturnedBeforePoolShutdown() {
+        ((Logger) LoggerFactory.getLogger(OcpcCalibrateJob.class)).detachAppender(logs); logs.stop();
         primary.assertClosed(observer, "ocpc-reader");
         assertEquals(0, ds0.getHikariPoolMXBean().getActiveConnections());
         assertEquals(0, ds1.getHikariPoolMXBean().getActiveConnections());
@@ -114,7 +122,7 @@ class OcpcCalibratePostgresTest {
         run(redis); assertEquals("0.8165",k(2));
     }
     @Test void futureConversionsMissingInputsAndNonOcpcAdsDoNotPublish() {
-        run(redis); assertTrue(redis.keys("ad:ocpc:*").isEmpty()); seedAds();
+        rejected(ErrorCode.JOB_NO_OCPC_TARGET); assertTrue(redis.keys("ad:ocpc:*").isEmpty()); seedAds();
         trip("future",20,4,-86400,0.000001); trip("non-ocpc",51,100,-86400,0); trip("zero-target",60,100,-86400,0);
         event("missing-exposure",11,"CLICK",-86400,null); event("missing-exposure",11,"CONVERSION",0,null);
         run(redis); assertTrue(redis.keys("ad:ocpc:*").isEmpty());
@@ -124,35 +132,110 @@ class OcpcCalibratePostgresTest {
         events.execute("INSERT INTO ad_event_log SELECT * FROM ad_event"); events.execute("TRUNCATE ad_event");
         run(redis,"--ad-event-table=ad_event_log"); assertEquals("1.0",k(9007199254740993L)); assertNull(k(9007199254740992L));
     }
-    @Test void invalidStoredModelsFallBackAndClampsKeepOriginalParameters() {
+    @Test void damagedModelsNeverMasqueradeAsMissingAndOriginalClampsRemain() {
         singleAd(); trip("simple",20,4,-86400,0);
-        for(String value:List.of("bad","NaN","Infinity","0","-1"," ")) {
-            redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,value); redis.opsForValue().set(RedisKeys.adOcpc(2),value);
-            run(redis); assertEquals("1.0",k(2));
+        for (String value : List.of("PRIVATE_BAD_MODEL","NaN","Infinity","0","-1"," ")) {
+            redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,value);
+            redis.opsForValue().set(RedisKeys.adOcpc(2),"2");
+            rejected(ErrorCode.JOB_OCPC_INVALID_DATA); assertEquals("2",k(2));
+            redis.delete(RedisKeys.AD_DELAY_LAMBDA);
+            redis.opsForValue().set(RedisKeys.adOcpc(2),value);
+            rejected(ErrorCode.JOB_OCPC_INVALID_DATA); assertEquals(value,k(2));
         }
+        redis.opsForValue().set(RedisKeys.adOcpc(2),"1e20"); run(redis); assertEquals("5.0",k(2));
         redis.opsForValue().set(RedisKeys.adOcpc(2),"10"); run(redis); assertEquals("5.0",k(2));
         redis.opsForValue().set(RedisKeys.adOcpc(2),"0.01"); run(redis); assertEquals("0.2",k(2));
         redis.opsForValue().set(RedisKeys.adOcpc(2),"3"); run(redis,"--alpha=0","--min=0.5","--max=2"); assertEquals("2.0",k(2));
+    }
+    @Test void missingModelsRemainLegitimateAndDelayFallbackIsVisible() {
+        singleAd(); trip("simple",20,4,-86400,0);
+        run(redis,"--delay-correct"); assertEquals("1.0",k(2));
+        assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("[JOB_OCPC_DELAY_MISSING]")));
+        logs.list.clear(); redis.delete(RedisKeys.adOcpc(2));
+        redis.opsForValue().set(RedisKeys.AD_DELAY_LAMBDA,"PRIVATE_BAD_MODEL");
+        run(redis,"--delay-correct=false"); assertEquals("1.0",k(2));
+        assertFalse(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("JOB_OCPC_DELAY_MISSING")));
+    }
+    @Test void invalidArgumentsFailBeforeDependenciesOrPublication() {
+        redis.opsForValue().set(RedisKeys.adOcpc(2),"old");
+        for (String option : List.of("--days", "--days=no", "--alpha=NaN", "--alpha=-1", "--min=0",
+                "--max=0.1", "--min-completion=0", "--min-completion=1.01", "--delay-correct=maybe")) {
+            rejected(ErrorCode.JOB_INVALID_ARGUMENT,option); assertEquals("old",k(2));
+        }
+    }
+    @Test void nonfiniteStatsAndOverflowCannotPublishClampedOrRoundedFakeValues() {
+        singleAd(); trip("simple",20,4,-86400,0); redis.opsForValue().set(RedisKeys.adOcpc(2),"2");
+        for (String cost : List.of("NaN","Infinity","-1")) {
+            events.update("UPDATE ad_event SET charged_price=?::float8 WHERE event_type='IMPRESSION'",cost);
+            rejected(ErrorCode.JOB_OCPC_INVALID_DATA); assertEquals("2",k(2));
+        }
+        events.execute("UPDATE ad_event SET charged_price=4 WHERE event_type='IMPRESSION'");
+        for (String target : List.of("NaN","Infinity")) {
+            zero.update("UPDATE ad SET target_cpa=?::float8",target);
+            // ShardingSphere 的 AVG 合并先用 BigDecimal 解析，非有限目标在回调前即被驱动拒绝。
+            var failure=rejected(ErrorCode.JOB_OCPC_FAILED);
+            Throwable cause=failure;
+            while (cause.getCause()!=null) cause=cause.getCause();
+            assertInstanceOf(NumberFormatException.class,cause);
+            assertEquals("2",k(2));
+        }
+        zero.execute("UPDATE ad SET target_cpa=8");
+        rejected(ErrorCode.JOB_OCPC_INVALID_DATA,"--alpha=1e308"); assertEquals("2",k(2));
+        zero.execute("UPDATE ad SET target_cpa=4");
+        rejected(ErrorCode.JOB_OCPC_INVALID_DATA,"--min=0.000001","--max=0.000001"); assertEquals("2",k(2));
+        rejected(ErrorCode.JOB_OCPC_INVALID_DATA,"--min=1e20","--max=1e20"); assertEquals("2",k(2));
+        run(redis); assertEquals("2.0",k(2));
     }
     @Test void queryAndArgumentFailuresPreserveExistingRedisValues() {
         singleAd(); trip("simple",20,4,-86400,0); redis.opsForValue().set(RedisKeys.adOcpc(2),"old");
         assertThrows(PublicErrorException.class,()->run(redis,"--ad-event-table=ad_event;DROP TABLE ad"));
         events.execute("ALTER TABLE ad_event RENAME COLUMN charged_price TO hidden_price");
-        try { assertThrows(DataAccessException.class,()->run(redis)); assertEquals("old",k(2)); }
+        try { var failure=rejected(ErrorCode.JOB_OCPC_FAILED); assertInstanceOf(DataAccessException.class,failure.getCause()); assertEquals("old",k(2)); }
         finally { events.execute("ALTER TABLE ad_event RENAME COLUMN hidden_price TO charged_price"); }
     }
     @Test void redisSecondWriteFailurePreservesFirstAdvertiserAndClosesDatabaseResources() throws Exception {
         one.execute("INSERT INTO ad VALUES(11,1,'OCPC',4)"); singleAd(); trip("first",11,4,-86400,0); trip("second",20,4,-86400,0);
-        redis.opsForValue().set(RedisKeys.adOcpc(2),"old");
-        var acl = REDIS.execInContainer("redis-cli","ACL","SETUSER","ocpc-test","on",">test-only-password","resetkeys","~"+RedisKeys.adOcpc(1),"+@all"); assertEquals(0,acl.getExitCode());
+        redis.opsForValue().set(RedisKeys.adOcpc(2),"2");
+        var acl = REDIS.execInContainer("redis-cli","ACL","SETUSER","ocpc-test","on",">test-only-password","resetkeys","%R~*","%W~"+RedisKeys.adOcpc(1),"+@all"); assertEquals(0,acl.getExitCode());
         var config = new RedisStandaloneConfiguration(REDIS.getHost(),REDIS.getMappedPort(6379)); config.setUsername("ocpc-test"); config.setPassword("test-only-password");
         var restrictedFactory = new LettuceConnectionFactory(config); restrictedFactory.afterPropertiesSet(); restrictedFactory.start();
         try {
-            var failure = assertThrows(DataAccessException.class,()->run(new StringRedisTemplate(restrictedFactory)));
-            assertTrue(failure.getMostSpecificCause().getMessage().contains("NOPERM"));
+            var failure = assertThrows(PublicErrorException.class,()->run(new StringRedisTemplate(restrictedFactory)));
+            assertEquals(ErrorCode.JOB_OCPC_FAILED,failure.errorCode());
+            var cause=assertInstanceOf(DataAccessException.class,failure.getCause());
+            assertTrue(cause.getMostSpecificCause().getMessage().contains("NOPERM"));
+            assertFalse(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("ad-ocpc 完成")));
         }
         finally { restrictedFactory.destroy(); }
-        assertEquals("1.0",k(1)); assertEquals("old",k(2));
+        assertEquals("1.0",k(1)); assertEquals("2",k(2));
+        run(redis); assertEquals("2.0",k(2));
+    }
+    @Test void redisReadFailureIsNotAColdStartAndWrongTypeIsNotMissing() throws Exception {
+        singleAd(); trip("simple",20,4,-86400,0); redis.opsForValue().set(RedisKeys.adOcpc(2),"2");
+        redis.opsForHash().put(RedisKeys.AD_DELAY_LAMBDA,"field","PRIVATE_VALUE");
+        var wrongType=rejected(ErrorCode.JOB_OCPC_FAILED); assertInstanceOf(DataAccessException.class,wrongType.getCause());
+        assertEquals("2",k(2)); redis.delete(RedisKeys.AD_DELAY_LAMBDA);
+        var acl=REDIS.execInContainer("redis-cli","ACL","SETUSER","ocpc-read-test","on",">test-only-password","resetkeys","~*","+@all","-get");
+        assertEquals(0,acl.getExitCode());
+        var config=new RedisStandaloneConfiguration(REDIS.getHost(),REDIS.getMappedPort(6379));
+        config.setUsername("ocpc-read-test"); config.setPassword("test-only-password");
+        var denied=new LettuceConnectionFactory(config); denied.afterPropertiesSet(); denied.start();
+        try {
+            for (String option : List.of("--delay-correct=true","--delay-correct=false")) {
+                var failure=assertThrows(PublicErrorException.class,()->run(new StringRedisTemplate(denied),option));
+                assertEquals(ErrorCode.JOB_OCPC_FAILED,failure.errorCode()); assertEquals("2",k(2));
+            }
+        } finally { denied.destroy(); }
+        assertFalse(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("ad-ocpc 完成")));
+        run(redis); assertEquals("2.0",k(2));
+    }
+    private PublicErrorException rejected(ErrorCode code,String... args) {
+        logs.list.clear();
+        var failure=assertThrows(PublicErrorException.class,()->run(redis,args));
+        assertEquals(code,failure.errorCode()); assertEquals(code.message(),failure.getMessage());
+        assertFalse(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("ad-ocpc 完成")));
+        assertFalse(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("PRIVATE_")));
+        return failure;
     }
     private static void seedAds() {
         one.execute("INSERT INTO ad VALUES(11,1,'OCPC',10),(13,1,'OCPC',30),(31,3,'OCPC',10),(51,5,'CPC',100)");

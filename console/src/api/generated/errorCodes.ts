@@ -908,6 +908,22 @@ export const errorCodes = {
     message: '数据质量巡检已完成，发现指标越阈值；请检查报表中的对应指标',
     httpStatus: 0,
   },
+  JOB_NO_OCPC_TARGET: {
+    message: '未找到可校准的 oCPC 广告目标，请补齐广告配置后重试',
+    httpStatus: 0,
+  },
+  JOB_OCPC_DELAY_MISSING: {
+    message: '延迟转化模型缺失，本次使用原始转化计数；可先生成延迟模型再重新校准',
+    httpStatus: 0,
+  },
+  JOB_OCPC_INVALID_DATA: {
+    message: 'oCPC 校准数据或模型无效；部分广告主系数可能已更新，请修复数据后重新运行',
+    httpStatus: 0,
+  },
+  JOB_OCPC_FAILED: {
+    message: 'oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;
