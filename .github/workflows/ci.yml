@@ -41,6 +41,11 @@ jobs:
       - name: On/offline contract cross-check (Python)
         run: python3 scripts/verify_contracts.py
 
+      - name: Mapper boundaries and historical SQL integrity
+        run: |
+          python3 scripts/test_persistence_boundaries.py
+          python3 scripts/check_persistence_boundaries.py
+
       # 覆盖率报告存档,便于人工查看趋势(不阻断)。
       - name: Upload coverage reports
         if: always()

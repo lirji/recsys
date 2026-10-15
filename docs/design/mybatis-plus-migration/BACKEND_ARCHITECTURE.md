@@ -1,11 +1,11 @@
 # 持久化迁移目标与过渡架构
 
-状态：已批准。范围与验收见 [PLAN](PLAN.md)。
+状态：已落地；MP15本地完整验收通过，当前Git/远程CI收尾。范围与验收见 [PLAN](PLAN.md)。
 
 ## 事实、假设与决策
 
-- F01：现有 22 个业务/技术子模块，数据归属由企业可靠性架构及实际 DataSource/Repository 确定。
-- F02：JdbcTemplate 分散于 Repository、Service、推荐算法和 Job，包含 PG 特殊 SQL；Flink 有原生 JDBC。
+- F01：迁移前22个子模块；新增recsys-persistence后23个子模块，数据归属由企业可靠性架构及实际 DataSource/Repository 确定。
+- F02（迁移前）：JdbcTemplate 分散于 Repository、Service、推荐算法和 Job，包含 PG 特殊 SQL；Flink 有原生 JDBC。
 - F03：`recsys-platform/pom.xml` 明确定位 web 技术 starter，领域契约由 common/ad-common/proto 承载。
 - A01：所有生产业务 SQL 迁移；已执行 DDL、测试断言和连接初始化不机械转换为 MP CRUD。已随整体计划获用户确认。
 - D01：保留领域/服务/数据库 owner 和部署拓扑，调整本模块内持久化职责。
@@ -13,13 +13,13 @@
 - D03：现有 Repository 保留非 SQL 的业务映射、结果校验和资源身份接口；简单 CRUD 可由应用服务使用专用 Mapper，不为分层添加空接口。
 - D04：先试点偏好读写，再分路径覆盖所有模块；最后按证据决定是否还有必须改的结构问题。
 
-## 当前、过渡与目标
+## 原实现、迁移过程与已落地结构
 
-当前：Service/算法/Job → JdbcTemplate/Connection → PG 或 ShardingSphere；部分已通过 Repository 隔离。
+迁移前：Service/算法/Job → JdbcTemplate/Connection → PG 或 ShardingSphere；部分已通过 Repository 隔离。
 
-过渡：每次替换一个访问入口。未迁移路径仍使用原 JDBC，迁移路径使用明确绑定 DataSource 的 Mapper。新旧共享原事务资源，不引入第二写入路径。禁止保留长期双实现后声称完成。
+迁移过程（现已退出）：每次替换一个访问入口。未迁移路径仍使用原 JDBC，迁移路径使用明确绑定 DataSource 的 Mapper。新旧共享原事务资源，不引入第二写入路径。禁止保留长期双实现后声称完成。
 
-目标：
+已落地：
 
 ```text
 Controller / gRPC / Kafka / OfflineJob / Flink operator

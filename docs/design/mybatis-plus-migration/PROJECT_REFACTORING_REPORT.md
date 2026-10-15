@@ -2,72 +2,42 @@
 
 ## projectSummary
 
-阶段：计划已批准，MP00/MP01完成；处于增量重构阶段。全项目迁移、最终验收和结构终审未完成。
-目标与完整执行顺序见 [PLAN](PLAN.md)。
+MP00～MP15实现、全仓clean verify、专项/浏览器及结构终审全部本地通过，本轮Git/CI收尾正在执行。业务SQL已统一为MyBatis-Plus管理的Mapper/XML，保持原业务模块、数据owner和运行边界。追加统一错误码/提示/魔法值目标仍未完成。
 
 ## baseline
 
-基线 `e7838776`；源码及 POM 无先存未提交修改。已有 8 个用户/暂停交接文件保持。
-当前结构与清单见 [BACKEND_ARCHITECTURE](BACKEND_ARCHITECTURE.md)、[SQL_INVENTORY](SQL_INVENTORY.md)。
-重构前增量编译及全仓测试成功：694测试，0失败/错误，4个既有跳过。具体范围见 MP01_RESULT。
+基线`e7838776`，原22子模块；初始13模块/131候选Java、45独立SQL脚本，526是关键词命中数而非SQL条数。重构前全仓694项、0失败/错误、4既有按需跳过。八项用户/暂停文件保留；原企业可靠性S13B～S25继续暂停。
 
-## problems
+## problems / implementation
 
-| ID | 优先级 | 问题及证据 | 影响与本次处理 |
-|---|---|---|---|
-| P01 | P2 | `recsys-user/UserProfileService`、`query/IdfWeighter`、`offline/IdfJob` 等直接执行 SQL | 业务与数据访问耦合；迁移到专用 Mapper/XML |
-| P02 | P1 | ad/offline 多 DataSource、advertiser 内嵌 derived 源，资金 Repository 检查 DataSource 身份 | MP 自动单源扫描可能串库；必须显式绑定并验证事务。此项是迁移风险，不表示现有串库事故 |
-| P03 | P1 | BillingOutboxRepository 使用 UPDATE RETURNING/租约；ReconciliationRepository/Configuration 使用 DB 时间与 RR 快照 | 框架缓存、提交、超时语义可能改变资金结果；精确配置并真实并发验证 |
-| P04 | P2 | AbstractItemCatalogReader/BehaviorQuery/ItemQuery 使用动态来源与 SQL 片段 | 保留封闭来源选择，移为 Mapper 参数/固定 XML 分支，避免万能 SQL 执行器 |
-| P05 | P2 | RealtimeFeatureJob 原生 JDBC，offline 运行时 DDL/批量导入 | 易在“全项目”迁移时遗漏；独立工作包、打包/游标/批次测试 |
-| P06 | P2 | 现有部分测试 Mock JdbcTemplate，另一些 PG 测试直接 new Repository | 只调整 Mock 不能证明 Mapper；先补特征测试和 session 装配，保留独立 JDBC 断言 |
+| 原问题/风险 | 处理结果 |
+|---|---|
+| Service/算法/Job直接SQL | 本模块具名Mapper/XML；业务计算、缓存、编排留在原调用层；清单全部核销。 |
+| 多DataSource/默认扫描风险 | 四路工厂绑定原实际DataSource，精确XML/Mapper扫描；真实双分片/互斥schema/事务回滚保护；advertiser派生源非Bean，Boot主源继续创建。 |
+| RETURNING/锁/时间/缓存语义 | 写返回行显式副作用标记；STATEMENT缓存、禁二级cache；保留锁序、影响行数、隔离和截止，见资金各片RESULT。 |
+| 动态表名/SQL拼接 | CatalogTable/BehaviorSource/AdEventSource等固定枚举和XML分支；旧table字符串入口清除，无万能execute(sql) Mapper。 |
+| 离线批次和Flink遗漏 | 离线逐作业真实PG/Redis验证输出及晚失败进度；Flink非Boot会话和最终shade独立JVM真实查询通过。 |
+| 仅Mock不能证明SQL | 逐片先旧后新真实PG特征测试，独立JDBC核验仍保留；Java SQL回流/危险XML/历史脚本摘要新增CI守卫。 |
 
-## targetArchitecture / refactoringPlan
+具体结构决定见[STRUCTURE_REVIEW](STRUCTURE_REVIEW.md)；开发规范见[持久层与Mapper规范](../../13-持久层与Mapper规范.md)。新增recsys-persistence仅复用类型映射与会话装配，不创建全局业务仓储或连接池。
 
-目标、过渡与决策见 BACKEND_ARCHITECTURE；MP00～MP15 及各有界子项见 PLAN。
-无新业务域、共享写模型或部署单元；新增持久化技术模块与各模块 Mapper/XML。
+## verification
 
-## testProtection / verification
+生产代码基于本地`bc945903`，全仓24 reactor clean verify成功：1049项/202类，0失败/错误、4个按需跳过。3个浏览器宿主及CI=true Docker检查已显式通过；资金384/68类、自然75/13类、Chromium 4+5+5全部通过，见MP15_RESULT。前端98项/19类、类型检查和构建通过，ONNX自包含10模型与Python编码契约10用例通过。
 
-- 构建基线：增量 COMPILE=PASS。
-- 测试基线：本轮全仓694测试；偏好6项旧JDBC特征测试与迁移后8项/宿主3项真实集成通过。
-- MyBatis-Plus 接入/许可证/已知漏洞查询：MP01完成，见MP01_RESULT；Flink/真实分片待对应批次。
-- 最终真实 PG/Kafka/分片/浏览器全量验收：待后续实施和MP15，不把MP01通过视为全项目通过。
-- 计划覆盖检查：包含 13 个模块与独立 DDL/测试/Flink 边界；未将只读扫描当成逐 SQL 完整语义审查。
-- Code Hygiene：MP01无阻断发现；缺少统一formatter与独立Java静态分析的限制见MP01_RESULT。
-
-## changeSets / implementation
-
-生产 changeSets：MP01基础接入及用户画像迁移，详见 MP01_RESULT。后续 changeSets 仍待实施；历史迁移未修改。
+MP14旧5/新6 PG+最终shade真实查询1通过；完整离线280/46类通过。静态边界扫描591生产Java/90 Mapper XML/45历史SQL通过，守卫6项测试通过。MP版本、许可证及已知漏洞核查见MP01_RESULT/TECH_SELECTION；security-scan是报告型门禁，成功不表示不存在漏洞。统一formatter和独立Java静态分析未配置，不声称静态分析全通过。
 
 ## behaviorCompatibility
 
-| 边界 | 当前事实 | 目标 |
-|---|---|---|
-| API | UNCHANGED（MP01真实集成验证） | UNCHANGED；其余路径完成后测试确认 |
-| DB schema/data | UNCHANGED（仅独占测试库建数/断言） | UNCHANGED；DDL资源提取不改历史脚本 |
-| MQ | UNCHANGED | UNCHANGED |
-| External / Redis | UNCHANGED | UNCHANGED |
-| Business | UNCHANGED | UNCHANGED，金额/资格/锁序/幂等必须实测 |
+HTTP/gRPC、数据库结构、MQ/Redis契约与业务算法保持，所有真实数据库测试仅使用独占测试组件。45历史SQL摘要不变；8个bootstrap资源承接既有运行时DDL。验证覆盖金额/资格/锁序/幂等、跨源路由、空值/时间精度、批次部分失败及资源释放；未测容量与性能，不承诺吞吐/延迟提升。
+
+## rollbackPlan / nextMilestone
+
+按PLAN第8节正常revert有界提交，禁止重写Git历史或操作共享数据；回退代码不能撤销已发生的业务写入。当前完成本批Git/最新CI，随后基于真实边界盘点实施统一错误码与展示。计划整体已授权，不恢复原暂停企业可靠性任务。
 
 ## remainingRisks / technicalDebt
 
-首选依赖版本已通过MP01路径与当前Boot/Spring栈实测；其他模块尤其分片/Flink仍需验证，部分非资金路径需逐包补齐真实数据库测试。
-历史跨 owner 读库和运行时 DDL 先保持并记录，不能利用持久框架替换静默改变架构/业务行为。
-源码初筛计数不是 SQL AST 清单，实施前逐方法补参数、结果、事务、来源和测试映射。
-未测性能，不承诺吞吐或延迟提升。
-
-## rollbackPlan / nextMilestone / evidence
-
-按 PLAN 第 8 节执行有界提交回退；不修改 Git 历史、共享数据或用户改动。
-下一步：MP01 Git交付 → MP02a 内容CRUD → MP02b目录查询，按PLAN连续推进。
-原企业可靠性任务继续暂停，不隐式继续 S13B。
-
-证据入口：PLAN、SQL_INVENTORY、BACKEND_ARCHITECTURE、TECH_SELECTION、PROGRESS_STATE；本轮编译日志 `/tmp/recsys-mybatis-baseline-compile.log`。
-
-## 当前增量状态（MP14）
-
-前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5及f1～f7，MP13整体完成；逐片证据以PROGRESS_STATE及对应RESULT为准，MP14已完成（非Boot旧5/新6/最终shade真实PG1），MP15正在执行。最新完整离线280/46类及全仓24 reactor测试编译/hygiene通过，不代表最终全仓验收。
+以下为迁移过程中已实证并保留的历史行为；后续治理不能把这些保护测试当成问题已解决。
 
 新增已证实技术债：ImportR9EmbeddingsJob原手动事务会提交/回滚外层先行工作，迁移R9EmbeddingStore保持该边界并用真实PG保护；未来事务治理须独立决定传播策略。Lookalike/Hot沿用两条Redis命令删除后写入，窗口仍存在，不能宣称原子替换；查询失败发生在删除前时旧数据保留已实证，见MP13C7_RESULT/MP13D1_RESULT。
 

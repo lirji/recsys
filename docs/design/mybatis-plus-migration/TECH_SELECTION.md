@@ -1,13 +1,13 @@
 # MyBatis-Plus 技术接入决策
 
-状态：已批准；MP01 已通过用户与推荐宿主真实集成并写入 POM，其他路径按计划继续验证。
+状态：已落地；MP01～MP14逐片真实集成通过，MP15全仓clean verify通过，专项/浏览器通过，交付收尾进行中。
 
 | 决策 | 当前/约束 | 选择及理由 | 代价与兼容门禁 | 阶段 |
 |---|---|---|---|---|
 | Java / Spring Boot | 21 / 3.2.5 | 保持 | 不用升级 Spring 解决未查明的问题 | 已存在 |
 | PG / ShardingSphere | PG 驱动 42.7.3 / ShardingSphere 5.5.0 | 保持现有数据库和路由 | 所有特殊 SQL、分片 ID、类型及事务真实验证 | 已存在 |
 | 持久框架 | 用户明确要求 MP | INTEGRATE MyBatis-Plus，Boot 宿主用 boot3 starter | BOM 统一版本；不同时引入原 MyBatis Starter；不在纯契约模块添加数据库自动配置 | MP01 |
-| 候选版本 | 官方安装页当前示例 3.5.17 | 首选验证 3.5.17 的 Boot3 分支 | MP01已冻结3.5.17并验证Boot3.2.5/依赖树/PG试点；Flink与真实分片待对应工作包 | MP01 |
+| 冻结版本 | MyBatis-Plus 3.5.17 / MyBatis 3.5.19 | Boot3分支及非Boot核心 | Boot3.2.5、真实PG/双分片和Flink最终shade已通过对应工作包验证 | MP01～MP14 |
 | 公共代码 | platform 为 web starter；common/proto 为契约 | BUILD 一个小型 recsys-persistence，仅复用实际共用 PG 类型处理 | 不依赖业务模块、不含 web/安全/Boot 启动器、不创建全局数据源，不建万能 Repository | MP01 |
 | 复杂 SQL | PG CTE、RETURNING、行锁、全文、向量 | 本模块明确 Mapper XML | 保留原查询含义，额外维护 XML 与类型映射 | 各批 |
 | 插件 | 既有显式 limit/offset、版本条件 | 初始不开自动分页/乐观锁/逻辑删除/租户等改变 SQL 的全局拦截器 | 需要 MP 分页 API 的具体路径再验证 PG 方言及 JSqlParser 依赖；不使资金 SQL 被隐式改写 | 按实需 |

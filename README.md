@@ -2,6 +2,8 @@
 
 基于 Java 21 + Spring Boot 3.2 的推荐系统,Maven 多模块单仓,面向生产标准但可本地一键跑通。
 
+持久层采用 MyBatis-Plus + Mapper XML，支持 PostgreSQL/pgvector 与原 ShardingSphere 分片；结构、数据源绑定及新增查询约定见[持久层与 Mapper 规范](docs/13-持久层与Mapper规范.md)。
+
 > 设计文档见 `docs/`(项目总览 / 技术栈 / 架构设计 / 关键技术点 / 系统能力 / 本地运行 / 权限接入,及 `docs/skills/` 19 篇技术拆解);`PLAN.md` 为初始搭建计划(历史存档),现状以 `docs/00-项目总览.md` 为准。
 
 > 企业级建设（2026-10-15）：[现状优势与风险评估](docs/12-企业级搜推广评估.md)及[下一阶段计划草案](docs/design/enterprise-reliability/PLAN.md)。优先补齐曝光可信、钱算对、事件不漏、故障可恢复、效果可验证；实施状态和逐片验收见[实施清单](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)；当前 sandbox 切片通过不表示整体或生产验收完成。
@@ -23,6 +25,7 @@ recsys/
 ├── recsys-ad-common   # 广告共享契约(BidType/AdCatalogEvent/sharding.yaml)  [lib]
 ├── recsys-proto       # gRPC 契约(.proto + 防腐 mapper + 内部令牌拦截器)     [lib]
 ├── recsys-platform    # 平台安全/Web(内部 HMAC token/过滤器/全局异常)       [lib]
+├── recsys-persistence # PG类型处理、MyBatis会话设置与多源装配              [lib]
 ├── recsys-gateway     # 网关(:8080;边缘认证:自签 JWT 默认/Casdoor OIDC 可选) [app]
 ├── recsys-rec-engine  # 推荐编排,对外主入口(:8081)            [app]
 ├── recsys-query       # Query 理解(归一/分词/意图/IDF)          [lib]
