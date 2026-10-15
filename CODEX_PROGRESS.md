@@ -6,7 +6,7 @@
 
 ## 已完成
 
-- 首版政策已确认：sandbox；CNY 六位小数、每次收费 HALF_UP；Asia/Shanghai 预算日，跨日义务归预占日，调低预算不得低于消费加预占；图文 50% 连续可见 1 秒，hidden 重置，资格/预占 5 分钟且服务端到期前接受回执。
+- 首版政策已确认：sandbox；CNY 六位小数、每次收费 HALF_UP；Asia/Shanghai 预算日，跨日义务归预占日，调低预算不得低于消费加预占；广告 CPM 图文 50% 连续可见 1 秒，hidden 重置，资格/预占 5 分钟且服务端到期前接受回执。
 - 评估与计划、五类前端只读角色分析、独立草案审查已落盘；文档提交 `9bcb18e5`、`10ecfb01`、`eca38650` 已在 main，无需重做总体规划。
 - ER-S01 DONE，提交 `9cad79fc` 已合并推送 main：修正旧预算分/元，未知不伪零，报价按自身单位展示。21 项后端、9 项前端、2 项浏览器测试通过，截图已查看；见 ER-S01_RESULT。
 - ER-S02 DONE，提交 `f05eb60b` 已合并推送 main：账户/幂等命令、NUMERIC 约束、明确 adDb 事务、版本迁移与 SHA 校验、billing.v1 RPC、ADMIN HTTP API 已完成。最终 43 项钱链路测试通过（新增 29，真实 PG 11），旧权限/预算展示 21 项额外回归通过；见 ER-S02_RESULT。默认关闭，不修改旧收费链路。
@@ -15,24 +15,28 @@
 - ER-S04 DONE / PASS，提交 `9c95f2dc` 已合并推送 main：纯候选、签名准备、engine 整次持久化恢复、双模式 RPC/ADMIN API、ad V004 + engine V001。103 项钱链路与 25 项审查后窄回归通过（本片新增 29，PG 14）；见 ER-S04_RESULT。
 - ER-S05 DONE / PASS，提交 `7834ad3b` 已合并推送 main：签名可见回执、原子捕获/账本/Outbox、RPC/HTTP 与 gateway 权限路由完成；126 项钱链路通过（新增 23，真实 PG 13），见 ER-S05_RESULT。仅持久化事件，S06 继续可靠投递。
 - ER-S06 DONE / PASS，提交 `3955e29f` 已合并推送 main：持久化租约/fence/重试/审计重放、broker 确认发送、逐账本 Inbox/投影与手动位点完成；144 项钱链路通过（新增 18，PG 9、Kafka+PG 4），见 ER-S06_RESULT。
-- ER-S07 DONE / PASS：81 项前端单测、4 项新浏览器 + 真实 PG/Kafka 闭环、3 项旧页面浏览器回归；八张截图已查看；见 ER-S07_RESULT。修正 OIDC 刷新误清队列、pagehide 时序与窄屏溢出。
+- ER-S07 DONE / PASS，提交 `8b84b4684dbe0c6daad6178bc7a1ce67b4c11690` 已合并推送 main：81 项前端单测、4 项新浏览器 + 真实 PG/Kafka 闭环、3 项旧页面浏览器回归；八张截图已查看；见 ER-S07_RESULT。修正 OIDC 刷新误清队列、pagehide 时序与窄屏溢出。
 - 已核验 S06 CI `38668818550` 成功；S05 CI run `38667200021` 成功；S04 CI run `38662648548` 成功；S03 CI run `38660364391` 成功；S01/S02/S02A 的 GitHub Actions 也均成功；S02A run `38659158459`、S02 run `38658267901`、S01 run `38655809696`。
-- 迁移说明、配置、查询未知结果与回退方式写入 SANDBOX_BUDGET_RUNBOOK；只操作过临时 Testcontainers PG，没有迁移共享数据库。
+- S07 补丁 `b9a6d8dc` 已推送 main；CI 38674973337（build、money-chain、sandbox browser、security）和 console-ci 38674973227 均 SUCCESS。
+- ER-S08 / ER-S08A DONE / PASS：自然资格 nq1 签名/固定 wire golden、engine 原子交付、behavior 幂等可见回执/唯一事实/Outbox、双路由和配置默认关闭。50 项专项（23 项真实 PG）+ 12 项旧回归通过，见 ER-S08_RESULT；用户已确认自然 natural-text-v1 政策，C08-C 已记录。整个计划仍未完成。
+- 运行说明分别写入 SANDBOX_BUDGET_RUNBOOK 与 NATURAL_EXPOSURE_RUNBOOK；只操作过临时 Testcontainers PG/Kafka，没有迁移共享数据库。
 
 ## 已修改文件
 
-ER-S07 本片：
+ER-S08A 本片：
 
-- console 新 sandbox API、scope/epoch、测量、有界回执队列、页面和状态；共享认证/历史/Trace 接入；当前页窄屏最小适配。
-- 17 项新增前端用例、4 项浏览器验收、隔离 PG/Kafka HTTP fixture、测试脚本、CI 门禁。
-- C07、IMPLEMENTATION_SLICES、运行手册与 ER-S07_RESULT；未修改资金迁移和旧收费后端。
-- 用户六文件保持原样。浏览器证据改为 target/browser-evidence，不再使用通用 console/test-results。
+- `recsys-common/.../exposure/`：资格、签名、回执/事件及固定 wire golden。
+- `recsys-rec-engine/.../exposure/`：自然交付模型、短事务租约/冻结、服务/HTTP/配置；RecommendOrchestrator 纯候选分支；V002 新迁移。
+- `recsys-behavior/.../exposure/`：原子自然回执、HTTP/配置、V001 自有迁移；默认关闭。
+- 新 common/engine/behavior/gateway 测试、网关两模式专属路由、CI natural-exposure-gate。
+- C08-A/B、切片子任务 ER-S08A、C08_DESIGN、ER-S08_RESULT、NATURAL_EXPOSURE_RUNBOOK、S07 CI 结果更新。
+- 六个用户文件与已有未跟踪/忽略产物不纳入提交、不清理。
 
 ## 未完成
 
-- 当前分支 `feat/sandbox-exposure-console`，基线 `3955e29f`；S07 已完成验证和文档，待本片正常提交/合并推送。不要重复实施 S01～S07。
-- ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S08～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
-- 优先形成 ER-S02～ER-S07 的最小 sandbox 曝光资金闭环，再推进自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
+- 当前 `feat/natural-exposure-receipts`，基线 `b9a6d8dc`；S07 主提交 `8b84b468` 及可访问性修复 `b9a6d8dc` 均已正常合并推送 main。S08A 不依赖政策数值的机制已验证，当前待完成 Git 交付；C08-C 已确认，待 Git 后进入 S09。不要重复实施 S01～S07。
+- ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S09～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
+- ER-S02～ER-S07 的最小 sandbox 曝光资金闭环已完成；继续自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
 - CPA 归因/迟到窗口、正式来源与期初账务、容量和恢复目标仍待确定；不阻碍无关切片，不重复询问已确定 CPM 政策。
 
 ## 当前问题
@@ -45,9 +49,9 @@ ER-S07 本片：
 
 ## 下一步建议
 
-1. 按已授权 Git 规范交付 S07 并检查新 CI 门禁，不等待“继续”。
-2. 推进 S08：核对自然推荐/搜索交付与 behavior owner，冻结 C08 后实施资格/幂等可见回执。
-3. S09 复用 S07 前端测量与恢复边界；按原 DAG 继续后续切片，真实收费和生产部署保持关闭。
+1. 当前 `feat/natural-exposure-receipts` 的 S08A 机制验证已通过；完成文档/用户文件哈希检查，限定本任务路径提交，正常合并推送 main，核对远程 CI。不要夹带六个用户文件。
+2. 自然图文已确认沿用 50%/1s/hidden 重置/5min，C08-C 已冻结并通过正式政策真实 PG 验收，不再重复问。Git 后继续 S09，复用 S07 测量/队列边界接自然推荐/搜索页面。
+3. S09 按既有前端规划核对 API/队列/页面及隔离浏览器联调；随后 S10 接 feed。真实收费及生产部署保持关闭。
 
 S06 恢复要点：
 
@@ -61,3 +65,13 @@ S06 恢复要点：
 ## 恢复 Prompt
 
 请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成片继续。实施已获授权，sandbox、金额/时区、硬预算和图文曝光政策已确认，不重复询问。保留既有用户改动，逐片验证、更新进度并正常 Git 交付；不因完成一个切片就停下，不将整体计划宣称完成，不执行真实收费切换或生产部署。
+
+## S08 恢复检查点
+
+- 任务分支 `feat/natural-exposure-receipts`，基线 `b9a6d8dc`；C08-A/B/C 已冻结并实现，ER-S08 与子片 ER-S08A DONE。用户明确自然推荐/搜索沿用 50%/1s/hidden 重置/5min，稳定版本 natural-text-v1；正式装配要求完整显式元组相等，拒绝测试政策和漂移。
+- 最终 /tmp/recsys-er-s08-approved-policy.log：50 项专项全部 PASS（common 10、gateway 2、engine 18、behavior 20；真实 PG 9+14），包含正式政策签发五分钟与临界接受/阈值不足/hidden 拒绝；12 项旧回归 PASS（/tmp/recsys-er-s08-legacy.log）。底层测试政策 6000/1200/120000 仅 test-only，正式装配只能使用已批准元组。
+- engine 原请求/政策→30s DB lease/fence→纯候选/内容→最终去重位置/资格→完整冻结提交；默认关闭，不写旧曝光。真实 PG 已证原结果恢复、丢 ACK、旧 fence 拒写、不同操作不复用资格。
+- behavior receipt 唯一键→qualification guard 锁→锁后 DB 时间→唯一自然事实+Outbox+原决定，REQUIRES_NEW/READ_COMMITTED/5s；锁4s、statement5s；延迟完整性/FK/不可变约束。真实 PG 已证 4 写点回滚、同/异 ID 并发一事实一事件、锁等待过期拒绝、重建和 key/政策/开关变更后原结果恢复。
+- Outbox 仅可靠落表，S15 才发布；当前禁止改 payload/published_at，未来版本迁移演进。engine V002 与 behavior V001 均未迁移共享库，独立 owner，完整表/字段中文注释与 SHA 校验。
+- HTTP 异常响应曾在无 Accept 时协商为 XML，已显式 JSON 并保留断言；两端自身 ADMIN 校验和 strict JSON，大 ID 十进制字符串。gateway 两模式 natural-impressions 路由先于 engine 通配。
+- Code Hygiene 只有根 Maven 未配 formatter 的限制；事务与资源数值 advisory 已源码+真实数据库复核。没有新依赖、没有跨服务表写入，没有 S08 浏览器/跨进程联调证据（S09 再做）。运行说明与限制已写 NATURAL_EXPOSURE_RUNBOOK / ER-S08_RESULT。

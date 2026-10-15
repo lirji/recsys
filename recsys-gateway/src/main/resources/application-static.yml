@@ -9,6 +9,11 @@ spring:
         enabled: false   # static profile 下强制关:无 Nacos 也能起,不做注册
     gateway:
       routes:
+        # 专属自然回执归 behavior owner，必须先于 engine 的 sandbox 通配路由。
+        - id: natural-impressions
+          uri: http://localhost:${BEHAVIOR_PORT:8082}
+          predicates:
+            - Path=/api/sandbox/natural-impressions/**
         - id: rec-engine
           uri: http://localhost:${REC_ENGINE_PORT:8081}
           predicates:

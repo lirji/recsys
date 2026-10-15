@@ -45,4 +45,4 @@
 
 首个远程 run 38673651376 的全后端构建、money-chain、扫描通过，console-ci 38673651354 通过；浏览器前三场景通过，第四场景在 Linux 下失败。已下载 error-context/trace，确认控件为 `button "loading 新交付" [disabled]`，是加载 SVG 参与可访问名导致原精确定位失败，并非业务放开新操作。
 
-补丁给“新交付/恢复原操作”固定 aria-label，并通过 aria-busy 表达忙碌；保留原精确名称和 disabled 断言，没有放宽测试。补丁本地 typecheck、页面 ESLint、原四场景及真实 PG/Kafka 最终对账再次 PASS（/tmp/recsys-er-s07-a11y-browser.log）。视觉内容/布局未变，当前截图由同一测试重新产生。远程修复 run 需在交付后核对，不能把本地 PASS 当 CI 已恢复。
+补丁给“新交付/恢复原操作”固定 aria-label，并通过 aria-busy 表达忙碌；保留原精确名称和 disabled 断言，没有放宽测试。补丁本地 typecheck、页面 ESLint、原四场景及真实 PG/Kafka 最终对账再次 PASS（/tmp/recsys-er-s07-a11y-browser.log）。视觉内容/布局未变，当前截图由同一测试重新产生。补丁 b9a6d8dc 的远程 CI 38674973337（build、money-chain、sandbox browser、security）和 console-ci 38674973227 已全部成功，已核对实际结果。

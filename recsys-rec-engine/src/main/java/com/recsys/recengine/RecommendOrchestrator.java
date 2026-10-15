@@ -140,6 +140,18 @@ public class RecommendOrchestrator {
      * override 为 null 时与常规 {@link #recommend(RecommendRequest, boolean)} 完全等价。
      */
     public RecommendResponse recommend(RecommendRequest req, boolean explain, StrategyOverride override) {
+        return compute(req, explain, override, true).response();
+    }
+
+    /** 自然 sandbox 只求候选；返回结果不触发旧曝光表、归因 Redis 键或曝光分母。 */
+    public NaturalCandidates naturalCandidates(RecommendRequest req) {
+        return compute(req, false, null, false);
+    }
+
+    /** 分桶随候选返回，交付 owner 冻结后不重新分桶；尚无可靠实际模型 lineage。 */
+    public record NaturalCandidates(RecommendResponse response, String bucket) {}
+
+    private NaturalCandidates compute(RecommendRequest req, boolean explain, StrategyOverride override, boolean legacyExposure) {
         // traceId 取 OTel 当前 span 的 traceId(与结构化日志 %X{traceId} / Tempo 一致),前端可据此在 Tempo 钻取链路;
         // 无活动 span 时回退短 UUID。见 TraceIds。
         String traceId = traceIds.current();
@@ -161,13 +173,13 @@ public class RecommendOrchestrator {
             if (!req.hasQuery() && !explain) {
                 RecCache.CacheEntry cached = recCache.get(req.userId(), req.scene());
                 if (cached != null && cached.response() != null) {
-                    List<RecommendItem> delivered = assignExposureIds(cached.response().items());
+                    List<RecommendItem> delivered = deliveryItems(cached.response().items(), legacyExposure);
                     RecommendResponse response = new RecommendResponse(
                             req.userId(), req.scene(), delivered, traceId, cached.response().explain());
-                    exposureLogger.log(req.userId(), req.scene(), cached.bucketTag(), delivered);
+                    if (legacyExposure) exposureLogger.log(req.userId(), req.scene(), cached.bucketTag(), delivered);
                     meterRegistry.counter("recsys.recommend.cache", "result", "hit").increment();
                     outcome = "cache";
-                    return response;
+                    return new NaturalCandidates(response, cached.bucketTag());
                 }
                 meterRegistry.counter("recsys.recommend.cache", "result", "miss").increment();
             }
@@ -215,7 +227,7 @@ public class RecommendOrchestrator {
             if (recalled.isEmpty()) {
                 meterRegistry.counter("recsys.recommend.empty", "stage", "recall").increment();
                 outcome = "empty";
-                return new RecommendResponse(req.userId(), req.scene(), List.of(), traceId);
+                return new NaturalCandidates(new RecommendResponse(req.userId(), req.scene(), List.of(), traceId), bucketTag);
             }
 
             // 已看过滤:剔除用户已正反馈过的物品。冷启动用户行为本就 < 阈值,过滤是空操作。
@@ -339,8 +351,8 @@ public class RecommendOrchestrator {
             }
             List<Long> fusedIds = fused.stream().map(RerankCandidate::itemId).toList();
             Map<Long, Item> itemMap = contentGateway.findByIds(fusedIds);
-            List<RecommendItem> items = assignExposureIds(rerankRouter.rerank(
-                    rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams)));
+            List<RecommendItem> items = deliveryItems(rerankRouter.rerank(
+                    rerankStrategy, fused, new RerankInput(req.size(), recallChannel, itemMap, rerankParams)), legacyExposure);
 
             // explain:用上面本已算出的真实局部量组装逐阶段计数 / 去重前每路原始召回 / 去重后每路贡献 / 打分分解。
             RecommendExplain explainObj = explain
@@ -351,18 +363,19 @@ public class RecommendOrchestrator {
             RecommendResponse resp = new RecommendResponse(req.userId(), req.scene(), items, traceId, explainObj);
 
             // 7. 曝光埋点(异步,带分桶)+ 结果缓存(explain 请求旁路缓存写,避免污染普通请求)
-            exposureLogger.log(req.userId(), req.scene(), bucketTag, items);
-            if (!explain) {
+            if (legacyExposure) exposureLogger.log(req.userId(), req.scene(), bucketTag, items);
+            if (legacyExposure && !explain) {
                 recCache.put(req.userId(), req.scene(), resp, bucketTag);
             }
             log.debug("推荐完成 user={} cold={} bucket=[{}] trace={} items={}",
                     req.userId(), cold, bucketTag, traceId, items.size());
-            return resp;
+            return new NaturalCandidates(resp, bucketTag);
         } catch (Exception e) {
             outcome = "error";
             log.error("推荐失败 user={} trace={}: {}", req.userId(), traceId, e.getMessage(), e);
-            // 兜底:返回空而非 500
-            return new RecommendResponse(req.userId(), req.scene(), List.of(), traceId);
+            // 新持久化交付不能把依赖未知固化成成功空结果；旧 API 兼容期保留原降级。
+            if (!legacyExposure) throw new IllegalStateException("自然候选计算失败", e);
+            return new NaturalCandidates(new RecommendResponse(req.userId(), req.scene(), List.of(), traceId), "");
         } finally {
             sample.stop(Timer.builder("recsys.recommend.duration")
                     .description("推荐编排端到端耗时")
@@ -376,13 +389,13 @@ public class RecommendOrchestrator {
         }
     }
 
-    /** 每次实际交付独立生成 128-bit UUID；不能复用 traceId 或缓存中的旧曝光身份。 */
-    private static List<RecommendItem> assignExposureIds(List<RecommendItem> items) {
+    /** 旧路径每次交付重新生成 ID；新候选清除缓存 ID，资格由持久化交付另行签发。 */
+    private static List<RecommendItem> deliveryItems(List<RecommendItem> items, boolean legacyExposure) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         return items.stream()
-                .map(item -> item.withExposureId(UUID.randomUUID().toString()))
+                .map(item -> item.withExposureId(legacyExposure ? UUID.randomUUID().toString() : null))
                 .toList();
     }
 

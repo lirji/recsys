@@ -138,3 +138,45 @@ ad V006 扩展 Outbox 的 READY/SENDING/PUBLISHED/DEAD 状态、尝试次数、�
 使用现有 Ant Design 表单/Table/Tag/Alert、HistoryDrawer/ResultDiff/TracePanel；增加 ExposureScope、useVisibleExposure、ReceiptStatus 与 sandbox 页面组件，不修改其他页面采集行为。金额保持服务端十进制字符串，不用 JS 浮点重算；报价与已确认消费分列。历史 push 与 TracePanel 的显示/复制/下载统一递归脱敏 qualificationToken/offerToken/authorization/accessToken/refreshToken；历史只留脱敏快照，不把票据传入历史测量组件。
 
 验收：Vitest 覆盖测量状态、队列边界/重试/恢复/身份切换和续期守卫；Playwright 覆盖实际滚动/hidden/重挂载、表单编辑原身份、刷新同 ID、历史与导出无票据，桌面/窄屏截图实际查看。真实后端的原子捕获与 Kafka 投影联调使用隔离数据库种子，页面不硬编码 mock；受控模拟响应的 UI 测试单独标识，不冒充真实联调。依赖和 UI 范围与已批准 F07 一致。
+
+## C08-A：自然资格的共享值与签名协议（ER-S08 独立前置部分）
+
+共享结构与下节 C08-B 的参数化机制冻结；自然业务政策已获用户确认并记录于 C08-C，能力仍默认关闭。政策使用显式元组 `(version,minRatioBps,minDurationMs,ttlMs)`，没有隐式沿用广告的默认值；behavior 接受时必须与其已批准的政策一致。参数化机制测试显式标识 test-only 政策；正式装配要求 C08-C 已批准元组，不能用测试政策开启能力。
+
+`NaturalQualification` 固定 SANDBOX 来源、kind=RECOMMEND/SEARCH、operationId/qualificationId UUID、subject（非空最长 512）、userId/itemId 正 long、slot 1～50、scene（非空最长 100）、bucket（允许空最长 2000）、contentHash（64 位小写 SHA256）、Policy、issuedAt/expiresAt（UTC 毫秒精度）。日期跨度严格等于政策 ttl；文本长度按 Java UTF-16 单元计。政策 version 为 1～64 个 ASCII 字母/数字/点/下划线/连字符，比例 1～10000 基点、连续时长 1～300000 毫秒、ttl 从时长到 86400000 毫秒；这些是解码/资源边界，不是业务推荐值或默认值。隐藏重置是固定连续观测语义。
+
+票据格式 `nq1.<keyId>.<payload base64url 无填充>.<HmacSHA256 base64url 无填充>`，完整前三段 UTF-8 字节参与 MAC。keyId 1～40 个 ASCII 字母/数字/下划线/连字符；最多 16 个 key，各 key 解码至少 32 字节、最多 128 字节。资格专用前缀禁止与广告/内部认证票据混用，最大 16384 字符；先验签再解码，拒绝未知版本、非规范 base64url 和多余负载字节。常量时间比较 MAC，不接受算法字段/降级。
+
+payload 顺序固定，用 Java DataOutputStream 的大端编码：两个 UUID 各写 most/least 两个 long；writeUTF(subject)，long userId/itemId，int slot；writeUTF(kind.name)、writeUTF("SANDBOX")、writeUTF(scene)、writeUTF(bucket)、writeUTF(contentHash)、writeUTF(policy.version)；int minRatioBps/minDurationMs；long ttlMs、issuedAt epochMillis、expiresAt epochMillis。writeUTF 明确是 JDK modified UTF-8；这是 engine→behavior 的 Java v1 不透明票据，客户端不得解析。将来换编码必须新版本并验证共存，不静默换成标准 UTF-8。
+
+common 维持纯 JDK 契约，无 Jackson/web/ad 依赖。签发端必须提供 currentKeyId；验证端可只提供验证 key 环。轮换时旧 key 验证原资格、新 key 签新资格；移除 key 前核对在途窗口。codec 不判断当前到期，也不连接库；服务端接受时间/幂等恢复由后续 behavior 事务处理。`toString` 不输出原 subject/key/token，错误不回显输入。固定格式、作用域、篡改、轮换、边界、毫秒/大 ID 无损由纯契约测试验证。
+
+
+## C08-B：自然交付与可信回执的参数化机制（ER-S08）
+
+本节冻结 API、数据所有权及事务机制。自然能力默认关闭，签发/接收都必须显式配置完整且一致的 Policy，不提供隐式业务默认值。业务数值答复见 C08-C；底层参数化机制另使用明确的 test-only 政策作边界测试。现有 API、旧曝光/行为表、旧 Redis/指标不变。
+
+engine：ADMIN `PUT/GET /api/sandbox/natural-deliveries/{operationId}`。PUT body `{userId,kind,size,scene,query}`；userId 正 long 十进制字符串，kind RECOMMEND/SEARCH，size 整数 1～50，scene 非空最长 100；SEARCH query 非空最长 500，RECOMMEND query 必须 null。UUID 采用完整规范字符串。主体从已认证上下文取，不能从请求指定。operationId 固定原请求与首次配置的政策；同 ID 改请求 409、异主体 403。PREPARING HTTP 202；COMPLETE HTTP 200；GET 未观察到 404；依赖或提交未知 503，保留原 ID 恢复，不生成成功空结果。
+
+响应 `{operationId,trafficClass,state,userId,kind,size,scene,query,policy,bucket,traceId,modelLineage,items}`；大 ID 均字符串，SANDBOX 固定；modelLineage=UNVERIFIED，不捏造模型版本。PREPARING bucket/traceId 为空、items=[]；COMPLETE 可正常为空。条目 `{slot,itemId,title,category,description,score,recallFrom,reason,qualificationId,qualificationToken,issuedAt,expiresAt,contentHash}`；文本 snapshot 与签名绑定，title<=2000、category<=200、description<=16000、reason<=4000，recallFrom<=50 且各项<=100，非有限 score 拒绝。缺内容为依赖失败，不能签发空白/伪造创意。内容摘要为明确字段顺序 title/category/description 的 JDK writeUTF 大端编码 SHA256；tags 不用于首版展示。时间 ISO-8601 UTC 毫秒，响应总存储上限 4 MiB。
+
+engine V002（依赖已交付 V001）保存原请求、政策、PREPARING/COMPLETE、30 秒 DB 租约/fence 与完整结果。候选计算、内容读取不持有 DB 事务；新候选路径跳过 ExposureLogger/Redis 曝光键/旧分母，缓存仅复用候选并清除旧 exposureId，不写回资格。最终按候选顺序去重、截断到 size 后固定 slot 和独立 UUID；DB 时间签发，在仍有效 fence 条件下单条更新原子冻结完整结果，提交后才能对外交付。旧执行器不能覆盖或释放新租约。失败允许原 ID 恢复；已完成绝不重算内容、桶、政策或期限。
+
+behavior：ADMIN `PUT/GET /api/sandbox/natural-impressions/{receiptId}`。PUT 严格接收 `{qualificationToken,visibleDurationMs,minVisibleRatioBps,pageVisible}`，时长整数 0～300000、比例整数 0～10000、可见必须 boolean；不接受终端 item/bucket/来源/金额。结果 `{receiptId,qualificationId,status,eventId,canonicalReceiptId,acceptedAt,decidedAt}` 无金额字段；status ACCEPTED/ALREADY_ACCEPTED 返回 200，POLICY_NOT_MET/EXPIRED 返回 422；错误 400、401、403、404、409、503 使用稳定 `NATURAL_RECEIPT_<status>` code，未知不伪造拒绝。GET 返回已存结果（包括业务拒绝）的 200。验签、签名主体与完整 Policy 一致；未知 key、用途或 Policy 拒绝。每份新资格必须能覆盖声明时长，DB now >= issuedAt+visibleDurationMs 且 now < expiresAt；比例和连续时长达到 Policy 且 pageVisible=true。客户端连续观测不是防伪终端或真人认证。
+
+同 receiptId 同负载先返回原结果，不受后来 key/Policy/接受开关变化影响；改负载 409、异主体 403。命令摘要为固定顺序 UUID/subject/token/观测值的 JDK 二进制 SHA256。新 receipt 先验签；behavior 本库短事务依次领取 receipt 唯一键、插入/锁 qualification 唯一上下文（C08-A 固定 payload 二进制 SHA256，不含签名 keyId/JSON 编码差异）、核验同 ID 同上下文、读取新鲜 DB 时间；已接受返回原 canonicalReceiptId/acceptedAt，其他按政策拒绝或原子插入事实+Outbox+首次结果。锁等待跨过期限必须拒绝；REQUIRES_NEW / READ_COMMITTED / 5 秒，禁止继承外层长事务或持锁访问 MQ/Redis。qualification 冲突、任一步持久化失败整体回滚。PK/UNIQUE/FK、提交时完整性约束和不可变触发器为最终防线。
+
+自然事实只允许 SANDBOX，qualificationId 唯一（同时 eventId），canonical receipt 唯一，保存签名上下文及接受时间；主体只在 owner 受限表，不写事件。Outbox 事件 `NaturalImpressionAcceptedV1` schemaVersion=1，destination=`natural-impression-accepted-v1`，partitionKey=userId。payload 字段 eventId/eventType/schemaVersion/trafficClass/operationId/qualificationId/receiptId/userId/itemId/slot/kind/scene/bucket/contentHash/policy/issuedAt/expiresAt/acceptedAt，大 ID 字符串、UTC ISO 时间、不含 token/subject。本片仅存待发，S15 才接可靠投递，不宣称已到 Kafka。
+
+behavior 自有 `db/natural-exposure/V001__natural_receipt.sql` 及 SHA256 历史；engine 不写 behavior 表，behavior 不查 engine/ad 表。迁移显式执行，启动只校验，缺表/摘要漂移拒绝启用。两类端点分别用 `recsys.natural.delivery-enabled` / `receipts-enabled` 默认 false，`admission-enabled` 默认 true（关闭后仍查/重试原结果）；Policy 与 key 环经各 owner 的类型化启动配置校验，禁止运行中未审计热刷新。gateway 两模式将 natural-impressions 专属路由置于 engine sandbox 通配路由之前，仍受 ADMIN 校验。
+
+不自动删除操作/资格/事实/幂等/待发记录，保留期未确定；开启前确认容量并监控增长/未发事件。暂停新签发/接受保留新版本查询及原结果恢复，不能用回滚旧页面或二进制撤销已存自然事实。没有真实收费/生产部署授权。验收按 C08_DESIGN 的真实 PG 并发、故障窗口、权限、时钟与旧路径回归完成后记录；政策答复与自然页面验收仍单列，不提前标全链路 DONE。
+
+
+## C08-C：已批准自然图文政策（2026-10-15 用户回复）
+
+用户已明确选择自然推荐/搜索（不计费、仅 sandbox）沿用“至少 50% 连续可见 1 秒、hidden 重置、资格 5 分钟到期且到期前服务端接受”。稳定政策版本为 `natural-text-v1`，完整元组 `(version=natural-text-v1,minRatioBps=5000,minDurationMs=1000,ttlMs=300000)`。不宣称行业认证或真人注意力证明。
+
+common 的 TEXT_POLICY_V1 为已批准值；engine/behavior 正式配置装配都要求显式元组完全相等，缺字段、未知政策版本或数值漂移拒绝启动。底层服务仍可在隔离机制测试中显式注入 test-only 政策；该测试值不得用于正式配置。能力开关默认关闭不变，不自动迁移、启用共享环境或部署生产。
+
+已签资格绑定原政策和期限；跨进程受理以 behavior 锁后数据库时钟为准。达到 5000bps/1000ms/pageVisible=true 且服务器经过时间覆盖声明、严格早于原 expiry 才接受；拒绝结果不因后来达标而修改。前端 hidden 重置/实际采样由 S09 实施，本后端不把声明当防伪终端证明。S08 验收增加已批准政策的真实 PG 签发期限、临界接受、阈值不足和 hidden 拒绝；S09 接浏览器，S15 接可靠投递，不能将这些后续验收提前声明完成。
