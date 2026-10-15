@@ -10,7 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -43,14 +44,15 @@ public class RecCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(RecCalibrateJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final EvaluationInputMapper inputs;
     private final RecallService recallService;
     private final RankRouter rankRouter;
     private final StringRedisTemplate redis;
 
-    public RecCalibrateJob(JdbcTemplate jdbc, RecallService recallService,
+    /** 共用评分输入Mapper，切分、模型调用与发布边界沿用原作业。 */
+    public RecCalibrateJob(EvaluationInputMapper inputs, RecallService recallService,
                            RankRouter rankRouter, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+        this.inputs = inputs;
         this.recallService = recallService;
         this.rankRouter = rankRouter;
         this.redis = redis;
@@ -61,12 +63,9 @@ public class RecCalibrateJob implements OfflineJob {
         return "rec-calibrate";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-
     @Override
     public void run(ApplicationArguments args) {
-        bt = BehaviorQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
         String model = strArg(args, "model", "rec");
         String rankStrategy = strArg(args, "rank-strategy", null);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -75,7 +74,7 @@ public class RecCalibrateJob implements OfflineJob {
         int bins = intArg(args, "bins", 20);
         long seed = intArg(args, "seed", 42);
 
-        Split split = buildSplit(validFrac);
+        Split split = buildSplit(source, validFrac);
         if (split.testUsers.isEmpty()) {
             log.warn("无测试正例(需有 ts>splitTs 的 RATING≥4);先跑 import-behavior");
             return;
@@ -168,19 +167,14 @@ public class RecCalibrateJob implements OfflineJob {
 
     // ---------- ground truth 时间切分(口径同 EvalJob）----------
 
-    private Split buildSplit(double validFrac) {
+    private Split buildSplit(BehaviorSource source, double validFrac) {
         List<long[]> ratings = new ArrayList<>();   // [user, item, ts, value*10]
         List<Long> allTs = new ArrayList<>();
-        jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM " + bt + " WHERE action='RATING'",
-                rs -> {
-                    long u = rs.getLong("user_id");
-                    long it = rs.getLong("item_id");
-                    long ts = rs.getLong("ts");
-                    long v10 = Math.round(rs.getDouble("value") * 10);
-                    ratings.add(new long[]{u, it, ts, v10});
-                    allTs.add(ts);
-                });
+        inputs.scanRatings(source, context -> {
+            var row = context.getResultObject();
+            ratings.add(new long[]{row.userId(), row.itemId(), row.ts(), Math.round(row.value() * 10)});
+            allTs.add(row.ts());
+        });
         Split split = new Split();
         if (allTs.isEmpty()) {
             return split;

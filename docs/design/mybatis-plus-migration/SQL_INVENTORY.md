@@ -132,7 +132,7 @@
 | [com/recsys/offline/ColdBanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ColdBanditStatsJob.java) | 8 | 1 | DONE MP13d2：主源类目聚合/类型化统计；见MP13D2_RESULT |
 | [com/recsys/offline/DataQualityJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DataQualityJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |
-| [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | TODO |
+| [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | DONE MP13e1：主源TrainingCatalogMapper；见MP13E1_RESULT |
 | [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | TODO |
 | [com/recsys/offline/GenAdUpliftSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdUpliftSamplesJob.java) | 7 | 2 | TODO |
@@ -152,7 +152,7 @@
 | [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1/b5：四源工厂/Mapper扫描及真实种子路由完成，旧JdbcTemplate待其余作业退出 |
 | [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
 | [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | TODO |
-| [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | TODO |
+| [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/SeedAdsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SeedAdsJob.java) | 10 | 11 | DONE MP13b5：真实四源/双分片；见MP13B5_RESULT |
 | [com/recsys/offline/SimAdEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdEventsJob.java) | 7 | 5 | DONE MP13b6：保留真实大批次进度；见MP13B6_RESULT |
 | [com/recsys/offline/SimAdUpliftDataJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdUpliftDataJob.java) | 7 | 2 | DONE MP13b8：adDb双批次；见MP13B8_RESULT |
@@ -161,7 +161,7 @@
 | [com/recsys/offline/SyncAdEventLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncAdEventLogJob.java) | 6 | 9 | DONE MP13b4；见MP13B4_RESULT |
 | [com/recsys/offline/SyncBehaviorLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncBehaviorLogJob.java) | 6 | 10 | DONE MP13b2；见MP13B2_RESULT |
 | [com/recsys/offline/SyncItemCatalogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncItemCatalogJob.java) | 6 | 9 | DONE MP13b3；见MP13B3_RESULT |
-| [com/recsys/offline/TuneFusionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/TuneFusionJob.java) | 11 | 1 | TODO |
+| [com/recsys/offline/TuneFusionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/TuneFusionJob.java) | 11 | 1 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/UserCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/UserEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserEmbeddingJob.java) | 7 | 4 | DONE MP13a2/c3：主源正反馈与派生向量；见MP13C3_RESULT |
 

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper">
+    <resultMap id="rating" type="com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper$Rating">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="value" column="value" javaType="_double"/>
+            <arg name="ts" column="ts" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="popularity" type="com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper$Popularity">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="popularity" column="popularity" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <select id="scanRatings" resultMap="rating" useCache="false">
+        SELECT COALESCE(user_id,0) AS user_id,COALESCE(item_id,0) AS item_id,COALESCE(value,0) AS value,
+               COALESCE(extract(epoch from ts)::bigint,0) AS ts FROM
+        <choose><when test="source.name() == 'BEHAVIOR_LOG'">behavior_log</when><otherwise>user_behavior</otherwise></choose>
+        WHERE action='RATING'
+    </select>
+    <select id="scanCatalog" resultMap="popularity" useCache="false">
+        SELECT COALESCE(item_id,0) AS item_id,GREATEST(popularity,0) AS popularity FROM
+        <choose><when test="table.name() == 'REPLICA'">item_local</when><otherwise>item</otherwise></choose>
+    </select>
+</mapper>

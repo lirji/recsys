@@ -460,3 +460,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## CPA午夜预算测试夹具修正
 
 见CONVERSION_CLOCK_RESULT。旧单日初始化在模拟跨日的两模式稳定复现ACCOUNT_MISSING/空证明；修正测试预算后原10+新2共12通过，完整money384/68类通过。最后收紧测试自身日期观察和当前/次日预算后受影响12再次通过，全仓24 reactor编译通过；tests-only hygiene N/A、diff检查通过。最终2源指纹09785e15bae9b396fee36b9521d8de2e19f95f60b69504d522e991f754f3b713；生产逻辑与403/零收费断言不变。e2=6b0bdaf9、FTRL浮点测试=c6450c99与本片正常ff/push后继续e3，须核验新CI。
+
+## MP13e3最终验证
+
+见MP13E3_RESULT。旧7两次、新关联8、完整离线212/38类、全仓24 reactor编译/hygiene通过。8源指纹d07d67c4127202e24fcfce406fc252ea37b0b151b7215ed7a08ab15ba342e0ad；三个作业四SQL合并两读取，完整指标/调参/校准及部分用户失败六份输出与旧一致。12851b30已ff/push，CI38768505808四专项SUCCESS/build在途。本片先本地提交，继续e4 uplift成熟样本读取，再正常相邻交付。

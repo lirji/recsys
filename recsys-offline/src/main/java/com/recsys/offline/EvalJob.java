@@ -11,7 +11,9 @@ import com.recsys.rank.RankRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.content.persistence.model.CatalogTable;
+import com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -66,14 +68,15 @@ public class EvalJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(EvalJob.class);
     private static final String OUT_DIR = "eval";
 
-    private final JdbcTemplate jdbc;
+    private final EvaluationInputMapper inputs;
     private final RecallService recallService;
     private final RankRouter rankRouter;
     private final ContentService contentService;
 
-    public EvalJob(JdbcTemplate jdbc, RecallService recallService,
+    /** 共用评分输入Mapper，切分、模型调用与发布边界沿用原作业。 */
+    public EvalJob(EvaluationInputMapper inputs, RecallService recallService,
                    RankRouter rankRouter, ContentService contentService) {
-        this.jdbc = jdbc;
+        this.inputs = inputs;
         this.recallService = recallService;
         this.rankRouter = rankRouter;
         this.contentService = contentService;
@@ -84,14 +87,10 @@ public class EvalJob implements OfflineJob {
         return "eval";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item);contentService.findById 另由 item-source 切换
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
+        CatalogTable table = ItemQuery.source(args);
         int[] ks = intListArg(args, "k", new int[]{10});
         int maxK = 0;
         for (int k : ks) {
@@ -106,7 +105,7 @@ public class EvalJob implements OfflineJob {
         int threads = intArg(args, "threads", Runtime.getRuntime().availableProcessors());
 
         // 1. 读 RATING,拆历史/测试正例(全局时间分位点切分)
-        Split split = buildSplit(validFrac);
+        Split split = buildSplit(source, validFrac);
         // 严格 eval 用:只打印切分点 ts(epoch 秒)供 run_strict_eval.sh 作为各召回作业的 --max-ts,然后退出。
         if (args.containsOption("print-split")) {
             System.out.println("SPLIT_TS=" + split.splitTs);
@@ -122,7 +121,7 @@ public class EvalJob implements OfflineJob {
                 split.testUsers.size(), split.splitTs, validFrac, threads);
 
         // 2. 物品全集大小(coverage)+ 热度(novelty)+ 类目缓存(diversity)
-        Catalog catalog = loadCatalog();
+        Catalog catalog = loadCatalog(table);
         log.info("物品全集 {} 个,总热度 {}", catalog.size, String.format("%.1f", catalog.totalPop));
 
         // 3. 抽样用户
@@ -163,7 +162,7 @@ public class EvalJob implements OfflineJob {
      *
      * <p>性能:重活(逐用户跑 recall→rank 全链路,~秒级/人)用线程池<strong>并行</strong>计算各用户的 topK,
      * 再单线程把结果 reduce 进指标累加器。并行只影响速度、不影响指标(顺序无关的累加 + 单线程 reduce)。
-     * 链路本身无共享可变状态(JdbcTemplate 连接池、ONNX session 线程安全)。
+     * Spring托管Mapper按线程绑定会话，不在线程之间共享原生SqlSession。
      */
     private Map<Integer, Acc> evaluate(List<Long> users, Split split, Catalog catalog,
                                        int[] ks, int maxK, int recallSize,
@@ -257,19 +256,14 @@ public class EvalJob implements OfflineJob {
 
     // ---------- ground truth 构造 ----------
 
-    private Split buildSplit(double validFrac) {
+    private Split buildSplit(BehaviorSource source, double validFrac) {
         List<long[]> ratings = new ArrayList<>();   // [user, item, ts, value*10]
         List<Long> allTs = new ArrayList<>();
-        jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM " + bt + " WHERE action='RATING'",
-                rs -> {
-                    long u = rs.getLong("user_id");
-                    long it = rs.getLong("item_id");
-                    long ts = rs.getLong("ts");
-                    long v10 = Math.round(rs.getDouble("value") * 10);
-                    ratings.add(new long[]{u, it, ts, v10});
-                    allTs.add(ts);
-                });
+        inputs.scanRatings(source, context -> {
+            var row = context.getResultObject();
+            ratings.add(new long[]{row.userId(), row.itemId(), row.ts(), Math.round(row.value() * 10)});
+            allTs.add(row.ts());
+        });
         Split split = new Split();
         if (allTs.isEmpty()) {
             return split;
@@ -303,13 +297,12 @@ public class EvalJob implements OfflineJob {
         return split;
     }
 
-    private Catalog loadCatalog() {
+    private Catalog loadCatalog(CatalogTable table) {
         Catalog c = new Catalog();
-        jdbc.query("SELECT item_id, GREATEST(popularity, 0) AS pop FROM " + it, rs -> {
-            long id = rs.getLong("item_id");
-            double pop = rs.getDouble("pop");
-            c.popularity.put(id, pop);
-            c.totalPop += pop;
+        inputs.scanCatalog(table, context -> {
+            var row = context.getResultObject();
+            c.popularity.put(row.itemId(), row.popularity());
+            c.totalPop += row.popularity();
         });
         c.size = c.popularity.size();
         return c;

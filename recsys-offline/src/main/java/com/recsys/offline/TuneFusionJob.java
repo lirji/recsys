@@ -8,7 +8,8 @@ import com.recsys.rank.RankRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.mapper.primary.EvaluationInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -53,12 +54,13 @@ public class TuneFusionJob implements OfflineJob {
     private static final double CUR_BIAS = 0.1;
     private static final double CUR_WEIGHT = 1.0;
 
-    private final JdbcTemplate jdbc;
+    private final EvaluationInputMapper inputs;
     private final RecallService recallService;
     private final RankRouter rankRouter;
 
-    public TuneFusionJob(JdbcTemplate jdbc, RecallService recallService, RankRouter rankRouter) {
-        this.jdbc = jdbc;
+    /** 共用评分输入Mapper，切分、模型调用与发布边界沿用原作业。 */
+    public TuneFusionJob(EvaluationInputMapper inputs, RecallService recallService, RankRouter rankRouter) {
+        this.inputs = inputs;
         this.recallService = recallService;
         this.rankRouter = rankRouter;
     }
@@ -68,12 +70,9 @@ public class TuneFusionJob implements OfflineJob {
         return "tune-fusion";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
+        BehaviorSource source = BehaviorQuery.source(args);
         String strategy = strArg(args, "strategy", "mmoe");
         int k = intArg(args, "k", 20);
         double validFrac = doubleArg(args, "valid-frac", 0.2);
@@ -88,7 +87,7 @@ public class TuneFusionJob implements OfflineJob {
             return;
         }
 
-        Split split = buildSplit(validFrac);
+        Split split = buildSplit(source, validFrac);
         if (split.testUsers.isEmpty()) {
             log.warn("无测试正例(需 ts>splitTs 的 RATING≥4);先跑 import-behavior");
             return;
@@ -258,16 +257,14 @@ public class TuneFusionJob implements OfflineJob {
 
     // ---------- ground truth 时间切分(口径同 EvalJob）----------
 
-    private Split buildSplit(double validFrac) {
+    private Split buildSplit(BehaviorSource source, double validFrac) {
         List<long[]> ratings = new ArrayList<>();
         List<Long> allTs = new ArrayList<>();
-        jdbc.query("SELECT user_id, item_id, value, extract(epoch from ts)::bigint AS ts " +
-                        "FROM " + bt + " WHERE action='RATING'",
-                rs -> {
-                    ratings.add(new long[]{rs.getLong("user_id"), rs.getLong("item_id"),
-                            rs.getLong("ts"), Math.round(rs.getDouble("value") * 10)});
-                    allTs.add(rs.getLong("ts"));
-                });
+        inputs.scanRatings(source, context -> {
+            var row = context.getResultObject();
+            ratings.add(new long[]{row.userId(), row.itemId(), row.ts(), Math.round(row.value() * 10)});
+            allTs.add(row.ts());
+        });
         Split split = new Split();
         if (allTs.isEmpty()) {
             return split;
