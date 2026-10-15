@@ -4,6 +4,8 @@ import com.recsys.common.ad.AdCandidate;
 import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.Calibrator;
 import com.recsys.common.ad.SponsoredAd;
+import com.recsys.common.ad.billing.CpmPrice;
+import com.recsys.common.ad.billing.FrozenCpmQuote;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -90,6 +92,32 @@ public class BiddingService {
                                      int slots,
                                      double reserve,
                                      ListwiseExternality.Sim sim) {
+        return auctionInternal(candidates, pctrRawByItem, pcvrByItem, upliftByAd, ocpcByAd, titleByAd,
+                calibModel, slots, reserve, sim, null);
+    }
+
+    /** 精确账务候选只用于新 sandbox CPM 路径；展示 double 不可用于后续资金操作。 */
+    public record QuotedAd(SponsoredAd ad, CpmPrice price) {}
+
+    /** 首版仅支持 CPM/GSP；未支持算法明确拒绝，禁止退回旧 double 报价作为收费真值。 */
+    public List<QuotedAd> auctionSandboxCpm(List<AdCandidate> candidates, Map<Long, Double> pctrRawByItem,
+            Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd,
+            String calibModel, int slots, double reserve) {
+        if (slots < 1 || slots > FrozenCpmQuote.MAX_SLOTS) throw new IllegalArgumentException("sandbox 广告位须为 1～100");
+        CpmPrice.money(CpmPrice.decimal(reserve));
+        if (props.getAuction().getVcg().isEnabled() || props.getAuction().getListwise().isEnabled()) {
+            throw new IllegalStateException("sandbox 精确 CPM 首版仅支持标准 GSP");
+        }
+        var quotes = new ArrayList<QuotedAd>();
+        auctionInternal(candidates, pctrRawByItem, Map.of(), Map.of(), ocpcByAd, titleByAd,
+                calibModel, slots, reserve, null, quotes);
+        return List.copyOf(quotes);
+    }
+
+    private List<SponsoredAd> auctionInternal(List<AdCandidate> candidates,
+            Map<Long, Double> pctrRawByItem, Map<Long, Double> pcvrByItem, Map<Long, UpliftEstimate> upliftByAd,
+            Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd, String calibModel,
+            int slots, double reserve, ListwiseExternality.Sim sim, List<QuotedAd> exactQuotes) {
         AdProperties.Auction cfg = props.getAuction();
 
         // 0. 批量预取每候选/每广告主的 Redis 参数(各一次 MGET),避免竞价循环里逐候选 N 次串行往返。
@@ -113,6 +141,7 @@ public class BiddingService {
             double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
             BidType type = BidType.from(ocpc.optimizationType());
+            if (exactQuotes != null && type != BidType.CPM) continue;
             double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
             UpliftEstimate uplift = upliftByAd == null ? null : upliftByAd.get(c.adId());
             boolean incremental = props.getUplift().isScoringEnabled() && uplift != null
@@ -132,6 +161,14 @@ public class BiddingService {
             double ecpm = pacedBid * billFactor;
             // EE 探索:新广告(曝光不足)得 UCB 加成抬升<b>排序</b> eCPM;计费仍按未加成的 billFactor(守红线)
             double rankEcpm = ecpm * boostByAd.getOrDefault(c.adId(), 1.0);
+            if (exactQuotes != null) {
+                // 先将出价和 pacing 各自转十进制再相乘，不能复用已发生二进制乘法的 pacedBid。
+                var cap = CpmPrice.money(CpmPrice.decimal(effBid)
+                        .multiply(CpmPrice.decimal(pacingByAdv.getOrDefault(c.advertiserId(), 1.0))));
+                CpmPrice.decimal(rankEcpm);
+                CpmPrice.decimal(billFactor);
+                if (billFactor <= 0 || cap.compareTo(CpmPrice.money(CpmPrice.decimal(reserve))) < 0) continue;
+            }
             if (rankEcpm < reserve) {
                 continue;
             }
@@ -160,6 +197,18 @@ public class BiddingService {
             Scored s = scored.get(i);
             // 次位 Ad Rank:末位用 reserve 兜底。charged = nextRank/billFactor 天然以自身计费单位计价
             double nextRank = (i + 1 < scored.size()) ? scored.get(i + 1).rankEcpm : reserve;
+            if (exactQuotes != null) {
+                var cap = CpmPrice.money(CpmPrice.decimal(s.effBid)
+                        .multiply(CpmPrice.decimal(pacingByAdv.getOrDefault(s.candidate.advertiserId(), 1.0))));
+                var price = new CpmPrice(CpmPrice.decimal(nextRank), CpmPrice.decimal(s.billFactor),
+                        CpmPrice.money(CpmPrice.decimal(cfg.getPriceIncrement())),
+                        CpmPrice.money(CpmPrice.decimal(reserve)), cap);
+                // 只有展示兼容字段回转 double；资金调用方必须携带 price，不能读取该字段收费。
+                SponsoredAd ad = toAd(s, titleByAd, price.amount().doubleValue(), i + 1);
+                exactQuotes.add(new QuotedAd(ad, price));
+                out.add(ad);
+                continue;
+            }
             double charged = s.billFactor <= 0 ? reserve : nextRank / s.billFactor + cfg.getPriceIncrement();
             charged = Math.max(reserve, Math.min(charged, s.pacedBid)); // [reserve, 自身出价]
             out.add(toAd(s, titleByAd, charged, i + 1));

@@ -40,3 +40,17 @@ HTTP 已应用/查询成功为 200；版本或额度冲突为 409 并返回持�
 迁移：使用 ad owner 独立目录 `recsys-ad/src/main/resources/db/ad-billing/V001__budget_account.sql` 的事务化版本脚本和持久化 schema history，显式应用到隔离 adDb；新能力启动检查版本，不自动修改共享/生产库。执行记录保存脚本 SHA-256，已执行文件不可改写；重复应用以版本冲突失败并回滚，后续变化新增 V002。本轮不新增迁移框架或基础设施。
 
 验收：真实 PG 并发同 ID 只生效一次；不同 ID 同 expectedVersion 只一个成功；改负载冲突；调低到占用以下稳定拒绝；账务写入后结果保存失败整体回滚；服务重建后原结果可查；错数据源/缺迁移启动失败。RPC 测试验证身份、字段精度、错误与未知结果传播。
+
+## C02A：首版 sandbox CPM 精确报价（ER-S02A）
+
+沿用已确认的“首个图文 CPM 闭环”，新精确路径首版仅接收 CPM + 标准 GSP，其他计费模式不参与该场竞价；启用 VCG/Listwise 时新路径明确拒绝，不能退回旧浮点收费。旧 auction 方法及旧 ad.v1 数值语义保持兼容，CPC/CPA 与其他算法的新报价版本后续单独扩展。
+
+计价版本固定 `CPM_GSP_CNY6_V1`，币种 CNY，单位 `PER_IMPRESSION`（元/单次曝光）。这是现有 CPM 的单次输入语义，不暗中除以/乘以 1000；改为每千次报价须另立版本及输入迁移。pCTR/排序分仍可浮点，但旧 SponsoredAd.chargedPrice 不能作为预占/结算输入。
+
+BiddingService 的新方法在计算 GSP 价格前建立精确边界：旧目录 double 出价、pacing、保留价、增量、质量因子与次位排序阈值，先校验有限且非负，通过 BigDecimal.valueOf 取得其十进制表示；paced cap 以十进制出价乘 pacing，cap/floor/increment 按已定六位 HALF_UP 规范化。拒绝超范围或 cap < floor 的候选；质量因子须为正。由冻结的 numerator/denominator 精确比较与夹取，最后只在输出金额处 HALF_UP 六位，避免除法中间舍入。此桥接明确保留旧输入已存在的精度限制，不宣称从旧 double 恢复原始目录小数。
+
+新输出包含展示广告与精确计价依据；展示 double 仅供兼容 UI，资金只引用精确报价。账户计价不重算模型、pacing 或 auction。冻结 owner 为 adDb：`quoteId` UUID 主键，`(SANDBOX, deliveryId, slot)` 唯一；slot 技术边界为 1～100，不构成容量承诺。记录广告主/广告/slot、精确单价、币种/单位/版本、规范化定价依据和摘要、DB 签发时间/5 分钟到期时间。同 ID 同输入返回原快照（到期后仍返回原到期时间），不同输入或同 delivery/slot 换 ID 拒绝冲突。
+
+新增 V002 版本迁移，不改已交付 V001；仍默认关闭且仅显式迁移隔离 adDb。本片提供领域/持久化与 protobuf 快照往返，不开放客户端提交价格的接口；ER-S04 才把整次交付与可信 RPC 编排接通，ER-S03 仅凭服务端已保存 quoteId 预占。金额、来源和到期时间不得由终端指定。
+
+验收：半微元、精确除法、上限/下限、极值与非有限输入；旧默认 auction 回归；新路径过滤非 CPM、拒绝未支持算法；真实 PG 同 quote 重试与并发、变负载/换 ID 冲突、重建后原金额/期限不变；protobuf 精确字段往返。不得用只有 NUMERIC 列而收费仍是旧 double 的方式完成本片。

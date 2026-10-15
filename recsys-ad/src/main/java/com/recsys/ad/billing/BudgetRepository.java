@@ -46,7 +46,12 @@ public class BudgetRepository {
 
     /** 执行记录与随包脚本比对，防止已执行迁移被编辑后继续启用账务。 */
     public static String migrationSha256() {
-        try (var stream = new ClassPathResource(MIGRATION).getInputStream()) {
+        return migrationSha256(MIGRATION);
+    }
+
+    /** 后续迁移逐版本核对，不能通过覆盖旧摘要伪造升级。 */
+    static String migrationSha256(String resource) {
+        try (var stream = new ClassPathResource(resource).getInputStream()) {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stream.readAllBytes()));
         } catch (IOException | NoSuchAlgorithmException ex) {
             throw new IllegalStateException("无法校验账务迁移脚本", ex);
