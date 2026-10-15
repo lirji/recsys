@@ -1,5 +1,6 @@
 package com.recsys.console.system;
 
+import com.recsys.common.error.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,7 @@ public class SystemMetricsService {
         this.restClient = restClient;
     }
 
+    /** 可用仅表示本次四项查询均获得合法响应，缺数据不会推断为流量为零。 */
     public SystemMetrics metrics() {
         long now = Instant.now().toEpochMilli();
         if (!props.isEnabled()) {
@@ -50,45 +52,51 @@ public class SystemMetricsService {
             Double qps = queryScalar(props.getRecommendQpsQuery());
             Double adP99s = queryScalar(props.getAdP99Query());
 
-            boolean hasTraffic = p99s != null || qps != null;
-            String message = hasTraffic
+            boolean hasRecommendMetrics = p99s != null || avgs != null || qps != null;
+            String message = hasRecommendMetrics
                     ? "Prometheus 指标就绪。"
-                    : "Prometheus 可达,但近窗口暂无推荐流量(先发起几次 /recommend 再看)。";
+                    : "指标接口可达，但当前窗口没有可用推荐指标。";
             return new SystemMetrics(true, "prometheus", message,
                     toMs(p99s), toMs(avgs), round2(qps), toMs(adP99s), now);
         } catch (Exception e) {
-            log.debug("Prometheus 指标查询失败: {}", e.toString());
+            log.debug("{} failureType={}", ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage(), e.getClass().getSimpleName());
             return SystemMetrics.unavailable(
-                    "Prometheus 不可达(先 docker compose --profile obs up -d 启动观测栈):" + rootMessage(e), now);
+                    ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage(), now);
         }
     }
 
-    /** 求一个标量:成功且有限 → Double;成功但结果为空 / NaN / Inf → null;传输或 HTTP 错误 → 抛出。 */
+    /** 只接受当前四个聚合查询的单值vector；协议失败不能被当作“没有流量”。 */
     private Double queryScalar(String promql) {
         String base = props.getPrometheusUrl().replaceAll("/+$", "");
         URI uri = URI.create(base + "/api/v1/query?query="
                 + URLEncoder.encode(promql, StandardCharsets.UTF_8));
         Map<?, ?> body = restClient.get().uri(uri).retrieve().body(Map.class);
-        if (body == null || !"success".equals(body.get("status"))) {
-            return null;
+        if (body == null || !"success".equals(body.get("status"))
+                || !(body.get("data") instanceof Map<?, ?> data)
+                || !"vector".equals(data.get("resultType"))
+                || !(data.get("result") instanceof List<?> result)
+                || result.size() > 1) {
+            throw invalidReply();
         }
-        if (!(body.get("data") instanceof Map<?, ?> data)) {
-            return null;
-        }
-        if (!(data.get("result") instanceof List<?> result) || result.isEmpty()) {
-            return null; // 无数据(例如近窗口无流量)
-        }
+        // warnings可能表示仅返回部分可收集数据；当前视图没有部分结果字段，不能显示完全就绪。
+        Object warnings = body.get("warnings");
+        if (warnings != null && (!(warnings instanceof List<?> list) || !list.isEmpty())) throw invalidReply();
+        if (result.isEmpty()) return null;
         if (!(result.get(0) instanceof Map<?, ?> series)
-                || !(series.get("value") instanceof List<?> value)
-                || value.size() < 2) {
-            return null;
+                || !(series.get("value") instanceof List<?> value) || value.size() != 2
+                || !(value.get(0) instanceof Number) || !(value.get(1) instanceof String raw)) {
+            throw invalidReply();
         }
-        try {
-            double d = Double.parseDouble(String.valueOf(value.get(1)));
-            return (Double.isNaN(d) || Double.isInfinite(d)) ? null : d;
-        } catch (NumberFormatException nfe) {
-            return null;
-        }
+        // Prometheus的非有限观测值表示当前无法求值，保留原null语义；格式错误不能混同。
+        if ("NaN".equals(raw) || "+Inf".equals(raw) || "-Inf".equals(raw)) return null;
+        double number = Double.parseDouble(raw);
+        if (!Double.isFinite(number)) return null;
+        if (number < 0) throw invalidReply(); // 本入口只读延迟和QPS，负数不是有效观测值。
+        return number;
+    }
+
+    private static IllegalStateException invalidReply() {
+        return new IllegalStateException(ErrorCode.CONSOLE_METRICS_UNAVAILABLE.code());
     }
 
     /** 秒 → 毫秒,保留 1 位小数。 */
@@ -98,15 +106,6 @@ public class SystemMetricsService {
 
     private static Double round2(Double v) {
         return v == null ? null : Math.round(v * 100.0) / 100.0;
-    }
-
-    private static String rootMessage(Throwable e) {
-        Throwable c = e;
-        while (c.getCause() != null && c.getCause() != c) {
-            c = c.getCause();
-        }
-        String m = c.getMessage();
-        return m == null ? c.getClass().getSimpleName() : m;
     }
 
     private static RestClient buildClient(SystemMetricsProperties props) {

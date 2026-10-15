@@ -17,3 +17,5 @@ EC04c DONE/PASS（本地）：三普通服务8方法与四类客户端8入口目
 EC04d DONE/PASS：普通广告/兴趣写入的RPC失败、丢应答、熔断及非成功ACK返回受控503；正常outcome重复false保持，无写重试。总135码。44旧专项、8旧HTTP刻画、69新专项、426资金/74类、151前端及build、24模块compile、目录/SQL守卫通过。Hygiene无阻断，Java工具限制保持。见EC04D_DESIGN/RESULT。EC04c 1a61da1b已ff/push，CI38799881069四门SUCCESS、build仍运行；EC04b CI38798495615终态CANCELLED（钱与build取消，另外三门成功），不称五门通过。父EC04e及EC05～08继续。
 
 EC04e1 DONE/PASS（本地）：严格兴趣查询故障从空200改受控503，推荐专用Reader保留冷启动降级；原读重试和普通写语义保持。总136码，User360局部错误也展示code。18基线、56专项/7类、154前端/21文件、24模块compile及目录/SQL/hygiene通过，见EC04E1_DESIGN/RESULT。无新增依赖/SQL/事务；父EC04的console边界及EC05～08继续。EC04d已ff/push e94cdac6，新CI38801955042运行；C的CI38799881069仅build取消、另四门成功。
+
+EC04e2 DONE/PASS（本地）：观测协议失败/部分结果不再当就绪或无流量，健康状态用显式编码枚举和安全URL，诊断失败/缺数据不默认PASS。新增8对象内码，总144项。22基线、最终63专项/6类、154前端/21文件、24compile、目录/SQL/hygiene通过，见EC04E2_DESIGN/RESULT。Hygiene一条第三方Python虚拟环境枚举相似advisory判不适用；Java工具限制保持。父EC04的SystemOps/User360/Item/Report/Alerts及EC05～08继续。E1已ff/push 8d2fedee，CI38802730985运行；D CI38801955042安全/自然成功，钱/浏览器/build取消。

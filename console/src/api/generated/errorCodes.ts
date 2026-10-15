@@ -544,6 +544,38 @@ export const errorCodes = {
     message: '兴趣信息暂时无法读取，请稍后重试',
     httpStatus: 503,
   },
+  CONSOLE_METRICS_UNAVAILABLE: {
+    message: '系统指标暂时不可用，请检查观测服务与查询配置',
+    httpStatus: 0,
+  },
+  CONSOLE_HEALTH_TARGET_MISSING: {
+    message: '未配置健康探测地址',
+    httpStatus: 0,
+  },
+  CONSOLE_HEALTH_UNAVAILABLE: {
+    message: '健康探测暂时不可达',
+    httpStatus: 0,
+  },
+  CONSOLE_HEALTH_HTTP_FAILED: {
+    message: '健康探测返回非成功状态',
+    httpStatus: 0,
+  },
+  CONSOLE_HEALTH_STATUS_UNKNOWN: {
+    message: '健康状态未知，请检查探测结果',
+    httpStatus: 0,
+  },
+  CONSOLE_HEALTH_UNHEALTHY: {
+    message: '服务健康检查未通过',
+    httpStatus: 0,
+  },
+  CONSOLE_DIAGNOSIS_CHECK_FAILED: {
+    message: '诊断检查未完成，请检查对应服务或报表',
+    httpStatus: 0,
+  },
+  CONSOLE_DIAGNOSIS_INCOMPLETE: {
+    message: '诊断数据缺失或无效，暂时无法判定正常',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

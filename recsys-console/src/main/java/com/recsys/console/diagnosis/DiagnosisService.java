@@ -1,5 +1,6 @@
 package com.recsys.console.diagnosis;
 
+import com.recsys.common.error.ErrorCode;
 import com.recsys.console.report.MetricTable;
 import com.recsys.console.report.ReportService;
 import com.recsys.console.report.ReportTable;
@@ -38,6 +39,7 @@ public class DiagnosisService {
         this.reportService = reportService;
     }
 
+    /** 汇总已取得的证据，缺失或失败的关键检查不能用正常默认值补齐。 */
     public DiagnosisReport diagnose() {
         long now = Instant.now().toEpochMilli();
         List<DiagnosisReport.Check> checks = new ArrayList<>();
@@ -70,9 +72,10 @@ public class DiagnosisService {
                         h.status() + " · " + (h.message() == null ? "" : h.message())));
             }
         } catch (Exception e) {
-            log.debug("服务健康检查失败: {}", e.getMessage());
-            out.add(new DiagnosisReport.Check("service", "服务健康", "WARN", "健康探测失败: " + e.getMessage()));
+            out.add(failedCheck("service", "服务健康", e));
         }
+        if (out.isEmpty()) out.add(new DiagnosisReport.Check("service", "服务健康", "WARN",
+                ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage()));
         return out;
     }
 
@@ -82,19 +85,25 @@ public class DiagnosisService {
         try {
             ReportTable dq = reportService.latest("data-quality");
             if (dq == null) {
-                return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN", "无 data-quality 报表(未跑巡检)");
+                return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN", ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
             MetricTable mt = MetricTable.of(dq);
-            int breaches = (int) mt.number("breaches", 0);
-            String status = "PASS";
-            List<String> reasons = new ArrayList<>(mt.breaches());
-            if (breaches > 0) {
-                status = "WARN";
+            double breaches = mt.number("breaches", Double.NaN);
+            double itemCov = mt.number("item_embedding_coverage", Double.NaN);
+            double userCov = mt.number("user_embedding_coverage", Double.NaN);
+            double ece = mt.number("pctr_ece", Double.NaN);
+            if (!Double.isFinite(breaches) || breaches < 0 || breaches != Math.rint(breaches)
+                    || !ratio(itemCov) || !ratio(userCov) || !ratio(ece)) {
+                return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN",
+                        ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
             }
-            // 显式再核对两条硬指标(报表未显式列 breaches 时的兜底)
-            double itemCov = mt.number("item_embedding_coverage", 1.0);
-            double userCov = mt.number("user_embedding_coverage", 1.0);
-            double ece = mt.number("pctr_ece", 0.0);
+            String status = "PASS";
+            List<String> reasons = new ArrayList<>();
+            if (breaches > 0 || !mt.breaches().isEmpty()) {
+                status = "WARN";
+                // 报表的自由文本可能来自旧作业异常，只呈现安全计数与下面的受控数值说明。
+                reasons.add(String.format("报表记录 %.0f 项越阈值，请检查对应指标", Math.max(breaches, mt.breaches().size())));
+            }
             if (itemCov < MIN_COVERAGE || userCov < MIN_COVERAGE) {
                 status = "WARN";
                 reasons.add(String.format("embedding 覆盖率偏低(item %.3f / user %.3f)", itemCov, userCov));
@@ -105,11 +114,10 @@ public class DiagnosisService {
                     reasons.add(String.format("pCTR ECE %.3f > %.2f", ece, MAX_ECE));
                 }
             }
-            String detail = reasons.isEmpty() ? "无越阈值(覆盖率/ECE/PSI 正常)" : String.join(" · ", reasons);
+            String detail = reasons.isEmpty() ? "已取得的覆盖率/ECE及越阈值计数未见异常" : String.join(" · ", reasons);
             return new DiagnosisReport.Check("data-quality", "数据质量巡检", status, detail);
         } catch (Exception e) {
-            log.debug("数据质量检查失败: {}", e.getMessage());
-            return new DiagnosisReport.Check("data-quality", "数据质量巡检", "WARN", "解析失败: " + e.getMessage());
+            return failedCheck("data-quality", "数据质量巡检", e);
         }
     }
 
@@ -120,10 +128,9 @@ public class DiagnosisService {
             ReportTable eval = reportService.latest("eval");
             return eval != null
                     ? new DiagnosisReport.Check("eval", "离线评估", "PASS", "最新评估报表 " + eval.fileName())
-                    : new DiagnosisReport.Check("eval", "离线评估", "WARN", "无 eval 报表(未跑 eval)");
+                    : new DiagnosisReport.Check("eval", "离线评估", "WARN", ErrorCode.CONSOLE_DIAGNOSIS_INCOMPLETE.displayMessage());
         } catch (Exception e) {
-            log.debug("eval 检查失败: {}", e.getMessage());
-            return new DiagnosisReport.Check("eval", "离线评估", "WARN", "检查失败: " + e.getMessage());
+            return failedCheck("eval", "离线评估", e);
         }
     }
 
@@ -137,11 +144,23 @@ public class DiagnosisService {
                 return new DiagnosisReport.Check("latency", "推荐链路延迟", status,
                         String.format("P99 %.0fms(阈值 %.0fms)", m.recommendP99Ms(), P99_WARN_MS));
             }
-            return new DiagnosisReport.Check("latency", "推荐链路延迟", "INFO", "指标不可用(观测栈未起或近窗无流量)");
+            return m.available()
+                    ? new DiagnosisReport.Check("latency", "推荐链路延迟", "INFO", "当前窗口无可用延迟指标")
+                    : new DiagnosisReport.Check("latency", "推荐链路延迟", "WARN", ErrorCode.CONSOLE_METRICS_UNAVAILABLE.displayMessage());
         } catch (Exception e) {
-            log.debug("延迟检查失败: {}", e.getMessage());
-            return new DiagnosisReport.Check("latency", "推荐链路延迟", "INFO", "检查失败: " + e.getMessage());
+            return failedCheck("latency", "推荐链路延迟", e);
         }
+    }
+
+    private static boolean ratio(double value) {
+        return Double.isFinite(value) && value >= 0 && value <= 1;
+    }
+
+    /** 不把内部异常、URL或SQL写入正常诊断对象；失败显式影响overall。 */
+    private static DiagnosisReport.Check failedCheck(String key, String name, Exception failure) {
+        log.debug("{} check={} failureType={}", ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage(),
+                key, failure.getClass().getSimpleName());
+        return new DiagnosisReport.Check(key, name, "WARN", ErrorCode.CONSOLE_DIAGNOSIS_CHECK_FAILED.displayMessage());
     }
 
     // ---------- 汇总 ----------

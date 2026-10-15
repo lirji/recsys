@@ -959,6 +959,62 @@
       "httpStatus": 503,
       "message": "兴趣信息暂时无法读取，请稍后重试",
       "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_METRICS_UNAVAILABLE",
+      "code": "CONSOLE_METRICS_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "系统指标暂时不可用，请检查观测服务与查询配置",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_HEALTH_TARGET_MISSING",
+      "code": "CONSOLE_HEALTH_TARGET_MISSING",
+      "httpStatus": 0,
+      "message": "未配置健康探测地址",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_HEALTH_UNAVAILABLE",
+      "code": "CONSOLE_HEALTH_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "健康探测暂时不可达",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_HEALTH_HTTP_FAILED",
+      "code": "CONSOLE_HEALTH_HTTP_FAILED",
+      "httpStatus": 0,
+      "message": "健康探测返回非成功状态",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_HEALTH_STATUS_UNKNOWN",
+      "code": "CONSOLE_HEALTH_STATUS_UNKNOWN",
+      "httpStatus": 0,
+      "message": "健康状态未知，请检查探测结果",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_HEALTH_UNHEALTHY",
+      "code": "CONSOLE_HEALTH_UNHEALTHY",
+      "httpStatus": 0,
+      "message": "服务健康检查未通过",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_DIAGNOSIS_CHECK_FAILED",
+      "code": "CONSOLE_DIAGNOSIS_CHECK_FAILED",
+      "httpStatus": 0,
+      "message": "诊断检查未完成，请检查对应服务或报表",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_DIAGNOSIS_INCOMPLETE",
+      "code": "CONSOLE_DIAGNOSIS_INCOMPLETE",
+      "httpStatus": 0,
+      "message": "诊断数据缺失或无效，暂时无法判定正常",
+      "httpDefault": false
     }
   ],
   "families": [

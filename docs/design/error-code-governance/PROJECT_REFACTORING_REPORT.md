@@ -21,3 +21,5 @@ EC04c完成普通广告/内容/用户RPC及四类客户端的安全目录适配�
 EC04d修复普通广告/兴趣写fallback的HTTP假成功；新增两项503目录码，总135。正常成功与outcome重复false保持，未增加写重试。真实TCP+AOP+HTTP验证及426资金、151前端、24模块编译通过，见EC04D_RESULT。严格兴趣读取与console对象仍需后续治理。
 
 EC04e1 DONE/PASS（本地）：严格兴趣查询故障从空200改受控503，推荐专用Reader保留冷启动降级；原读重试和普通写语义保持。总136码，User360局部错误也展示code。18基线、56专项/7类、154前端/21文件、24模块compile及目录/SQL/hygiene通过，见EC04E1_DESIGN/RESULT。无新增依赖/SQL/事务；父EC04的console边界及EC05～08继续。EC04d已ff/push e94cdac6，新CI38801955042运行；C的CI38799881069仅build取消、另四门成功。
+
+EC04e2 DONE/PASS（本地）：观测协议失败/部分结果不再当就绪或无流量，健康状态用显式编码枚举和安全URL，诊断失败/缺数据不默认PASS。新增8对象内码，总144项。22基线、最终63专项/6类、154前端/21文件、24compile、目录/SQL/hygiene通过，见EC04E2_DESIGN/RESULT。Hygiene一条第三方Python虚拟环境枚举相似advisory判不适用；Java工具限制保持。父EC04的SystemOps/User360/Item/Report/Alerts及EC05～08继续。E1已ff/push 8d2fedee，CI38802730985运行；D CI38801955042安全/自然成功，钱/浏览器/build取消。

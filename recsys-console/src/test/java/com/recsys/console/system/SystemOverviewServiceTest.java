@@ -103,7 +103,7 @@ class SystemOverviewServiceTest {
 
         assertThat(health).hasSize(1);
         assertThat(health.get(0).status()).isEqualTo("DOWN");
-        assertThat(health.get(0).message()).isEqualTo("health endpoint unreachable");
+        assertThat(health.get(0).message()).isEqualTo(com.recsys.common.error.ErrorCode.CONSOLE_HEALTH_UNAVAILABLE.displayMessage());
     }
 
     @Test
@@ -129,7 +129,7 @@ class SystemOverviewServiceTest {
         assertThat(health).hasSize(1);
         assertThat(health.get(0).status()).isEqualTo("DOWN");
         assertThat(health.get(0).message())
-                .isEqualTo("health endpoint reachable but returned HTTP 503");
+                .isEqualTo(com.recsys.common.error.ErrorCode.CONSOLE_HEALTH_HTTP_FAILED.displayMessage() + " (HTTP 503)");
         server.verify();
     }
 }
