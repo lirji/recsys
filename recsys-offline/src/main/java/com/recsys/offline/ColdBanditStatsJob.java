@@ -5,10 +5,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.ColdBanditMapper;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -29,51 +28,42 @@ public class ColdBanditStatsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(ColdBanditStatsJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final ColdBanditMapper mapper;
     private final StringRedisTemplate redis;
 
-    public ColdBanditStatsJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** Mapper负责原双来源关联，作业继续按既有键协议发布类目统计。 */
+    public ColdBanditStatsJob(ColdBanditMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保持冷启动类目统计命令。 */
     @Override
     public String name() {
         return "cold-bandit-stats";
     }
 
+    /** 空结果不覆盖旧统计，消失类目的旧键保留原行为。 */
     @Override
     public void run(ApplicationArguments args) {
-        String bt = BehaviorQuery.table(args);   // #2:行为读来源表(默认 user_behavior)
-        String it = ItemQuery.table(args);       // #3:item 读来源表(默认 item)
+        var behavior = BehaviorQuery.source(args);
+        var items = ItemQuery.source(args);
         double minRating = doubleArg(args, "min-rating", 4.0);
 
-        List<String[]> rows = new ArrayList<>();   // [category, impr, pos]
-        jdbc.query(
-                "SELECT i.category AS cat, count(*) AS impr, " +
-                "  sum(CASE WHEN b.action IN ('CLICK','LIKE','PLAY') " +
-                "           OR (b.action='RATING' AND b.value >= ?) THEN 1 ELSE 0 END) AS pos " +
-                "FROM " + bt + " b JOIN " + it + " i ON i.item_id = b.item_id " +
-                "WHERE i.category IS NOT NULL " +
-                "GROUP BY i.category",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> rows.add(new String[]{
-                        rs.getString("cat"),
-                        String.valueOf(rs.getLong("impr")),
-                        String.valueOf(rs.getLong("pos"))}),
-                minRating);
+        List<ColdBanditMapper.Stats> rows = mapper.categoryStats(behavior, items, minRating);
 
         if (rows.isEmpty()) {
             log.warn("无类目统计(user_behavior 为空?先跑 import-behavior)");
             return;
         }
         long total = 0;
-        for (String[] r : rows) {
-            redis.opsForValue().set(RedisKeys.coldCatStats(r[0]), r[1] + "," + r[2]);
-            total += Long.parseLong(r[1]);
+        for (var row : rows) {
+            redis.opsForValue().set(RedisKeys.coldCatStats(row.category()), row.impressions() + "," + row.positives());
+            total += row.impressions();
         }
         redis.opsForValue().set(RedisKeys.COLD_CAT_TOTAL, String.valueOf(total));
         log.info("cold-bandit-stats 完成:{} 个类目,总曝光 {};示例 {} → impr={},pos={}",
-                rows.size(), total, rows.get(0)[0], rows.get(0)[1], rows.get(0)[2]);
+                rows.size(), total, rows.get(0).category(), rows.get(0).impressions(), rows.get(0).positives());
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {

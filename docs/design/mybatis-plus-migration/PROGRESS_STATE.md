@@ -412,3 +412,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13d1最终验证
 
 见MP13D1_RESULT。旧6、新专项7、完整离线167/31类、全仓24 reactor测试编译/hygiene通过。5源指纹26131843d1dc77ab4f0dd8ad9ee44b07eea31cd9d0040644cd0e0e79c0443c2e；权重/NULL/负分/双来源/微秒截点/时间窗口/1000上限与旧榜保留保持，补NULL与实际0分组对照。c7=2075bcb2已本地提交，main/origin仍R9=df2ca1a2；继续ColdBanditStats后相邻片正常ff/push。
+
+## MP13d2入口
+
+旧ColdBandit真实PG/Redis5项通过：双来源独立选择、inner join排除缺失物品/NULL类别、空类别保留、原正反馈阈值及重复计数、无结果保留总数/消失类别旧键、失败前无Redis写入。迁移主源ColdBanditMapper/XML，统计行改为具名record(long计数)，移除String[]下标和往返解析，Redis键和值格式不变。
+
+## MP13d2最终验证
+
+见MP13D2_RESULT。旧5、新关联6、完整离线172/32类、全仓24 reactor测试编译/hygiene通过。5源指纹99d5a1ec28c3f17807a75aad32e16e8681ffaf6d464952c04c5396fa61009f1a；双来源关联/阈值/NULL类目/旧键边界保持，具名long统计替代String[]。R9=df2ca1a2的CI38758681589五门禁全部SUCCESS；c7=2075bcb2/d1=06368027与本片正常ff/push后继续BanditStats剩余曝光SQL。

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.ColdBanditMapper">
+    <resultMap id="stats" type="com.recsys.offline.persistence.mapper.primary.ColdBanditMapper$Stats">
+        <constructor>
+            <arg name="category" column="cat" javaType="java.lang.String"/>
+            <arg name="impressions" column="impr" javaType="_long"/>
+            <arg name="positives" column="pos" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <select id="categoryStats" resultMap="stats" useCache="false">
+        SELECT i.category AS cat,count(*) AS impr,
+               sum(CASE WHEN b.action IN ('CLICK','LIKE','PLAY')
+                   OR (b.action='RATING' AND b.value &gt;= #{minRating}) THEN 1 ELSE 0 END) AS pos
+        FROM
+        <choose>
+            <when test="behavior.name() == 'BEHAVIOR_LOG'">behavior_log</when>
+            <otherwise>user_behavior</otherwise>
+        </choose> b JOIN
+        <choose>
+            <when test="items.name() == 'REPLICA'">item_local</when>
+            <otherwise>item</otherwise>
+        </choose> i ON i.item_id=b.item_id
+        WHERE i.category IS NOT NULL
+        GROUP BY i.category
+    </select>
+</mapper>
