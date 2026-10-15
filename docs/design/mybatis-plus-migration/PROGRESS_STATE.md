@@ -452,3 +452,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13e2本地最终验证
 
 见MP13E2_RESULT。旧7、新关联8、完整离线204/37类、24 reactor测试编译/hygiene通过。8源指纹dcad79a688e772d32e1c837f1c579784b8535401fe68a42ef707e4e358c1a26d；三类样本六份完整CSV与旧一致、同秒/窗口/负采样/NULL/来源/部分失败边界保持。前批6a05f2ec已ff/push；CI38764359355资金门禁ConversionOnlinePostgresTest跨广告主预期403实际400，诊断未完成，其他三专项成功/build在途。本片只本地提交，不以新push跳过失败；先查明并关闭，再继续e3。
+
+## FTRL跨架构模型测试修正
+
+见FTRL_FLOAT_RESULT。amd64纯计算探针精确复现CI两个失败摘要，StrictMath.exp对照恢复旧摘要，实证最大差2.8422e-14/40ULP。生产算法不改；完整模型JSON所有键/坐标严格比较，有限数值max(1e-14,128ULP)，错误seed/排序物品池反例均被拦截。专项7、全离线205/37类、全仓24 reactor编译/hygiene通过。4源指纹8f006eaa0454875a90344781d20d3bd3140e80bff0ebaebbf9caaa5a732ee5ab。原CI38764359355 attempt1失败保留；attempt2 money遇Maven Central429，未验证原CPA失败。
