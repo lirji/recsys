@@ -73,6 +73,9 @@ class OfflineSessionBindingsPostgresTest {
                     Map.entry("upliftSampleMapper", "adDbSqlSessionTemplate"),
                     Map.entry("adCvrInputMapper", "sqlSessionTemplate"),
                     Map.entry("adItemMapper", "shardedSqlSessionTemplate"),
+                    Map.entry("adCalibrationMapper", "sqlSessionTemplate"),
+                    Map.entry("adExplorationMapper", "sqlSessionTemplate"),
+                    Map.entry("adDelayMapper", "sqlSessionTemplate"),
                     Map.entry("evaluationInputMapper", "sqlSessionTemplate")).entrySet()) {
                 var factory = context.getBean("&" + binding.getKey(), MapperFactoryBean.class);
                 assertSame(context.getBean(binding.getValue()), factory.getSqlSession());

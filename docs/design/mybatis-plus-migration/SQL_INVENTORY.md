@@ -121,8 +121,8 @@
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
 | [com/recsys/offline/AbReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AbReportJob.java) | 6 | 3 | TODO |
-| [com/recsys/offline/AdCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdCalibrateJob.java) | 8 | 2 | TODO |
-| [com/recsys/offline/AdExploreStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdExploreStatsJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/AdCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdCalibrateJob.java) | 8 | 2 | DONE MP13f1：主源AdCalibrationMapper/XML；见MP13F1_RESULT |
+| [com/recsys/offline/AdExploreStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdExploreStatsJob.java) | 8 | 3 | DONE MP13f1：主源AdExplorationMapper/XML；见MP13F1_RESULT |
 | [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | TODO |
 | [com/recsys/offline/AttributionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AttributionJob.java) | 6 | 1 | TODO |
 | [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | DONE MP13c1：derived向量写入；见MP13C1_RESULT |
@@ -131,7 +131,7 @@
 | [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | DONE MP13d5：五评分聚合/流式特征物化；见MP13D5_RESULT |
 | [com/recsys/offline/ColdBanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ColdBanditStatsJob.java) | 8 | 1 | DONE MP13d2：主源类目聚合/类型化统计；见MP13D2_RESULT |
 | [com/recsys/offline/DataQualityJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DataQualityJob.java) | 6 | 9 | TODO |
-| [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |
+| [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | DONE MP13f1：主源AdDelayMapper/XML；见MP13F1_RESULT |
 | [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | DONE MP13e1：主源TrainingCatalogMapper；见MP13E1_RESULT |
 | [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | DONE MP13e5：主源AdCvrInputMapper/分片AdItemMapper XML；见MP13E5_RESULT |

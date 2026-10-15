@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdDelayMapper">
+    <resultMap id="delay" type="com.recsys.offline.persistence.mapper.primary.AdDelayMapper$Delay">
+        <constructor><arg name="days" column="delay_days" javaType="_double"/></constructor>
+    </resultMap>
+    <sql id="sourceTable"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <select id="scan" resultMap="delay" useCache="false">
+        SELECT COALESCE(EXTRACT(EPOCH FROM (cvt.ts-clk.ts))/86400.0,0) AS delay_days
+        FROM <include refid="sourceTable"/> cvt JOIN <include refid="sourceTable"/> clk
+          ON clk.request_id=cvt.request_id AND clk.ad_id=cvt.ad_id AND clk.event_type='CLICK'
+        WHERE cvt.event_type='CONVERSION' AND cvt.ts&lt;=now()
+        <if test="days &gt; 0">AND clk.ts&gt;=now()-#{days}*interval '1 day'</if>
+    </select>
+</mapper>

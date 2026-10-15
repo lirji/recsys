@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdExplorationMapper">
+    <resultMap id="adStats" type="com.recsys.offline.persistence.mapper.primary.AdExplorationMapper$AdStats">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="impressions" column="imp" javaType="_long"/>
+            <arg name="clicks" column="clk" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="creativeCount" type="com.recsys.offline.persistence.mapper.primary.AdExplorationMapper$CreativeCount">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="creativeId" column="creative_id" javaType="_long"/>
+            <arg name="count" column="n" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <sql id="sourceTable"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <select id="scanAds" resultMap="adStats" useCache="false">
+        SELECT ad_id,SUM(CASE WHEN event_type='IMPRESSION' THEN 1 ELSE 0 END) AS imp,
+               SUM(CASE WHEN event_type='CLICK' THEN 1 ELSE 0 END) AS clk
+        FROM <include refid="sourceTable"/> WHERE ad_id IS NOT NULL GROUP BY ad_id
+    </select>
+    <select id="scanCreativeImpressions" resultMap="creativeCount" useCache="false">
+        SELECT COALESCE(ad_id,0) AS ad_id,creative_id,COUNT(*) AS n
+        FROM <include refid="sourceTable"/>
+        WHERE event_type='IMPRESSION' AND creative_id IS NOT NULL GROUP BY ad_id,creative_id
+    </select>
+    <select id="scanCreativeClicks" resultMap="creativeCount" useCache="false">
+        SELECT COALESCE(i.ad_id,0) AS ad_id,i.creative_id,COUNT(*) AS n
+        FROM <include refid="sourceTable"/> c JOIN <include refid="sourceTable"/> i
+          ON i.request_id=c.request_id AND i.ad_id=c.ad_id
+         AND i.event_type='IMPRESSION' AND i.creative_id IS NOT NULL
+        WHERE c.event_type='CLICK' GROUP BY i.ad_id,i.creative_id
+    </select>
+</mapper>

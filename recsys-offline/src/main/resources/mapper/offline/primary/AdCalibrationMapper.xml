@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdCalibrationMapper">
+    <resultMap id="sample" type="com.recsys.offline.persistence.mapper.primary.AdCalibrationMapper$Sample">
+        <constructor>
+            <arg name="prediction" column="pctr" javaType="_double"/>
+            <arg name="clicked" column="clicked" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <sql id="sourceTable"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <select id="load" resultMap="sample" useCache="false">
+        SELECT i.pctr,CASE WHEN c.ad_id IS NOT NULL THEN 1.0 ELSE 0.0 END AS clicked
+        FROM <include refid="sourceTable"/> i
+        LEFT JOIN (SELECT DISTINCT request_id,ad_id FROM <include refid="sourceTable"/> WHERE event_type='CLICK') c
+          ON c.request_id=i.request_id AND c.ad_id=i.ad_id
+        WHERE i.event_type='IMPRESSION' AND i.pctr IS NOT NULL
+        ORDER BY i.pctr
+    </select>
+</mapper>

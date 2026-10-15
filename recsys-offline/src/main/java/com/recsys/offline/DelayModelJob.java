@@ -5,7 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.AdDelayMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,44 +36,39 @@ public class DelayModelJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(DelayModelJob.class);
 
-    private final JdbcTemplate jdbc;
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
+    private final AdDelayMapper mapper;
     private final StringRedisTemplate redis;
 
-    public DelayModelJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** Mapper沿原主库会话读取，保持Redis发布的先后边界。 */
+    public DelayModelJob(AdDelayMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "ad-delay";
     }
 
+    /** 来源按单次运行传递，输入查询与原拟合/发布算法各自负责。 */
     @Override
     public void run(ApplicationArguments args) {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 30);
         int minSamples = intArg(args, "min-samples", 50);
         double maxDelayDays = dblArg(args, "max-delay-days", 30.0);
-        String since = days > 0 ? "clk.ts >= now() - interval '" + days + " days'" : "TRUE";
 
         // 已观测转化的延迟(天):转化时刻 − 其点击时刻,按 request_id+ad_id 归因点击。
         // 只取转化时刻 ≤ now(已到达)且延迟在 [0, maxDelay] 内的样本。
         Double[] agg = new Double[]{0.0, 0.0};  // [count, sumDelayDays]
-        jdbc.query(
-                "SELECT EXTRACT(EPOCH FROM (cvt.ts - clk.ts)) / 86400.0 AS delay_days " +
-                "FROM " + aet + " cvt " +
-                "JOIN " + aet + " clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
-                "  AND clk.event_type='CLICK' " +
-                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND " + since,
-                rs -> {
-                    double d = rs.getDouble("delay_days");
-                    if (d >= 0 && d <= maxDelayDays) {
-                        agg[0] += 1;
-                        agg[1] += d;
-                    }
-                });
+        mapper.scan(source, days, context -> {
+            double d = context.getResultObject().days();
+            if (d >= 0 && d <= maxDelayDays) {
+                agg[0] += 1;
+                agg[1] += d;
+            }
+        });
 
         long n = (long) (double) agg[0];
         if (n < minSamples) {

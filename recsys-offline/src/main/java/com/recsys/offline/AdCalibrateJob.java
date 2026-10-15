@@ -5,10 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.AdCalibrationMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
 
@@ -27,36 +27,29 @@ public class AdCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(AdCalibrateJob.class);
 
-    private final JdbcTemplate jdbc;
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
+    private final AdCalibrationMapper mapper;
     private final StringRedisTemplate redis;
 
-    public AdCalibrateJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** Mapper沿原主库会话读取，保持Redis发布的先后边界。 */
+    public AdCalibrateJob(AdCalibrationMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "ad-calibrate";
     }
 
+    /** 来源按单次运行传递，输入查询与原拟合/发布算法各自负责。 */
     @Override
     public void run(ApplicationArguments args) {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         String model = strArg(args, "model", "deepfm");
         int bins = intArg(args, "bins", 20);
 
-        List<double[]> rows = new ArrayList<>(); // [pctr, clicked]
-        jdbc.query(
-                "SELECT i.pctr, CASE WHEN c.ad_id IS NOT NULL THEN 1.0 ELSE 0.0 END AS clicked " +
-                "FROM " + aet + " i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') c " +
-                "  ON c.request_id = i.request_id AND c.ad_id = i.ad_id " +
-                "WHERE i.event_type = 'IMPRESSION' AND i.pctr IS NOT NULL " +
-                "ORDER BY i.pctr",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        rows.add(new double[]{rs.getDouble("pctr"), rs.getDouble("clicked")}));
+        List<AdCalibrationMapper.Sample> rows = mapper.load(source);
 
         if (rows.size() < bins * 5L) {
             log.warn("样本太少({} 条),先跑 --job=sim-ad-events(或灌真实曝光/点击)", rows.size());
@@ -73,8 +66,8 @@ public class AdCalibrateJob implements OfflineJob {
             int to = (int) ((long) (b + 1) * n / bins);
             double sumP = 0, sumC = 0;
             for (int i = from; i < to; i++) {
-                sumP += rows.get(i)[0];
-                sumC += rows.get(i)[1];
+                sumP += rows.get(i).prediction();
+                sumC += rows.get(i).clicked();
             }
             int cnt = to - from;
             x[b] = sumP / cnt;
