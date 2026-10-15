@@ -3,6 +3,8 @@ package com.recsys.ad;
 import com.recsys.common.ad.*;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.common.ad.billing.CpmPrice;
+import com.recsys.common.ad.billing.ClickPrice;
+import com.recsys.common.ad.billing.GspPrice;
 import com.recsys.rank.RankRouter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Tag;
@@ -36,8 +38,15 @@ class SandboxCandidatePipelineTest {
         when(creative.selectFor(anySet())).thenReturn(Map.of());
         var result = pipeline.sandboxCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", 0.1);
         assertEquals(price, result.getFirst().price()); assertEquals(ad, result.getFirst().ad());
+        var clickAd = new SponsoredAd(1, 2, 3, 4, "creative", AdChannel.KW_EXACT, 1, 1, 1, 1, 1, 1, 1, 1, 0, "CPC");
+        var clickPrice = new ClickPrice(BidType.CPC, new GspPrice(BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE));
+        when(bidding.auctionSandboxClick(anyList(), anyMap(), anyMap(), anyMap(), anyMap(), anyString(), eq(1), eq(.1)))
+                .thenReturn(List.of(new BiddingService.ClickQuotedAd(clickAd, clickPrice)));
+        var clicks = pipeline.sandboxClickCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1);
+        assertEquals(clickPrice, clicks.getFirst().price()); assertEquals(clickAd, clicks.getFirst().ad());
         verifyNoInteractions(pacing, logger, gd, uplift);
         when(recall.recall(any())).thenThrow(new IllegalStateException("down"));
+        assertThrows(IllegalStateException.class, () -> pipeline.sandboxClickCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1));
         assertThrows(IllegalStateException.class, () -> pipeline.sandboxCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1));
     }
 }

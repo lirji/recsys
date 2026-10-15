@@ -11,36 +11,46 @@
 - S01 `9cad79fc`、S02 `f05eb60b`、S02A `56259727`、S03 `7b6636df`、S04 `9c95f2dc`、S05 `7834ad3b`、S06 `3955e29f`、S07 `8b84b468` + `b9a6d8dc` 均已合并推送 main。预算/定价/预占/交付/回执/资金 Outbox/Kafka 以及广告浏览器闭环完成；每片 RESULT 有真实证据。
 - S08 / S08A `a8701bf88a02023ab0252e698ee3d2de59e1112e` 已合并推送：common 自然 nq1 签名/golden、engine 原子冻结交付、behavior 独立 PG 幂等可见回执/事实/Outbox、双路由、显式政策默认关闭。50 专项（23 真实 PG）+12 旧回归通过；详见 ER-S08_RESULT。
 - S08 CI 38677748671 后端全部通过，浏览器因独占 Chromium 临时目录 ENOTEMPTY 失败。修复 `4b09d44e021d33480af798e1d485770fa033511a` 已合并推送：等 close 后有界清理自身目录；4 浏览器/PG/Kafka 验收通过，远程 CI 38678472988、console-ci 38678472943 均 SUCCESS。
-- S09 DONE / PASS，提交 `e070b157` 已正常合并并推送 main。S09 打包修复 `58767a4f` 已合并推送 main，当前回到 `feat/sandbox-feed-exposure` 实施 S10。自然推荐/搜索默认关闭新分支、显式交付/原意图恢复、冻结正文可见测量、类型化自然结果；共享队列抽取，广告兼容。C09_DESIGN / CONTRACTS C09 / ER-S09_RESULT / runbook 已记录。
+- S09 DONE / PASS，提交 `e070b157` 已正常合并并推送 main。S09 打包修复 `58767a4f` 已合并推送 main，该阶段已交付。自然推荐/搜索默认关闭新分支、显式交付/原意图恢复、冻结正文可见测量、类型化自然结果；共享队列抽取，广告兼容。C09_DESIGN / CONTRACTS C09 / ER-S09_RESULT / runbook 已记录。
 - S09 最终：93 前端单测，5 自然浏览器+真实 PG（唯一事实+Outbox），4 广告浏览器+PG/Kafka 资金对账，5 旧页面浏览器，50 natural-exposure 后端专项全部通过。7 张桌面/窄屏/历史/对比/空/202/错误截图已实际查看。typecheck/build/lint 0 errors、既有16 warnings，Code Hygiene 只有根级无 formatter 限制。
 
 ## 已修改文件
 
-S10 位于 `feat/sandbox-feed-exposure`，基线 `58767a4f`。C10/CONTRACTS、common FEED、ad V007频控与新RPC、engine V003最终混排、console双回执与共享卡片、隔离浏览器宿主/CI、runbook与ER-S10_RESULT已完成。当前正在正常提交合并推送，需核对真实Git状态。
+当前分支 `feat/sandbox-click-settlement`，基线 `b0b19432`。S11A已验证，正在交付：
+
+- C11_DESIGN/CONTRACTS C11A/IMPLEMENTATION_SLICES；ER-S10_RESULT补交付后CI结论。
+- common-ad GspPrice、ClickPrice、FrozenClickQuote；CpmPrice保持五字段JSON/版本/单位，委托共享纯数学。
+- ad BiddingService 显式精确点击入口与内部有界模式策略，AdPipeline纯点击候选，无旧收费/曝光副作用。
+- ad ClickQuoteRepository/Configuration、V008不可变点击报价；金额/主体/最终位置/题名/窗口冻结，默认关闭，仅owner。
+- 点击数学/实际竞价、旧CPM序列化、纯管线、真实PG报价测试。
+- `C15A_DESIGN.md`为等待期间草案，用户确认Q-03后未启动S15；保留未跟踪，不夹入S11A提交。
 
 ## 未完成
 
-- S10 已完成验证，Git交付/远程CI待核对；不得据此称全计划完成。
-- S11 的点击窗口 Q-03 已提出待答：sandbox 每资格一次收费，资格/预占/点击窗口均签发起5分钟，点击先到持久化等可见曝光，两者到期前接受，释放不补扣。此前仅CPM规则已批准，不自行套用。
-- 等待期间推进独立 S15（仅依赖已完成 S06/S08），自然 Outbox 可靠发送；当前尚未写S15代码/正式契约。
-- S12～S25其余仍未完成；CPA Q-04、真实来源/期初资金、容量与恢复目标待后续决定。
+- S10 `b0b194321c4f4124e77c311dceb3867066d9dad3`已合并推送main，CI38687137107全SUCCESS，console-ci38687136946 SUCCESS。
+- S11A DONE/PASS：窄选择集26项；最终money-chain完整170项0失败/0跳过，含6新真实PG。RESULT/运行说明与hygiene已写，正常Git交付/远程CI待核对。
+- S11B/C还需冻结具体契约并实现：点击资格/预占、可见依赖/点击接受与反作弊、同事务资金事实/Outbox、到期/恢复、双模式API/可靠事件验证。父S11未完成，不能只做报价后停下。
+- S12～S25未完成；CPA Q-04、真实来源/期初资金、容量与恢复目标待后续决定。
 
 ## 当前问题
 
-- 新路径默认关闭，旧路径风险仍在；仅sandbox，未真实收费/生产部署。自然Outbox目前仍仅落库。
-- 六个用户文件哈希已再次核验不变、不可纳入提交：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md。console/test-results/与忽略配置/数据/模型/产物保留。一个原工作目录。
-- 根级无canonical formatter是hygiene唯一限制。前端0errors/16既有warnings；未引入依赖升级。
+- Q-03已由用户确认：sandbox每资格一次收费；资格/预占/点击窗口从签发起5分钟；先点击持久化等可见曝光，二者到期前服务端接受，释放后不补扣。不再重复询问。
+- 点击当前仅精确报价，不创建预占、不收费。后续不得复用旧CPM票据导致曝光捕获；旧CPM外键/事件专属限制需兼容扩展，不改V001～V007。
+- 新路径默认关闭；仅sandbox，无真实收费/部署；自然Outbox仍仅落库。
+- 六个用户文件哈希已核验不变、不可纳入提交：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md。console/test-results/与忽略配置/数据/模型/产物保留。只有原目录一个worktree。
+- S11A首次测试编译发现common-ad没有Jackson依赖，已把序列化兼容测试移至已有Jackson的ad测试侧，未新增依赖。Long.MAX_VALUE改用户的夹具用减1避免自身溢出。窄集已通过。
+- 根级无canonical formatter为既有限制，Java沿周边风格，不新增依赖/全仓格式化。
 
 ## 下一步建议
 
-1. 按ER-S10_RESULT与显式文件清单完成提交、正常合并推送main，核对远程CI；保留用户改动。
-2. 若用户已答Q-03，冻结C11并实现S11；否则先实现独立S15。自然V001历史不可改，用新V002演进published_at和投递状态；参考S06的租约/fence/ACK/审计重放，不跨owner写库。
-3. 每片验证、文档同步、正常交付后接下一片；不等待用户再说继续。
+1. 核对S11A实际Git交付，远程CI；当前已通过全部必需验证，保持C15A草案不纳入提交。
+2. 正常提交合并推送S11A，继续S11B具体契约与实现（Q-03已批准）。当前无需新前端规划，S11为backend。
+3. S11整体闭环完成后接S12等原DAG；CPA新政策确需用户决定时早问并推进独立S15，但不能丢弃旧BehaviorService的S15范围。
 
 ## 重要上下文与证据
 
 - S10最终：完整 `clean verify`23模块/485项、0失败/4按需跳过；98前端单测/type/build/lint0错误；5混排PG浏览器、5自然PG、4广告PG/Kafka、6旧页面PASS。六张最终截图已实际查看。日志 `/tmp/recsys-s10-{verify,browser-final,natural-regression,ad-regression,legacy,unit-final,build-final,lint-final}.log`；`ER-S10_RESULT.md`为完整证据。
-- S10初轮 `/tmp/recsys-s10-backend.log` PASS：54项=common11 + engine23（含feed PG10/HTTP4/配置2）+ gRPC5 + behaviorPG15；无跳过。新午夜项在单独 `/tmp/recsys-s10-pg-boundary.log`（需核对最后重跑）。最初fixture问题仅ScriptUtils不识别PG dollar quote和Mockito重stub触发旧answer，已修为完整SQL statement与doReturn/doAnswer，未改业务断言。
+- S10初轮 `/tmp/recsys-s10-backend.log` PASS：54项=common11 + engine23（含feed PG10/HTTP4/配置2）+ gRPC5 + behaviorPG15；无跳过。新午夜项在单独 `/tmp/recsys-s10-pg-boundary.log`（11项PASS）。最初fixture问题仅ScriptUtils不识别PG dollar quote和Mockito重stub触发旧answer，已修为完整SQL statement与doReturn/doAnswer，未改业务断言。
 - S10前端 `/tmp/recsys-s10-unit.log` 98项通过，typecheck/build通过（`/tmp/recsys-s10-build.log`）；上述均已完成最终验收，见S10最终记录。
 - C10核心：1～50条，广告仅1～10位；先固定完整混排+FEED自然资格，再prepare；owner未知返回已冻结PREPARING及自然可显示，不补位、不重排。candidate失败冻结纯自然。新路径默认false，原资金政策不变。频控是已接受事实准入，不保证并发硬频次上限。
 - `/api/sandbox/feed-deliveries`请求userId/size/scene/query，view.items为{slot,kind:NATURAL|AD,natural,ad}互斥载荷；natural原Entry、ad原C04 Item形状；adDisposition为NOT_REQUESTED/CANDIDATES_AVAILABLE/NO_ELIGIBLE_ADS/CANDIDATES_UNAVAILABLE或未冻结null。
@@ -55,4 +65,4 @@ S10 位于 `feat/sandbox-feed-exposure`，基线 `58767a4f`。C10/CONTRACTS、co
 
 ## 恢复 Prompt
 
-请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成部分连续实施。S09 已交付 e070b157，S10已验证，先核对交付，再按Q-03答复或独立S15继续。已批准 sandbox、金额/时区、硬预算和广告/自然图文政策，不重复询问；保留用户已有改动，逐片验证、写进度、正常合并推送 main。不要求我反复说继续，不执行真实收费切换或生产部署。
+请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成部分连续实施。S09 已交付 e070b157，S10已交付且远程CI通过，当前继续S11A→S11B/C；Q-03已批准。已批准 sandbox、金额/时区、硬预算和广告/自然图文政策，不重复询问；保留用户已有改动，逐片验证、写进度、正常合并推送 main。不要求我反复说继续，不执行真实收费切换或生产部署。

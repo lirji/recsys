@@ -6,6 +6,9 @@ import com.recsys.common.ad.Calibrator;
 import com.recsys.common.ad.SponsoredAd;
 import com.recsys.common.ad.billing.CpmPrice;
 import com.recsys.common.ad.billing.FrozenCpmQuote;
+import com.recsys.common.ad.billing.ClickPrice;
+import com.recsys.common.ad.billing.GspPrice;
+import com.recsys.common.ad.billing.FrozenClickQuote;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -99,6 +102,28 @@ public class BiddingService {
     /** 精确账务候选只用于新 sandbox CPM 路径；展示 double 不可用于后续资金操作。 */
     public record QuotedAd(SponsoredAd ad, CpmPrice price) {}
 
+    /** 点击与曝光价格类型分开，调用方不能将点击报价送入CPM准备协议。 */
+    public record ClickQuotedAd(SponsoredAd ad, ClickPrice price) {}
+
+    // 变化点仅是允许模式与精确报价输出；排序、数学和旧路径继续共用同一实现。
+    private record ExactPricing(Set<BidType> modes, java.util.function.BiConsumer<SponsoredAd, GspPrice> append) {}
+
+    /** 只读标准GSP点击竞价；OCPC继续使用已有有效出价策略，单次完整点击价为预占义务。 */
+    public List<ClickQuotedAd> auctionSandboxClick(List<AdCandidate> candidates, Map<Long, Double> pctrRawByItem,
+            Map<Long, Double> pcvrByItem, Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd,
+            String calibModel, int slots, double reserve) {
+        if (slots < 1 || slots > FrozenClickQuote.MAX_SLOTS) throw new IllegalArgumentException("点击广告位须为1～10");
+        GspPrice.money(GspPrice.decimal(reserve));
+        if (props.getAuction().getVcg().isEnabled() || props.getAuction().getListwise().isEnabled()) {
+            throw new IllegalStateException("sandbox精确点击报价仅支持标准GSP");
+        }
+        var quotes = new ArrayList<ClickQuotedAd>();
+        auctionInternal(candidates, pctrRawByItem, pcvrByItem, Map.of(), ocpcByAd, titleByAd,
+                calibModel, slots, reserve, null, new ExactPricing(Set.of(BidType.CPC, BidType.OCPC),
+                        (ad, basis) -> quotes.add(new ClickQuotedAd(ad, new ClickPrice(BidType.valueOf(ad.bidType()), basis)))));
+        return List.copyOf(quotes);
+    }
+
     /** 首版仅支持 CPM/GSP；未支持算法明确拒绝，禁止退回旧 double 报价作为收费真值。 */
     public List<QuotedAd> auctionSandboxCpm(List<AdCandidate> candidates, Map<Long, Double> pctrRawByItem,
             Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd,
@@ -110,14 +135,16 @@ public class BiddingService {
         }
         var quotes = new ArrayList<QuotedAd>();
         auctionInternal(candidates, pctrRawByItem, Map.of(), Map.of(), ocpcByAd, titleByAd,
-                calibModel, slots, reserve, null, quotes);
+                calibModel, slots, reserve, null, new ExactPricing(Set.of(BidType.CPM),
+                        (ad, basis) -> quotes.add(new QuotedAd(ad, new CpmPrice(basis.threshold(), basis.billFactor(),
+                                basis.increment(), basis.floor(), basis.cap())))));
         return List.copyOf(quotes);
     }
 
     private List<SponsoredAd> auctionInternal(List<AdCandidate> candidates,
             Map<Long, Double> pctrRawByItem, Map<Long, Double> pcvrByItem, Map<Long, UpliftEstimate> upliftByAd,
             Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd, String calibModel,
-            int slots, double reserve, ListwiseExternality.Sim sim, List<QuotedAd> exactQuotes) {
+            int slots, double reserve, ListwiseExternality.Sim sim, ExactPricing exactQuotes) {
         AdProperties.Auction cfg = props.getAuction();
 
         // 0. 批量预取每候选/每广告主的 Redis 参数(各一次 MGET),避免竞价循环里逐候选 N 次串行往返。
@@ -141,7 +168,11 @@ public class BiddingService {
             double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
             BidType type = BidType.from(ocpc.optimizationType());
-            if (exactQuotes != null && type != BidType.CPM) continue;
+            if (exactQuotes != null && exactQuotes.modes().contains(BidType.CPC)) {
+                // 旧from兼容未知值为CPC，新收费契约不能把未知模式静默当成点击计费。
+                type = BidType.valueOf(ocpc.optimizationType());
+            }
+            if (exactQuotes != null && !exactQuotes.modes().contains(type)) continue;
             double pcvr = pcvrByItem == null ? 0.0 : pcvrByItem.getOrDefault(c.itemId(), 0.0);
             UpliftEstimate uplift = upliftByAd == null ? null : upliftByAd.get(c.adId());
             boolean incremental = props.getUplift().isScoringEnabled() && uplift != null
@@ -200,12 +231,12 @@ public class BiddingService {
             if (exactQuotes != null) {
                 var cap = CpmPrice.money(CpmPrice.decimal(s.effBid)
                         .multiply(CpmPrice.decimal(pacingByAdv.getOrDefault(s.candidate.advertiserId(), 1.0))));
-                var price = new CpmPrice(CpmPrice.decimal(nextRank), CpmPrice.decimal(s.billFactor),
+                var price = new GspPrice(CpmPrice.decimal(nextRank), CpmPrice.decimal(s.billFactor),
                         CpmPrice.money(CpmPrice.decimal(cfg.getPriceIncrement())),
                         CpmPrice.money(CpmPrice.decimal(reserve)), cap);
                 // 只有展示兼容字段回转 double；资金调用方必须携带 price，不能读取该字段收费。
                 SponsoredAd ad = toAd(s, titleByAd, price.amount().doubleValue(), i + 1);
-                exactQuotes.add(new QuotedAd(ad, price));
+                exactQuotes.append().accept(ad, price);
                 out.add(ad);
                 continue;
             }
