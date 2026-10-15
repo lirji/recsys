@@ -134,7 +134,7 @@
 | [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |
 | [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | DONE MP13e1：主源TrainingCatalogMapper；见MP13E1_RESULT |
-| [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | TODO |
+| [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | DONE MP13e5：主源AdCvrInputMapper/分片AdItemMapper XML；见MP13E5_RESULT |
 | [com/recsys/offline/GenAdUpliftSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdUpliftSamplesJob.java) | 7 | 2 | DONE MP13e4：广告库UpliftSampleMapper/XML（1条含子查询SQL）；见MP13E4_RESULT |
 | [com/recsys/offline/GenSamplesImprJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesImprJob.java) | 7 | 4 | DONE MP13e2：共享TrainingSampleMapper/XML；见MP13E2_RESULT |
 | [com/recsys/offline/GenSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesJob.java) | 8 | 3 | DONE MP13e2：共享TrainingSampleMapper/XML；见MP13E2_RESULT |

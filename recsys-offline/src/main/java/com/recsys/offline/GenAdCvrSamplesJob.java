@@ -6,10 +6,11 @@ import com.recsys.content.Item;
 import com.recsys.rank.FeatureAssembler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
+import com.recsys.offline.persistence.mapper.primary.AdCvrInputMapper;
+import com.recsys.offline.persistence.mapper.primary.AdCvrInputMapper.Click;
+import com.recsys.offline.persistence.mapper.sharded.AdItemMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -50,53 +51,49 @@ public class GenAdCvrSamplesJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(GenAdCvrSamplesJob.class);
     private static final String OUT = "train/ad_cvr_samples.csv";
 
-    private final JdbcTemplate jdbc;       // 主库:ad_event(单表 ds_0)
-    private String aet = "ad_event";       // #3:ad_event 读来源表(默认 ad_event)
-    private final JdbcTemplate sharded;    // 分片库:ad(ds_0/ds_1)→ item_id
+    private final AdCvrInputMapper events; // 主库事件与读仓共享原资源身份
+    private final AdItemMapper ads;        // 逻辑分片源覆盖ds_0/ds_1
     private final FeatureService featureService;
     private final ContentService contentService;
 
-    public GenAdCvrSamplesJob(JdbcTemplate jdbc,
-                              @Qualifier("adShardingJdbc") JdbcTemplate sharded,
+    /** 两路Mapper分别沿原主库与逻辑分片源读取，特征服务边界不变。 */
+    public GenAdCvrSamplesJob(AdCvrInputMapper events, AdItemMapper ads,
                               FeatureService featureService, ContentService contentService) {
-        this.jdbc = jdbc;
-        this.sharded = sharded;
+        this.events = events;
+        this.ads = ads;
         this.featureService = featureService;
         this.contentService = contentService;
     }
 
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "gen-ad-cvr-samples";
     }
 
+    /** 先读取原删失输入，再按既有特征和随机切分口径写出样本。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 30);
         long seed = intArg(args, "seed", 42);
-        String sinceClick = days > 0 ? "ts >= now() - interval '" + days + " days'" : "TRUE";
 
         // 1. ad_id → item_id(分片 ad 表全量)
         Map<Long, Long> adToItem = new HashMap<>();
-        sharded.query("SELECT ad_id, item_id FROM ad WHERE item_id IS NOT NULL",
-                (RowCallbackHandler) rs -> adToItem.put(rs.getLong("ad_id"), rs.getLong("item_id")));
+        ads.scanLinks(context -> {
+            var row = context.getResultObject();
+            adToItem.put(row.adId(), row.itemId());
+        });
 
-        // 2. 已到达转化(ts<=now 右删失;不下界——转化晚于点击,匹配任一在窗点击):key=request_id:ad_id → 最早 conv epoch
+        // 2. 原规则只限制转化已到达，不要求转化晚于点击；同请求/广告取最早值。
         Map<String, Double> convEp = new HashMap<>();
-        jdbc.query("SELECT request_id, ad_id, EXTRACT(EPOCH FROM ts) AS conv_ep FROM " + aet + " " +
-                        "WHERE event_type='CONVERSION' AND ts <= now()",
-                (RowCallbackHandler) rs -> convEp.merge(
-                        rs.getString("request_id") + ":" + rs.getLong("ad_id"), rs.getDouble("conv_ep"), Math::min));
+        events.scanConversions(source, context -> {
+            var row = context.getResultObject();
+            convEp.merge(row.requestId() + ":" + row.adId(), row.epoch(), Math::min);
+        });
 
-        // 3. 点击(窗口内)+ click epoch + elapsed
-        List<Object[]> clicks = new ArrayList<>();   // [request_id, user_id, ad_id, click_ep, elapsed_days]
-        jdbc.query("SELECT request_id, user_id, ad_id, EXTRACT(EPOCH FROM ts) AS click_ep, " +
-                        "EXTRACT(EPOCH FROM (now()-ts))/86400.0 AS elapsed_days FROM " + aet + " " +
-                        "WHERE event_type='CLICK' AND " + sinceClick,
-                (RowCallbackHandler) rs -> clicks.add(new Object[]{
-                        rs.getString("request_id"), rs.getLong("user_id"), rs.getLong("ad_id"),
-                        rs.getDouble("click_ep"), rs.getDouble("elapsed_days")}));
+        // 3. 仍在打开CSV前读齐点击，保持查询失败时旧文件不变。
+        List<Click> clicks = events.loadClicks(source, days);
         if (clicks.isEmpty()) {
             log.warn("无 CLICK 事件;先跑 --job=sim-ad-events(造点击+指数延迟+右删失转化),或灌真实广告点击/转化");
             return;
@@ -104,8 +101,8 @@ public class GenAdCvrSamplesJob implements OfflineJob {
 
         // 4. 批量预取候选 item 特征 + 类目(经 ad.item_id)
         Set<Long> itemSet = new HashSet<>();
-        for (Object[] c : clicks) {
-            Long itemId = adToItem.get((Long) c[2]);
+        for (Click c : clicks) {
+            Long itemId = adToItem.get(c.adId());
             if (itemId != null) {
                 itemSet.add(itemId);
             }
@@ -123,12 +120,12 @@ public class GenAdCvrSamplesJob implements OfflineJob {
             try (BufferedWriter w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
                 w.write("converted,delay_days,elapsed_days,user_id,item_id,category," + String.join(",", order) + ",split");
                 w.newLine();
-                for (Object[] c : clicks) {
-                    String reqId = (String) c[0];
-                    long userId = (Long) c[1];
-                    long adId = (Long) c[2];
-                    double clickEp = (Double) c[3];
-                    double elapsed = (Double) c[4];
+                for (Click c : clicks) {
+                    String reqId = c.requestId();
+                    long userId = c.userId();
+                    long adId = c.adId();
+                    double clickEp = c.epoch();
+                    double elapsed = c.elapsedDays();
                     Long itemId = adToItem.get(adId);
                     if (itemId == null) {
                         noItem++;

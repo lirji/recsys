@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdCvrInputMapper">
+    <resultMap id="conversion" type="com.recsys.offline.persistence.mapper.primary.AdCvrInputMapper$Conversion">
+        <constructor>
+            <arg name="requestId" column="request_id" javaType="java.lang.String"/>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="epoch" column="epoch" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="click" type="com.recsys.offline.persistence.mapper.primary.AdCvrInputMapper$Click">
+        <constructor>
+            <arg name="requestId" column="request_id" javaType="java.lang.String"/>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="epoch" column="epoch" javaType="_double"/>
+            <arg name="elapsedDays" column="elapsed_days" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <sql id="sourceTable">
+        <choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose>
+    </sql>
+    <select id="scanConversions" resultMap="conversion" useCache="false">
+        SELECT request_id,COALESCE(ad_id,0) AS ad_id,COALESCE(EXTRACT(EPOCH FROM ts),0) AS epoch
+        FROM <include refid="sourceTable"/>
+        WHERE event_type='CONVERSION' AND ts&lt;=now()
+    </select>
+    <select id="loadClicks" resultMap="click" useCache="false">
+        SELECT request_id,COALESCE(user_id,0) AS user_id,COALESCE(ad_id,0) AS ad_id,
+               COALESCE(EXTRACT(EPOCH FROM ts),0) AS epoch,
+               COALESCE(EXTRACT(EPOCH FROM (now()-ts))/86400.0,0) AS elapsed_days
+        FROM <include refid="sourceTable"/>
+        WHERE event_type='CLICK'
+        <if test="days &gt; 0">AND ts&gt;=now()-#{days}*interval '1 day'</if>
+    </select>
+</mapper>
