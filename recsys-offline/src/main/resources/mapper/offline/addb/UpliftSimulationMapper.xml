@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.addb.UpliftSimulationMapper">
+    <insert id="insertAssignment">
+        INSERT INTO ad_uplift_assignment(assignment_id,request_id,user_id,ad_id,advertiser_id,
+            item_id,treatment,propensity,pctr,pcvr,quality,relevance,bid,ad_bucket,model_version,
+            assigned_at,outcome_due_at)
+        VALUES(#{row.assignmentId},#{row.requestId},#{row.userId},#{row.adId},#{row.advertiserId},
+            #{row.itemId},#{row.treatment},#{row.propensity},#{row.pctr},#{row.pcvr},#{row.quality},
+            #{row.relevance},#{row.bid},#{row.adBucket},#{row.modelVersion},
+            #{row.assignedAt,jdbcType=TIMESTAMP},#{row.outcomeDueAt,jdbcType=TIMESTAMP})
+        ON CONFLICT DO NOTHING
+    </insert>
+    <insert id="insertFact">
+        INSERT INTO ad_conversion_fact(event_id,advertiser_id,user_id,objective,conversion_value,occurred_at)
+        VALUES(#{row.eventId},#{row.advertiserId},#{row.userId},#{row.objective},
+               #{row.conversionValue},#{row.occurredAt,jdbcType=TIMESTAMP})
+        ON CONFLICT DO NOTHING
+    </insert>
+</mapper>

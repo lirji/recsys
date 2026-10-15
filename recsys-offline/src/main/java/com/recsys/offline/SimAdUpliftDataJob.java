@@ -2,9 +2,9 @@ package com.recsys.offline;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.UpliftSimulationWriter;
+import com.recsys.offline.persistence.mapper.addb.UpliftSimulationMapper;
 import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
@@ -18,16 +18,22 @@ import java.util.Random;
 @Component
 public class SimAdUpliftDataJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(SimAdUpliftDataJob.class);
-    private final JdbcTemplate jdbc;
-    public SimAdUpliftDataJob(@Qualifier("adDbJdbc") JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final UpliftSimulationWriter writer;
+
+    /** 两个原批次由广告自有库持久层执行，不改变作业事务边界。 */
+    public SimAdUpliftDataJob(UpliftSimulationWriter writer) { this.writer = writer; }
+
+    /** 保持既有教学/QA命令入口。 */
     @Override public String name() { return "sim-ad-uplift-data"; }
 
+    /** 随机生成顺序与分配后写事实的顺序均需保持，供同种子数据对照。 */
     @Override
     public void run(ApplicationArguments args) {
         int users = intArg(args,"users",5000); long seed = intArg(args,"seed",42);
         String run = arg(args,"run-id","qa-" + System.currentTimeMillis());
         Random random = new Random(seed); Instant base = Instant.now().minus(10, ChronoUnit.DAYS);
-        List<Object[]> assignments = new ArrayList<>(users); List<Object[]> facts = new ArrayList<>();
+        List<UpliftSimulationMapper.Assignment> assignments = new ArrayList<>(users);
+        List<UpliftSimulationMapper.Fact> facts = new ArrayList<>();
         int treated=0,control=0,positive=0;
         for(int i=0;i<users;i++){
             long user=1_000_000L+i; boolean treatment=random.nextBoolean(); boolean high=i%2==0;
@@ -35,18 +41,15 @@ public class SimAdUpliftDataJob implements OfflineJob {
             double probability=Math.max(0.001,Math.min(0.999,baseline+(treatment?effect:0.0)));
             boolean outcome=random.nextDouble()<probability; Instant assigned=base.plusSeconds(i);
             long ad=high?900001L:900002L; long advertiser=high?910001L:910002L;
-            assignments.add(new Object[]{run+":"+i,run+":"+i,user,ad,advertiser,920000L+(i%20),
+            assignments.add(new UpliftSimulationMapper.Assignment(run+":"+i,run+":"+i,user,ad,advertiser,920000L+(i%20),
                     treatment,0.5,0.1,0.2,high?1.2:0.8,0.7,2.0,"uplift-qa","collector",
-                    Timestamp.from(assigned),Timestamp.from(assigned.plus(3,ChronoUnit.DAYS))});
-            if(outcome){facts.add(new Object[]{run+":outcome:"+i,advertiser,user,"purchase",100.0,
-                    Timestamp.from(assigned.plus(1,ChronoUnit.DAYS))});positive++;}
+                    Timestamp.from(assigned),Timestamp.from(assigned.plus(3,ChronoUnit.DAYS))));
+            if(outcome){facts.add(new UpliftSimulationMapper.Fact(run+":outcome:"+i,advertiser,user,"purchase",100.0,
+                    Timestamp.from(assigned.plus(1,ChronoUnit.DAYS))));positive++;}
             if(treatment)treated++;else control++;
         }
-        jdbc.batchUpdate("INSERT INTO ad_uplift_assignment(assignment_id,request_id,user_id,ad_id,advertiser_id,"+
-                "item_id,treatment,propensity,pctr,pcvr,quality,relevance,bid,ad_bucket,model_version,assigned_at,"+
-                "outcome_due_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",assignments);
-        jdbc.batchUpdate("INSERT INTO ad_conversion_fact(event_id,advertiser_id,user_id,objective,conversion_value,"+
-                "occurred_at) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING",facts);
+        writer.assignments(assignments);
+        writer.facts(facts);
         log.info("模拟 uplift 数据 run={} users={} treatment={} control={} outcome={}",run,users,treated,control,positive);
     }
     private static String arg(ApplicationArguments a,String k,String d){List<String>v=a.getOptionValues(k);return v==null||v.isEmpty()?d:v.get(0);}
