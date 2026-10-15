@@ -8,11 +8,10 @@ import com.recsys.content.Item;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 作业 backfill-embedding:遍历 item,对每个物品文本调 EmbeddingClient 生成向量,
@@ -30,22 +29,24 @@ public class BackfillEmbeddingJob implements OfflineJob {
 
     private final ContentService contentService;
     private final EmbeddingClient embeddingClient;
-    private final JdbcTemplate jdbc;
+    private final ItemEmbeddingMapper mapper;
 
+    /** 内容仍由ContentService读取，向量写入明确绑定的派生库Mapper。 */
     public BackfillEmbeddingJob(ContentService contentService,
                                 EmbeddingClient embeddingClient,
-                                @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                JdbcTemplate jdbc) {   // #3:item_embedding 走派生库(item 读经 ContentService)
+                                ItemEmbeddingMapper mapper) {
         this.contentService = contentService;
         this.embeddingClient = embeddingClient;
-        this.jdbc = jdbc;
+        this.mapper = mapper;
     }
 
+    /** 沿用已有回填命令，允许配额恢复后继续同一流程。 */
     @Override
     public String name() {
         return "backfill-embedding";
     }
 
+    /** 逐物品失败继续、配额耗尽立即停止，持久层迁移不改变恢复方式。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         boolean skipExisting = args.containsOption("skip-existing");
@@ -93,28 +94,19 @@ public class BackfillEmbeddingJob implements OfflineJob {
                 log.warn("物品 {} 灌向量失败: {}", itemId, e.getMessage());
             }
         }
-        Long total = jdbc.queryForObject("SELECT count(*) FROM item_embedding", Long.class);
+        Long total = mapper.countAll();
         log.info("backfill-embedding {}:成功 {},跳过 {},失败 {};item_embedding 总数 {}",
                 quotaHit ? "因配额中断" : "完成", done, skipped, failed, total);
     }
 
     private boolean embeddingExists(long itemId) {
-        Integer c = jdbc.queryForObject(
-                "SELECT count(*) FROM item_embedding WHERE item_id=?", Integer.class, itemId);
+        Integer c = mapper.countItem(itemId);
         return c != null && c > 0;
     }
 
     private void upsertEmbedding(long itemId, float[] vec, String model) {
-        PGvector pv = new PGvector(vec);
-        jdbc.update(con -> {
-            var ps = con.prepareStatement(
-                    "INSERT INTO item_embedding(item_id,embedding,model) VALUES(?,?,?) " +
-                    "ON CONFLICT(item_id) DO UPDATE SET embedding=EXCLUDED.embedding, model=EXCLUDED.model");
-            ps.setLong(1, itemId);
-            ps.setObject(2, pv);
-            ps.setString(3, model);
-            return ps;
-        });
+        // 使用原PGvector对象及setObject绑定，避免文本转换改变浮点与非法向量处理。
+        mapper.upsert(itemId, new PGvector(vec), model);
     }
 
     static String buildText(Item item) {

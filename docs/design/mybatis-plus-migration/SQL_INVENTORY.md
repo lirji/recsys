@@ -125,7 +125,7 @@
 | [com/recsys/offline/AdExploreStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdExploreStatsJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | TODO |
 | [com/recsys/offline/AttributionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AttributionJob.java) | 6 | 1 | TODO |
-| [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | TODO |
+| [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | DONE MP13c1：derived向量写入；见MP13C1_RESULT |
 | [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | PARTIAL MP13a2：正反馈完成，其余SQL待迁移；见MP13A2_RESULT |
 | [com/recsys/offline/BehaviorQuery.java](../../../recsys-offline/src/main/java/com/recsys/offline/BehaviorQuery.java) | 51 | 1 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | TODO |
