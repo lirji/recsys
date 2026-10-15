@@ -10,8 +10,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
+import com.recsys.offline.persistence.mapper.primary.TrainingCatalogMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.content.persistence.model.CatalogTable;
 import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
 import org.springframework.stereotype.Component;
 
@@ -28,7 +30,7 @@ import java.util.Random;
  *
  * <p><b>近线增量</b>:{@code --incremental} 从 {@code ftrl:state} warm-start,只对新窗口(可配 {@code --max-ts}
  * 或调度器按小时切片)增量更新 → 小时级刷新;不传则从零训。样本:正反馈对 (user,item) 为正例,
- * 每正例按 {@code --neg} 采样未交互 item 为负例(热度无关的均匀采样,教学从简)。
+ * 每正例按 {@code --neg} 从全物品池均匀采样负例；原算法不排除已交互物品(教学从简)。
  *
  * <p>参数:--incremental、--neg(默认 2)、--epochs(默认 1)、--min-rating(4.0)、--max-ts、--seed(42)、
  * --alpha(0.1)、--beta(1.0)、--l1(1.0)、--l2(1.0)。特征哈希契约见 {@link FtrlHashing}(与在线一致)。
@@ -38,14 +40,14 @@ public class FtrlTrainJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(FtrlTrainJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final TrainingCatalogMapper catalog;
     private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
-    public FtrlTrainJob(PositiveFeedbackMapper feedback, JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 两类训练输入使用主源Mapper，负采样池保留原扫描顺序以维持随机训练结果。 */
+    public FtrlTrainJob(PositiveFeedbackMapper feedback, TrainingCatalogMapper catalog, StringRedisTemplate redis) {
+        this.catalog = catalog;
         this.feedback = feedback;
         this.redis = redis;
     }
@@ -62,8 +64,8 @@ public class FtrlTrainJob implements OfflineJob {
         int epochs = intArg(args, "epochs", 1);
         double minRating = doubleArg(args, "min-rating", 4.0);
         Long maxTs = BehaviorQuery.maxTs(args);
-        String bt = BehaviorQuery.table(args);   // #2
-        String itemTable = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
+        BehaviorSource source = BehaviorQuery.source(args);
+        CatalogTable itemTable = ItemQuery.source(args);
         long seed = intArg(args, "seed", 42);
         FtrlProximal model = new FtrlProximal(
                 doubleArg(args, "alpha", 0.1), doubleArg(args, "beta", 1.0),
@@ -74,14 +76,14 @@ public class FtrlTrainJob implements OfflineJob {
         }
 
         // 负采样物品池
-        List<Long> items = jdbc.queryForList("SELECT item_id FROM " + itemTable, Long.class);
+        List<Long> items = catalog.itemIds(itemTable);
         if (items.isEmpty()) {
             log.warn("item 表为空,先跑 import-items");
             return;
         }
         // 正样本 (user,item)
         List<long[]> pos = new ArrayList<>();
-        feedback.scanPairs(new PositiveFeedbackFilter(BehaviorQuery.source(args), minRating, maxTs), context -> {
+        feedback.scanPairs(new PositiveFeedbackFilter(source, minRating, maxTs), context -> {
             var row = context.getResultObject();
             pos.add(new long[]{row.userId(), row.itemId()});
         });

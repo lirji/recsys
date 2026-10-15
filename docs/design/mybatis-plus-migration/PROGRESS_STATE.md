@@ -444,3 +444,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13d5最终验证
 
 见MP13D5_RESULT。旧7、新关联8、完整离线191/35类、全仓24 reactor测试编译/hygiene通过。5源指纹46d2b5fda0c2d1097780a47c64f6230918528ddf13839e7a4d3411cfaa7e2b0b；评分NULL/标准差/四位归一化与交叉特征、来源切换、Hash合并、晚期SQL与Redis WRONGTYPE失败边界保持。去掉可变SQL表字段，显式传递单次来源；继续MP13e1 FTRL物品池，原池顺序不能被新增排序改变。
+
+## MP13e1最终验证
+
+见MP13E1_RESULT。旧6两次、新关联11、完整离线197/36类、全仓24 reactor编译/hygiene通过。5源指纹07ded30b86c19e7a7d0c29745da368c042764307a8bcb44ea6ac2112e56f16ae；默认/增量/双读仓三个完整模型摘要一致，原无序物品池/NULL/阈值/失败边界保持。前批939a8ade CI38762149367五门禁全部SUCCESS；d5与本片正常ff/push后继续MP13e2三类自然样本生成，重复输入查询集中复用，CSV仅临时目录子进程验证。
