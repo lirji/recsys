@@ -1043,6 +1043,13 @@
       "httpStatus": 0,
       "message": "用户实时态暂时无法读取，请稍后重试",
       "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_ITEM_QUERY_FAILED",
+      "code": "CONSOLE_ITEM_QUERY_FAILED",
+      "httpStatus": 503,
+      "message": "物品信息暂时无法读取，请稍后重试",
+      "httpDefault": false
     }
   ],
   "families": [

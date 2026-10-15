@@ -1,0 +1,5 @@
+# EC04e5 物品元数据读取错误
+
+基线d36f184be44d1dbb818d24c1b7b058596a45ddcd。当前ItemController将ContentService异常吞为200空列表/null；底层MybatisContentService已经传播数据库故障，不需再改持久层。按现有父EC04授权修正公开HTTP语义：单查/批查异常均为CONSOLE_ITEM_QUERY_FAILED(503)，GlobalExceptionHandler只公开目录码/文案。真正缺失仍保持空体/缺失子集；批量解析、去重、200上限及请求顺序保持，不改缓存/SQL/重试。
+
+useItemMeta继续静默回退#itemId，不因补全标题失败反复弹提示。接口有明确码可排查，不把HTTP失败冒充查无此物。真实PG+MyBatis+HTTP验证正常/NULL/顺序、缺失、批量限制、故障和恢复及安全响应；React hook验证失败保留fallback。依赖/基础设施/数据结构不变。SystemOps与作业状态在EC05同一契约推进，父EC04暂不完成。

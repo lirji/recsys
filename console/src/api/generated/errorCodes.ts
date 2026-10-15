@@ -592,6 +592,10 @@ export const errorCodes = {
     message: '用户实时态暂时无法读取，请稍后重试',
     httpStatus: 0,
   },
+  CONSOLE_ITEM_QUERY_FAILED: {
+    message: '物品信息暂时无法读取，请稍后重试',
+    httpStatus: 503,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -2,8 +2,8 @@ package com.recsys.console.item;
 
 import com.recsys.content.ContentService;
 import com.recsys.content.Item;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,13 +20,11 @@ import java.util.Map;
  * 走 /api/console/** —— 网关已路由到 console:8090,无需改网关。
  *
  * <p>复用 content 库的 {@link ContentService}(默认 {@code MybatisContentService} 读主库 {@code item} 表)。
- * DB 不可用/物品缺失一律优雅降级:返回已找到子集(空则空),让前端退回 {@code #itemId} 展示。
+ * 真实缺失返回已找到子集；读取失败返回安全503，标题补全的前端仍可回退 {@code #itemId}。
  */
 @RestController
 @RequestMapping("/api/console/items")
 public class ItemController {
-
-    private static final Logger log = LoggerFactory.getLogger(ItemController.class);
 
     /** 单次批量查上限:防超大 IN 与恶意请求;前端一页远不需要这么多。 */
     private static final int MAX_IDS = 200;
@@ -57,22 +55,20 @@ public class ItemController {
                 }
             }
             return out;
-        } catch (Exception e) {
-            // DB 不可用:降级返回空,让前端退回 #itemId(不 500)
-            log.warn("批量查物料失败,降级返回空: {}", e.getMessage());
-            return List.of();
+        } catch (RuntimeException failure) {
+            // 失败不能证明目录为空；公开出口只使用目录消息，内部cause保留给诊断。
+            throw new PublicErrorException(ErrorCode.CONSOLE_ITEM_QUERY_FAILED, failure);
         }
     }
 
-    /** 单查物料元数据,不存在或 DB 不可用返回 {@code null}。 */
+    /** 单查物料元数据；仅确定不存在返回 {@code null}，不可读返回安全错误码。 */
     @GetMapping("/{id}")
     public ItemMeta byId(@PathVariable long id) {
         try {
             Item it = contentService.findById(id);
             return it == null ? null : toMeta(it);
-        } catch (Exception e) {
-            log.warn("查物料 {} 失败,降级返回 null: {}", id, e.getMessage());
-            return null;
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.CONSOLE_ITEM_QUERY_FAILED, failure);
         }
     }
 
