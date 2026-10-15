@@ -6,13 +6,19 @@ import { useSearchParams } from 'react-router-dom';
 import { getUserProfile } from '../../api/user360';
 import { getInterests } from '../../api/user';
 import { toApiError } from '../../api/client';
+import { formatError } from '../../api/errors';
 import { useGlobalUser } from '../../hooks/useGlobalUser';
 import { useItemMeta } from '../../hooks/useItemMeta';
 import PageHeader from '../../components/PageHeader';
 import StatCard from '../../components/StatCard';
 import { ChartSkeleton } from '../../components/Skeletons';
 import { ACCENTS } from '../../theme/tokens';
-import type { UserBehaviorRow } from '../../api/types';
+import type { UserBehaviorRow, UserProfileSection } from '../../api/types';
+
+const SECTION_LABELS: Record<UserProfileSection, string> = {
+  profile: '静态画像', embedding: '用户向量', actions: '行为统计', categories: '交互类目',
+  buckets: 'A/B 分桶', recent: '近期行为', realtime: '实时态',
+};
 
 const fmtTs = (ms: number) => (ms ? new Date(ms).toLocaleString() : '—');
 
@@ -40,6 +46,10 @@ export default function User360() {
   });
 
   const view = query.data;
+  const failed = (section: UserProfileSection) =>
+    Object.prototype.hasOwnProperty.call(view?.errors ?? {}, section) ||
+    (section === 'realtime' && !!view && !view.realtime.available);
+  const failedSections = (Object.keys(SECTION_LABELS) as UserProfileSection[]).filter(failed);
   const behaviorIds = view?.recentBehavior.map((b) => b.itemId) ?? [];
   const seqIds = view?.realtime.recentSeqItems ?? [];
   const itemMeta = useItemMeta([...behaviorIds, ...seqIds]);
@@ -94,23 +104,33 @@ export default function User360() {
         </Space>
       </Card>
 
+      {view && !query.isError && failedSections.length > 0 && (
+        <Alert type="warning" showIcon message="部分信息暂时不可读取" description={
+          <Space direction="vertical" size={2}>
+            {failedSections.map((section) => (
+              <div key={section}>{SECTION_LABELS[section]} · {formatError(section === 'realtime'
+                ? 'CONSOLE_USER_REALTIME_UNAVAILABLE' : 'CONSOLE_USER_DATA_UNAVAILABLE')}</div>
+            ))}
+          </Space>
+        } />
+      )}
       {query.isError ? (
         <Alert type="error" showIcon message={toApiError(query.error).message} />
       ) : query.isFetching && !view ? (
         <ChartSkeleton height={320} />
-      ) : !view ? null : !view.exists ? (
+      ) : !view ? null : view.exists === false ? (
         <Card>
           <Empty description={`用户 ${applied} 无画像与行为记录(未知用户)`} />
         </Card>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
-            <StatCard title="交互总数" value={view.stats.totalInteractions} accent={ACCENTS.recall} />
-            <StatCard title="交互类目数" value={view.stats.distinctCategories} accent={ACCENTS.rank} />
-            <StatCard title="已看物品(seen)" value={view.realtime.seenCount} accent={ACCENTS.rerank} />
+            <StatCard title="交互总数" value={failed('actions') ? '未知' : (view.stats.totalInteractions ?? '未知')} accent={ACCENTS.recall} />
+            <StatCard title="交互类目数" value={failed('categories') ? '未知' : (view.stats.distinctCategories ?? '未知')} accent={ACCENTS.rank} />
+            <StatCard title="已看物品(seen)" value={failed('realtime') ? '未知' : (view.realtime.seenCount ?? '未知')} accent={ACCENTS.rerank} />
             <StatCard
               title="用户向量"
-              value={view.hasEmbedding ? '已就绪' : '缺失'}
+              value={failed('embedding') || view.hasEmbedding == null ? '未知' : (view.hasEmbedding ? '已就绪' : '缺失')}
               valueColor={view.hasEmbedding ? ACCENTS.gsp : ACCENTS.warn}
               accent={ACCENTS.gsp}
             />
@@ -118,27 +138,28 @@ export default function User360() {
 
           <Card title="画像与实时态" size="small">
             <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered>
-              <Descriptions.Item label="画像更新时间">{fmtTs(view.profileUpdatedAt ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label="画像更新时间">{failed('profile') ? '未知' : fmtTs(view.profileUpdatedAt ?? 0)}</Descriptions.Item>
               <Descriptions.Item label="结果缓存(cache:rec)">
-                {view.realtime.recCached ? <Tag color="green">已缓存</Tag> : <Tag>无</Tag>}
+                {failed('realtime') || view.realtime.recCached == null ? <Tag>未知</Tag>
+                  : view.realtime.recCached ? <Tag color="green">已缓存</Tag> : <Tag>无</Tag>}
               </Descriptions.Item>
               <Descriptions.Item label="A/B 分桶">
-                {view.stats.bucketsSeen.length
+                {failed('buckets') ? '未知' : view.stats.bucketsSeen.length
                   ? view.stats.bucketsSeen.map((b) => <Tag key={b} color="geekblue">{b}</Tag>)
                   : '—'}
               </Descriptions.Item>
               <Descriptions.Item label="行为分布">
-                {Object.entries(view.stats.actionCounts).map(([a, c]) => (
+                {failed('actions') ? '未知' : Object.entries(view.stats.actionCounts).map(([a, c]) => (
                   <Tag key={a}>{a}: {c}</Tag>
                 ))}
               </Descriptions.Item>
               <Descriptions.Item label="实时类目偏好(rt:user)" span={2}>
                 <Badge
                   status={view.realtime.available ? 'success' : 'default'}
-                  text={view.realtime.available ? 'Redis 在线' : 'Redis 不可达(降级)'}
+                  text={view.realtime.available ? 'Redis 在线' : '实时态未知'}
                 />
                 <div style={{ marginTop: 6 }}>
-                  {Object.keys(view.realtime.rtCategoryPrefs).length
+                  {failed('realtime') ? <Typography.Text type="secondary">未知</Typography.Text> : Object.keys(view.realtime.rtCategoryPrefs).length
                     ? Object.entries(view.realtime.rtCategoryPrefs)
                         .sort((a, b) => b[1] - a[1])
                         .map(([cat, cnt]) => (
@@ -148,7 +169,9 @@ export default function User360() {
                 </div>
               </Descriptions.Item>
               <Descriptions.Item label="兴趣画像(rec-engine)" span={2}>
-                {interests.isError ? (
+                {interests.isPending ? (
+                  <Typography.Text type="secondary">加载中</Typography.Text>
+                ) : interests.isError ? (
                   <Typography.Text type="danger">{toApiError(interests.error).message}</Typography.Text>
                 ) : interests.data?.categories?.length ? (
                   interests.data.categories.map((c) => <Tag key={c} color="purple">{c}</Tag>)
@@ -169,15 +192,15 @@ export default function User360() {
             </Card>
           ) : null}
 
-          <Card title={`近期行为(${view.recentBehavior.length})`} size="small">
-            <Table<UserBehaviorRow>
+          <Card title={`近期行为(${failed('recent') ? '未知' : view.recentBehavior.length})`} size="small">
+            {failed('recent') ? <Typography.Text type="secondary">未知</Typography.Text> : <Table<UserBehaviorRow>
               size="small"
               rowKey={(r, i) => `${r.itemId}-${r.ts}-${i}`}
               dataSource={view.recentBehavior}
               columns={columns}
               pagination={{ pageSize: 10, size: 'small' }}
               scroll={{ x: 720 }}
-            />
+            />}
           </Card>
         </>
       )}

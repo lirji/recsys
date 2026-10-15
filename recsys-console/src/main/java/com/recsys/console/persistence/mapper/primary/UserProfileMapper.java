@@ -15,7 +15,7 @@ public interface UserProfileMapper {
     int distinctCategories(@Param("userId") long userId);
     /** 排除NULL和空字符串，维持数据库原排序。 */
     List<String> buckets(@Param("userId") long userId);
-    /** 逐行处理以保留原聚合读取中断时已经取得的结果。 */
+    /** 逐行处理聚合；若中途失败，服务不得将已取得的部分计数当完整总数。 */
     void actionCounts(@Param("userId") long userId, ResultHandler<ActionCount> handler);
     /** 有界近期行为查询，NULL位次/值不改成0。 */
     List<Behavior> recent(@Param("userId") long userId, @Param("limit") int limit);

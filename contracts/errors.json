@@ -1029,6 +1029,20 @@
       "httpStatus": 500,
       "message": "报表内容无法读取，请检查文件或稍后重试",
       "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_USER_DATA_UNAVAILABLE",
+      "code": "CONSOLE_USER_DATA_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "该部分用户数据暂时无法读取，请稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "CONSOLE_USER_REALTIME_UNAVAILABLE",
+      "code": "CONSOLE_USER_REALTIME_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "用户实时态暂时无法读取，请稍后重试",
+      "httpDefault": false
     }
   ],
   "families": [

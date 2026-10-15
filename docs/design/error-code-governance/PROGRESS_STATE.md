@@ -21,3 +21,5 @@ EC04e1 DONE/PASS（本地）：严格兴趣查询故障从空200改受控503，�
 EC04e2 DONE/PASS（本地）：观测协议失败/部分结果不再当就绪或无流量，健康状态用显式编码枚举和安全URL，诊断失败/缺数据不默认PASS。新增8对象内码，总144项。22基线、最终63专项/6类、154前端/21文件、24compile、目录/SQL/hygiene通过，见EC04E2_DESIGN/RESULT。Hygiene一条第三方Python虚拟环境枚举相似advisory判不适用；Java工具限制保持。父EC04的SystemOps/User360/Item/Report/Alerts及EC05～08继续。E1已ff/push 8d2fedee，CI38802730985运行；D CI38801955042安全/自然成功，钱/浏览器/build取消。
 
 EC04e3 DONE/PASS（本地）：报表保留真实CSV回退，但DB失败无对应文件不再假空/404；告警复用诊断规则，信号缺失可见且不额外读eval。诊断/告警状态、来源为显式code枚举，JSON保持原字符串；总146目录项。101专项/8类、157前端/22文件、24compile、目录/SQL/hygiene通过，见EC04E3_DESIGN/RESULT。两条第三方Python环境枚举相似advisory判不适用，Java工具限制保持。父EC04剩余User360/Item/SystemOps及EC05～08继续；E2 CI38803835991四门成功、build运行。
+
+EC04e4 DONE/PASS（本地）：User360保留成功数据，各失败分区显示未知和安全码；存在性三态，完整游标后发布计数，坏Redis值/超时不伪零。目录148项，原146/8族保持。113后端/10类、163前端/23文件、24compile、目录/SQL/hygiene通过，见EC04E4_DESIGN/RESULT。Java工具限制保持，未新增SQL/事务/重试。父EC04剩余Item、SystemOps/作业状态及EC05～08继续。E3已ff/push3434795d，CI38805179085尚运行；E2四门成功、build取消。

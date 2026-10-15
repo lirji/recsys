@@ -357,27 +357,30 @@ export interface UserBehaviorRow {
   value: number | null;
 }
 export interface UserStats {
-  totalInteractions: number;
+  totalInteractions: number | null;
   actionCounts: Record<string, number>;
-  distinctCategories: number;
+  distinctCategories: number | null;
   bucketsSeen: string[];
 }
 export interface UserRealtime {
   available: boolean;
   rtCategoryPrefs: Record<string, number>;
   recentSeqItems: number[];
-  recCached: boolean;
-  seenCount: number;
+  recCached: boolean | null;
+  seenCount: number | null;
 }
+export type UserProfileSection = 'profile' | 'embedding' | 'actions' | 'categories' | 'buckets' | 'recent' | 'realtime';
+
 export interface UserProfileView {
   userId: number;
-  exists: boolean;
+  exists: boolean | null;
   profileJson: string | null;
   profileUpdatedAt: number | null;
-  hasEmbedding: boolean;
+  hasEmbedding: boolean | null;
   stats: UserStats;
   recentBehavior: UserBehaviorRow[];
   realtime: UserRealtime;
+  errors?: Partial<Record<UserProfileSection, string>>;
 }
 
 // ===== 一键诊断(/api/console/diagnosis) =====

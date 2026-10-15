@@ -90,7 +90,7 @@ class ConsoleReadPostgresTest {
             empty.registerBean(ObjectMapper.class,() -> new ObjectMapper());
             empty.register(UserProfileService.class,ReportService.class);
             empty.refresh();
-            assertThat(empty.getBean(UserProfileService.class).get(7).exists()).isFalse();
+            assertThat(empty.getBean(UserProfileService.class).get(7).exists()).isNull();
             assertThat(empty.getBean(ReportService.class).list()).isEmpty();
         }
     }
@@ -141,7 +141,8 @@ class ConsoleReadPostgresTest {
         try {
             var view=profile().get(7);
             assertThat(view.exists()).isTrue(); assertThat(view.stats().totalInteractions()).isEqualTo(1);
-            assertThat(view.stats().distinctCategories()).isZero(); assertThat(view.recentBehavior()).hasSize(1);
+            assertThat(view.stats().distinctCategories()).isNull(); assertThat(view.recentBehavior()).hasSize(1);
+            assertThat(view.errors()).containsKey(com.recsys.console.user.UserProfileView.Section.CATEGORIES);
         } finally { jdbc.execute("ALTER TABLE unavailable_item RENAME TO item"); }
     }
     @Test void reportsPreferDbAndDecodeJsonWithNullCells() throws Exception {
@@ -166,7 +167,8 @@ class ConsoleReadPostgresTest {
     }
     @Test void missingOptionalDatabaseAndUnsafeNamesKeepPriorBehavior() throws Exception {
         var profile=new UserProfileService(null,null).get(7);
-        assertThat(profile.exists()).isFalse(); assertThat(profile.stats().actionCounts()).isEmpty();
+        assertThat(profile.exists()).isNull(); assertThat(profile.stats().actionCounts()).isEmpty();
+        assertThat(profile.errors()).hasSize(7);
         Files.writeString(evalDir.resolve("metrics-one.csv"),"a\nx\n");
         var reports=new ReportService(evalDir.toString(),null,new ObjectMapper());
         assertThat(reports.list()).hasSize(1); assertThat(reports.read("metrics-one.csv").rows()).containsExactly(List.of("x"));
@@ -256,5 +258,38 @@ class ConsoleReadPostgresTest {
         return org.springframework.test.web.servlet.setup.MockMvcBuilders
                 .standaloneSetup(new com.recsys.console.report.ReportController(reports))
                 .setControllerAdvice(new com.recsys.platform.web.GlobalExceptionHandler()).build();
+    }
+
+    @Test void existenceIsUnknownOnlyWhenNeitherSourceCanProveIt() throws Exception {
+        jdbc.execute("INSERT INTO app_user VALUES(7,'{}',NULL)");
+        jdbc.execute("INSERT INTO user_behavior(user_id,item_id,action) VALUES(7,10,'CLICK')");
+        jdbc.execute("ALTER TABLE app_user RENAME TO unavailable_user");
+        try {
+            var known = profile().get(7);
+            assertThat(known.exists()).isTrue();
+            assertThat(known.stats().totalInteractions()).isEqualTo(1L);
+            assertThat(known.errors()).containsEntry(com.recsys.console.user.UserProfileView.Section.PROFILE,
+                    "CONSOLE_USER_DATA_UNAVAILABLE");
+            assertThat(profile().get(8).exists()).isNull();
+            var body = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                    .standaloneSetup(new com.recsys.console.user.UserProfileController(profile())).build()
+                    .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/console/user/8"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            var json = new ObjectMapper().readTree(body);
+            assertThat(json.has("exists")).isTrue(); assertThat(json.get("exists").isNull()).isTrue();
+            assertThat(json.at("/errors/profile").asText()).isEqualTo("CONSOLE_USER_DATA_UNAVAILABLE");
+            assertThat(body).doesNotContain("unavailable_user", "SELECT", "jdbc:");
+        } finally { jdbc.execute("ALTER TABLE unavailable_user RENAME TO app_user"); }
+        jdbc.execute("ALTER TABLE user_behavior RENAME TO unavailable_behavior");
+        try {
+            assertThat(profile().get(7).exists()).isTrue(); // 画像已证明存在，不能被另一个分区失败抹掉。
+            var unknown = profile().get(8);
+            assertThat(unknown.exists()).isNull();
+            assertThat(unknown.stats().totalInteractions()).isNull();
+            assertThat(unknown.stats().actionCounts()).isEmpty();
+            assertThat(unknown.errors()).containsKey(com.recsys.console.user.UserProfileView.Section.ACTIONS);
+        } finally { jdbc.execute("ALTER TABLE unavailable_behavior RENAME TO user_behavior"); }
+        assertThat(profile().get(8).exists()).isFalse();
     }
 }

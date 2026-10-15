@@ -584,6 +584,14 @@ export const errorCodes = {
     message: '报表内容无法读取，请检查文件或稍后重试',
     httpStatus: 500,
   },
+  CONSOLE_USER_DATA_UNAVAILABLE: {
+    message: '该部分用户数据暂时无法读取，请稍后重试',
+    httpStatus: 0,
+  },
+  CONSOLE_USER_REALTIME_UNAVAILABLE: {
+    message: '用户实时态暂时无法读取，请稍后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;
