@@ -96,4 +96,10 @@ public class ClickQuoteRepository {
             return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
         } catch (java.io.IOException | java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException("点击报价摘要不可用",ex); }
     }
+
+    /** 签名资格使用同一规范摘要绑定整份报价，避免另一套编码遗漏字段。 */
+    public static String fingerprint(FrozenClickQuote q) {
+        return hash(new Draft(q.quoteId(),q.operationId(),q.subject(),q.userId(),q.advertiserId(),q.adId(),
+                q.creativeId(),q.itemId(),q.slot(),q.title(),q.price()));
+    }
 }

@@ -33,3 +33,7 @@
 SKILL_HANDOFF: backend-implementation → implementation-validation → update-progress-docs；slice=ER-S11A，status=COMPLETED，gate=PASS；根级formatter/Java独立静态分析限制如上，不替代父S11业务闭环。
 
 非文档变更按路径和SHA256排序汇总的验证指纹：`a11123e02c4bec4de9545b423238cc93452c2c045f4ff2e2056c45e34c7c4249`。文档本地链接/围栏、git diff --check与用户文件哈希检查PASS。
+
+## 交付核对
+
+`365595e261d6018a2a430ee16ed1c65372f37767` 已正常合并并推送 main；2026-10-15 核对 HEAD/main/origin/main 一致，当前复用 `feat/sandbox-click-settlement`。远程 [CI 38691727206](https://github.com/lirji/recsys/actions/runs/38691727206) completed/success。下一步 S11B 尚未编写代码；用户清空上下文前已保存根目录 CODEX_PROGRESS.md，恢复不重新执行 S11A。

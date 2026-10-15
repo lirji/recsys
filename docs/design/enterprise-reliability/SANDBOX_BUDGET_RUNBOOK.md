@@ -1,6 +1,6 @@
 # sandbox 预算命令运行说明
 
-范围为 [CONTRACTS C02/C02A/C03/C04/C05/C06](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。资格和回执捕获已接通；S06 已接可靠投递；S07 补齐浏览器采集后才形成端到端曝光资金闭环。
+范围为 [CONTRACTS C02～C11B](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。CPM已接通浏览器与可靠投递；点击当前为S11B内部原子结算，双模式API和点击事件实际发布由S11C接入。
 
 ## 隔离库迁移
 
@@ -247,7 +247,7 @@ FROM ad_billing_outbox o LEFT JOIN ad_billing_projection_fact f ON f.event_id=o.
 WHERE f.event_id IS NULL ORDER BY o.created_at,o.event_id LIMIT 100;
 ~~~
 
-第三条在异步投递途中出现记录是预期现象；不得因为瞬时差额修改资金。修复依赖后 DEAD 只按原 eventId/负载重放，并同事务记录操作人/原因。以下模板与 Repository 的受控重放语义一致，psql 变量须由管理员显式提供，未在共享库执行：
+第二条仅适用于尚无点击消费的账户；有点击后账户charged包含两种模式，不能拿CPM投影单独对齐总消费，须使用下文S11B两类账本合计。第三条在异步投递途中出现记录是预期现象；不得因为瞬时差额修改资金。修复依赖后 DEAD 只按原 eventId/负载重放，并同事务记录操作人/原因。以下模板与 Repository 的受控重放语义一致，psql 变量须由管理员显式提供，未在共享库执行：
 
 ~~~sql
 WITH locked AS (
@@ -283,3 +283,44 @@ python3 scripts/test-sandbox-exposure.py
 日志 `recsys-rec-engine/target/sandbox-browser-backend.log`；截图/失败 trace 在 `recsys-rec-engine/target/browser-evidence/`。宿主 finish 时核对所有 ledger 已投影、账户消费和账本总额相等，再释放自己创建的容器；失败仍退出非零。CI 新增 sandbox-exposure-browser-gate 同样执行，不向共享库写测试数据。测试宿主只存在于测试 classpath，随机测试凭据不提交。
 
 回退：先暂停服务端新增接受，保留查询、到期回收和事件续发。关闭前端构建开关会恢复既有调试页，该旧页仍有历史收费语义；因此暂停 sandbox 测试时应退出该页面，不把切回旧页视为安全恢复账务。已记账效果不因前端回退撤销，仍按账本/投影对账。
+
+## S11B：点击内部结算与到期恢复
+
+在获授权的隔离adDb依次完成V001～V008后，使用前文相同的显式迁移命令执行 `recsys-ad/src/main/resources/db/ad-billing/V009__click_settlement.sql`，每次计算该脚本SHA256。V009新增五张表和点击报价到期索引，复用V005/V006不可变账本/Outbox保护函数；不修改旧迁移或把点击写入CPM表。完整迁移仅在临时PostgreSQL 16容器验证，没有操作共享实例；没有依赖版本、端口或凭据变更。
+
+只有ad owner可启用：`recsys.ad.billing.sandbox-enabled=true`、`clicks-enabled=true`、`click-settlement-enabled=true`；后两个默认false。既有受控交付密钥环继续用于HMAC，但purpose固定 `click-qualification`，CPM token不被接受。S11B无新增HTTP/RPC入口；内部服务只从不可变服务端报价准备，不能从调用方提交金额。
+
+`click-preparation-admission-enabled`、`click-receipt-admission-enabled`默认true，仅在安装开关启用时生效。正常停止：先关闭新增准备，保留回执、查询、释放及到期回收；紧急暂停新回执时，仍允许原已提交命令和查询恢复。应保留支持V009的owner及表，不以停整个服务、删除资格/账本或回滚无点击回收的旧版本代替恢复。新准备/回执关闭不影响回收工作器。配置沿现有受控重启生效，没有运行时热刷新。
+
+每资格quoteId只占一次完整点击价格。第一次可见或点击返回 `ACCEPTED_WAITING`，金额为空；第二条件在原期限内被接受才捕获。查询同时含不可变原receipt和当前settlement，因此原WAITING回执在后续查询时可以对应CAPTURED结算。ALREADY_ACCEPTED只表示该条件此前已接受，须看settlement；释放/到期不能补扣。零元CAPTURED仍有唯一账本。主体和可见参数沿原约定，反作弊并不证明观测是真人行为。
+
+新反作弊复用 `recsys.ad.anti-fraud.enabled`（true）和 `max-clicks-per-minute`（20），启动时校验阈值为正数。每sandbox用户固定分钟窗口的首次有效资格点击在PG同事务计数，重试不计数，超限持久化FRAUD_REJECTED并释放该资格。PG失败回滚；不会调用旧Redis fail-open逻辑。查看回执与资格判断真实状态，不修改计数尝试“补扣”。
+
+到期任务单线程、每轮1～100笔，复用 `expiry-interval-ms`（1000，范围100～60000）、`expiry-batch-size`（100）。每笔quote行锁SKIP LOCKED、原预算日账户锁和独立短事务；失败有界退避最多60秒，指标 `ad.billing.click.expired` / `ad.billing.click.expiry.failures`。错误日志只记录类型，避免SQL异常DETAIL泄漏签名资格。指标增长或到期held积压时先查数据库连接/迁移/约束和原账户，不手改金额。
+
+只读诊断模板（避免 `SELECT *` 暴露qualification_token）：
+
+~~~sql
+SELECT s.qualification_id,s.state,s.decision,s.budget_date,q.expires_at,
+       s.visible_receipt_id,s.click_receipt_id,s.ledger_id,s.close_reason
+FROM ad_click_settlement s JOIN ad_click_quote q ON q.quote_id=s.qualification_id
+WHERE s.state='HELD' AND q.expires_at<=clock_timestamp()
+ORDER BY q.expires_at,s.qualification_id LIMIT 100;
+
+WITH facts AS (
+  SELECT advertiser_id,budget_date,amount FROM ad_billing_ledger
+  UNION ALL
+  SELECT advertiser_id,budget_date,amount FROM ad_click_ledger
+), totals AS (
+  SELECT advertiser_id,budget_date,sum(amount) AS ledger_amount FROM facts GROUP BY advertiser_id,budget_date
+)
+SELECT a.advertiser_id,a.budget_date,a.held_amount,a.charged_amount,
+       coalesce(t.ledger_amount,0) AS ledger_amount
+FROM ad_budget_account a LEFT JOIN totals t USING(advertiser_id,budget_date)
+WHERE a.traffic_class='SANDBOX' AND a.charged_amount<>coalesce(t.ledger_amount,0)
+ORDER BY a.budget_date,a.advertiser_id LIMIT 100;
+
+SELECT delivery_state,count(*),min(created_at) FROM ad_click_outbox GROUP BY delivery_state;
+~~~
+
+S11B的点击Outbox只有原子落库，READY积压是尚未接入S11C发布的预期状态，不能报告投递完成；不运行CPM relay来尝试发送点击。S11C需接独立事件、Inbox/投影及受控重放，之后才能验收父S11。保留期限仍待治理，当前不自动删除任何账本、回执、计数或Outbox，不承诺生产容量或灾备目标。

@@ -29,3 +29,21 @@ common-ad billing 的 GspPrice/ClickPrice/FrozenClickQuote 与CpmPrice委托；a
 ## S11B/C 后续必须满足
 
 先锁资格、再锁原预算日账户，点击接受与曝光依赖均持久化；首次回执/点击决定和当前结算进度分开，WAITING不是实收或零元成功。后到依赖在同事务捕获，崩溃不得留下“二者都接受但资金效果不明”半成品；到期/释放竞争只有一个终态。反作弊判定必须来自服务器且与命令幂等协调，不能直接复用旧Redis先标去重再扣费的崩溃窗口。收费账本和Outbox同库原子，事件不能伪装成CPM；消费者版本升级、在途恢复/查询与回退需独立验收。该段为后续约束，具体接口/迁移在实施S11B前冻结。
+
+## C11B 正式结算契约（2026-10-15 冻结）
+
+按原已批准S11和Q-03细化内部用例；不新增业务收费政策。采用独立 `ad_click_settlement / ad_click_receipt / ad_click_ledger / ad_click_outbox / ad_click_rate`（V009），只共享 `ad_budget_account`；旧CPM表、迁移及事件不改。资格ID固定等于不可变quoteId，一个报价只能准备一次；准备的首次HELD/INSUFFICIENT_BUDGET/ACCOUNT_MISSING/QUOTE_EXPIRED决定不可变，当前状态另查。HELD才签发 `click-qualification` 用途的证明，绑定报价全部上下文和预占日；原token持久化，重试不重签、不延长原五分钟。
+
+内部用例 `prepare(quoteId, subject)`、`accept(Command)`、`findReceipt(receiptId, subject)`、`find(quoteId, subject)`、`release(quoteId, subject)`、`expireOne()`。主体来自可信边界。回执种类VISIBLE/CLICK共享稳定receiptId命名空间；VISIBLE沿用5000bps/1000ms/hidden重置及服务端签发至接受时长核验，CLICK不接受客户端自报金额/时间/用户/反作弊结论。摘要包含主体、完整token、种类、可见参数；原同ID同负载可在密钥轮换/停止新增后恢复，改字段冲突，跨主体拒绝。
+
+首次有效VISIBLE或CLICK只保存该条件，返回不可变 `ACCEPTED_WAITING`；后到有效条件原子捕获，首次决定 `ACCEPTED_CAPTURED`。同资格同种类换ID返回 `ALREADY_ACCEPTED`并引用原canonicalReceiptId，不再计数/扣费；POLICY_NOT_MET可用新的有意观测重试。结果同时返回当前结算快照（WAITING_FOR_BOTH/WAITING_FOR_VISIBLE/WAITING_FOR_CLICK/CAPTURED/RELEASED/EXPIRED/REJECTED），原决定不能被后续捕获覆盖。只有CAPTURED有ledgerId/chargedAmount，WAITING金额为空，零元合法捕获仍有账本。EXPIRED/NOT_HELD拒绝不补扣；已接受条件可恢复但不使释放状态复活。
+
+锁序统一：不可变点击quote父行 → 回执唯一键 →（首次CLICK）同用户rate行 → 原预算日账户。准备和回收也先锁quote；每用例最多一个资格/用户/账户，不批量交叉持锁。回收 `FOR UPDATE OF quote SKIP LOCKED`，每笔独立短事务。时间取DB，拿到所有必要锁后再次检查原expiresAt；等待账户跨到期不能接受。预算日取预占开始的上海日，跨日捕获/释放仍作用原账户。创建拒绝无占用，账户不存在不自动创建。
+
+反作弊复用 `recsys.ad.anti-fraud.enabled` / `maxClicksPerMinute`（默认true/20），独立同库实现，不调用旧Redis fail-open。每个SANDBOX userId一行，持锁后按实际决策DB时钟的UTC固定分钟窗归零计数；一资格第一次有效点击计一次，最多阈值个接受，重试/同资格换ID/无效证明/到期不计数。超限保存 `FRAUD_REJECTED`，同事务释放该资格，后到曝光不能收费；计数及拒绝与回执一起回滚。无新框架，不修改旧路径政策，也不声称客户端观测可证明真人行为。
+
+第二条件到达同一事务写入：原条件回执、HELD→CAPTURED、原账户held→charged、唯一点击账本与Outbox；资格/点击/曝光均有唯一键和关联约束。任何失败回滚本次全部效果，先前已提交等待条件保留。新事件 `AdClickCapturedV1` / topic `ad-click-captured-v1`，包含两种canonical回执、CPC/OCPC、PER_CLICK、CLICK_GSP_CNY6_V1、完整冻结身份、原预算日、六位金额及accountVersion，big ID为字符串，不含token/认证主体。Outbox预留READY/SENDING/PUBLISHED/DEAD、租约/fence/有界20次；S11B只原子落库，S11C负责实际发布、Inbox及重复/乱序验收，父S11不能提前DONE。
+
+`click-settlement-enabled=false`是安装/owner开关，须同时sandbox-enabled/clicks-enabled及V009；`click-preparation-admission-enabled`和`click-receipt-admission-enabled`分别控制新增，默认true但受安装开关约束。回退先关闭新增准备，保留在途回执到期、查询及回收；紧急停止回执仍保留原结果查询/重试和释放。不得关闭整个owner或回滚到无点击回收的版本而遗留held。沿用同源REQUIRES_NEW/READ_COMMITTED、1～30秒事务；单线程有界回收/退避/失败指标。长期保留和归档政策沿原项目待治理，当前不自动清理任何事实/去重数据。
+
+允许改动：common-ad点击契约；ad点击Repository/Service/Configuration/ExpiryJob、V009及专项测试；本设计/契约/切片/验收/运行文档。无前端/新中间件/旧Behavior范围变更。验收覆盖双顺序与并发、同/异ID、跨主体/用途隔离、反作弊并发/回滚、共享CPM账户硬上限、到期账户等待/释放竞争、原预算日、故障恢复、原结果查询、不可变账本及注释/迁移/开关。S11C具体RPC/HTTP/投递协议随后单独细化。

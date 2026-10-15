@@ -74,6 +74,8 @@ flowchart LR
 
 预算日、时区、跨日归属需冻结。候选规则是使用预占创建时的业务日并保持不变，延迟回执结清原义务，不用处理进程的本地日期推断。预算调整、暂停、回收、确认使用确定锁序和条件更新，检查影响行数。
 
+2026-10-15 已实现边界：C02～C10已冻结人民币六位HALF_UP、上海预占日、硬预算与CPM/自然图文政策；C11B按已确认Q-03增加点击内部结算。`ad_click_settlement/receipt/rate/ledger/outbox`仍归原adDb owner，与CPM共享唯一 `ad_budget_account`，没有第二份余额。独立 `click-qualification` 证明、原五分钟期限、可见/点击两个条件、PG同事务风控和一资格一账；锁序为quote→回执唯一键→用户计数→原日账户。当前S11B只落点击Outbox，S11C的双模式边界和可靠投递尚未交付；不据此宣称完整点击链已上线。正式行为与状态见 [C11_DESIGN](C11_DESIGN.md)，迁移/暂停/恢复见 [runbook](SANDBOX_BUDGET_RUNBOOK.md#s11b点击内部结算与到期恢复)。
+
 ## 5. 已接受事件的可靠传播
 
 - 每个 owner 的业务写入与自己的 Outbox 同事务；业务键去重时同时能查到原处理结果及待发送事件，不再出现“入库重复所以不补发”。事件有稳定 ID、聚合 ID、聚合版本、schemaVersion、来源和发生/接收时间。

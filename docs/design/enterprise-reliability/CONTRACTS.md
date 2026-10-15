@@ -194,3 +194,7 @@ common 的 TEXT_POLICY_V1 为已批准值；engine/behavior 正式配置装配�
 ## C11A：点击精确报价（ER-S11A）
 
 用户已确认CPC/OCPC每资格最多一次收费、签发起五分钟资格/预占/点击窗口；点击先到持久化等待曝光，两者到期前接受，释放后不补扣。正式报价与分阶段边界见 [C11_DESIGN](C11_DESIGN.md)：独立CPC/OCPC标准GSP、PER_CLICK / CLICK_GSP_CNY6_V1、纯候选与不可变ad V008报价；不把点击接入旧CPM票据/曝光捕获。S11A只有报价、默认关闭，S11B/C完成前不能宣称点击收费闭环。
+
+## C11B：点击预占与原子结算（ER-S11B）
+
+正式内部契约、V009表族、锁序、反作弊、两个条件的原始决定/当前状态、签名用途、默认关闭和在途恢复见 [C11_DESIGN 的 C11B](C11_DESIGN.md#c11b-正式结算契约2026-10-15-冻结)。一quote一资格，共享原预算账户；不复用CPM回执。WAITING无实收金额，二者在原期限前接受才原子产生唯一账本和AdClickCapturedV1 Outbox。S11C可靠发布和双模式边界完成前父片保持IN_PROGRESS。
