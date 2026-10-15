@@ -81,6 +81,32 @@ public class InProcessAdServingGateway implements AdServingGateway {
     @Override
     public Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject) { return impressions().find(id, subject); }
 
+    @Autowired private ObjectProvider<com.recsys.ad.billing.ClickPreparationService> clickPreparations;
+    @Autowired private ObjectProvider<com.recsys.ad.billing.ClickSettlementService> clickSettlements;
+    private com.recsys.ad.billing.ClickPreparationService clickPreparations() {
+        var service=clickPreparations==null?null:clickPreparations.getIfAvailable();
+        if(service==null)throw new IllegalStateException("点击交付未启用");
+        return service;
+    }
+    private com.recsys.ad.billing.ClickSettlementService clickSettlements() {
+        var service=clickSettlements==null?null:clickSettlements.getIfAvailable();
+        if(service==null)throw new IllegalStateException("点击结算未启用");
+        return service;
+    }
+    /** 新能力缺失直接失败，不转旧Redis点击路径。 */
+    @Override public List<Candidate> sandboxClickCandidates(Query query) { return clickPreparations().candidates(query); }
+    @Override public Prepared prepareSandboxClick(Prepare request) { return clickPreparations().prepare(request); }
+    @Override public Optional<Prepared> findSandboxClickPreparation(UUID id,String subject) { return clickPreparations().find(id,subject); }
+    @Override public com.recsys.common.ad.billing.ClickSettlement.Result acceptSandboxClick(com.recsys.common.ad.billing.ClickSettlement.Command command) {
+        return clickSettlements().accept(command);
+    }
+    @Override public Optional<com.recsys.common.ad.billing.ClickSettlement.Result> findSandboxClickReceipt(UUID id,String subject) {
+        return clickSettlements().findReceipt(id,subject);
+    }
+    @Override public Optional<com.recsys.common.ad.billing.ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject) {
+        return clickSettlements().find(id,subject);
+    }
+
     @Override
     public SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,
                                        String scene, String adBucket, double reserve) {

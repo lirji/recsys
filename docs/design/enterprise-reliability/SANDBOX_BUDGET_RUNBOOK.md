@@ -354,3 +354,37 @@ SELECT delivery_state,count(*),min(created_at) FROM ad_click_outbox GROUP BY del
 ~~~
 
 未排空前投影可有延迟；归零差额需同时核对Outbox已发布及消费位点追平。总账户金额仍按前节CPM+点击账本合计核对，不能把click_count计入impression_count。关闭新收费的回退保留两类事件续发/消费，代码回退不撤销已记账的事实。
+
+
+## S11C2：在线点击交付、回执与恢复
+
+当前仅sandbox后台接口，console原CPM分支没有被改成点击收费。上线准备需要在adDb按序追加V011 `db/ad-billing/V011__click_preparation.sql`，engine primary独立历史按序追加V004 `db/engine-delivery/V004__click_delivery.sql`；保留原V001～V010与engine V001～V003。显式迁移/存摘要的步骤沿前文，应用只验证，不自动执行。gRPC模式engine不能本地写adDb，ad-serving为唯一资金owner。
+
+在engine和ad owner都显式启用`sandbox-enabled`、`clicks-enabled`、`click-settlement-enabled`、`click-delivery-enabled`（前缀`recsys.ad.billing`，默认未开启）。复用原`recsys.ad.delivery.signing.*`密钥环和独立engine内部认证身份，不能用通用`recsys`服务身份。公网入口仍经gateway `/api/sandbox/**` ADMIN规则，engine再次检查，nosec不免除新接口认证。gRPC新service为`recsys.click.v1.SandboxClickService`，旧owner未实现时保持未知失败，不能fallback旧点击收费。
+
+1. 客户端保存新UUID operationId，PUT `/api/sandbox/click-ad-deliveries/{operationId}`，body形状为`{"userId":"123","query":"手机","slots":2,"scene":"search"}`。主体从认证上下文取得。客户端不能指定报价、候选、价格或source。200表示全部准备决定齐全，202仍准备中，503结果未知；GET原URL只读，PUT同ID同body续做。未知不能换ID或重排。
+2. `items`冻结显示身份（大ID字符串）、最终slot、title、bidType=CPC/OCPC、priceUnit=PER_CLICK、pricingVersion=CLICK_GSP_CNY6_V1和原preparation。只有QUALIFIED有资格token；准备金额只是最大义务，**不是实收**。offerToken不发HTTP。拒绝不补位，原COMPLETE重取也不会刷新期限。
+3. 保存独立receiptId与原body，PUT `/api/sandbox/click-receipts/{receiptId}`。点击body为`{"qualificationToken":"<原资格>","kind":"CLICK","visibleDurationMs":0,"minVisibleRatioBps":0,"pageVisible":false}`；可见body改kind=VISIBLE，使用真实连续观测整数毫秒、bps和页面状态。资格仍为签发起五分钟；前端不能伪造服务端期限或金额。
+4. 返回`receipt`首次决定和`settlement`当前状态：先点击WAITING_FOR_VISIBLE，先可见WAITING_FOR_CLICK；第二条件才CAPTURED。200可表示等待/重复，422是已持久化的政策/状态拒绝。仅CAPTURED具有ledgerId及chargedAmount（允许0.000000）；其他情况金额为空，不用0假装实收。
+5. 丢响应先GET `/api/sandbox/click-receipts/{receiptId}`，若404仅表示当前未观察到，可用原ID/body重试，不能换ID；GET `/api/sandbox/click-settlements/{qualificationId}`获取当前状态。原WAITING回执可以附带当前CAPTURED，不能只读取原决定。快照不回传token或认证主体，错误不输出SQL/异常详情。
+
+400格式、401未认证、403权限/证明、409同ID变请求、404当前未观察到、503依赖未知分别处理。可见政策仍50%连续1秒且hidden重置，服务端复核从资格签发起已有足够时间；本片不声称浏览器观测能证明真人，也未实现新的点击页面。
+
+回退首先设置`click-preparation-admission-enabled=false`，停止新候选及新预占，保留已提交准备结果恢复、原回执/当前状态查询、到期回收和点击事件续发。若预占已提交但准备结果未保存，可用原签名命令完成检查点而不再held。仅在紧急情况设置`click-receipt-admission-enabled=false`停止新回执，原已提交结果依然可恢复；不要关闭整个owner/安装开关遗留未决held。验证key须覆盖未完成准备/仍在途资格；已完成准备结果按原请求可在key轮换后恢复，但待验签的新条件仍需要原key。代码回退不撤销资金效果，不回退到旧Redis扣费。
+
+只读诊断（不输出request_json/plan_json/result_json等含证明字段）：
+
+~~~sql
+-- adDb检查点中未完成的准备；关联held说明可能仅丢了准备响应。
+SELECT p.child_id,p.operation_id,p.slot,p.created_at,s.state,q.expires_at
+FROM ad_click_preparation p LEFT JOIN ad_click_settlement s ON s.qualification_id=p.child_id
+LEFT JOIN ad_click_quote q ON q.quote_id=p.child_id
+WHERE p.result_json IS NULL ORDER BY p.created_at,p.child_id LIMIT 100;
+
+-- engine primary，租约超时后仍按原operationId和原请求续做；不得另建操作替换。
+SELECT operation_id,state,fence,lease_until,created_at,updated_at
+FROM engine_click_delivery WHERE state='PREPARING'
+ORDER BY updated_at,operation_id LIMIT 100;
+~~~
+
+迁移和开关尚未施加到共享环境；本轮验证全部在隔离schema和临时broker执行。不承诺未测量的容量、RTO/RPO或账本自动保留期限。

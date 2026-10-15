@@ -31,3 +31,5 @@ ClickEventConfiguration独立默认关闭、owner限制、迁移校验、topic/g
 源码改动为BillingOutboxRepository/Relay/Job、BillingProjectionConsumer、BillingEventConfiguration的有限复用；新增ClickEventCodec/Configuration、ClickProjectionRepository/Service、V010和4个测试/fixture文件。当前非文档源码指纹：`1604da78c4297442c3ff3b1e0c5be6ebc628ac3c6c331fd99a29f4288c3af858`（路径+逐文件SHA256排序汇总）。保护文件七项及原目录单worktree未改；console/test-results、忽略配置/数据/模型/产物全部保留，未授权清理。只stage本片明确路径，正常合并推送main。
 
 SKILL_HANDOFF: backend-implementation → implementation-validation → project-documentation → update-progress-docs → task-git-delivery；slice=ER-S11C1，validation=PASS，status=COMPLETED；下一项ER-S11C2，父S11不能因事件链完成提前关闭。
+
+Git交付：`e599b3e5`已正常提交、快进合并并推送origin/main；继续C2。远程[CI 38695851841](https://github.com/lirji/recsys/actions/runs/38695851841) completed/success，5个job全部通过。

@@ -7,6 +7,9 @@ import com.recsys.common.ad.delivery.SandboxDelivery.Prepare;
 import java.util.Optional;
 import java.util.UUID;
 import com.recsys.proto.DeliveryProtoMapper;
+import com.recsys.proto.ClickProtoMapper;
+import com.recsys.proto.click.v1.*;
+import com.recsys.common.ad.billing.ClickSettlement;
 import com.recsys.proto.delivery.v1.SandboxDeliveryServiceGrpc;
 import com.recsys.proto.delivery.v1.GetPreparationRequest;
 import io.grpc.StatusRuntimeException;
@@ -108,6 +111,43 @@ public class GrpcAdServingGateway implements AdServingGateway {
             case ALREADY_EXISTS -> new ImpressionReceipt.Conflict();
             case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
             case INVALID_ARGUMENT -> new IllegalArgumentException("回执格式非法");
+            default -> ex;
+        };
+    }
+
+    @GrpcClient("ad-serving")
+    private SandboxClickServiceGrpc.SandboxClickServiceBlockingStub clickStub;
+
+    /** 点击RPC不使用旧Retry/fallback，超时保留原ID恢复；公共拦截器仍限制deadline。 */
+    @Override public List<Candidate> sandboxClickCandidates(Query query) {
+        try { return clickStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList(); }
+        catch(StatusRuntimeException ex) { throw clickFailure(ex,false); }
+    }
+    @Override public Prepared prepareSandboxClick(Prepare request) {
+        try { return DeliveryProtoMapper.fromProto(clickStub.prepare(DeliveryProtoMapper.toProto(request))); }
+        catch(StatusRuntimeException ex) { throw clickFailure(ex,false); }
+    }
+    @Override public Optional<Prepared> findSandboxClickPreparation(UUID id,String subject) {
+        try { return Optional.of(DeliveryProtoMapper.fromProto(clickStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build()))); }
+        catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,false); }
+    }
+    @Override public ClickSettlement.Result acceptSandboxClick(ClickSettlement.Command command) {
+        try { return ClickProtoMapper.fromProto(clickStub.accept(ClickProtoMapper.toProto(command))); }
+        catch(StatusRuntimeException ex) { throw clickFailure(ex,true); }
+    }
+    @Override public Optional<ClickSettlement.Result> findSandboxClickReceipt(UUID id,String subject) {
+        try { return Optional.of(ClickProtoMapper.fromProto(clickStub.getReceipt(GetClickReceiptRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build()))); }
+        catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,true); }
+    }
+    @Override public Optional<ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject) {
+        try { return Optional.of(ClickProtoMapper.fromProto(clickStub.getSettlement(GetClickSettlementRequest.newBuilder().setQualificationId(id.toString()).setSubject(subject).build()))); }
+        catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,true); }
+    }
+    private RuntimeException clickFailure(StatusRuntimeException ex,boolean receipt) {
+        return switch(ex.getStatus().getCode()) {
+            case ALREADY_EXISTS -> receipt?new ClickSettlement.Conflict():new com.recsys.common.ad.delivery.SandboxDelivery.Conflict();
+            case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
+            case INVALID_ARGUMENT -> new IllegalArgumentException("点击请求格式非法");
             default -> ex;
         };
     }

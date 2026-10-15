@@ -24,7 +24,7 @@ public class DeliveryOperationConfiguration {
     }
     /** 同进程与 grpc 只替换 gateway，恢复逻辑保持同一实现。 */
     @Bean
-    public DeliveryOperationService deliveryOperationService(DeliveryOperationRepository repository, QueryUnderstandingService queries,
+    public DeliveryOperationService deliveryOperationService(@Qualifier("deliveryOperationRepository") DeliveryOperationRepository repository, QueryUnderstandingService queries,
             ExperimentService experiments, AdProperties properties, AdServingGateway gateway) {
         return new DeliveryOperationService(repository, queries, experiments, properties, gateway);
     }

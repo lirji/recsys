@@ -74,7 +74,7 @@ flowchart LR
 
 预算日、时区、跨日归属需冻结。候选规则是使用预占创建时的业务日并保持不变，延迟回执结清原义务，不用处理进程的本地日期推断。预算调整、暂停、回收、确认使用确定锁序和条件更新，检查影响行数。
 
-2026-10-15 已实现边界：C02～C10已冻结人民币六位HALF_UP、上海预占日、硬预算与CPM/自然图文政策；C11B按已确认Q-03增加点击内部结算。`ad_click_settlement/receipt/rate/ledger/outbox`仍归原adDb owner，与CPM共享唯一 `ad_budget_account`，没有第二份余额。独立 `click-qualification` 证明、原五分钟期限、可见/点击两个条件、PG同事务风控和一资格一账；锁序为quote→回执唯一键→用户计数→原日账户。S11C1已补齐独立点击可靠投递/Inbox，复用固定事件族的有界传输机制；双模式在线边界和稳定交付属于S11C2，尚不能宣称完整点击链已上线。正式行为与状态见 [C11_DESIGN](C11_DESIGN.md)，迁移/暂停/恢复见 [runbook](SANDBOX_BUDGET_RUNBOOK.md#s11b点击内部结算与到期恢复)。
+2026-10-15 已实现边界：C02～C10已冻结人民币六位HALF_UP、上海预占日、硬预算与CPM/自然图文政策；C11B按已确认Q-03增加点击内部结算。`ad_click_settlement/receipt/rate/ledger/outbox`仍归原adDb owner，与CPM共享唯一 `ad_budget_account`，没有第二份余额。独立 `click-qualification` 证明、原五分钟期限、可见/点击两个条件、PG同事务风控和一资格一账；锁序为quote→回执唯一键→用户计数→原日账户。S11C1已补齐独立点击可靠投递/Inbox，复用固定事件族的有界传输机制；S11C2补齐独立click-offer及ad/engine检查点、原ID恢复和ADMIN HTTP/可信engine gRPC边界；当前验证与上线状态以ER-S11C2_RESULT为准，没有执行共享环境启用。正式行为与状态见 [C11_DESIGN](C11_DESIGN.md)，迁移/暂停/恢复见 [runbook](SANDBOX_BUDGET_RUNBOOK.md#s11b点击内部结算与到期恢复)。
 
 ## 5. 已接受事件的可靠传播
 

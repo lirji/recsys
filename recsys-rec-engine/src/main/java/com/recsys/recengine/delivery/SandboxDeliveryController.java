@@ -21,7 +21,7 @@ import java.util.List;
 @ConditionalOnProperty(name = "recsys.ad.billing.sandbox-enabled", havingValue = "true")
 public class SandboxDeliveryController {
     private final DeliveryOperationService service;
-    public SandboxDeliveryController(DeliveryOperationService service) { this.service = service; }
+    public SandboxDeliveryController(@org.springframework.beans.factory.annotation.Qualifier("deliveryOperationService") DeliveryOperationService service) { this.service = service; }
 
     /** 完成仅指准备结果齐全，前端仍须可见回执才能计费。 */
     @PutMapping("/{operationId}")

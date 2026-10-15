@@ -34,6 +34,9 @@ public class ClickSettlementService {
         this.preparationAdmission=preparationAdmission; this.receiptAdmission=receiptAdmission; this.fraud=Objects.requireNonNull(fraud);
     }
 
+    /** 准备编排校验资源身份，不能把相同URL当作同一事务资源。 */
+    public javax.sql.DataSource dataSource() { return repository.dataSource(); }
+
     /** 资格固定等于quoteId，重复准备只恢复不可变原结果，绝不重占或续期。 */
     public Prepared prepare(UUID id,String subject) {
         validate(id,subject);

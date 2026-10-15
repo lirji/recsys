@@ -16,7 +16,7 @@ S11A 先实现实际竞价到不可变点击报价的内部纵向片；S11B 再�
 
 `AdPipeline.sandboxClickCandidates` 纯候选入口：召回/定向/排序、上述精确竞价和DCO，不写报价、预算、曝光、旧事件、GD或uplift assignment。候选未被最终选择前零资金副作用。当前仅内部用例，不将此方法自动接上旧搜索/feed接口。
 
-新 ad V008 `ad_click_quote`：quoteId、operationId/最终slot唯一、subject/user、广告主/广告/creative/item、CPC/OCPC、原精确依据、金额/币种/单位/版本、内容title、payload hash、DB签发与五分钟期限。每个报价为单一最大可收点击义务，不按pCTR折算预占。字段及整行不可改删；首次创建须候选deadline未过，已存在同命令恢复原报价/原期，原主体/原字段变更拒绝。题名限定2000字符，slot1～10，long均在RPC/HTTP后续用字符串；owner内部Java用long。
+新 ad V008 `ad_click_quote`：quoteId、operationId/最终slot唯一、subject/user、广告主/广告/creative/item、CPC/OCPC、原精确依据、金额/币种/单位/版本、内容title、payload hash、DB签发与五分钟期限。每个报价为单一最大可收点击义务，不按pCTR折算预占。字段及整行不可改删；首次创建须候选deadline未过，已存在同命令恢复原报价/原期，原主体/原字段变更拒绝。题名限定2000字符，slot1～10，HTTP/JSON事件的大ID使用字符串；可信服务间RPC沿已选protobuf int64无损传递，owner内部Java用long。
 
 报价持久化仅adDb，不创建预算或预占；只有S11B准备成功后才签发可展示资格。配置 `recsys.ad.billing.clicks-enabled=false` 默认关闭，另需sandbox owner；本片开启仅装配报价owner且核验V008，不能收费。迁移保留V001～V007，旧CPM能力不需V008即可运行。
 
@@ -61,3 +61,20 @@ Inbox对eventId、qualificationId、visibleReceiptId、clickReceiptId唯一，�
 `recsys.ad.billing.click-events.relay-enabled`与`projection-enabled`默认false，仅需sandbox owner，独立于新报价/预占/回执admission；暂停新收费仍可发送已提交事实。topic默认ad-click-captured-v1，group默认recsys-sandbox-click-projection-v1；新命名空间独立配置及指标ad.billing.click.outbox/projection，沿既有Kafka受控连接配置和有界参数，无新依赖。V009/10兼容旧CPM实例，回退保留支持点击续发/投影的owner和历史，保留策略不擅定自动删除。
 
 验收：真实PG唯一冲突、乱序、两种回执交叉重用、Inbox失败回滚、租约过期/旧fence拒绝、耗尽及人工重放；真实Kafka+PG发送ACK后DB失败重投、消费提交后ACK失败重放、未知版本不提交、原CPM/点击配置共存与回归。C1完成后继续C2，父S11保持IN_PROGRESS。
+
+
+## C11C2 正式在线交付与双模式边界
+
+复用C04的Query/Candidate/Prepare/Prepared传输形状和稳定操作算法，但新增有限ChargeMode=IMPRESSION/CLICK选择独立表，旧构造默认IMPRESSION。点击owner新增ClickDelivery.Offer（ClickPrice、click-offer用途），只能由纯sandboxClickCandidates签发；候选不产生资金副作用。签名绑定operation/subject/user/child/ad/price/bucket/owner候选期限；最终slot在可信engine冻结后，ad按原签名价格生成V008报价并调用C11B预占，不重竞价。资格用途仍为click-qualification，不允许旧CPM回执接收。
+
+ad V011新增ad_click_preparation检查点，首次请求/位置和首次结果不可变。先校验原请求与已完成结果再验签，已保存原结果在密钥轮换/停止新增后仍可恢复；首次请求须验签，未完成在途需保留原验证密钥。报价或预占提交后响应丢失按childId续做，不延长五分钟、不重复held；候选过期返回稳定OFFER_EXPIRED，无报价/预占。点击準备服务与报价/结算同adDb资源、拒绝外层事务。
+
+engine V004新增engine_click_delivery，仍只primary库。首次请求和实验参数、候选去重后完整顺序/childId/offer先持久化，再逐项查询原准备或按原命令prepare；拒绝不补位。30秒DB租约/fence、已完成快照恢复、进度单向更新、最多10项，网络调用在事务外。数据库guard保护原请求/冻结候选和已完成结果。旧CPM交付表/协议不改，两个模式允许同UUID但在独立业务命名空间，不能互查或互收费。repository模式决定gateway路由，不由客户端提供表名/模式。
+
+新增SandboxClickService gRPC：Candidates/Prepare/GetPreparation使用已有delivery消息；Accept/GetReceipt/GetSettlement使用独立click.v1显式字段。仅独立可信engine caller允许调用，nosec不豁免。未知枚举/缺必填时间/坏UUID拒绝，金额字符串、时间纳秒、可选ID/金额保持空值语义。in-process和grpc gateway方法等价，超时/未实现不得fallback旧路径或空成功；NOT_FOUND仅查询表示未观察到，冲突/证明/格式映射一致。
+
+认证ADMIN HTTP新增PUT/GET `/api/sandbox/click-ad-deliveries/{operationId}`，请求与C04相同（userId字符串、query、slots整数、scene）；响应冻结items含bidType/PER_CLICK/pricingVersion及原preparation，200表示准备齐全、202仍准备中，不代表收费。PUT/GET `/api/sandbox/click-receipts/{receiptId}`，PUT字段qualificationToken、kind=VISIBLE/CLICK及严格整数visibleDurationMs/minVisibleRatioBps和boolean pageVisible；CLICK三个观测必须0/0/false。响应receipt原决定+settlement当前state/progress，WAITING无实收金额；GET `/api/sandbox/click-settlements/{qualificationId}`查询当前状态。对外快照省略主体和qualificationToken，不记录完整token。200接受/重复、422持久化拒绝、400格式、401/403认证权限、409同ID变请求、404当前未观察到、503依赖结果未知；未知保留原ID查询/重试。
+
+`click-delivery-enabled=false`显式控制新在线能力安装，与sandbox/clicks/click-settlement三个开关同时开启才装配。click-preparation-admission-enabled停止新增候选及新预占，已持久化结果仍恢复；在途回执、查询、到期任务和事件续发保留。紧急停止回执用原独立admission，不删除历史。两个模式的Spring同类型bean显式Qualifier，不靠偶然名称或Primary覆盖。
+
+验收：真实PG报价/预占后故障及原ID恢复、并发/改位置/跨主体/错用途/过期、原token密钥轮换恢复、schema摘要/注释/不可变；真实engine PG冻结失败不得准备、lease/fence竞争、部分结果丢响应不重选、无补位及两个模式隔离；真实in-process与gRPC调用同一资金owner、严格协议往返/权限/异常映射、HTTP格式/状态/脱敏；完整钱链路与默认关闭/共存装配回归。没有新UI或新中间件，不扩大到CPA或既有Behavior事件。验收仅在ad-serving test scope复用现有engine test-support和已选Testcontainers依赖，具体边界见TECH_SELECTION，不改变生产依赖图。

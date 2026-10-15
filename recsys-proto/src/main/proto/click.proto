@@ -1,0 +1,62 @@
+syntax = "proto3";
+package recsys.click.v1;
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.click.v1";
+option java_outer_classname = "ClickProto";
+import "delivery.proto";
+import "google/protobuf/timestamp.proto";
+
+// 可信engine的独立点击边界；旧CPM方法不能处理这些用途的证明。
+service SandboxClickService {
+  rpc Candidates(recsys.delivery.v1.CandidateQuery) returns (recsys.delivery.v1.CandidateReply);
+  rpc Prepare(recsys.delivery.v1.PrepareDelivery) returns (recsys.delivery.v1.PreparedDelivery);
+  rpc GetPreparation(recsys.delivery.v1.GetPreparationRequest) returns (recsys.delivery.v1.PreparedDelivery);
+  rpc Accept(ClickReceiptCommand) returns (ClickReceiptResult);
+  rpc GetReceipt(GetClickReceiptRequest) returns (ClickReceiptResult);
+  rpc GetSettlement(GetClickSettlementRequest) returns (ClickSettlementSnapshot);
+}
+message ClickReceiptCommand {
+  string receipt_id = 1;
+  string subject = 2;
+  string qualification_token = 3;
+  string kind = 4;
+  int64 visible_duration_ms = 5;
+  int32 min_visible_ratio_bps = 6;
+  bool page_visible = 7;
+}
+message GetClickReceiptRequest { string receipt_id = 1; string subject = 2; }
+message GetClickSettlementRequest { string qualification_id = 1; string subject = 2; }
+message ClickPrepared {
+  string qualification_id = 1;
+  string decision = 2;
+  string budget_date = 3;
+  string amount = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.Timestamp prepared_at = 7;
+  optional string qualification_token = 8;
+}
+message ClickSettlementSnapshot {
+  ClickPrepared prepared = 1;
+  string state = 2;
+  int64 version = 3;
+  string visible_receipt_id = 4;
+  string click_receipt_id = 5;
+  string ledger_id = 6;
+  optional string charged_amount = 7;
+  google.protobuf.Timestamp closed_at = 8;
+  string close_reason = 9;
+}
+message ClickReceipt {
+  string receipt_id = 1;
+  string qualification_id = 2;
+  string kind = 3;
+  string status = 4;
+  string canonical_receipt_id = 5;
+  google.protobuf.Timestamp accepted_at = 6;
+  google.protobuf.Timestamp decided_at = 7;
+}
+message ClickReceiptResult {
+  ClickReceipt receipt = 1;
+  ClickSettlementSnapshot settlement = 2;
+}

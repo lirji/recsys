@@ -44,6 +44,17 @@ public interface AdServingGateway {
     /** 同一 receiptId 的原结果查询，用于未知响应恢复。 */
     Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject);
 
+    /** 纯点击候选与准备使用独立owner及证明用途。 */
+    List<Candidate> sandboxClickCandidates(Query query);
+    Prepared prepareSandboxClick(Prepare request);
+    Optional<Prepared> findSandboxClickPreparation(UUID id,String subject);
+    /** 原子接受任一条件，等待不代表已收费。 */
+    com.recsys.common.ad.billing.ClickSettlement.Result acceptSandboxClick(com.recsys.common.ad.billing.ClickSettlement.Command command);
+    /** 原回执决定和当前状态一起查询。 */
+    Optional<com.recsys.common.ad.billing.ClickSettlement.Result> findSandboxClickReceipt(UUID id,String subject);
+    /** 资格仍有效与否以owner当前状态为准。 */
+    Optional<com.recsys.common.ad.billing.ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject);
+
     /** 搜索广告:召回→竞价→GSP→曝光埋点,返回竞得赞助广告。 */
     SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,
                                 String scene, String adBucket, double reserve);

@@ -13,6 +13,9 @@ public final class SandboxDelivery {
     public static final int MAX_SLOTS = 10;
     private SandboxDelivery() {}
 
+    /** 仅供服务端装配选择独立检查点和owner，不作为客户端任意路由参数。 */
+    public enum ChargeMode { IMPRESSION, CLICK }
+
     /** 已经由 engine 解析的纯查询上下文，subject 与模拟用户分离。 */
     public record Query(UUID operationId, String subject, long userId, StructuredQuery query,
                         int slots, String scene, String bucket, double reserve) {

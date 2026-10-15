@@ -79,6 +79,24 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 点击双模式验收复用engine普通类测试包，生产依赖仍保持ad-serving独立。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-rec-engine</artifactId>
+            <version>${project.version}</version>
+            <classifier>test-support</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

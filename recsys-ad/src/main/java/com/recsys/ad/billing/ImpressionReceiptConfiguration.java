@@ -21,7 +21,7 @@ public class ImpressionReceiptConfiguration {
     }
     /** 明确绑定同一 adDb 事务，不加入 engine 或其他库的事务。 */
     @Bean
-    public ImpressionReceiptService impressionReceiptService(ImpressionReceiptRepository receipts, PreparationRepository preparations,
+    public ImpressionReceiptService impressionReceiptService(ImpressionReceiptRepository receipts, @Qualifier("preparationRepository") PreparationRepository preparations,
             ReservationRepository reservations, CpmQuoteRepository quotes, DeliveryTokenCodec tokens,
             @Qualifier("adDbDataSource") DataSource dataSource,
             @Value("${recsys.ad.billing.transaction-timeout-seconds:5}") int timeoutSeconds,

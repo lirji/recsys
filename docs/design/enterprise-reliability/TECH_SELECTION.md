@@ -42,3 +42,6 @@ ER-S06：复用宿主已有 Spring Kafka 3.1.4 / Kafka client 3.6.2（Spring Boo
 官方机制核对：[Kafka 3.7 producer 配置](https://kafka.apache.org/37/configuration/producer-configs/) 要求幂等与 acks/retries/in-flight 相容；[consumer 配置](https://kafka.apache.org/37/configuration/consumer-configs/) 区分自动提交、poll 与组存活。版本共存实际由 Kafka 3.6.2 客户端连接 Apache 3.7.1 临时 broker 测试证明，不声称覆盖所有 broker 版本。Spring Kafka/Kafka 均沿用已在项目中的 Apache-2.0 依赖；不借本片升级全仓库，现有 CI 依赖扫描仍是报告模式，不声明消除了历史依赖漏洞。
 
 公共组件事实：dev-infra/compose.yaml 的 recsys-kafka 使用 apache/kafka:3.7.1，宿主端口默认 59092；测试复用相同镜像版本，以已有 Testcontainers GenericContainer 启动隔离 KRaft broker，临时唯一 topic/group 和 PG schema，无新测试依赖或 Compose 服务。单节点仅证明本片协议恢复，不证明副本容灾/RPO。topic 先显式创建、不 compact；保留期限待业务决定，sandbox 暂不自动过期并监控空间。
+
+
+ER-S11C2测试装配补充：为验证同一真实资金owner在in-process和TCP gRPC下的行为，ad-serving新增**仅test scope**的现有engine `test-support`普通类包依赖（版本`${project.version}`）、仓库已选Testcontainers `junit-jupiter`/`postgresql`（沿现有Boot BOM，不指定新版本）。这是C02已批准真实PostgreSQL验收技术的跨模块复用，不增加生产依赖边、第三方组件或版本，也不改变应用可执行包。engine测试支持包生成方式沿已交付S09修复；当前原依赖扫描仍为报告模式，不宣称清除历史漏洞。Code Hygiene ChangeSet `approvedDependencies=[recsys-rec-engine,junit-jupiter,postgresql]`只覆盖这三条测试边；不授予新增运行基础设施或格式化工具。

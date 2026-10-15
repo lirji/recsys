@@ -45,9 +45,9 @@ public class DeliveryOperationService {
         var operation = claimed.get();
         try {
             if (operation.plan() == null) {
-                var candidates = gateway.sandboxCandidates(new Query(request.operationId(), request.subject(), request.userId(),
+                var candidates = candidates(new Query(request.operationId(), request.subject(), request.userId(),
                         queries.parse(request.query(), request.userId()), request.slots(), request.scene(), operation.bucket(), operation.reserve()));
-                // 搜索页先做广告和 item 去重，feed 的自然/广告混排由 S10 调用同一准备能力。
+                // 搜索交付先做广告和item去重；固定repository模式选择独立owner，不让终端切换收费语义。
                 var adIds = new HashSet<Long>(); var itemIds = new HashSet<Long>(); var childIds = new HashSet<UUID>();
                 var plan = new ArrayList<Entry>();
                 for (var candidate : candidates) {
@@ -67,8 +67,8 @@ public class DeliveryOperationService {
             for (int i = 0; i < operation.plan().size(); i++) {
                 var entry = operation.plan().get(i);
                 if (entry.result() != null) continue;
-                var prepared = gateway.findSandboxPreparation(entry.candidate().childId(), request.subject()).orElseGet(() ->
-                        gateway.prepareSandbox(new Prepare(request.operationId(), request.subject(), request.userId(),
+                var prepared = findPreparation(entry.candidate().childId(), request.subject()).orElseGet(() ->
+                        prepare(new Prepare(request.operationId(), request.subject(), request.userId(),
                                 entry.candidate().childId(), entry.slot(), entry.candidate().offerToken())));
                 var updated = new ArrayList<>(operation.plan());
                 updated.set(i, new Entry(entry.slot(), entry.candidate(), prepared));
@@ -83,6 +83,16 @@ public class DeliveryOperationService {
         } finally {
             repository.relinquish(request.operationId(), claimed.get().fence());
         }
+    }
+
+    private List<Candidate> candidates(Query query) {
+        return repository.mode()==ChargeMode.CLICK?gateway.sandboxClickCandidates(query):gateway.sandboxCandidates(query);
+    }
+    private Optional<Prepared> findPreparation(UUID id,String subject) {
+        return repository.mode()==ChargeMode.CLICK?gateway.findSandboxClickPreparation(id,subject):gateway.findSandboxPreparation(id,subject);
+    }
+    private Prepared prepare(Prepare command) {
+        return repository.mode()==ChargeMode.CLICK?gateway.prepareSandboxClick(command):gateway.prepareSandbox(command);
     }
 
     /** GET 只读进度，不冒充未完成请求为成功空结果。 */

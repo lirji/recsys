@@ -34,7 +34,7 @@ public class PreparationConfiguration {
     }
     /** 与已有报价和预占 owner 复用同一 adDb。 */
     @Bean
-    public SandboxPreparationService sandboxPreparationService(AdPipeline pipeline, PreparationRepository repository,
+    public SandboxPreparationService sandboxPreparationService(AdPipeline pipeline, @Qualifier("preparationRepository") PreparationRepository repository,
             CpmQuoteRepository quotes, ReservationService reservations, DeliveryTokenCodec tokens) {
         return new SandboxPreparationService(pipeline, repository, quotes, reservations, tokens);
     }
