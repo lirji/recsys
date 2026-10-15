@@ -2,6 +2,8 @@
 
 整体IN_PROGRESS。SQL迁移已交付ea5fda51，本阶段分支refactor/unified-error-codes；目标、兼容边界与EC01～EC08见PLAN.md。原企业可靠性任务仍暂停。
 
-EC01 DONE/PASS，已正常提交/ff/push main：ca62a933de420d9257ce89ecc918d28affed0124。共享70项错误目录、Java/TS生成/CI防漂移、Servlet全局安全处理、前端共用[CODE]展示。71项后端模块测试、138项前端、全仓compile、目录与持久边界检查全部通过。证据见EC01_RESULT。SQL最终CI38785419045五项全部SUCCESS；EC01 CI38788407786当前运行中，不能继承SQL的成功。
+EC01已交付ca62a933、EC02a已交付9198410f；SQL最终CI38785419045全绿。9198410f的CI38788884133发现自然浏览器提示回归，已在EC07a修复并本地复验，不能声称旧CI已成功。
 
-EC02 IN_PROGRESS：EC02a Servlet安全链本地DONE/PASS，72项模块测试与全仓compile通过，见EC02A_RESULT；EC02b Reactive网关READY，具体边界见EC02_DESIGN。EC03～EC08 TODO。下一步交付EC02a并实现网关错误体、Bearer语义与限流空体处理；不会因公共入口已实现而宣称全部错误治理完成。
+EC07a DONE/PASS（待本地提交）：ClientError和15类自然/混排校验提示保留code与可行动说明；139项前端、自然5/混排5/广告4真实浏览器及各真实后端宿主全过，见EC07A_RESULT。目录共88项（含EC02b三个码）。父EC07其余范围未完成。
+
+EC02b本地验证通过，父EC02仍待本批Git交付收尾：旧4项Bearer/限流保护、新完整后端88项/16类、真实Netty HTTP、全仓compile、目录/持久边界守卫通过。接下来先提交EC07a目录与前端修复，再提交EC02b网关适配，正常ff/push后进入EC03。EC03～EC06与EC08仍TODO，整体错误治理IN_PROGRESS。

@@ -280,6 +280,78 @@ export const errorCodes = {
     message: '混排交付结果未知，请保留原 operationId 查询或重试',
     httpStatus: 503,
   },
+  AUTH_INVALID_CREDENTIALS: {
+    message: '用户名或密码错误',
+    httpStatus: 401,
+  },
+  AUTH_TOKEN_ISSUANCE_FAILED: {
+    message: '登录服务暂时不可用，请稍后重试',
+    httpStatus: 500,
+  },
+  IDENTITY_PROPAGATION_FAILED: {
+    message: '身份传递失败，请稍后重试',
+    httpStatus: 500,
+  },
+  NATURAL_DELIVERY_RESPONSE_MISMATCH: {
+    message: '自然交付响应与原请求或可见政策不匹配',
+    httpStatus: 0,
+  },
+  NATURAL_DELIVERY_DUPLICATE_IDENTITY: {
+    message: '自然交付身份重复，未开始采集',
+    httpStatus: 0,
+  },
+  NATURAL_DELIVERY_INCOMPLETE_CONTENT: {
+    message: '自然交付内容或资格不完整，未开始采集',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_RESPONSE_MISMATCH: {
+    message: '混排响应与原请求或可见政策不匹配',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INVALID_SLOT: {
+    message: '混排最终位置非法',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INVALID_AD: {
+    message: '混排广告身份或正文非法',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_AD_RESULT_UNKNOWN: {
+    message: '广告结果未知，整次交付不能显示完成',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INVALID_PREPARATION: {
+    message: '广告准备结果身份非法',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INCOMPLETE_QUALIFICATION: {
+    message: '广告计费资格不完整，未开始采集',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INVALID_REJECTION: {
+    message: '广告拒绝结果非法',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_UNSUPPORTED_KIND: {
+    message: '混排类型不受支持',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_DUPLICATE_IDENTITY: {
+    message: '混排身份重复',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_INCONSISTENT_STATE: {
+    message: '混排准备状态与条目结论不一致',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_CHANGED_PLAN: {
+    message: '恢复响应改变了已冻结混排',
+    httpStatus: 0,
+  },
+  FEED_DELIVERY_CHANGED_PREPARATION: {
+    message: '恢复响应改变了原广告准备结论',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

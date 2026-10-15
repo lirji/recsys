@@ -296,7 +296,9 @@ test('受控 503/202 原 ID 原参数恢复，未知政策不采集', async ({ p
   await page.screenshot({ path: info.outputPath('natural-preparing.png'), fullPage: true });
   await page.getByRole('button', { name: '恢复原操作', exact: true }).click();
   await expect(
-    page.getByText('自然交付响应与原请求或可见政策不匹配', { exact: true }),
+    page.getByText('[NATURAL_DELIVERY_RESPONSE_MISMATCH] 自然交付响应与原请求或可见政策不匹配', {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByTestId('natural-item-1')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('natural-policy-error.png'), fullPage: true });

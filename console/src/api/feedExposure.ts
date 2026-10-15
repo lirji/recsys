@@ -1,3 +1,4 @@
+import { ClientError } from './errors';
 import { http } from './client';
 import {
   DeliveryState,
@@ -85,11 +86,11 @@ export function validateFeedDelivery(id: string, input: FeedDeliveryInput, view:
         view.traceId !== ''
       : !Object.values(AdDisposition).includes(view.adDisposition))
   )
-    throw new Error('混排响应与原请求或可见政策不匹配');
+    throw new ClientError('FEED_DELIVERY_RESPONSE_MISMATCH');
   const items = new Set<string>();
   const qualifications = new Set<string>();
   for (const [index, entry] of view.items.entries()) {
-    if (!entry || entry.slot !== index + 1) throw new Error('混排最终位置非法');
+    if (!entry || entry.slot !== index + 1) throw new ClientError('FEED_DELIVERY_INVALID_SLOT');
     let itemId: string;
     let qualificationId: string;
     if (entry.kind === FeedEntryKind.NATURAL && entry.ad === null) {
@@ -111,17 +112,17 @@ export function validateFeedDelivery(id: string, input: FeedDeliveryInput, view:
         !textWithin(ad.title, 2000) ||
         !ad.title.trim()
       )
-        throw new Error('混排广告身份或正文非法');
+        throw new ClientError('FEED_DELIVERY_INVALID_AD');
       const prep = ad.preparation;
       if (prep === null) {
         if (view.state === DeliveryState.COMPLETE)
-          throw new Error('广告结果未知，整次交付不能显示完成');
+          throw new ClientError('FEED_DELIVERY_AD_RESULT_UNKNOWN');
       } else if (
         !prep ||
         prep.childId !== ad.childId ||
         !Object.values(PreparationStatus).includes(prep.status)
       ) {
-        throw new Error('广告准备结果身份非法');
+        throw new ClientError('FEED_DELIVERY_INVALID_PREPARATION');
       } else if (prep.status === PreparationStatus.QUALIFIED) {
         if (
           !exactAmount(prep.amount) ||
@@ -130,19 +131,20 @@ export function validateFeedDelivery(id: string, input: FeedDeliveryInput, view:
           !textWithin(prep.expiresAt, 64) ||
           !Number.isFinite(Date.parse(prep.expiresAt))
         )
-          throw new Error('广告计费资格不完整，未开始采集');
+          throw new ClientError('FEED_DELIVERY_INCOMPLETE_QUALIFICATION');
       } else if (
         !(prep.amount === '' || exactAmount(prep.amount)) ||
         prep.qualificationToken !== '' ||
         (prep.expiresAt !== null &&
           (!textWithin(prep.expiresAt, 64) || !Number.isFinite(Date.parse(prep.expiresAt))))
       ) {
-        throw new Error('广告拒绝结果非法');
+        throw new ClientError('FEED_DELIVERY_INVALID_REJECTION');
       }
       itemId = ad.itemId;
       qualificationId = ad.childId;
-    } else throw new Error('混排类型不受支持');
-    if (items.has(itemId) || qualifications.has(qualificationId)) throw new Error('混排身份重复');
+    } else throw new ClientError('FEED_DELIVERY_UNSUPPORTED_KIND');
+    if (items.has(itemId) || qualifications.has(qualificationId))
+      throw new ClientError('FEED_DELIVERY_DUPLICATE_IDENTITY');
     items.add(itemId);
     qualifications.add(qualificationId);
   }
@@ -151,7 +153,7 @@ export function validateFeedDelivery(id: string, input: FeedDeliveryInput, view:
     view.adDisposition !== null &&
     !view.items.some((e) => e.kind === FeedEntryKind.AD && e.ad.preparation === null)
   )
-    throw new Error('混排准备状态与条目结论不一致');
+    throw new ClientError('FEED_DELIVERY_INCONSISTENT_STATE');
 }
 /** JSON 属性顺序不属于业务身份，避免网关编码顺序变化误报计划改写。 */
 const canonical = (value: unknown) =>
@@ -175,14 +177,14 @@ export function validateFeedProgress(previous: FeedDeliveryView | null, next: Fe
     (previous.state === DeliveryState.COMPLETE && next.state !== DeliveryState.COMPLETE) ||
     canonical(frozen(previous)) !== canonical(frozen(next))
   )
-    throw new Error('恢复响应改变了已冻结混排');
+    throw new ClientError('FEED_DELIVERY_CHANGED_PLAN');
   previous.items.forEach((e, index) => {
     if (
       e.kind === FeedEntryKind.AD &&
       e.ad.preparation !== null &&
       canonical(e.ad.preparation) !== canonical(next.items[index].ad?.preparation)
     )
-      throw new Error('恢复响应改变了原广告准备结论');
+      throw new ClientError('FEED_DELIVERY_CHANGED_PREPARATION');
   });
 }
 export async function putFeedDelivery(

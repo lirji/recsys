@@ -1,6 +1,6 @@
 import { AxiosError, AxiosHeaders, CanceledError } from 'axios';
 import { describe, expect, it } from 'vitest';
-import { formatError, toApiError } from '../errors';
+import { ClientError, formatError, toApiError } from '../errors';
 
 function responseError(status: number, data: unknown) {
   const config = {
@@ -23,6 +23,15 @@ function responseError(status: number, data: unknown) {
 }
 
 describe('统一安全错误展示', () => {
+  it('本地受控错误保留可行动文案，仍不信任Error.message', () => {
+    const error = new ClientError('NATURAL_DELIVERY_RESPONSE_MISMATCH');
+    error.message = 'SQL private';
+    expect(toApiError(error)).toEqual({
+      code: 'NATURAL_DELIVERY_RESPONSE_MISMATCH',
+      message: '[NATURAL_DELIVERY_RESPONSE_MISMATCH] 自然交付响应与原请求或可见政策不匹配',
+      cancelled: false,
+    });
+  });
   it.each([200, 399, 600, 400.5, Number.NaN])('非法错误状态%s不伪造网络失败', (status) => {
     const error = toApiError(responseError(status, { code: 'BAD_REQUEST' }));
     expect(error.status).toBeUndefined();

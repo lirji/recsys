@@ -1,3 +1,4 @@
+import { ClientError } from '../errors';
 import { expect, it, vi } from 'vitest';
 import {
   validateFeedDelivery,
@@ -110,7 +111,7 @@ it('整个响应先验证，错误位置/类型/重复身份/政策/资格不能
   ])
     expect(() =>
       validateFeedDelivery(id, input, { ...view(), ...patch } as FeedDeliveryView),
-    ).toThrow();
+    ).toThrow(ClientError);
   for (const change of [
     (v: FeedDeliveryView) => {
       v.items[1].slot = 3;
@@ -133,7 +134,7 @@ it('整个响应先验证，错误位置/类型/重复身份/政策/资格不能
   ]) {
     const bad = view();
     change(bad);
-    expect(() => validateFeedDelivery(id, input, bad)).toThrow();
+    expect(() => validateFeedDelivery(id, input, bad)).toThrow(ClientError);
   }
 });
 it('恢复只补原结果，不能悄悄换自然资格/位置/金额或倒退完成状态', () => {
@@ -154,12 +155,12 @@ it('恢复只补原结果，不能悄悄换自然资格/位置/金额或倒退�
   ]) {
     const changed = completed();
     mutate(changed);
-    expect(() => validateFeedProgress(original, changed)).toThrow();
+    expect(() => validateFeedProgress(original, changed)).toThrow(ClientError);
   }
   const changed = completed();
   changed.items[1].ad!.preparation!.amount = '1.000000';
-  expect(() => validateFeedProgress(completed(), changed)).toThrow();
-  expect(() => validateFeedProgress(completed(), view())).toThrow();
+  expect(() => validateFeedProgress(completed(), changed)).toThrow(ClientError);
+  expect(() => validateFeedProgress(completed(), view())).toThrow(ClientError);
   const ordered = Object.fromEntries(
     Object.entries(completed()).reverse(),
   ) as unknown as FeedDeliveryView;
@@ -176,10 +177,12 @@ it('未冻结/自然降级空结果与已冻结准备状态明确区分', () => 
       items: [],
     }),
   ).not.toThrow();
-  expect(() => validateFeedDelivery(id, input, { ...view(), items: [view().items[0]] })).toThrow();
+  expect(() => validateFeedDelivery(id, input, { ...view(), items: [view().items[0]] })).toThrow(
+    ClientError,
+  );
   expect(() =>
     validateFeedDelivery(id, input, { ...view(), adDisposition: 'CANDIDATES_UNAVAILABLE' }),
-  ).toThrow();
+  ).toThrow(ClientError);
 });
 it('feed端点保留原意图与身份守卫，查询不新建交付', async () => {
   vi.mocked(http.put).mockResolvedValue({ data: view() });

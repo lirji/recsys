@@ -1,6 +1,14 @@
 import { AxiosError, isAxiosError, isCancel } from 'axios';
 import { defaultHttpErrorCodes, errorCodes, type KnownErrorCode } from './generated/errorCodes';
 
+/** 前端主动拒绝也必须选择目录码；构造入口不接收服务端消息或任意展示文本。 */
+export class ClientError extends Error {
+  constructor(public readonly code: KnownErrorCode) {
+    super(errorCodes[code].message);
+    this.name = 'ClientError';
+  }
+}
+
 export interface ApiErrorInfo {
   status?: number;
   code: string;
@@ -41,6 +49,9 @@ function httpErrorStatus(value: unknown): number | undefined {
 
 /** 兼容旧后端和未知新code；响应中的message/detail/HTML/SQL永远不是可信展示来源。 */
 export function toApiError(error: unknown): ApiErrorInfo {
+  if (error instanceof ClientError) {
+    return { code: error.code, message: formatError(error.code), cancelled: false };
+  }
   let code: KnownErrorCode = 'UNKNOWN_ERROR';
   const aborted =
     ((typeof DOMException !== 'undefined' && error instanceof DOMException) ||

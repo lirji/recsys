@@ -1,3 +1,4 @@
+import { ClientError } from './errors';
 import { HttpStatusCode } from 'axios';
 import { http } from './client';
 import {
@@ -113,13 +114,13 @@ export function validateNaturalDelivery(
     view.items.length > input.size ||
     (view.state === DeliveryState.PREPARING && view.items.length !== 0)
   )
-    throw new Error('自然交付响应与原请求或可见政策不匹配');
+    throw new ClientError('NATURAL_DELIVERY_RESPONSE_MISMATCH');
   const qualifications = new Set<string>();
   const items = new Set<string>();
   for (const [index, item] of view.items.entries()) {
     validateNaturalItem(item, index + 1);
     if (items.has(item.itemId) || qualifications.has(item.qualificationId))
-      throw new Error('自然交付身份重复，未开始采集');
+      throw new ClientError('NATURAL_DELIVERY_DUPLICATE_IDENTITY');
     qualifications.add(item.qualificationId);
     items.add(item.itemId);
   }
@@ -146,7 +147,7 @@ export function validateNaturalItem(item: NaturalItem, slot: number) {
     !Number.isFinite(Date.parse(item.issuedAt)) ||
     Date.parse(item.expiresAt) - Date.parse(item.issuedAt) !== NATURAL_TEXT_POLICY.ttlMs
   )
-    throw new Error('自然交付内容或资格不完整，未开始采集');
+    throw new ClientError('NATURAL_DELIVERY_INCOMPLETE_CONTENT');
 }
 export async function putNaturalDelivery(
   id: string,

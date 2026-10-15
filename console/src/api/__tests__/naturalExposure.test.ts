@@ -1,3 +1,4 @@
+import { ClientError } from '../errors';
 import { expect, it, vi } from 'vitest';
 import {
   NATURAL_TEXT_POLICY,
@@ -72,7 +73,7 @@ it('原请求、未知政策、改位置/期限、重复资格或缺正文全部
   ])
     expect(() =>
       validateNaturalDelivery(id, input, { ...view(), ...patch } as NaturalDeliveryView),
-    ).toThrow();
+    ).toThrow(ClientError);
   for (const patch of [
     { title: '' },
     { slot: 2 },
@@ -82,11 +83,11 @@ it('原请求、未知政策、改位置/期限、重复资格或缺正文全部
   ]) {
     const bad = view();
     Object.assign(bad.items[0], patch);
-    expect(() => validateNaturalDelivery(id, input, bad)).toThrow();
+    expect(() => validateNaturalDelivery(id, input, bad)).toThrow(ClientError);
   }
   const repeated = view();
   repeated.items.push({ ...repeated.items[0], slot: 2 });
-  expect(() => validateNaturalDelivery(id, input, repeated)).toThrow();
+  expect(() => validateNaturalDelivery(id, input, repeated)).toThrow(ClientError);
 });
 it('真实自然端点使用身份守卫、5s 超时和 422 持久结果，无旧收费路径', async () => {
   vi.mocked(http.put).mockResolvedValue({ data: view() });

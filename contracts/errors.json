@@ -491,6 +491,132 @@
       "httpStatus": 503,
       "message": "混排交付结果未知，请保留原 operationId 查询或重试",
       "httpDefault": false
+    },
+    {
+      "name": "AUTH_INVALID_CREDENTIALS",
+      "code": "AUTH_INVALID_CREDENTIALS",
+      "httpStatus": 401,
+      "message": "用户名或密码错误",
+      "httpDefault": false
+    },
+    {
+      "name": "AUTH_TOKEN_ISSUANCE_FAILED",
+      "code": "AUTH_TOKEN_ISSUANCE_FAILED",
+      "httpStatus": 500,
+      "message": "登录服务暂时不可用，请稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "IDENTITY_PROPAGATION_FAILED",
+      "code": "IDENTITY_PROPAGATION_FAILED",
+      "httpStatus": 500,
+      "message": "身份传递失败，请稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_RESPONSE_MISMATCH",
+      "code": "NATURAL_DELIVERY_RESPONSE_MISMATCH",
+      "httpStatus": 0,
+      "message": "自然交付响应与原请求或可见政策不匹配",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_DUPLICATE_IDENTITY",
+      "code": "NATURAL_DELIVERY_DUPLICATE_IDENTITY",
+      "httpStatus": 0,
+      "message": "自然交付身份重复，未开始采集",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_INCOMPLETE_CONTENT",
+      "code": "NATURAL_DELIVERY_INCOMPLETE_CONTENT",
+      "httpStatus": 0,
+      "message": "自然交付内容或资格不完整，未开始采集",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_RESPONSE_MISMATCH",
+      "code": "FEED_DELIVERY_RESPONSE_MISMATCH",
+      "httpStatus": 0,
+      "message": "混排响应与原请求或可见政策不匹配",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INVALID_SLOT",
+      "code": "FEED_DELIVERY_INVALID_SLOT",
+      "httpStatus": 0,
+      "message": "混排最终位置非法",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INVALID_AD",
+      "code": "FEED_DELIVERY_INVALID_AD",
+      "httpStatus": 0,
+      "message": "混排广告身份或正文非法",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_AD_RESULT_UNKNOWN",
+      "code": "FEED_DELIVERY_AD_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "广告结果未知，整次交付不能显示完成",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INVALID_PREPARATION",
+      "code": "FEED_DELIVERY_INVALID_PREPARATION",
+      "httpStatus": 0,
+      "message": "广告准备结果身份非法",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INCOMPLETE_QUALIFICATION",
+      "code": "FEED_DELIVERY_INCOMPLETE_QUALIFICATION",
+      "httpStatus": 0,
+      "message": "广告计费资格不完整，未开始采集",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INVALID_REJECTION",
+      "code": "FEED_DELIVERY_INVALID_REJECTION",
+      "httpStatus": 0,
+      "message": "广告拒绝结果非法",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_UNSUPPORTED_KIND",
+      "code": "FEED_DELIVERY_UNSUPPORTED_KIND",
+      "httpStatus": 0,
+      "message": "混排类型不受支持",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_DUPLICATE_IDENTITY",
+      "code": "FEED_DELIVERY_DUPLICATE_IDENTITY",
+      "httpStatus": 0,
+      "message": "混排身份重复",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_INCONSISTENT_STATE",
+      "code": "FEED_DELIVERY_INCONSISTENT_STATE",
+      "httpStatus": 0,
+      "message": "混排准备状态与条目结论不一致",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_CHANGED_PLAN",
+      "code": "FEED_DELIVERY_CHANGED_PLAN",
+      "httpStatus": 0,
+      "message": "恢复响应改变了已冻结混排",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_CHANGED_PREPARATION",
+      "code": "FEED_DELIVERY_CHANGED_PREPARATION",
+      "httpStatus": 0,
+      "message": "恢复响应改变了原广告准备结论",
+      "httpDefault": false
     }
   ]
 }
