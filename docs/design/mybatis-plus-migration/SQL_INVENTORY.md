@@ -140,7 +140,7 @@
 | [com/recsys/offline/GenSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/GenSamplesMtJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesMtJob.java) | 7 | 3 | TODO |
 | [com/recsys/offline/HotJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/HotJob.java) | 9 | 1 | DONE MP13d1：主源加权聚合/Redis榜单；见MP13D1_RESULT |
-| [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | TODO |
+| [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | DONE MP13d4：词干/df/text数组与Redis发布；见MP13D4_RESULT |
 | [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | DONE MP13b1；见MP13B1_RESULT |
 | [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | DONE MP13c6：手动版本事务/专用Mapper；见MP13C6_RESULT |
 | [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | DONE MP13c5：500行BATCH/独立bootstrap；见MP13C5_RESULT |

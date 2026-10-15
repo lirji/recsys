@@ -6,8 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper;
+import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -35,25 +35,28 @@ public class IdfJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(IdfJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final IdfCorpusMapper mapper;
     private final StringRedisTemplate redis;
 
-    public IdfJob(JdbcTemplate jdbc, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
+    /** 固定目录Mapper负责PG全文检索，IDF公式与Redis发布仍由作业维护。 */
+    public IdfJob(IdfCorpusMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保持IDF重建命令。 */
     @Override
     public String name() {
         return "idf";
     }
 
+    /** 完整语料计算成功后按原canonical、alias、总数顺序发布。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int minDf = intArg(args, "min-df", 1);
-        String it = ItemQuery.table(args);   // #3:item 读来源表(默认 item)
+        var source = ItemQuery.source(args);
 
-        IdfSnapshot snapshot = compute(it, minDf);
+        IdfSnapshot snapshot = compute(source, minDf);
         if (snapshot.totalDocuments() == 0) {
             log.warn("item 表为空,idf:terms 未更新;先跑 --job=import-items");
             return;
@@ -68,8 +71,8 @@ public class IdfJob implements OfflineJob {
     }
 
     /** 包可见，供真实 PostgreSQL 集成测试锁死 English stemming/df 契约。 */
-    IdfSnapshot compute(String itemTable, int minDf) {
-        Integer count = jdbc.queryForObject("SELECT count(*) FROM " + itemTable, Integer.class);
+    IdfSnapshot compute(CatalogTable source, int minDf) {
+        Integer count = mapper.countDocuments(source);
         int total = count == null ? 0 : count;
         if (total == 0) {
             return new IdfSnapshot(0, Map.of(), Map.of());
@@ -77,8 +80,10 @@ public class IdfJob implements OfflineJob {
 
         Map<String, Long> df = new HashMap<>();
         // ts_stat 的 ndoc 是“包含该 lexeme 的文档数”；title_tsv 已按 english stemming 且文档内去重。
-        jdbc.query("SELECT word, ndoc FROM ts_stat('SELECT title_tsv FROM " + itemTable + "')",
-                (RowCallbackHandler) rs -> df.put(rs.getString("word"), rs.getLong("ndoc")));
+        mapper.scanFrequencies(source, context -> {
+            var row = context.getResultObject();
+            df.put(row.word(), row.documents());
+        });
 
         Map<String, String> lexemes = new HashMap<>(df.size() * 2);
         for (Map.Entry<String, Long> e : df.entrySet()) {
@@ -89,8 +94,7 @@ public class IdfJob implements OfflineJob {
         }
 
         Set<String> rawTokens = new HashSet<>();
-        jdbc.query("SELECT coalesce(title,'') || ' ' || coalesce(category,'') AS text FROM " + itemTable,
-                (RowCallbackHandler) rs -> rawTokens.addAll(QueryTokens.tokenize(rs.getString("text"))));
+        mapper.scanRawText(source, context -> rawTokens.addAll(QueryTokens.tokenize(context.getResultObject())));
 
         Map<String, String> rawToLexeme = mapRawTokens(rawTokens);
         Map<String, String> rawTerms = new HashMap<>(rawTokens.size() * 2 + lexemes.size());
@@ -114,16 +118,10 @@ public class IdfJob implements OfflineJob {
         final int batchSize = 2000;
         for (int from = 0; from < all.size(); from += batchSize) {
             List<String> batch = all.subList(from, Math.min(from + batchSize, all.size()));
-            jdbc.query("""
-                    SELECT raw, lexemes[1] AS lexeme
-                    FROM (
-                        SELECT raw, tsvector_to_array(to_tsvector('english', raw)) AS lexemes
-                        FROM unnest(?::text[]) AS t(raw)
-                    ) x
-                    WHERE cardinality(lexemes) = 1
-                    """,
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("text", batch.toArray(String[]::new))),
-                    (RowCallbackHandler) rs -> out.put(rs.getString("raw"), rs.getString("lexeme")));
+            mapper.mapRawTokens(batch, context -> {
+                var row = context.getResultObject();
+                out.put(row.raw(), row.lexeme());
+            });
         }
         return out;
     }

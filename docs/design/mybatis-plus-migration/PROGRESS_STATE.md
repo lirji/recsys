@@ -428,3 +428,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13d3最终验证
 
 见MP13D3_RESULT。旧6、新关联11、完整离线178/33类、全仓24 reactor测试编译/hygiene通过。5源指纹a2858616a5db581488d3d70fe777c4813b020d76897c9e0e702bfa755288cc3f；A/b/n/lambda/order矩阵契约与重复/NULL/时间窗口/增量/失败保持。c7/d1/d2均已ff/push到main=2d1712b5，CI38760632548在途。本片本地提交后继续IDF；两个历史Bandit提示问题已记录，留给后续错误码阶段。
+
+## MP13d4入口
+
+旧IDF发布6+原词干契约1共7真实测试通过：PG english词干/ndoc、重复词/NULL文档/词形别名、min-df、双目录、空语料保留与空词表删除、3001词跨原2000批次。注入第二alias Hash rename失败实证canonical已发布而alias/总数仍旧，临时键清理；不宣称三键原子。四查询迁入主源IdfCorpusMapper/XML，ts_stat只接受两个固定字面量，text[]复用TextListTypeHandler，回调保持会话内消费，公式/发布顺序不改。
+
+## MP13d4最终验证
+
+见MP13D4_RESULT。旧7、新关联8、完整离线184/34类、全仓24 reactor测试编译/hygiene通过。6源指纹66ef8a4b5b689517f00cf62b355c552934a52351722fab36c85e08087e9f7edd；stemming/df/别名、双目录、2000批次、空语料与单Hash发布失败边界保持。2d1712b5 CI38760632548五门禁全部SUCCESS。d3=895d7e23与本片正常ff/push后继续BuildFeaturesJob。

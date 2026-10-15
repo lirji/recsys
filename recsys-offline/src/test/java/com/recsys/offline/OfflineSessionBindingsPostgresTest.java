@@ -61,7 +61,8 @@ class OfflineSessionBindingsPostgresTest {
             for (var binding : Map.of("seedAdMapper", "shardedSqlSessionTemplate",
                     "seedAdVectorMapper", "adDbSqlSessionTemplate", "seedItemVectorMapper", "derivedSqlSessionTemplate",
                     "lookalikeMapper", "derivedSqlSessionTemplate", "hotScoreMapper", "sqlSessionTemplate",
-                    "coldBanditMapper", "sqlSessionTemplate", "banditImpressionMapper", "sqlSessionTemplate").entrySet()) {
+                    "coldBanditMapper", "sqlSessionTemplate", "banditImpressionMapper", "sqlSessionTemplate",
+                    "idfCorpusMapper", "sqlSessionTemplate").entrySet()) {
                 var factory = context.getBean("&" + binding.getKey(), MapperFactoryBean.class);
                 assertSame(context.getBean(binding.getValue()), factory.getSqlSession());
             }

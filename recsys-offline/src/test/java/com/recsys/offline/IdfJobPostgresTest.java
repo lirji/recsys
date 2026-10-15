@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper;
+import com.recsys.persistence.spring.SpringSqlSessions;
+import com.recsys.content.persistence.model.CatalogTable;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -30,14 +34,20 @@ class IdfJobPostgresTest {
                     title_tsv tsvector GENERATED ALWAYS AS
                         (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(category,''))) STORED)
                 """);
+        jdbc.execute("COMMENT ON TABLE item IS 'IDF英文词干独占契约测试'");
+        for (String column : java.util.List.of("item_id", "title", "category", "title_tsv")) {
+            jdbc.execute("COMMENT ON COLUMN item." + column + " IS '原目录检索字段'");
+        }
         jdbc.update("INSERT INTO item(item_id,title,category) VALUES (1,'Movie studies','about')");
         jdbc.update("INSERT INTO item(item_id,title,category) VALUES (2,'Movie studying','about')");
         jdbc.update("INSERT INTO item(item_id,title,category) VALUES (3,'Movies studies','about')");
     }
 
     @Test
-    void rawInflectionsShareCanonicalDfAndStopwordsDisappear() {
-        IdfJob.IdfSnapshot snapshot = new IdfJob(jdbc, null).compute("item", 1);
+    void rawInflectionsShareCanonicalDfAndStopwordsDisappear() throws Exception {
+        var mapper = new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(),
+                "classpath*:mapper/offline/primary/**/*.xml")).getMapper(IdfCorpusMapper.class);
+        IdfJob.IdfSnapshot snapshot = new IdfJob(mapper, null).compute(CatalogTable.OWNED, 1);
 
         assertThat(snapshot.totalDocuments()).isEqualTo(3);
         assertThat(snapshot.lexemes()).containsEntry("movi", "1.000000")

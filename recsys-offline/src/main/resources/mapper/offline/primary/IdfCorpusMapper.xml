@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper">
+    <resultMap id="frequency" type="com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper$Frequency">
+        <constructor>
+            <arg name="word" column="word" javaType="java.lang.String"/>
+            <arg name="documents" column="ndoc" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="rawLexeme" type="com.recsys.offline.persistence.mapper.primary.IdfCorpusMapper$RawLexeme">
+        <constructor>
+            <arg name="raw" column="raw" javaType="java.lang.String"/>
+            <arg name="lexeme" column="lexeme" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <sql id="source">
+        <choose>
+            <when test="source.name() == 'REPLICA'">item_local</when>
+            <otherwise>item</otherwise>
+        </choose>
+    </sql>
+    <select id="countDocuments" resultType="java.lang.Integer" useCache="false">
+        SELECT count(*) FROM <include refid="source"/>
+    </select>
+    <select id="scanFrequencies" resultMap="frequency" useCache="false">
+        SELECT word,ndoc FROM ts_stat(
+        <choose>
+            <when test="source.name() == 'REPLICA'">'SELECT title_tsv FROM item_local'</when>
+            <otherwise>'SELECT title_tsv FROM item'</otherwise>
+        </choose>)
+    </select>
+    <select id="scanRawText" resultType="java.lang.String" useCache="false">
+        SELECT coalesce(title,'') || ' ' || coalesce(category,'') AS text FROM <include refid="source"/>
+    </select>
+    <select id="mapRawTokens" resultMap="rawLexeme" useCache="false">
+        SELECT raw,lexemes[1] AS lexeme
+        FROM (
+            SELECT raw,tsvector_to_array(to_tsvector('english',raw)) AS lexemes
+            FROM unnest(#{tokens,jdbcType=ARRAY,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}::text[]) AS t(raw)
+        ) x
+        WHERE cardinality(lexemes)=1
+    </select>
+</mapper>
