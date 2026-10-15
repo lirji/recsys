@@ -10,7 +10,8 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.primary.EngineBehaviorMapper;
+import com.recsys.recengine.persistence.model.ExposureWrite;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -41,7 +42,7 @@ public class ExposureLogger {
     /** 归因键 TTL:覆盖"曝光后到点击"的常规窗口即可,避免 Redis 长期堆积。 */
     private static final Duration ATTRIBUTION_TTL = Duration.ofHours(2);
 
-    private final JdbcTemplate jdbc;
+    private final EngineBehaviorMapper mapper;
     private final StringRedisTemplate redis;
     private final MeterRegistry meterRegistry;
     private final ExecutorService executor =
@@ -51,8 +52,9 @@ public class ExposureLogger {
                 return t;
             });
 
-    public ExposureLogger(JdbcTemplate jdbc, StringRedisTemplate redis, MeterRegistry meterRegistry) {
-        this.jdbc = jdbc;
+    /** 保持原异步生命周期和同步Redis归因，Mapper只替换SQL执行边界。 */
+    public ExposureLogger(EngineBehaviorMapper mapper, StringRedisTemplate redis, MeterRegistry meterRegistry) {
+        this.mapper = mapper;
         this.redis = redis;
         this.meterRegistry = meterRegistry;
     }
@@ -70,47 +72,27 @@ public class ExposureLogger {
                 .increment(items.size());
 
         // 拷贝出落库所需的最小数据,避免异步任务持有上层对象
-        List<Delivery> deliveries = items.stream()
-                .map(i -> new Delivery(i.itemId(), i.exposureId()))
+        List<ExposureWrite> deliveries = java.util.stream.IntStream.range(0, items.size())
+                .mapToObj(i -> new ExposureWrite(items.get(i).itemId(), items.get(i).exposureId(), i + 1))
                 .toList();
         // 必须在 log 返回前建立精确归因；否则推荐响应刚到客户端就点击，会永久落成 bucket=null。
         attribute(userId, bucket, deliveries);
         executor.submit(() -> insert(userId, scene, bucket, deliveries));
     }
 
-    private void insert(long userId, String scene, String bucket, List<Delivery> deliveries) {
+    private void insert(long userId, String scene, String bucket, List<ExposureWrite> deliveries) {
         try {
-            jdbc.batchUpdate(
-                    "INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position,exposure_id) " +
-                    "VALUES(?,?,?,?,?,?,?,?)",
-                    new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
-                        @Override
-                        public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
-                            Delivery delivery = deliveries.get(i);
-                            ps.setLong(1, userId);
-                            ps.setLong(2, delivery.itemId());
-                            ps.setString(3, ActionType.IMPRESSION.name());
-                            ps.setDouble(4, i + 1); // 展示排名(沿用 value,向后兼容)
-                            ps.setString(5, scene);
-                            ps.setString(6, bucket);
-                            ps.setInt(7, i + 1);    // 展示位次(1 基):曝光日志闭环 + PAL 用
-                            ps.setString(8, delivery.exposureId());
-                        }
-
-                        @Override
-                        public int getBatchSize() {
-                            return deliveries.size();
-                        }
-                    });
+            // 多VALUES语句保留旧PG批次的整批失败语义，value和position仍使用一基排名。
+            mapper.appendExposures(userId, scene, bucket, ActionType.IMPRESSION.name(), deliveries);
         } catch (Exception e) {
             log.warn("曝光埋点落库失败 user={} bucket={}: {}", userId, bucket, e.getMessage());
         }
     }
 
     /** 写精确曝光、最近曝光与旧 bucket 三组短 TTL 键。Redis 不可用时静默，不影响推荐。 */
-    private void attribute(long userId, String bucket, List<Delivery> deliveries) {
+    private void attribute(long userId, String bucket, List<ExposureWrite> deliveries) {
         try {
-            for (Delivery delivery : deliveries) {
+            for (ExposureWrite delivery : deliveries) {
                 long itemId = delivery.itemId();
                 String exposureId = delivery.exposureId();
                 // 旧服务仍按 expo:{user}:{item} 读 bucket，迁移期继续维护。
@@ -131,8 +113,5 @@ public class ExposureLogger {
     @PreDestroy
     void shutdown() {
         executor.shutdown();
-    }
-
-    private record Delivery(long itemId, String exposureId) {
     }
 }

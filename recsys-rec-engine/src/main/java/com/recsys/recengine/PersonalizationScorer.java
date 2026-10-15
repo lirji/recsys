@@ -2,7 +2,7 @@ package com.recsys.recengine;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.derived.EngineEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -24,11 +24,11 @@ public class PersonalizationScorer {
 
     private static final Logger log = LoggerFactory.getLogger(PersonalizationScorer.class);
 
-    private final JdbcTemplate jdbc;
+    private final EngineEmbeddingMapper mapper;
 
-    public PersonalizationScorer(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                 JdbcTemplate jdbc) {   // #3:item_embedding+user_embedding(一条 SQL)走派生库
-        this.jdbc = jdbc;
+    /** 个性化向量查询只绑定派生库，不改业务层降级策略。 */
+    public PersonalizationScorer(EngineEmbeddingMapper mapper) {
+        this.mapper = mapper;
     }
 
     /**
@@ -41,21 +41,9 @@ public class PersonalizationScorer {
         }
         Map<Long, Double> out = new HashMap<>(itemIds.size() * 2);
         try {
-            Long[] ids = itemIds.toArray(new Long[0]);
-            jdbc.query(con -> {
-                var ps = con.prepareStatement(
-                        "SELECT e.item_id, " +
-                        "       1 - (e.embedding <=> (SELECT embedding FROM user_embedding WHERE user_id=?)) AS aff " +
-                        "FROM item_embedding e WHERE e.item_id = ANY(?)");
-                ps.setLong(1, userId);
-                ps.setArray(2, con.createArrayOf("bigint", ids));
-                return ps;
-            }, rs -> {
-                double aff = rs.getDouble("aff");
-                if (!rs.wasNull()) {
-                    out.put(rs.getLong("item_id"), aff);
-                }
-            });
+            for (var row : mapper.affinities(userId, itemIds)) {
+                if (row.affinity() != null) out.put(row.itemId(), row.affinity());
+            }
         } catch (Exception e) {
             log.debug("个性化亲和度计算失败 user={}(降级无个性化): {}", userId, e.getMessage());
             return Map.of();

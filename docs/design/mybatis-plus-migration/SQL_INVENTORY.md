@@ -182,18 +182,18 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/recengine/PersonalizationScorer.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/PersonalizationScorer.java) | 5 | 2 | TODO |
-| [com/recsys/recengine/coldstart/ColdStartDetector.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/coldstart/ColdStartDetector.java) | 7 | 2 | TODO |
+| [com/recsys/recengine/PersonalizationScorer.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/PersonalizationScorer.java) | 5 | 2 | DONE MP07a |
+| [com/recsys/recengine/coldstart/ColdStartDetector.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/coldstart/ColdStartDetector.java) | 7 | 2 | DONE MP07a |
 | [com/recsys/recengine/delivery/ClickDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ClickDeliveryConfiguration.java) | 12 | 0 | TODO |
 | [com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java) | 12 | 0 | TODO |
 | [com/recsys/recengine/delivery/DeliveryOperationConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationConfiguration.java) | 12 | 0 | TODO |
 | [com/recsys/recengine/delivery/DeliveryOperationRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationRepository.java) | 11 | 8 | TODO |
-| [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | TODO |
+| [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | DONE MP07a |
 | [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | TODO |
 | [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | TODO |
 | [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | TODO |
 | [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | TODO |
-| [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | TODO |
+| [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | DONE MP07a |
 | [com/recsys/recengine/rerank/DppReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/DppReranker.java) | 7 | 1 | TODO |
 | [com/recsys/recengine/rerank/MmrReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/MmrReranker.java) | 7 | 1 | TODO |
 
@@ -293,3 +293,5 @@
 MP06b：NaturalReceiptRepository/Configuration → `behavior.persistence.mapper.primary.NaturalReceiptMapper` + `mapper/behavior/primary/NaturalReceiptMapper.xml`；共享UUID handler；证据见MP06B_RESULT。
 
 MP06c：UserProfileService/ReportService → `console.persistence.mapper.primary.{UserProfileMapper,ReportMapper}` + `mapper/console/primary/*Mapper.xml`；console生产Java SQL已核销，证据见MP06C_RESULT。
+
+MP07a：推荐输入与曝光 → `recengine.persistence.mapper.{primary.EngineBehaviorMapper,derived.EngineEmbeddingMapper}` + `mapper/recengine/{primary,derived}/*.xml`；证据见MP07A_RESULT。

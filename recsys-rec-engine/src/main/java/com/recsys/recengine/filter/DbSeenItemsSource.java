@@ -3,7 +3,7 @@ package com.recsys.recengine.filter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.primary.EngineBehaviorMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
@@ -20,18 +20,17 @@ public class DbSeenItemsSource implements SeenItemsSource {
 
     private static final Logger log = LoggerFactory.getLogger(DbSeenItemsSource.class);
 
-    private final JdbcTemplate jdbc;
+    private final EngineBehaviorMapper mapper;
 
-    public DbSeenItemsSource(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 读取原主源，失败时继续沿用不过滤的降级策略。 */
+    public DbSeenItemsSource(EngineBehaviorMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
     public Set<Long> seenItems(long userId) {
         try {
-            List<Long> ids = jdbc.queryForList(
-                    "SELECT DISTINCT item_id FROM user_behavior WHERE user_id=? " +
-                    "AND action IN ('CLICK','LIKE','PLAY','RATING')", Long.class, userId);
+            List<Long> ids = mapper.seenItems(userId);
             return new HashSet<>(ids);
         } catch (Exception e) {
             log.warn("已看查询失败(user_behavior),本次不过滤 user={}: {}", userId, e.getMessage());

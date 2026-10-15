@@ -6,7 +6,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.primary.EngineBehaviorMapper;
 
 import java.time.Duration;
 import java.util.List;
@@ -23,11 +23,11 @@ class ExposureLoggerTest {
     @Test
     @SuppressWarnings("unchecked")
     void writesExactAttributionSynchronously() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        EngineBehaviorMapper mapper = mock(EngineBehaviorMapper.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         ValueOperations<String, String> values = mock(ValueOperations.class);
         when(redis.opsForValue()).thenReturn(values);
-        ExposureLogger logger = new ExposureLogger(jdbc, redis, new SimpleMeterRegistry());
+        ExposureLogger logger = new ExposureLogger(mapper, redis, new SimpleMeterRegistry());
 
         logger.log(7, "home", "recall:plus;rank:v1",
                 List.of(new RecommendItem(42, 1, List.of("HOT"), "reason", "exp-42")));

@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP05已交付，MP06a/b已交付，MP06c DONE/PASS（22项测试）。MP06整体完成，准备Git交付后继续MP07a。
+`IN_PROGRESS`。整体计划已批准；MP00～MP06已交付，MP06c=782b3450。MP07a DONE/PASS（12项测试），准备Git交付后继续MP07b。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP07a推荐输入/曝光日志完成，见MP07A_RESULT。
 
 - MP06c控制台查询完成，MP06整体DONE，见MP06C_RESULT。
 
@@ -54,7 +56,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP06c：console依赖、画像/报表服务、Mapper/XML/配置及真实PG测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP07a：engine依赖、4个输入/曝光类、Mapper/XML/配置、ExposureWrite及测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -73,8 +75,8 @@ MP01～MP03已交付。当前MP06c：console依赖、画像/报表服务、Mappe
 
 ## 下一步
 
-1. MP06b已交付0249ae19，MP06c已完成，准备Git交付。
-2. 继续MP07～MP15，全部SQL完成后处理统一错误码。
+1. MP06c已交付782b3450，MP07a已完成，准备Git交付。
+2. 继续MP07b～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -122,3 +124,7 @@ DONE/PASS，见MP06B_RESULT；30项后端与自然/混排共10项真实浏览器
 ## MP06c检查点
 
 DONE/PASS，见MP06C_RESULT；旧8、新22测试及24 reactor编译通过。MP07a涉及DbSeenItemsSource、ColdStartDetector、PersonalizationScorer、ExposureLogger：主源行为，派生源用户/物品向量；现有ExposureLoggerTest只校验同步Redis归因，需真实PG保护批次约束失败整批不落、value/position一基与异步排空。与MP05a同类批处理迁移可用foreach多VALUES，但必须先验证旧行为。复用现有主/派生工厂，精确引擎Mapper扫描；RecommendIntegrationTest提供真实pgvector+Redis宿主验证。
+
+## MP07a检查点
+
+DONE/PASS，见MP07A_RESULT；旧8、新12及24 reactor编译通过。MP07b MmrReranker/DppReranker现有相同item_embedding::text查询，去重候选后逐行解析，失败时保留已解析向量并按类目降级；可共用EngineEmbeddingMapper新增具名ResultHandler方法，保留各算法原解析/计算。DppRerankerTest现有2个Mock测试需改Mapper；补真实pgvector对照，确保有向量/NULL/缺行/缺表/候选不足/池裁剪的排序与元数据不变。
