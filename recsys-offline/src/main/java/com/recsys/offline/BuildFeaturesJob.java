@@ -4,7 +4,9 @@ import com.recsys.feature.RedisFeatureService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -29,102 +31,89 @@ public class BuildFeaturesJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(BuildFeaturesJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final FeatureStatsMapper mapper;
     private final RedisFeatureService featureService;
 
-    public BuildFeaturesJob(JdbcTemplate jdbc, RedisFeatureService featureService) {
-        this.jdbc = jdbc;
+    /** 聚合Mapper绑定原主源，特征写入继续复用在线Redis字段协议。 */
+    public BuildFeaturesJob(FeatureStatsMapper mapper, RedisFeatureService featureService) {
+        this.mapper = mapper;
         this.featureService = featureService;
     }
 
+    /** 保持离线特征物化命令。 */
     @Override
     public String name() {
         return "build-features";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item)
-
+    /** 来源在单次运行内显式传递，避免作业实例留下上一轮的可变SQL来源。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
-        buildItemFeatures();
-        buildUserFeatures();
+        var behavior = BehaviorQuery.source(args);
+        var items = ItemQuery.source(args);
+        buildItemFeatures(behavior);
+        buildUserFeatures(behavior, items);
         log.info("build-features 完成");
     }
 
-    private void buildItemFeatures() {
-        Double maxCntD = jdbc.queryForObject(
-                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM " + bt + " " +
-                "WHERE action='RATING' GROUP BY item_id) t", Double.class);
+    private void buildItemFeatures(BehaviorSource behavior) {
+        Double maxCntD = mapper.maxItemRatingCount(behavior);
         double lnMax = Math.log1p(maxCntD == null ? 1.0 : maxCntD);
         int[] n = {0};
-        jdbc.query(
-                "SELECT item_id, count(*) cnt, avg(value) avg_v, coalesce(stddev_pop(value),0) std_v " +
-                "FROM " + bt + " WHERE action='RATING' GROUP BY item_id",
-                rs -> {
-                    long itemId = rs.getLong("item_id");
-                    long cnt = rs.getLong("cnt");
-                    double avg = rs.getDouble("avg_v");
-                    double popNorm = lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0;
-                    Map<String, Double> f = new HashMap<>();
-                    f.put("item_pop_norm", round(popNorm));
-                    f.put("item_avg_rating", round(avg));
-                    f.put("item_rating_cnt", (double) cnt);
-                    // 扩充特征(S2):评分离散度=共识/争议(与 as-of 的 sqrt(sumSq/cnt-mean^2) 同源)
-                    f.put("item_rating_std", round(rs.getDouble("std_v")));
-                    featureService.writeItemFeatures(itemId, f);
-                    n[0]++;
-                });
+        mapper.scanItemRatings(behavior, context -> {
+            var row = context.getResultObject();
+            long itemId = row.itemId();
+            long cnt = row.count();
+            double avg = row.average();
+            double popNorm = lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0;
+            Map<String, Double> f = new HashMap<>();
+            f.put("item_pop_norm", round(popNorm));
+            f.put("item_avg_rating", round(avg));
+            f.put("item_rating_cnt", (double) cnt);
+            // 扩充特征(S2):评分离散度=共识/争议(与 as-of 的 sqrt(sumSq/cnt-mean^2) 同源)
+            f.put("item_rating_std", round(row.deviation()));
+            featureService.writeItemFeatures(itemId, f);
+            n[0]++;
+        });
         log.info("物化 item 特征 {} 条", n[0]);
     }
 
-    private void buildUserFeatures() {
-        Double maxCntD = jdbc.queryForObject(
-                "SELECT max(cnt) FROM (SELECT count(*) cnt FROM " + bt + " " +
-                "WHERE action='RATING' GROUP BY user_id) t", Double.class);
+    private void buildUserFeatures(BehaviorSource behavior, CatalogTable items) {
+        Double maxCntD = mapper.maxUserRatingCount(behavior);
         double lnMax = Math.log1p(maxCntD == null ? 1.0 : maxCntD);
 
         // 1. 先在内存攒每个用户的特征(基础 + 各类目均分),最后一次性写,减少 Redis 往返
         Map<Long, Map<String, Double>> userFeats = new HashMap<>();
         Map<Long, Long> userCnt = new HashMap<>();   // 供交叉特征算 catratio(与 as-of 同源)
-        jdbc.query(
-                "SELECT user_id, count(*) cnt, avg(value) avg_v FROM " + bt + " " +
-                "WHERE action='RATING' GROUP BY user_id",
-                rs -> {
-                    long userId = rs.getLong("user_id");
-                    long cnt = rs.getLong("cnt");
-                    double avg = rs.getDouble("avg_v");
-                    double actNorm = lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0;
-                    userCnt.put(userId, cnt);
-                    Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
-                    f.put("user_act_norm", round(actNorm));
-                    f.put("user_avg_rating", round(avg));
-                });
+        mapper.scanUserRatings(behavior, context -> {
+            var row = context.getResultObject();
+            long userId = row.userId();
+            long cnt = row.count();
+            double avg = row.average();
+            double actNorm = lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0;
+            userCnt.put(userId, cnt);
+            Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
+            f.put("user_act_norm", round(actNorm));
+            f.put("user_avg_rating", round(avg));
+        });
 
         // 2. 交叉特征:用户 × 物品主类目 的历史均分 + 参与深度(S2:catcnt_norm/catratio)
         int[] catRows = {0};
-        jdbc.query(
-                "SELECT b.user_id, i.category, count(*) cnt, avg(b.value) avg_v " +
-                "FROM " + bt + " b JOIN " + it + " i ON b.item_id = i.item_id " +
-                "WHERE b.action='RATING' AND i.category IS NOT NULL " +
-                "GROUP BY b.user_id, i.category",
-                rs -> {
-                    long userId = rs.getLong("user_id");
-                    String cat = rs.getString("category");
-                    long cnt = rs.getLong("cnt");
-                    double avg = rs.getDouble("avg_v");
-                    Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
-                    f.put("catavg:" + cat, round(avg));
-                    f.put("catcnt_norm:" + cat, round(lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0));
-                    Long uc = userCnt.get(userId);
-                    if (uc != null && uc > 0) {
-                        f.put("catratio:" + cat, round((double) cnt / uc));
-                    }
-                    catRows[0]++;
-                });
+        mapper.scanCategoryRatings(behavior, items, context -> {
+            var row = context.getResultObject();
+            long userId = row.userId();
+            String cat = row.category();
+            long cnt = row.count();
+            double avg = row.average();
+            Map<String, Double> f = userFeats.computeIfAbsent(userId, k -> new HashMap<>());
+            f.put("catavg:" + cat, round(avg));
+            f.put("catcnt_norm:" + cat, round(lnMax > 0 ? Math.log1p(cnt) / lnMax : 0.0));
+            Long uc = userCnt.get(userId);
+            if (uc != null && uc > 0) {
+                f.put("catratio:" + cat, round((double) cnt / uc));
+            }
+            catRows[0]++;
+        });
 
         userFeats.forEach(featureService::writeUserFeatures);
         log.info("物化 user 特征 {} 个用户(含交叉类目均分 {} 条)", userFeats.size(), catRows[0]);

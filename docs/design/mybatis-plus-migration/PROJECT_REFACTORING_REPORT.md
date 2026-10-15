@@ -65,9 +65,9 @@
 
 证据入口：PLAN、SQL_INVENTORY、BACKEND_ARCHITECTURE、TECH_SELECTION、PROGRESS_STATE；本轮编译日志 `/tmp/recsys-mybatis-baseline-compile.log`。
 
-## 当前增量状态（MP13d4）
+## 当前增量状态（MP13d5）
 
-前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d4；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线184/34类通过，全仓24 reactor测试编译通过，不代表最终全仓验收。
+前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线191/35类通过，全仓24 reactor测试编译通过，不代表最终全仓验收。
 
 新增已证实技术债：ImportR9EmbeddingsJob原手动事务会提交/回滚外层先行工作，迁移R9EmbeddingStore保持该边界并用真实PG保护；未来事务治理须独立决定传播策略。Lookalike/Hot沿用两条Redis命令删除后写入，窗口仍存在，不能宣称原子替换；查询失败发生在删除前时旧数据保留已实证，见MP13C7_RESULT/MP13D1_RESULT。
 

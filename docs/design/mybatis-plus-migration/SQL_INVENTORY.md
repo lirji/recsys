@@ -128,7 +128,7 @@
 | [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | DONE MP13c1：derived向量写入；见MP13C1_RESULT |
 | [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | DONE MP13a2/d3：正反馈与曝光均Mapper；见MP13D3_RESULT |
 | [com/recsys/offline/BehaviorQuery.java](../../../recsys-offline/src/main/java/com/recsys/offline/BehaviorQuery.java) | 51 | 1 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
-| [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | TODO |
+| [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | DONE MP13d5：五评分聚合/流式特征物化；见MP13D5_RESULT |
 | [com/recsys/offline/ColdBanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ColdBanditStatsJob.java) | 8 | 1 | DONE MP13d2：主源类目聚合/类型化统计；见MP13D2_RESULT |
 | [com/recsys/offline/DataQualityJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DataQualityJob.java) | 6 | 9 | TODO |
 | [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |

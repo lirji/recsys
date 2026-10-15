@@ -436,3 +436,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13d4最终验证
 
 见MP13D4_RESULT。旧7、新关联8、完整离线184/34类、全仓24 reactor测试编译/hygiene通过。6源指纹66ef8a4b5b689517f00cf62b355c552934a52351722fab36c85e08087e9f7edd；stemming/df/别名、双目录、2000批次、空语料与单Hash发布失败边界保持。2d1712b5 CI38760632548五门禁全部SUCCESS。d3=895d7e23与本片正常ff/push后继续BuildFeaturesJob。
+
+## MP13d5入口
+
+旧BuildFeatures真实PG/Redis7项已通过，现迁移五聚合至主源FeatureStatsMapper/XML，三个具名结果保持NULL ID/均值读取0、原分组/总体标准差/计数。ResultHandler仍逐行写item特征，user仍聚齐后写；双来源由单次运行显式传参，不留下可变SQL字段。原晚期目录错误保留item/旧user、真实Redis WRONGTYPE错误关闭DB的断言不放宽。
+
+## MP13d5最终验证
+
+见MP13D5_RESULT。旧7、新关联8、完整离线191/35类、全仓24 reactor测试编译/hygiene通过。5源指纹46d2b5fda0c2d1097780a47c64f6230918528ddf13839e7a4d3411cfaa7e2b0b；评分NULL/标准差/四位归一化与交叉特征、来源切换、Hash合并、晚期SQL与Redis WRONGTYPE失败边界保持。去掉可变SQL表字段，显式传递单次来源；继续MP13e1 FTRL物品池，原池顺序不能被新增排序改变。

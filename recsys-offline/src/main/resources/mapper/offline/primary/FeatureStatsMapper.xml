@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper">
+    <resultMap id="itemRatings" type="com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper$ItemRatings">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="count" column="cnt" javaType="_long"/>
+            <arg name="average" column="avg_v" javaType="_double"/>
+            <arg name="deviation" column="std_v" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="userRatings" type="com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper$UserRatings">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="count" column="cnt" javaType="_long"/>
+            <arg name="average" column="avg_v" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="categoryRatings" type="com.recsys.offline.persistence.mapper.primary.FeatureStatsMapper$CategoryRatings">
+        <constructor>
+            <arg name="userId" column="user_id" javaType="_long"/>
+            <arg name="category" column="category" javaType="java.lang.String"/>
+            <arg name="count" column="cnt" javaType="_long"/>
+            <arg name="average" column="avg_v" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <sql id="behavior">
+        <choose>
+            <when test="behavior.name() == 'BEHAVIOR_LOG'">behavior_log</when>
+            <otherwise>user_behavior</otherwise>
+        </choose>
+    </sql>
+    <select id="maxItemRatingCount" resultType="java.lang.Double" useCache="false">
+        SELECT max(cnt) FROM (SELECT count(*) cnt FROM <include refid="behavior"/>
+            WHERE action='RATING' GROUP BY item_id) t
+    </select>
+    <select id="scanItemRatings" resultMap="itemRatings" useCache="false">
+        <!-- NULL与实际0仍按原列分别分组，只在读取投影时保留getLong/getDouble的0语义。 -->
+        SELECT COALESCE(b.item_id,0) AS item_id,count(*) cnt,coalesce(avg(b.value),0) avg_v,
+               coalesce(stddev_pop(b.value),0) std_v
+        FROM <include refid="behavior"/> b WHERE b.action='RATING' GROUP BY b.item_id
+    </select>
+    <select id="maxUserRatingCount" resultType="java.lang.Double" useCache="false">
+        SELECT max(cnt) FROM (SELECT count(*) cnt FROM <include refid="behavior"/>
+            WHERE action='RATING' GROUP BY user_id) t
+    </select>
+    <select id="scanUserRatings" resultMap="userRatings" useCache="false">
+        SELECT COALESCE(b.user_id,0) AS user_id,count(*) cnt,coalesce(avg(b.value),0) avg_v
+        FROM <include refid="behavior"/> b WHERE b.action='RATING' GROUP BY b.user_id
+    </select>
+    <select id="scanCategoryRatings" resultMap="categoryRatings" useCache="false">
+        SELECT COALESCE(b.user_id,0) AS user_id,i.category,count(*) cnt,coalesce(avg(b.value),0) avg_v
+        FROM <include refid="behavior"/> b JOIN
+        <choose>
+            <when test="items.name() == 'REPLICA'">item_local</when>
+            <otherwise>item</otherwise>
+        </choose> i ON b.item_id=i.item_id
+        WHERE b.action='RATING' AND i.category IS NOT NULL
+        GROUP BY b.user_id,i.category
+    </select>
+</mapper>
