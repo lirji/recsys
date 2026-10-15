@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID修复52f9fba8及连接探针773cf8c3已ff/push main；MP13b7=ac21c920已ff/push main；MP13b8=42b2de17已ff/push main；MP13c1=cd144c02已ff/push main；MP13c2=38e404f1已ff/push main；MP13c3=9d7897b5已ff/push main；MP13c4=e527177c本地提交，MP13c5本地DONE/PASS，两片准备正常ff/push main。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划及Mapper/XML形式已批准。MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5、f1～f5实施与验证已完成；f4=a871eb76，f5及其验收证据见MP13F5_RESULT，两片按原授权相邻正常交付。MP13f3之前已正常合并/push main至0a4481f9，CI38776191398五门禁全部SUCCESS。逐片源码指纹、行为证据和历史交付记录见下方各RESULT；此段是当前入口，不以历史阶段状态覆盖最新事实。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -55,12 +55,12 @@
 
 - 计划已批准；无需重复确认。
 - MP00～MP12已完成；MP13剩余离线作业、MP14、MP15及追加统一错误码目标未完成。
-- 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
-- MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
+- 当前验证以最新MP13F4_RESULT/MP13F5_RESULT为准；全仓clean verify和显式浏览器最终验收留待MP15，未执行项不记PASS。
+- 最新完整成功CI为0a4481f9的38776191398；后续提交须按对应SHA核验，不能继承该远程结果。
 
 ## 已修改文件
 
-MP00～MP12及MP13a1/a2、b1～b6已交付。当前修复共用正反馈Mapper对历史可空ID的兼容，之后继续b7推荐模拟；具体见OFFLINE_NULL_ID_RESULT。根恢复文档只更新入口，旧暂停交接字节保留。
+本批改动为MP13f5 oCPC输入及必要测试/文档；f4为a871eb76独立提交，两片相邻交付。根恢复文档只更新活跃任务前缀，旧暂停交接字节保留；下方历史章节不代表仍未完成。
 
 ## 保护内容
 
@@ -79,7 +79,7 @@ MP00～MP12及MP13a1/a2、b1～b6已交付。当前修复共用正反馈Mapper�
 
 ## 下一步
 
-1. MP13c4/c5均完成验证，正常ff/push后继续MP13c6 R9三组向量发布的真实事务保护。
+1. 继续DataQuality主/派生源统计、旧装配清理及Flink类目加载；核验本批对应远程CI。
 2. 继续MP13～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -488,3 +488,9 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13f4最终验证
 
 见MP13F4_RESULT。旧10、新关联11、完整离线262/44类及全仓24 reactor测试编译/hygiene通过。9源指纹116b51573a09d0b50c6d7a027103b49acc22910df616fe01a27ae15154c95299。广告/AB六查询进入主源Mapper/XML；六份完整CSV与旧一致，原NULL分组/排序、不同事件时间窗口、晚bucket部分输出、CUPED pre/post/ITT和Timestamp毫秒语义保持。0a4481f9 CI38776191398四专项成功/build在途。本片先本地提交，继续MP13f5 oCPC四条主源/分片查询，之后相邻正常交付。
+
+## MP13f5最终验证
+
+见MP13F5_RESULT。旧9、新关联10、完整离线271/45类、全仓24 reactor测试编译/hygiene通过。7源指纹890bf1921467a5088b3ce124482acedab3eba295f10de59fab3b3dad1d1cc344。oCPC四SQL进入真实分片目标Mapper及主源反馈Mapper，bigint数组、AVG、普通JOIN乘积、精确点击时间窗口、未来转化排除、延迟权重和Redis部分发布保持。days<=0的epoch下界与旧说明差异列入后续提示治理。0a4481f9 CI38776191398五门禁全部SUCCESS；f4=a871eb76与本片正常ff/push后继续DataQuality最后七次查询。
+
+残留结构核查：业务SQL清单仅DataQuality与RealtimeFeatureJob待迁移。最终清理还须处理offline/ad旧JdbcTemplate Bean及advertiser隐藏派生DataSource适配；advertiser不能因新增DataSource Bean使Boot主分片源自动配置退避，应沿已有真实装配测试验证。R9内部JdbcTemplate仅承担无SQL连接适配，保留已测试的手动事务边界。

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper">
+    <resultMap id="spend" type="com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper$Spend">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="amount" column="s" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="conversion" type="com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper$Conversion">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="elapsedDays" column="elapsed_days" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <sql id="sourceTable"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <sql id="clickWindow">
+        clk.ts &gt;= <choose><when test="days &gt; 0">now()-#{days}*interval '1 day'</when><otherwise>'epoch'</otherwise></choose>
+    </sql>
+    <select id="scanSpend" resultMap="spend" useCache="false">
+        SELECT clk.ad_id AS ad_id,COALESCE(SUM(imp.charged_price),0) AS s
+        FROM <include refid="sourceTable"/> clk
+        JOIN <include refid="sourceTable"/> imp ON imp.request_id=clk.request_id AND imp.ad_id=clk.ad_id AND imp.event_type='IMPRESSION'
+        WHERE clk.event_type='CLICK' AND <include refid="clickWindow"/>
+        AND clk.ad_id=ANY(#{adIds,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+        GROUP BY clk.ad_id
+    </select>
+    <select id="scanConversions" resultMap="conversion" useCache="false">
+        SELECT cvt.ad_id AS ad_id,EXTRACT(EPOCH FROM (now()-clk.ts))/86400.0 AS elapsed_days
+        FROM <include refid="sourceTable"/> cvt
+        JOIN <include refid="sourceTable"/> clk ON clk.request_id=cvt.request_id AND clk.ad_id=cvt.ad_id AND clk.event_type='CLICK'
+        WHERE cvt.event_type='CONVERSION' AND cvt.ts &lt;= now() AND <include refid="clickWindow"/>
+        AND cvt.ad_id=ANY(#{adIds,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+</mapper>

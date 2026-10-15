@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper">
+    <resultMap id="target" type="com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper$Target">
+        <constructor>
+            <arg name="advertiserId" column="advertiser_id" javaType="_long"/>
+            <arg name="targetCpa" column="t" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="owner" type="com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper$Owner">
+        <constructor>
+            <arg name="adId" column="ad_id" javaType="_long"/>
+            <arg name="advertiserId" column="advertiser_id" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <select id="scanTargets" resultMap="target" useCache="false">
+        SELECT COALESCE(advertiser_id,0) AS advertiser_id,AVG(target_cpa) AS t
+        FROM ad WHERE optimization_type='OCPC' AND target_cpa &gt; 0 GROUP BY advertiser_id
+    </select>
+    <select id="scanOwners" resultMap="owner" useCache="false">
+        SELECT COALESCE(ad_id,0) AS ad_id,COALESCE(advertiser_id,0) AS advertiser_id
+        FROM ad WHERE optimization_type='OCPC' AND target_cpa &gt; 0
+    </select>
+</mapper>

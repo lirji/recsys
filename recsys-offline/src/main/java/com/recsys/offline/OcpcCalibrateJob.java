@@ -5,7 +5,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.OcpcFeedbackMapper;
+import com.recsys.offline.persistence.mapper.sharded.OcpcTargetMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -42,18 +44,14 @@ public class OcpcCalibrateJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(OcpcCalibrateJob.class);
 
-    /** 主库:ad_event(单表 ds_0)聚合。 */
-    private final JdbcTemplate jdbc;
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
-    /** 分片库:ad(OCPC 广告 → 目标 CPA / 广告主映射)。 */
-    private final JdbcTemplate sharded;
+    private final OcpcFeedbackMapper feedback;
+    private final OcpcTargetMapper targets;
     private final StringRedisTemplate redis;
 
-    public OcpcCalibrateJob(JdbcTemplate jdbc,
-                            @org.springframework.beans.factory.annotation.Qualifier("adShardingJdbc")
-                            JdbcTemplate sharded, StringRedisTemplate redis) {
-        this.jdbc = jdbc;
-        this.sharded = sharded;
+    /** 主源事件与逻辑分片广告通过各自Mapper读取，不能跨库JOIN或新增池。 */
+    public OcpcCalibrateJob(OcpcFeedbackMapper feedback, OcpcTargetMapper targets, StringRedisTemplate redis) {
+        this.feedback = feedback;
+        this.targets = targets;
         this.redis = redis;
     }
 
@@ -64,14 +62,13 @@ public class OcpcCalibrateJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         int days = intArg(args, "days", 7);
         double alpha = dblArg(args, "alpha", 0.5);
         double kMin = dblArg(args, "min", 0.2);
         double kMax = dblArg(args, "max", 5.0);
         boolean delayCorrect = boolArg(args, "delay-correct", true);
         double minCompletion = dblArg(args, "min-completion", 0.05);
-        String since = days > 0 ? "now() - interval '" + days + " days'" : "'epoch'";
 
         // 延迟转化模型:λ(1/天)。开启纠偏且 Redis 有 λ 时,对转化做 Horvitz–Thompson 加权;否则原始计数。
         double lambda = delayCorrect ? readLambda() : 0.0;
@@ -82,62 +79,45 @@ public class OcpcCalibrateJob implements OfflineJob {
 
         // 1. OCPC 广告:每个广告主的目标 CPA(均值)+ ad_id→advertiser_id 映射(分片库)
         Map<Long, Double> targetCpa = new HashMap<>();
-        sharded.query(
-                "SELECT advertiser_id, AVG(target_cpa) AS t FROM ad " +
-                "WHERE optimization_type='OCPC' AND target_cpa > 0 GROUP BY advertiser_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        targetCpa.put(rs.getLong("advertiser_id"), rs.getDouble("t")));
+        targets.scanTargets(context -> {
+            var row = context.getResultObject();
+            targetCpa.put(row.advertiserId(), row.targetCpa());
+        });
         if (targetCpa.isEmpty()) {
             log.warn("无 OCPC 广告(先 --job=seed-ads),跳过");
             return;
         }
         Map<Long, Long> adToAdv = new HashMap<>();
-        sharded.query(
-                "SELECT ad_id, advertiser_id FROM ad WHERE optimization_type='OCPC' AND target_cpa > 0",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        adToAdv.put(rs.getLong("ad_id"), rs.getLong("advertiser_id")));
+        targets.scanOwners(context -> {
+            var row = context.getResultObject();
+            adToAdv.put(row.adId(), row.advertiserId());
+        });
         Long[] ocpcAdIds = adToAdv.keySet().toArray(new Long[0]);
 
         // 2. 窗口内花费(主库 ad_event:点击归因到曝光 GSP 价),按 ad_id 聚合 → 折算到广告主
         Map<Long, Double> spend = new HashMap<>();
-        jdbc.query(
-                "SELECT clk.ad_id AS ad_id, SUM(imp.charged_price) AS s " +
-                "FROM " + aet + " clk " +
-                "JOIN " + aet + " imp ON imp.request_id = clk.request_id AND imp.ad_id = clk.ad_id " +
-                "  AND imp.event_type='IMPRESSION' " +
-                "WHERE clk.event_type='CLICK' AND clk.ts >= " + since + " AND clk.ad_id = ANY(?) " +
-                "GROUP BY clk.ad_id",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ocpcAdIds)),
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    Long adv = adToAdv.get(rs.getLong("ad_id"));
-                    if (adv != null) {
-                        spend.merge(adv, rs.getDouble("s"), Double::sum);
-                    }
-                });
+        feedback.scanSpend(source, days, ocpcAdIds, context -> {
+            var row = context.getResultObject();
+            Long adv = adToAdv.get(row.adId());
+            if (adv != null) {
+                spend.merge(adv, row.amount(), Double::sum);
+            }
+        });
 
         // 3. 窗口内转化(主库 ad_event)。逐条取 (ad_id, 该点击的 elapsed 天数) → 映射到广告主,按 DelayModel.htWeight
         //    累加(纠偏公式收敛在 DelayModel,唯一真相)。correcting=false 时权重恒 1(=原始计数)。
         Map<Long, Double> conversions = new HashMap<>();   // 终值(可能为小数)
         Map<Long, Long> rawConv = new HashMap<>();         // 已观测原始计数
-        jdbc.query(
-                "SELECT cvt.ad_id AS ad_id, " +
-                "       EXTRACT(EPOCH FROM (now() - clk.ts)) / 86400.0 AS elapsed_days " +
-                "FROM " + aet + " cvt " +
-                "JOIN " + aet + " clk ON clk.request_id = cvt.request_id AND clk.ad_id = cvt.ad_id " +
-                "  AND clk.event_type='CLICK' " +
-                "WHERE cvt.event_type='CONVERSION' AND cvt.ts <= now() AND clk.ts >= " + since +
-                "  AND cvt.ad_id = ANY(?)",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ocpcAdIds)),
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                    Long adv = adToAdv.get(rs.getLong("ad_id"));
-                    if (adv == null) {
-                        return;
-                    }
-                    double elapsed = rs.getDouble("elapsed_days");
-                    double w = correcting ? DelayModel.htWeight(lambda, elapsed, minCompletion) : 1.0;
-                    conversions.merge(adv, w, Double::sum);
-                    rawConv.merge(adv, 1L, Long::sum);
-                });
+        feedback.scanConversions(source, days, ocpcAdIds, context -> {
+            var row = context.getResultObject();
+            Long adv = adToAdv.get(row.adId());
+            if (adv == null) {
+                return;
+            }
+            double w = correcting ? DelayModel.htWeight(lambda, row.elapsedDays(), minCompletion) : 1.0;
+            conversions.merge(adv, w, Double::sum);
+            rawConv.merge(adv, 1L, Long::sum);
+        });
 
         int updated = 0, held = 0;
         for (Map.Entry<Long, Double> e : targetCpa.entrySet()) {
