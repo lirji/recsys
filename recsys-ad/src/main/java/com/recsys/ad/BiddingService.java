@@ -9,6 +9,8 @@ import com.recsys.common.ad.billing.FrozenCpmQuote;
 import com.recsys.common.ad.billing.ClickPrice;
 import com.recsys.common.ad.billing.GspPrice;
 import com.recsys.common.ad.billing.FrozenClickQuote;
+import com.recsys.common.ad.billing.ConversionPrice;
+import com.recsys.common.ad.billing.FrozenConversionQuote;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -124,6 +126,24 @@ public class BiddingService {
         return List.copyOf(quotes);
     }
 
+    /** CPA单次转化报价与展示快照成对传递，不从旧chargedPrice反推。 */
+    public record ConversionQuotedAd(SponsoredAd ad, ConversionPrice price) {}
+
+    /** 精确CPA路径只支持标准GSP；不触发旧转化或outcome写入。 */
+    public List<ConversionQuotedAd> auctionSandboxConversion(List<AdCandidate> candidates,Map<Long,Double> pctrRawByItem,
+            Map<Long,Double> pcvrByItem,Map<Long,AdRepository.OcpcParams> typesByAd,Map<Long,String> titleByAd,
+            String calibModel,int slots,double reserve) {
+        if(slots<1 || slots>FrozenConversionQuote.MAX_SLOTS)throw new IllegalArgumentException("转化广告位须为1～10");
+        GspPrice.money(GspPrice.decimal(reserve));
+        if(props.getAuction().getVcg().isEnabled() || props.getAuction().getListwise().isEnabled()) {
+            throw new IllegalStateException("sandbox精确CPA报价仅支持标准GSP");
+        }
+        var quotes=new ArrayList<ConversionQuotedAd>();
+        auctionInternal(candidates,pctrRawByItem,pcvrByItem,Map.of(),typesByAd,titleByAd,calibModel,slots,reserve,null,
+                new ExactPricing(Set.of(BidType.CPA),(ad,basis)->quotes.add(new ConversionQuotedAd(ad,new ConversionPrice(basis)))));
+        return List.copyOf(quotes);
+    }
+
     /** 首版仅支持 CPM/GSP；未支持算法明确拒绝，禁止退回旧 double 报价作为收费真值。 */
     public List<QuotedAd> auctionSandboxCpm(List<AdCandidate> candidates, Map<Long, Double> pctrRawByItem,
             Map<Long, AdRepository.OcpcParams> ocpcByAd, Map<Long, String> titleByAd,
@@ -168,8 +188,8 @@ public class BiddingService {
             double pctrCalib = clampProb(calibrator.calibrate(pctrRaw, calibModel));
             AdRepository.OcpcParams ocpc = ocpcByAd.getOrDefault(c.adId(), DEFAULT_CPC);
             BidType type = BidType.from(ocpc.optimizationType());
-            if (exactQuotes != null && exactQuotes.modes().contains(BidType.CPC)) {
-                // 旧from兼容未知值为CPC，新收费契约不能把未知模式静默当成点击计费。
+            if (exactQuotes != null && (exactQuotes.modes().contains(BidType.CPC) || exactQuotes.modes().contains(BidType.CPA))) {
+                // 旧from兼容未知值为CPC，新增点击/CPA收费契约不能把未知模式静默当成CPC。
                 type = BidType.valueOf(ocpc.optimizationType());
             }
             if (exactQuotes != null && !exactQuotes.modes().contains(type)) continue;

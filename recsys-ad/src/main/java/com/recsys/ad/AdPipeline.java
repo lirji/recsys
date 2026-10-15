@@ -142,6 +142,24 @@ public class AdPipeline {
         return List.copyOf(result);
     }
 
+    /** CPA路径只返回候选和精确依据；最终选择前不得创建预占或写旧曝光/反作弊去重。 */
+    public List<BiddingService.ConversionQuotedAd> sandboxConversionCandidates(long userId, StructuredQuery query, int slots,
+                                                                   String scene, double reserve) {
+        com.recsys.common.ad.delivery.SandboxDelivery.requireSlot(slots);
+        if (query == null || query.normalized() == null || query.normalized().isBlank()) return List.of();
+        var candidates = audienceTargeting.filter(userId, relevanceGate.filter(adRecallService.recall(
+                new AdRecallContext(query, userId, props.getRecall().getKw(), List.of()))));
+        if (candidates.isEmpty()) return List.of();
+        Set<Long> ids = candidates.stream().map(AdCandidate::adId).collect(Collectors.toSet());
+        var scores = score(userId, candidates, scene);
+        var quotes = biddingService.auctionSandboxConversion(candidates, scores.pctr(), scores.pcvr(),
+                catalogReader.ocpcParams(ids), catalogReader.titles(ids), props.getCalibModel(), slots, reserve);
+        var creativeAds = applyDco(quotes.stream().map(BiddingService.ConversionQuotedAd::ad).toList());
+        var result = new ArrayList<BiddingService.ConversionQuotedAd>();
+        for (int i = 0; i < quotes.size(); i++) result.add(new BiddingService.ConversionQuotedAd(creativeAds.get(i), quotes.get(i).price()));
+        return List.copyOf(result);
+    }
+
     /**
      * 执行广告管线。{@code sq} 已由调用方(rec-engine)解析,{@code adBucket}/{@code reserve} 来自实验分配。
      *

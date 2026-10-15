@@ -388,3 +388,10 @@ ORDER BY updated_at,operation_id LIMIT 100;
 ~~~
 
 迁移和开关尚未施加到共享环境；本轮验证全部在隔离schema和临时broker执行。不承诺未测量的容量、RTO/RPO或账本自动保留期限。
+
+
+## S12A：CPA报价准备（尚未接收转化）
+
+Q-04已确认签发起统一五分钟、一资格最多一次收费、先到转化等待可见曝光、窗口外或释放后仅非计费。当前A片只包含精确CPA竞价与V012不可变报价，没有转化HTTP/RPC、预占或收费入口。金额单位PER_CONVERSION，完整单次转化价，不按pCTR/pCVR折小预算义务。
+
+后续需启用时，在adDb追加V012 `db/ad-billing/V012__conversion_quote.sql`，沿前述显式迁移及摘要登记流程；应用不自动迁移。`recsys.ad.billing.conversions-enabled`默认false，另须sandbox和正确ad owner才装配报价。此开关只安装报价组件，不代表CPA已可用。当前不在共享环境开启；回退关闭新报价配置并保留历史，原CPM/CPC不受影响。

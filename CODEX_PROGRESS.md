@@ -4,7 +4,7 @@
 
 连续实施企业搜推广“曝光可信、钱算对、事件不漏、故障可恢复、效果可验证”，依据 `docs/design/enterprise-reliability/PLAN.md` 原DAG逐片验证、正常Git合并推送main。用户已明确开始实施/继续；不能完成一片就停止，不启用真实收费或生产部署。
 
-2026-10-15：S11B/C1已交付，C2与父S11已完成实现及验证，当前正常Git交付后继续S12。原总体计划与五类前端规划已审查并批准，不重开规划或重复询问已确认政策。
+2026-10-15：S11B/C1已交付，C2与父S11已完成并交付f914f571；C2修复6904889c已交付，当前feat/sandbox-conversion-settlement分支S12A已验证（262钱链路），待正常交付后继续S12B。原总体计划与五类前端规划已审查并批准，不重开规划或重复询问已确认政策。
 
 ## 已完成
 
@@ -18,11 +18,12 @@
 - S11A 365595e2：精确CPC/OCPC GSP、纯候选、V008；170钱链路PASS，CI38691727206 SUCCESS。
 - S11B b2c2911a：V009点击资格/双条件/PG反作弊/共享硬预算/账本Outbox/回收；197钱链路（22新PG+5worker）PASS，CI38694445617全部SUCCESS。
 - S11C1 e599b3e5：V010独立点击可靠事件/Inbox/共同回执身份索引及日投影；216钱链路（12新PG+5Kafka+2配置）PASS，CI38695851841全部SUCCESS。
+- S12A DONE / PASS：CPA精确GSP、纯候选与V012独立不可变五分钟报价；14专项与262完整钱链路/55类均0失败/错误/跳过。未实现转化接收/扣款，父S12仍IN_PROGRESS。源指纹b2aa077745b5fd3cd8b6129776c559eb9c346359366482224b9381aec4d773bf，详见ER-S12A_RESULT。
 - **S11C2及父S11 DONE / PASS**：ad V011/engine V004、稳定资格获取和原ID恢复、认证HTTP/可信gRPC及in-process同owner。最终249钱链路（0失败/错误/跳过），23模块clean verify=577项、0失败/错误、4既有按需门禁跳过；详见ER-S11C2_RESULT和ER-S11_RESULT。尚未共享环境启用。
 
 ## 已修改文件
 
-当前原目录单worktree，分支`feat/sandbox-click-settlement`，C2基线`e599b3e524c19b7f277d3253293a20a4f13a5e7a`。当前C2待本次正常Git交付的范围：
+当前原目录单worktree，分支`feat/sandbox-conversion-settlement`，S12A基线`6904889c6e38784a7b61d7fb01da3ab8edef60bd`。以下C2范围已交付；当前新增S12A设计/源码已完成验证：
 
 - common-ad ClickDelivery.Offer与有限ChargeMode；ad ClickPreparationService/Configuration、PreparationRepository有限模式复用和V011，旧CPM装配显式Qualifier，ClickSettlementService资源身份。
 - proto click.v1/ClickProtoMapper；ad-serving SandboxClickGrpcService；engine两类gateway、固定模式复用交付Repository/Service、ClickDeliveryConfiguration、两个HTTP controller、V004。
@@ -32,21 +33,21 @@
 
 ## 未完成
 
-- C2正常Git交付及其远程CI状态需按实际完成记录；父S11实现/本地验证已完成，不重做A/B/C1。
+- C2已正常合并推送f914f571，远程CI38698175497浏览器门禁失败，其他四项成功。正在独立fix/sandbox-browser-service-wiring修复旧测试宿主Bean名；本地广告4+自然5+混排5=14浏览器全通过；6904889c已正常提交合并推送main，远程CI待核对。父S11业务实现不重做。
 - **S12～S25未完成**，下一项S12 CPA：先细化正式契约和精确候选/不可变报价，随后经广告主认证的业务键/双条件原子捕获、迟到非计费结果、稳定交付/双模式/可靠事件。Q-04已定。
 - 后续真实发布来源/期初资金、容量/RTO/RPO/保留目标仍待业务决定，不阻断独立sandbox实现。
 - S15保持原范围（自然Outbox和旧BehaviorService可靠事件），不能因自然分支已存在而遗漏旧行为事件。
 
 ## 当前问题
 
-- 当前无实现阻塞。根级无canonical formatter及独立Java静态分析为既有限制；不引入新工具或全仓格式化。
+- C2浏览器装配修复6904889c已交付，待远程CI确认；S12A完整钱链路262项已通过。根级无canonical formatter及独立Java静态分析为既有限制；不引入新工具或全仓格式化。
 - 所有新链路默认关闭，仅sandbox；自然Outbox仍只有落库，实际投递属于S15。C15A未跟踪文档仅备选草案，不纳入当前交付。
 - 必须保留七项指纹文件：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md、未跟踪docs/design/enterprise-reliability/C15A_DESIGN.md。指纹`/tmp/recsys-s11b-protected.json`。
 - console/test-results/及忽略的env、数据、模型、虚拟环境、构建产物保留；没有额外worktree，无清理授权。
 
 ## 下一步建议
 
-1. 核对C2当前源码指纹/验证结果，完成明确路径提交、正常快进合并和push origin/main；用户已持续授权，不再问。记录提交及CI，保护上述文件。
+1. C2已正常交付f914f571，核对其CI。S12A已验证，正常交付后继续S12B/C（C12B已细化且依赖就绪）；保护上述文件。
 2. 创建或复用S12任务分支（原项目目录，不另建worktree），按原DAG开始CPA。窗口政策已批准，授权模型可复用AdvertiserAuthz/AuthzEngine，但新收费入口必须强制归属/fail-closed，不能沿用disabled/shadow的放行。
 3. S12内部宜按可审查单元推进：精确CPA GSP/报价；广告主作用域业务eventId与结算；双模式API/稳定交付/事件。不能只做报价或Outbox落库就把父S12标DONE。
 4. 继续S13～S25，逐片真实组件验证、更新进度并正常交付；不执行真实收费切换或生产部署。
@@ -60,7 +61,7 @@
 - 点击资金锁序quote→回执唯一键→首次CLICK用户rate→原日账户，持锁后重读DB时间；第一次条件WAITING、第二条件同事务捕获，风控拒绝同事务释放。原决定不可变，查询另给当前状态；PG反作弊默认true/20，重试不计数。
 - 点击C1固定独立AdClickCapturedV1，原两个canonical回执与原日金额；Inbox每事实去重且跨两种receipt身份唯一，低账户版本独立事实仍累加。20次发送/30秒fence/ACK后标记；DB提交后offset+1，毒消息不跳过。CPM+点击合计账本才对账共享账户。
 - 暂停新交付用click-preparation-admission-enabled=false，保留回执/查询/回收/事件续发；紧急停止接收用click-receipt-admission-enabled=false，不关闭整个owner遗留held。已完成准备可在key轮换后恢复；未完成待验签及在途新条件仍需保留旧key。
-- S12调研：既有AdvertiserAuthz disabled/shadow会放行，不能用于新CPA收费边界；已有AuthzEngine按advertiser权限与internal-token主体，可添加专用严格入口复用。当前旧AdPipeline.recordConversion/AdOutcomeService存在独立写入，不能直接拼接成新的幂等钱链路。本轮尚未修改S12代码。
+- S12调研：既有AdvertiserAuthz disabled/shadow会放行，不能用于新CPA收费边界；已有AuthzEngine按advertiser权限与internal-token主体，可添加专用严格入口复用。当前旧AdPipeline.recordConversion/AdOutcomeService存在独立写入，不能直接拼接成新的幂等钱链路。当前开始S12A代码；S12B具体认证/业务键尚待冻结。
 - S09/S10既有前端队列：每协议100/512KiB/1h/2并发/6自动轮；未知GET→404且未过期才同ID/body PUT；过期仅查，同主体续期不清。混排完整顺序先冻结，失败不补位；自然owner与ad owner独立。
 
 ## 恢复 Prompt

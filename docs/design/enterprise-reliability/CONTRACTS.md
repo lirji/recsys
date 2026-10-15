@@ -207,3 +207,13 @@ S11C内事件验证单元，正式字段校验/Inbox幂等/投递与位点恢复
 ## C11C2：点击稳定交付与在线边界
 
 正式协议见[C11C2设计](C11_DESIGN.md#c11c2-正式在线交付与双模式边界)。独立click-offer/click-qualification、ad V011/engine V004检查点与固定模式复用；三组ADMIN HTTP路径和SandboxClickService RPC，原ID恢复、原决定与当前状态分离。C04/C05旧协议保持不变，新路径默认关闭，完整双模式验证后方可完成父S11。
+
+
+## C12A：精确CPA报价
+
+正式协议见[C12A设计](C12_DESIGN.md#c12a-正式精确报价契约)。ConversionPrice固定CPA/PER_CONVERSION/CPA_GSP_CNY6_V1，复用精确GSP；ad V012独立不可变五分钟报价，纯候选在最终选择前零资金效果。Q-04已批准，但本片未实现广告主转化接收或扣款。
+
+
+## C12B：CPA业务转化与双条件资金
+
+正式协议见[C12B设计](C12_DESIGN.md#c12b-结算实施契约承接已批准q-04)。转化eventId为广告主作用域UUID，原actor审计、同业务请求可由当前另一个有权主体恢复；occurredAt与接收时间都须在统一窗口。独立可见/业务事实表和一资格一账本共享硬预算，等待/迟到/重复结果可解释；回收及暂停独立。B只建立内部owner闭环，C必须通过严格广告主归属、独立caller及双模式公开入口与Kafka验收后才算S12完成。

@@ -103,3 +103,8 @@ flowchart LR
 旧 v1 字段号保留，破坏性语义使用新版本或显式能力协商；旧客户端缺资格不能自动进入新计费路径。关新链路的开关停止新增签发，保留账本、Outbox、未决预占和释放任务。代码回退不等于资金回退；禁止回退到 Redis 放行扣费，已收费事实只能业务补偿。
 
 本轮只形成设计。新表、索引、唯一约束、事务入口、迁移版本、契约错误码和运行目标都需由 D0 冻结后进入实施，不能将本文当已上线契约。
+
+
+### S12A增量事实（2026-10-15）
+
+CPA精确候选复用GspPrice计算，独立ConversionPrice/FrozenConversionQuote和ad_conversion_quote(V012)保持单次转化单位与不可变五分钟身份。该路径最终选择前无预算/曝光/旧outcome效果。conversions-enabled默认关闭，仅ad owner可装配；广告主认证、业务eventId与结算尚待S12B/C，不能仅由报价组件存在宣称CPA完整交付。

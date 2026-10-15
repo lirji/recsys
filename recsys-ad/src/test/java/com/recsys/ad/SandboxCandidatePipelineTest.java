@@ -25,9 +25,10 @@ class SandboxCandidatePipelineTest {
         var bidding = mock(BiddingService.class); var logger = mock(AdEventLogger.class); var catalog = mock(AdCatalogReader.class);
         var rank = mock(RankRouter.class); var creative = mock(CreativeSelector.class); var audience = mock(AudienceTargeting.class);
         var gd = mock(GuaranteedDeliveryService.class); var uplift = mock(UpliftAssignmentService.class);
+        var fraud=mock(AntiFraudService.class);var outcomes=mock(AdOutcomeService.class);
         var pipeline = new AdPipeline(recall, relevance, pacing, bidding, logger, catalog, rank, new AdProperties(),
-                new SimpleMeterRegistry(), mock(AntiFraudService.class), mock(AdEmbeddingSimilarity.class), creative, audience,
-                gd, mock(DfmCvrService.class), mock(UpliftService.class), uplift, mock(AdOutcomeService.class));
+                new SimpleMeterRegistry(), fraud, mock(AdEmbeddingSimilarity.class), creative, audience,
+                gd, mock(DfmCvrService.class), mock(UpliftService.class), uplift, outcomes);
         var candidate = mock(AdCandidate.class); when(candidate.adId()).thenReturn(1L); when(candidate.itemId()).thenReturn(2L);
         when(recall.recall(any())).thenReturn(List.of(candidate)); when(relevance.filter(any())).thenReturn(List.of(candidate));
         when(audience.filter(eq(1L), any())).thenReturn(List.of(candidate)); when(rank.rank(anyLong(), anyList(), anyString())).thenReturn(List.of());
@@ -44,9 +45,16 @@ class SandboxCandidatePipelineTest {
                 .thenReturn(List.of(new BiddingService.ClickQuotedAd(clickAd, clickPrice)));
         var clicks = pipeline.sandboxClickCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1);
         assertEquals(clickPrice, clicks.getFirst().price()); assertEquals(clickAd, clicks.getFirst().ad());
-        verifyNoInteractions(pacing, logger, gd, uplift);
+        var conversionAd=new SponsoredAd(1,2,3,4,"creative",AdChannel.KW_EXACT,1,1,1,1,1,1,1,1,0,"CPA");
+        var conversionPrice=new com.recsys.common.ad.billing.ConversionPrice(clickPrice.basis());
+        when(bidding.auctionSandboxConversion(anyList(),anyMap(),anyMap(),anyMap(),anyMap(),anyString(),eq(1),eq(.1)))
+                .thenReturn(List.of(new BiddingService.ConversionQuotedAd(conversionAd,conversionPrice)));
+        var conversions=pipeline.sandboxConversionCandidates(1,new StructuredQuery("q","q",null,null,null,null),1,"search",.1);
+        assertEquals(conversionPrice,conversions.getFirst().price());assertEquals(conversionAd,conversions.getFirst().ad());
+        verifyNoInteractions(pacing,logger,gd,uplift,fraud,outcomes);
         when(recall.recall(any())).thenThrow(new IllegalStateException("down"));
         assertThrows(IllegalStateException.class, () -> pipeline.sandboxClickCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1));
+        assertThrows(IllegalStateException.class, () -> pipeline.sandboxConversionCandidates(1,new StructuredQuery("q","q",null,null,null,null),1,"search",.1));
         assertThrows(IllegalStateException.class, () -> pipeline.sandboxCandidates(1, new StructuredQuery("q", "q", null, null, null, null), 1, "search", .1));
     }
 }
