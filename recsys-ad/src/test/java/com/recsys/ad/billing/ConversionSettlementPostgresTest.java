@@ -339,7 +339,7 @@ class ConversionSettlementPostgresTest {
             clickQuotes.add(clickRepo.freezeBefore(new ClickQuoteRepository.Draft(UUID.randomUUID(),UUID.randomUUID(),"viewer",1,adv,2,3,4,1,"CPC",new ClickPrice(BidType.CPC,basis)),Instant.now().plusSeconds(60)).orElseThrow());
             cpmQuotes.add(cpmRepo.freeze(UUID.randomUUID(),UUID.randomUUID(),adv,2,1,new CpmPrice(new BigDecimal("0.1"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE)));
         }
-        var clicks=new ClickSettlementService(new ClickSettlementRepository(jdbc,JSON),clickRepo,accounts,tokens,BudgetConfiguration.transactions(ds,5),true,true,new ClickSettlementService.FraudPolicy(true,20));
+        var clicks=new ClickSettlementService(new ClickSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),clickRepo,accounts,tokens,BudgetConfiguration.transactions(ds,5),true,true,new ClickSettlementService.FraudPolicy(true,20));
         var cpms=new ReservationService(accounts,cpmRepo,BudgetConfiguration.transactions(ds,5),true);
         var held=concurrent(18,i->switch(i%3) {
             case 0->service.prepare(conversionQuotes.get(i/3).quoteId(),"viewer").decision()==Decision.HELD;

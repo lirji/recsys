@@ -94,7 +94,7 @@ class ClickOnlinePostgresTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void receiptCommitThenLostReplyQueriesOriginalAndChangedBodyConflicts(boolean remote) throws Exception {
         var fail=new AtomicBoolean(true);
-        var losing=new ClickSettlementService(new ClickSettlementRepository(f.ad,ClickOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
+        var losing=new ClickSettlementService(new ClickSettlementRepository(f.sessions,ClickOnlineFixture.JSON),f.quotes,new ReservationRepository(f.sessions),f.tokens,
                 ClickOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20)) {
             @Override public Result accept(Command c) { var result=super.accept(c);if(fail.getAndSet(false))throw new IllegalStateException("lost receipt reply");return result; }
         };

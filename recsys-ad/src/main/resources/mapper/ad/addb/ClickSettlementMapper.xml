@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper">
+    <resultMap id="snapshot" type="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper$SnapshotRow">
+        <constructor><idArg column="qualification_id" javaType="java.util.UUID"/><arg column="decision" javaType="string"/>
+            <arg column="budget_date" javaType="java.time.LocalDate"/><arg column="amount" javaType="java.math.BigDecimal"/>
+            <arg column="issued_at" javaType="java.time.OffsetDateTime"/><arg column="expires_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="prepared_at" javaType="java.time.OffsetDateTime"/><arg column="qualification_token" javaType="string"/>
+            <arg column="owner_subject" javaType="string"/><arg column="state" javaType="string"/><arg column="version" javaType="_long"/>
+            <arg column="visible_receipt_id" javaType="java.util.UUID"/><arg column="click_receipt_id" javaType="java.util.UUID"/>
+            <arg column="ledger_id" javaType="java.util.UUID"/><arg column="captured_amount" javaType="java.math.BigDecimal"/>
+            <arg column="closed_at" javaType="java.time.OffsetDateTime"/><arg column="close_reason" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="receipt" type="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper$ReceiptRow">
+        <constructor><idArg column="receipt_id" javaType="java.util.UUID"/><arg column="qualification_id" javaType="java.util.UUID"/>
+            <arg column="kind" javaType="string"/><arg column="status" javaType="string"/><arg column="canonical_receipt_id" javaType="java.util.UUID"/>
+            <arg column="accepted_at" javaType="java.time.OffsetDateTime"/><arg column="decided_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <!-- 构造参数复用同一结果集，不使用select属性，避免READ_COMMITTED下跨语句拼接状态。 -->
+    <resultMap id="stored" type="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper$StoredRow">
+        <constructor><arg column="payload_hash" javaType="string"/>
+            <arg resultMap="receipt" javaType="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper$ReceiptRow"/>
+            <arg resultMap="snapshot" javaType="com.recsys.ad.persistence.mapper.addb.ClickSettlementMapper$SnapshotRow"/></constructor>
+    </resultMap>
+    <sql id="snapshotColumns">
+        s.qualification_id,s.decision,s.budget_date,s.qualification_token,s.prepared_at,s.state,s.version,
+        s.visible_receipt_id,s.click_receipt_id,s.ledger_id,s.closed_at,s.close_reason,
+        q.subject_key AS owner_subject,q.amount,q.issued_at,q.expires_at,l.amount AS captured_amount
+    </sql>
+    <sql id="snapshotFrom">
+        FROM ad_click_settlement s JOIN ad_click_quote q ON q.quote_id=s.qualification_id
+        LEFT JOIN ad_click_ledger l ON l.ledger_id=s.ledger_id AND l.qualification_id=s.qualification_id
+    </sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=9</select>
+    <select id="verifySettlement" resultType="map" timeout="5">SELECT qualification_id,state FROM ad_click_settlement LIMIT 0</select>
+    <select id="verifyReceipt" resultType="map" timeout="5">SELECT receipt_id,status FROM ad_click_receipt LIMIT 0</select>
+    <select id="verifyRate" resultType="map" timeout="5">SELECT user_id,accepted_count FROM ad_click_rate LIMIT 0</select>
+    <select id="verifyLedger" resultType="map" timeout="5">SELECT ledger_id,click_receipt_id FROM ad_click_ledger LIMIT 0</select>
+    <select id="verifyOutbox" resultType="map" timeout="5">SELECT event_id,delivery_state FROM ad_click_outbox LIMIT 0</select>
+    <select id="lockQuote" resultType="java.util.UUID" timeout="5" useCache="false">SELECT quote_id FROM ad_click_quote WHERE quote_id=#{id} FOR UPDATE</select>
+    <select id="lockOneExpired" resultType="java.util.UUID" timeout="5" useCache="false">
+        SELECT q.quote_id FROM ad_click_quote q JOIN ad_click_settlement s ON s.qualification_id=q.quote_id
+        WHERE s.state='HELD' AND q.expires_at &lt;= statement_timestamp()
+        ORDER BY q.expires_at,q.quote_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED
+    </select>
+    <select id="owner" resultType="string" timeout="5">SELECT subject_key FROM ad_click_quote WHERE quote_id=#{id}</select>
+    <select id="find" resultMap="snapshot" timeout="5">
+        SELECT <include refid="snapshotColumns"/> <include refid="snapshotFrom"/> WHERE s.qualification_id=#{id}
+    </select>
+    <insert id="insert" timeout="5">
+        INSERT INTO ad_click_settlement(qualification_id,budget_date,decision,qualification_token,prepared_at,state)
+        VALUES(#{qualificationId},#{budgetDate},#{decision},#{qualificationToken},#{preparedAt},#{state})
+    </insert>
+    <insert id="claim" timeout="5">
+        INSERT INTO ad_click_receipt(receipt_id,qualification_id,subject_key,payload_hash,kind,visible_duration_ms,min_visible_ratio_bps,page_visible)
+        VALUES(#{receiptId},#{qualificationId},#{subject},#{payloadHash},#{kind},#{visibleDurationMs},#{minVisibleRatioBps},#{pageVisible}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="stored" resultMap="stored" timeout="5">
+        SELECT <include refid="snapshotColumns"/>,r.receipt_id,r.kind,r.status,r.canonical_receipt_id,r.accepted_at,r.decided_at,r.payload_hash
+        <include refid="snapshotFrom"/> JOIN ad_click_receipt r ON r.qualification_id=s.qualification_id WHERE r.receipt_id=#{id}
+    </select>
+    <select id="canonical" resultMap="receipt" timeout="5">
+        SELECT receipt_id,qualification_id,kind,status,canonical_receipt_id,accepted_at,decided_at FROM ad_click_receipt WHERE receipt_id=#{id}
+    </select>
+    <update id="complete" timeout="5">
+        UPDATE ad_click_receipt SET status=#{status},canonical_receipt_id=#{canonicalReceiptId},accepted_at=#{acceptedAt},decided_at=#{decidedAt}
+        WHERE receipt_id=#{receiptId} AND status='PENDING'
+    </update>
+    <insert id="ensureRate" timeout="5">
+        INSERT INTO ad_click_rate(user_id,minute_start,accepted_count) VALUES(#{userId},date_trunc('minute',clock_timestamp()),0) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="lockRate" resultType="long" timeout="5" useCache="false">SELECT user_id FROM ad_click_rate WHERE user_id=#{userId} FOR UPDATE</select>
+    <update id="countClick" timeout="5">
+        UPDATE ad_click_rate SET minute_start=date_trunc('minute',#{now}::timestamptz),
+            accepted_count=CASE WHEN minute_start=date_trunc('minute',#{now}::timestamptz) THEN accepted_count+1 ELSE 1 END,
+            updated_at=#{now} WHERE user_id=#{userId} AND (minute_start &lt;&gt; date_trunc('minute',#{now}::timestamptz) OR accepted_count &lt; #{limit})
+    </update>
+    <update id="advance" timeout="5">
+        UPDATE ad_click_settlement SET visible_receipt_id=#{visible},click_receipt_id=#{click},ledger_id=#{ledger},state=#{state},close_reason=#{reason},
+            closed_at=#{closedAt},version=version+1,updated_at=#{now} WHERE qualification_id=#{qualificationId} AND state='HELD' AND version=#{version}
+    </update>
+    <update id="debitHeld" timeout="5">
+        UPDATE ad_budget_account SET held_amount=held_amount-#{amount},charged_amount=charged_amount+#{charge},version=version+1,updated_at=#{now}
+        WHERE traffic_class='SANDBOX' AND advertiser_id=#{account.advertiserId} AND budget_date=#{account.budgetDate} AND currency='CNY'
+            AND version=#{account.version} AND held_amount &gt;= #{amount}
+    </update>
+    <insert id="appendLedger" timeout="5">
+        INSERT INTO ad_click_ledger(ledger_id,qualification_id,visible_receipt_id,click_receipt_id,operation_id,
+            advertiser_id,ad_id,creative_id,item_id,user_id,slot,bid_type,budget_date,amount,account_version,accepted_at)
+        VALUES(#{ledgerId},#{qualificationId},#{visible},#{click},#{operationId},#{advertiserId},#{adId},#{creativeId},#{itemId},#{userId},#{slot},
+            #{bidType},#{budgetDate},#{amount},#{accountVersion},#{acceptedAt})
+    </insert>
+    <insert id="appendOutbox" timeout="5">
+        INSERT INTO ad_click_outbox(event_id,event_type,schema_version,destination,partition_key,payload_json)
+        VALUES(#{eventId},#{eventType},#{schemaVersion},#{destination},#{partitionKey},#{payloadJson})
+    </insert>
+</mapper>

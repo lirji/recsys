@@ -29,7 +29,7 @@ public class ClickEventConfiguration {
         /** 无需启用新收费或签名密钥即可续发，但必须具备已交付的原事实及投影迁移。 */
         @Bean BillingOutboxRepository clickOutboxRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions, @Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
             new BudgetRepository(sessions).verifySchema(); new ClickQuoteRepository(sessions).verifySchema();
-            new ClickSettlementRepository(jdbc,json).verifySchema();
+            new ClickSettlementRepository(sessions,json).verifySchema();
             var repository=new BillingOutboxRepository(jdbc,EventFamily.CLICK);repository.verifySchema();return repository;
         }
         @Bean ClickEventCodec clickEventCodec(ObjectMapper json) { return new ClickEventCodec(json); }

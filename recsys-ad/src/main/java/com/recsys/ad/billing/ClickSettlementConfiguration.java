@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import javax.sql.DataSource;
 import java.time.Duration;
@@ -19,8 +19,8 @@ import java.time.Duration;
 @ConditionalOnProperty(name={"recsys.ad.billing.sandbox-enabled","recsys.ad.billing.clicks-enabled","recsys.ad.billing.click-settlement-enabled"},havingValue="true")
 public class ClickSettlementConfiguration {
     /** 只校验本owner的V009，不触发环境迁移。 */
-    @Bean public ClickSettlementRepository clickSettlementRepository(@Qualifier("adDbJdbc") JdbcTemplate jdbc,ObjectMapper json) {
-        var repository=new ClickSettlementRepository(jdbc,json); repository.verifySchema(); return repository;
+    @Bean public ClickSettlementRepository clickSettlementRepository(@Qualifier("adDbSqlSessionTemplate") SqlSessionTemplate sessions,ObjectMapper json) {
+        var repository=new ClickSettlementRepository(sessions,json); repository.verifySchema(); return repository;
     }
     /** 所有金额和反作弊效果复用adDb短事务；策略在启动时复制校验。 */
     @Bean public ClickSettlementService clickSettlementService(ClickSettlementRepository repository,ClickQuoteRepository quotes,

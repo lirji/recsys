@@ -62,7 +62,7 @@
 | [com/recsys/ad/billing/ClickQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteConfiguration.java) | 6 | 0 | TODO |
 | [com/recsys/ad/billing/ClickQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteRepository.java) | 5 | 9 | DONE MP09a：见MP09A_RESULT |
 | [com/recsys/ad/billing/ClickSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementConfiguration.java) | 11 | 0 | TODO |
-| [com/recsys/ad/billing/ClickSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementRepository.java) | 6 | 22 | TODO |
+| [com/recsys/ad/billing/ClickSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementRepository.java) | 6 | 22 | DONE MP09b：见MP09B_RESULT |
 | [com/recsys/ad/billing/ConversionEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionEventConfiguration.java) | 13 | 0 | TODO |
 | [com/recsys/ad/billing/ConversionPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionPreparationConfiguration.java) | 10 | 0 | TODO |
 | [com/recsys/ad/billing/ConversionProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionProjectionRepository.java) | 3 | 3 | TODO |

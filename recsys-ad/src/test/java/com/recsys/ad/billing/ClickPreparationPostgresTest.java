@@ -103,7 +103,7 @@ class ClickPreparationPostgresTest {
     }
     @Test void quoteCommittedBeforeHoldFailureRestartsWithoutRepricingOrDeadlineExtension() {
         var request=request("10");
-        var failing=new ClickSettlementService(new ClickSettlementRepository(f.jdbc,ClickEventsFixture.JSON),f.quotes,f.cpm.reservations,f.cpm.tokens,
+        var failing=new ClickSettlementService(new ClickSettlementRepository(sessions,ClickEventsFixture.JSON),f.quotes,f.cpm.reservations,f.cpm.tokens,
                 BudgetConfiguration.transactions(f.ds,5),true,true,new ClickSettlementService.FraudPolicy(true,20)) {
             @Override public ClickSettlement.Prepared prepare(UUID id,String subject) { throw new IllegalStateException("after quote before hold"); }
         };

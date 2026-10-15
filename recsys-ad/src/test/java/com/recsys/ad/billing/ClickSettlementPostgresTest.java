@@ -36,6 +36,7 @@ class ClickSettlementPostgresTest {
     static final AtomicLong IDS=new AtomicLong(80000);
     static DriverManagerDataSource ds;
     static JdbcTemplate jdbc;
+    static SqlSessionTemplate sessions;
     static ReservationRepository accounts;
     static BudgetAccountService budgets;
     static ClickQuoteRepository quotes;
@@ -44,6 +45,7 @@ class ClickSettlementPostgresTest {
     static DeliveryTokenCodec tokens;
     @BeforeAll static void setup() throws Exception {
         ds=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()); jdbc=new JdbcTemplate(ds);
+        sessions=new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/ad/addb/**/*.xml"));
         for(String path:List.of(BudgetRepository.MIGRATION,CpmQuoteRepository.MIGRATION,ReservationRepository.MIGRATION,
                 PreparationRepository.MIGRATION,ImpressionReceiptRepository.MIGRATION,BillingOutboxRepository.MIGRATION,
                 FeedCandidateRepository.MIGRATION,ClickQuoteRepository.MIGRATION,ClickSettlementRepository.MIGRATION)) {
@@ -66,7 +68,7 @@ class ClickSettlementPostgresTest {
                 """);
         accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
-        repository=new ClickSettlementRepository(jdbc,JSON); repository.verifySchema();
+        repository=new ClickSettlementRepository(sessions,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         service=fresh(repository,accounts,true,true,20,tokens);
     }
@@ -104,6 +106,24 @@ class ClickSettlementPostgresTest {
             start.countDown(); var results=new ArrayList<T>();
             for(var future:futures) results.add(future.get(20,TimeUnit.SECONDS)); return results;
         }
+    }
+
+    /** 数据库禁止提交半成品；事务内两条读取路径也必须在映射可空字段前拒绝。 */
+    @Test void unfinishedReceiptCannotBecomeCanonicalOrJoinedResult() {
+        var f = fixture(); var command = f.command(Kind.CLICK); var before = account(f);
+        assertThrows(DataAccessException.class, () -> repository.claim(command, f.id()));
+        BudgetConfiguration.transactions(ds, 5).executeWithoutResult(tx -> {
+            assertTrue(repository.lockQuote(f.id()));
+            assertTrue(repository.claim(command, f.id()));
+            assertEquals("发现未完成点击回执", assertThrows(IllegalStateException.class,
+                    () -> repository.canonical(command.receiptId())).getMessage());
+            assertEquals("发现未完成点击回执", assertThrows(IllegalStateException.class,
+                    () -> repository.findReceipt(command.receiptId(), "admin")).getMessage());
+            assertEquals(State.HELD, repository.find(f.id(), "admin").orElseThrow().state());
+            tx.setRollbackOnly();
+        });
+        assertTrue(repository.findReceipt(command.receiptId(), "admin").isEmpty());
+        assertEquals(before, account(f)); assertEquals(0, ledgerCount(f.id()));
     }
 
     @Test void preparationConcurrencyAndRestartHoldExactlyOnceWithoutRenewing() throws Exception {
@@ -212,18 +232,18 @@ class ClickSettlementPostgresTest {
     }
     @Test void failureAfterOutboxInsertRollsBackSecondConditionMoneyRateAndFacts() {
         var f=fixture(); var visible=f.command(Kind.VISIBLE); var waiting=service.accept(visible); var click=f.command(Kind.CLICK);
-        var failing=spy(new ClickSettlementRepository(jdbc,JSON));
+        var failing=spy(new ClickSettlementRepository(sessions,JSON));
         doAnswer(call->{ call.callRealMethod(); throw new IllegalStateException("injected crash after outbox"); }).when(failing).appendOutbox(any());
         assertThrows(IllegalStateException.class,()->fresh(failing,accounts,true,true,20,tokens).accept(click));
         assertEquals(waiting,service.findReceipt(visible.receiptId(),"admin").orElseThrow());
         assertTrue(service.findReceipt(click.receiptId(),"admin").isEmpty()); assertEquals(0,rate(f.quote().userId()));
         assertEquals(0,ledgerCount(f.id())); assertEquals("0.123456",account(f).heldAmount().toPlainString());
         assertEquals("0.000000",account(f).chargedAmount().toPlainString());
-        var recovered=fresh(new ClickSettlementRepository(jdbc,JSON),accounts,true,true,20,tokens).accept(click);
+        var recovered=fresh(new ClickSettlementRepository(sessions,JSON),accounts,true,true,20,tokens).accept(click);
         assertEquals(Progress.CAPTURED,recovered.settlement().progress()); assertEquals(1,rate(f.quote().userId())); assertEquals(1,ledgerCount(f.id()));
     }
     @Test void failureAfterFirstReceiptDecisionRollsBackWaitingPointerAndRate() {
-        var f=fixture(); var click=f.command(Kind.CLICK); var failing=spy(new ClickSettlementRepository(jdbc,JSON));
+        var f=fixture(); var click=f.command(Kind.CLICK); var failing=spy(new ClickSettlementRepository(sessions,JSON));
         doAnswer(call->{call.callRealMethod(); throw new IllegalStateException("injected response save crash");}).when(failing).complete(any());
         assertThrows(IllegalStateException.class,()->fresh(failing,accounts,true,true,20,tokens).accept(click));
         assertEquals(0,rate(f.quote().userId())); assertTrue(service.findReceipt(click.receiptId(),"admin").isEmpty());
@@ -235,7 +255,7 @@ class ClickSettlementPostgresTest {
         var denied=fixture(IDS.incrementAndGet(),user,"0.123456",298);
         var fixed=spy(new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")))); doReturn(accounts.databaseNow()).when(fixed).databaseNow();
         fresh(repository,fixed,true,true,1,tokens).accept(first.command(Kind.CLICK));
-        var command=denied.command(Kind.CLICK); var failing=spy(new ClickSettlementRepository(jdbc,JSON));
+        var command=denied.command(Kind.CLICK); var failing=spy(new ClickSettlementRepository(sessions,JSON));
         doAnswer(call->{call.callRealMethod(); throw new IllegalStateException("injected reject save failure");}).when(failing).complete(any());
         assertThrows(IllegalStateException.class,()->fresh(failing,fixed,true,true,1,tokens).accept(command));
         assertTrue(service.findReceipt(command.receiptId(),"admin").isEmpty());
@@ -358,7 +378,7 @@ class ClickSettlementPostgresTest {
         assertEquals(ReceiptStatus.ACCEPTED_WAITING,paused.accept(command).receipt().status());
         assertEquals(Progress.RELEASED,paused.accept(command).settlement().progress());
         var other=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
-        assertThrows(IllegalArgumentException.class,()->fresh(new ClickSettlementRepository(new JdbcTemplate(other),JSON),accounts,true,true,20,tokens));
+        assertThrows(IllegalArgumentException.class,()->fresh(new ClickSettlementRepository(new SqlSessionTemplate(SpringSqlSessions.create(other, "classpath*:mapper/ad/addb/**/*.xml")),JSON),accounts,true,true,20,tokens));
     }
     @Test void migrationGuardsDecisionsHistoryAndEveryColumnHasComment() {
         var f=fixture(); var click=f.command(Kind.CLICK); service.accept(click); var result=service.accept(f.command(Kind.VISIBLE));
@@ -381,6 +401,7 @@ class ClickSettlementPostgresTest {
         var runner=new ApplicationContextRunner().withUserConfiguration(ClickSettlementConfiguration.class)
                 .withPropertyValues("recsys.ad.billing.sandbox-enabled=true","recsys.ad.billing.clicks-enabled=true","recsys.ad.billing.click-settlement-enabled=true")
                 .withBean("adDbJdbc",JdbcTemplate.class,()->jdbc).withBean("adDbDataSource",javax.sql.DataSource.class,()->ds)
+                .withBean("adDbSqlSessionTemplate",SqlSessionTemplate.class,()->sessions)
                 .withBean(ObjectMapper.class,()->JSON).withBean(ClickQuoteRepository.class,()->quotes)
                 .withBean(ReservationRepository.class,()->accounts).withBean(DeliveryTokenCodec.class,()->tokens)
                 .withBean(AdProperties.class,AdProperties::new).withBean(io.micrometer.core.instrument.MeterRegistry.class,SimpleMeterRegistry::new);

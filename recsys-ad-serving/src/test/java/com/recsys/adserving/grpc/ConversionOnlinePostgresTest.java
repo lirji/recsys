@@ -197,7 +197,7 @@ class ConversionOnlinePostgresTest {
                 .withBean(com.fasterxml.jackson.databind.ObjectMapper.class,()->ConversionOnlineFixture.JSON)
                 .withBean(com.recsys.ad.AdPipeline.class,()->f.pipeline).withBean(ClickQuoteRepository.class,()->new ClickQuoteRepository(f.sessions))
                 .withBean(ConversionQuoteRepository.class,()->f.quotes).withBean(ConversionSettlementService.class,()->f.settlements)
-                .withBean(ClickSettlementService.class,()->new ClickSettlementService(new ClickSettlementRepository(f.ad,ConversionOnlineFixture.JSON),new ClickQuoteRepository(f.sessions),new ReservationRepository(f.sessions),f.tokens,ConversionOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20))).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.sessions))
+                .withBean(ClickSettlementService.class,()->new ClickSettlementService(new ClickSettlementRepository(f.sessions,ConversionOnlineFixture.JSON),new ClickQuoteRepository(f.sessions),new ReservationRepository(f.sessions),f.tokens,ConversionOnlineFixture.transactions(f.adDs),true,true,new ClickSettlementService.FraudPolicy(true,20))).withBean(CpmQuoteRepository.class,()->new CpmQuoteRepository(f.sessions))
                 .withBean(ReservationRepository.class,()->new ReservationRepository(f.sessions))
                 .withBean(ReservationService.class,()->new ReservationService(new ReservationRepository(f.sessions),new CpmQuoteRepository(f.sessions),ConversionOnlineFixture.transactions(f.adDs),true))
                 .run(c->{assertNull(c.getStartupFailure());assertEquals(3,c.getBeansOfType(PreparationRepository.class).size());

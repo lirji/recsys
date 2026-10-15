@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a点击报价DONE/PASS，待本批Git交付；随后MP09b点击结算。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b DONE/PASS，MP09c引用核对完成；MP09整体完成，待Git后继续MP10a。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -54,13 +54,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP08已完成；MP09～MP15及追加统一错误码目标未完成。
+- MP00～MP09已完成；MP10～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP09a：点击报价Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP09b：点击结算Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,8 +79,8 @@ MP01～MP03已交付。当前MP09a：点击报价Mapper/XML、Repository/配置�
 
 ## 下一步
 
-1. MP09a验证通过，完成Git后继续MP09b。
-2. 继续MP09～MP15，全部SQL完成后处理统一错误码。
+1. MP09b/c验证和引用核对完成，Git交付后继续MP10a。
+2. 继续MP10～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -164,3 +164,17 @@ MP08c最终资金链372项作为旧路径基线，包含ClickQuotePostgresTest6�
 ## MP09a最终验证
 
 DONE/PASS，见MP09A_RESULT。12源文件指纹1bb4d22620fd45bad3db3158826fa3c7c4c3311b054c568da82b1359cb58d307；迁移后点击/转化兼容及在线宿主85项/8类通过，推荐宿主3项、全仓24 reactor编译和hygiene通过。45历史SQL/8保护文件不变。本片不重复未改变路径的CPM/混排浏览器，MP08c刚验证且MP15仍要求最终全量门禁。Git后MP09b：ClickSettlementRepository现181行，查询回执原决定与当前结算状态须保留同一JOIN快照，quote→rate→account锁序、SKIP LOCKED、条件计数/版本/held更新、账本/Outbox同事务、5秒超时及原结果构造顺序不变。旧基线MP08c372资金链和本片ClickSettlement22/ClickOnline8等已通过。
+
+## MP09b实施检查点
+
+迁移前新增unfinishedReceiptCannotBecomeCanonicalOrJoinedResult：数据库拒绝PENDING独立提交；同源事务内claim后canonical/JOIN读取均先拒绝半成品，rollback后无回执且账户/账本不变。最初测试直接提交被既有延迟约束正确拒绝，已改为断言该约束并在事务内检查；旧路径23项全部通过，/tmp/recsys-mp09b-before-final.log。随后已新增ClickSettlementMapper/XML并迁移Repository/配置/引用测试，正在运行/tmp/recsys-mp09b-after.log；待实测确认嵌套record映射。
+
+已读ClickSettlementRepository全部181行。实施时将SNAPSHOT_COLUMNS/FROM移入XML，保持回执决定与当前Snapshot同一JOIN；可用明确的SnapshotRow、ReceiptRow及嵌套构造StoredRow，以constructor arg resultMap复用同一结果集映射，禁止nested select拆成多次查询。MyBatis官方Mapper XML文档支持constructor/resultMap，已核对本地3.5.19 JAR的DTD（arg/idArg均支持resultMap/name/columnPrefix）：https://mybatis.org/mybatis-3/sqlmap-xml.html。最终仍需真实PG验证嵌套record构造、可空字段和列别名。保留stored中receipt先于snapshot校验的既有顺序；PENDING用私有常量，不扩展公开ReceiptStatus。
+
+装配引用：ClickSettlementConfiguration、ClickEventConfiguration；测试ClickSettlementPostgresTest（建议新增static sessions供故障子类复用）、ClickPreparationPostgresTest（已有sessions）、ClickEventsFixture、ConversionSettlementPostgresTest、ClickOnlineFixture（已有sessions）、ClickOnlinePostgresTest/ConversionOnlinePostgresTest（f.sessions）。需要同步错误DataSource断言中的new JdbcTemplate(other)构造。所有语句仍5秒超时；quote→rate→account锁序、唯一键等待、LIMIT1 SKIP LOCKED、计数分钟边界、条件版本/held检查、账本与Outbox同事务及JSON契约不变。
+
+MP09a远程CI38730596602运行中；MP08c CI38730135316因随后提交被取消，不能标全绿。最近完整成功CI为MP08b38728391213。本地MP08c完整372和MP09a85专项/宿主3均已通过。
+
+## MP09b/c最终验证
+
+DONE/PASS，MP09整体完成，见MP09B_RESULT。12源文件指纹ab3a4accb08bc102054796cc22c98f1eefc9a334c4c2696b614bdcabce24512b；迁移前23项、迁移后点击准备/结算/在线与转化在线49项通过；最终全仓24 reactor完整资金链373项/68类、推荐宿主3项及hygiene通过。嵌套constructor resultMap真实PG验证成功，22条SQL、5秒超时、同一JOIN快照、全部资金/计数/版本/回滚语义保持。45历史SQL/8保护文件不变。MP09a CI38730596602全部SUCCESS。MP09c无新增SQL，其准备已MP08c迁移，原装配/消费者由专项覆盖；Outbox/投影仍MP11，engine交付仍MP12。下一步MP10a ConversionQuoteRepository/Configuration，现代码与点击报价相似但必须保留CPA bid_type强校验，不能机械照抄ClickPrice构造；V012和原摘要/五分钟期限保持，MP09b资金链作为旧路径基线。
