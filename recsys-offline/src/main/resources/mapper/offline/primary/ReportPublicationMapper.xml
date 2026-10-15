@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.ReportPublicationMapper">
+    <update id="createTable">
+        CREATE TABLE IF NOT EXISTS eval_report (
+            id BIGSERIAL PRIMARY KEY,category VARCHAR(64) NOT NULL,name VARCHAR(256) NOT NULL UNIQUE,
+            ts VARCHAR(32),columns_json JSONB NOT NULL,rows_json JSONB NOT NULL,
+            size_bytes BIGINT DEFAULT 0,created_at TIMESTAMPTZ DEFAULT now())
+    </update>
+    <update id="commentTable">COMMENT ON TABLE eval_report IS '离线评估与分析报表的结构化存储'</update>
+    <update id="commentColumns">
+        COMMENT ON COLUMN eval_report.id IS '报表记录自增身份';
+        COMMENT ON COLUMN eval_report.category IS '由文件名前缀解析的报表分类';
+        COMMENT ON COLUMN eval_report.name IS '报表文件名，发布幂等唯一键';
+        COMMENT ON COLUMN eval_report.ts IS '文件名解析的时间标签，保留原字符串';
+        COMMENT ON COLUMN eval_report.columns_json IS '按原CSV顺序保存的列名JSON数组';
+        COMMENT ON COLUMN eval_report.rows_json IS '按原CSV顺序保存并补齐列宽的数据行JSON数组';
+        COMMENT ON COLUMN eval_report.size_bytes IS '源CSV文件字节数';
+        COMMENT ON COLUMN eval_report.created_at IS '首次成功发布的数据库时间'
+    </update>
+    <update id="createIndex">CREATE INDEX IF NOT EXISTS idx_eval_report_cat_ts ON eval_report (category,ts DESC)</update>
+    <insert id="publishIfAbsent">
+        INSERT INTO eval_report(category,name,ts,columns_json,rows_json,size_bytes)
+        VALUES(#{report.category},#{report.name},#{report.ts},#{report.columnsJson}::jsonb,#{report.rowsJson}::jsonb,#{report.sizeBytes})
+        ON CONFLICT(name) DO NOTHING
+    </insert>
+</mapper>

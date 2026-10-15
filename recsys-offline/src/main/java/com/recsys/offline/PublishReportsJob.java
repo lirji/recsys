@@ -7,7 +7,7 @@ import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.ReportPublicationMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.Reader;
@@ -44,18 +44,21 @@ public class PublishReportsJob implements OfflineJob {
         PREFIX.put("ad-quality-", "ad-quality");
     }
 
-    private final JdbcTemplate jdbc;
+    private final ReportPublicationMapper reports;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public PublishReportsJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 沿原主库会话发布报表，单文件幂等和失败处理仍由作业负责。 */
+    public PublishReportsJob(ReportPublicationMapper reports) {
+        this.reports = reports;
     }
 
+    /** 保留既有离线命令名。 */
     @Override
     public String name() {
         return "publish-reports";
     }
 
+    /** 自举结构后按文件名顺序发布，单文件失败继续下一份，已有文件不覆盖。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String dir = argValue(args, "eval-dir", "eval");
@@ -90,12 +93,10 @@ public class PublishReportsJob implements OfflineJob {
                         rows.add(row);
                     }
                 }
-                int n = jdbc.update(
-                        "INSERT INTO eval_report(category, name, ts, columns_json, rows_json, size_bytes) "
-                                + "VALUES (?, ?, ?, ?::jsonb, ?::jsonb, ?) ON CONFLICT (name) DO NOTHING",
+                int n = reports.publishIfAbsent(new ReportPublicationMapper.Report(
                         categoryOf(fileName), fileName, timestampOf(fileName),
                         mapper.writeValueAsString(columns), mapper.writeValueAsString(rows),
-                        Files.size(file));
+                        Files.size(file)));
                 if (n > 0) published++; else skipped++;
             } catch (Exception e) {
                 failed++;
@@ -107,12 +108,10 @@ public class PublishReportsJob implements OfflineJob {
     }
 
     private void ensureTable() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS eval_report ("
-                + "id BIGSERIAL PRIMARY KEY, category VARCHAR(64) NOT NULL, name VARCHAR(256) NOT NULL UNIQUE, "
-                + "ts VARCHAR(32), columns_json JSONB NOT NULL, rows_json JSONB NOT NULL, "
-                + "size_bytes BIGINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now())");
-        jdbc.execute("COMMENT ON TABLE eval_report IS '离线评估与分析报表的结构化存储'");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_eval_report_cat_ts ON eval_report (category, ts DESC)");
+        reports.createTable();
+        reports.commentTable();
+        reports.commentColumns();
+        reports.createIndex();
     }
 
     private static String categoryOf(String name) {

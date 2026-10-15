@@ -150,7 +150,7 @@
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | DONE MP13c2：derived仅UPDATE融合；见MP13C2_RESULT |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
 | [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1/b5：四源工厂/Mapper扫描及真实种子路由完成，旧JdbcTemplate待其余作业退出 |
-| [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
+| [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | DONE MP13f2：主源ReportPublicationMapper/XML及8字段注释；见MP13F2_RESULT |
 | [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | TODO |
 | [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
 | [com/recsys/offline/SeedAdsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SeedAdsJob.java) | 10 | 11 | DONE MP13b5：真实四源/双分片；见MP13B5_RESULT |
