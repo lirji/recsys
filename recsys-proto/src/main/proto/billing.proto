@@ -1,0 +1,51 @@
+syntax = "proto3";
+package billing.v1;
+option java_package = "com.recsys.proto.billing.v1";
+option java_multiple_files = true;
+
+// 独立的 sandbox 账务契约，与旧 ad.v1 共存；金额只能传规范十进制字符串。
+service SandboxBudgetService {
+  rpc SetLimit(SetBudgetLimitRequest) returns (BudgetCommandReply);
+  rpc GetAccount(GetBudgetAccountRequest) returns (BudgetAccountReply);
+  rpc GetCommand(GetBudgetCommandRequest) returns (BudgetCommandReply);
+}
+
+message SetBudgetLimitRequest {
+  int64 advertiser_id = 1;
+  string command_id = 2;
+  string budget_date = 3; // Asia/Shanghai 业务日，YYYY-MM-DD
+  string currency = 4;
+  string limit_amount = 5;
+  int64 expected_version = 6;
+  string actor = 7; // 只信任已认证 advertiser 服务从终端认证主体生成的操作人
+}
+message GetBudgetAccountRequest {
+  int64 advertiser_id = 1;
+  string budget_date = 2;
+}
+message GetBudgetCommandRequest {
+  int64 advertiser_id = 1;
+  string command_id = 2;
+}
+message BudgetAccountReply {
+  string traffic_class = 1;
+  int64 advertiser_id = 2;
+  string budget_date = 3;
+  string currency = 4;
+  string limit_amount = 5;
+  string held_amount = 6;
+  string charged_amount = 7;
+  string available_amount = 8;
+  int64 version = 9;
+}
+enum BudgetCommandStatus {
+  BUDGET_COMMAND_STATUS_UNSPECIFIED = 0;
+  APPLIED = 1;
+  VERSION_CONFLICT = 2;
+  BELOW_COMMITTED = 3;
+}
+message BudgetCommandReply {
+  string command_id = 1;
+  BudgetCommandStatus status = 2;
+  BudgetAccountReply account = 3; // 首次执行结果快照，不是查询时的最新账户
+}

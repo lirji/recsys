@@ -1,6 +1,6 @@
 # 技术与方案取舍记录
 
-状态：DRAFT；不是新增依赖授权。沿用项目现有 PostgreSQL、Redis、Kafka、Java/Spring、React/Ant Design/TanStack Query/Axios、Vitest/Playwright。公共组件优先复用 dev_infra 的隔离资源，不修改共享实例数据或顺手升级依赖。
+状态：实施已获授权，具体切片决定以下方补充及正式 CONTRACTS 为准。沿用项目现有 PostgreSQL、Redis、Kafka、Java/Spring、React/Ant Design/TanStack Query/Axios、Vitest/Playwright。公共组件优先复用 dev_infra 的隔离资源，不修改共享实例数据或顺手升级依赖。
 
 | 决策 | 备选 | 草案选择与原因 | 成本/边界 |
 |---|---|---|---|
@@ -18,3 +18,7 @@
 PG 行锁可以串行化相关账户/预占更新，但要求正确锁序和事务边界，不能代替业务约束（[PostgreSQL 16 Explicit Locking](https://www.postgresql.org/docs/16/explicit-locking.html)）。Kafka 的传输事务不自动覆盖外部数据库（[Kafka 3.7 design](https://kafka.apache.org/37/design/design/)）。浏览器 Intersection Observer 提供元素与视口交叉观测，不能证明注意力或真人身份（[W3C Intersection Observer](https://www.w3.org/TR/intersection-observer/)）。
 
 没有新增版本选型或依赖安装；正式实施如需新增迁移/测试依赖，先核对当前官方兼容性、维护状态、许可证和已知漏洞，并复用仓库版本管理。当前 SLO、RTO/RPO、吞吐预算不在本文件编造数值。
+
+ER-S02 冻结：复用现有 Spring JDBC 持久化风格（SQL 集中 Repository），专属 TransactionTemplate 绑定同一 adDb DataSource，不引入第二套 Mapper 框架。迁移采用独立 owner 的事务化版本 SQL 与 schema history，显式执行并记录 checksum，启动仅校验；避免新增 Flyway 后误触默认主数据源自动迁移。测试复用项目已选 Testcontainers PostgreSQL 依赖/BOM 和 `postgres:16-alpine`，新关键测试不允许无 Docker 静默跳过。
+
+机制核对：PostgreSQL 唯一键与 ON CONFLICT 处理并发领取（[PG 16 INSERT](https://www.postgresql.org/docs/16/sql-insert.html)）；Spring JDBC 事务必须使用绑定的数据源连接（[Spring JDBC connections](https://docs.spring.io/spring-framework/reference/data-access/jdbc/connections.html)）。这些机制仍需本片真实数据库故障测试证明。

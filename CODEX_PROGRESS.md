@@ -2,55 +2,49 @@
 
 ## 任务目标
 
-实施已记录的“曝光可信、钱算对、事件不漏、故障可恢复、效果可验证”计划。用户已明确“开始实施吧”，按切片连续推进、验证并交付；首个闭环仅使用 sandbox，不切换真实账户、不部署生产。
+连续实施“曝光可信、钱算对、事件不漏、故障可恢复、效果可验证”计划，按切片验证并正常 Git 交付。用户已明确“开始实施吧 / go on”；首个闭环仅使用 sandbox，不切换真实账户、不部署生产。
 
 ## 已完成
 
-- 实施授权已生效；首版政策确认：sandbox；CNY 六位小数按次 HALF_UP；Asia/Shanghai 预算日，义务归预占日，预算不得调低到占用以下；图文 50% 连续可见 1 秒，hidden 重置，资格/预占 5 分钟。
-- 已建立 CONTRACTS C01 与 IMPLEMENTATION_SLICES；ER-S01 修复预算分/元和报价展示已完成，工作分支 `fix/enterprise-budget-display`。21 项后端、9 项前端、2 项浏览器测试通过；typecheck/build/lint（0 error）通过，截图已查看，见 ER-S01_RESULT。正在正常 Git 交付后推进 ER-S02。
-
-- 已基于真实源码记录能力与 ER-R01～ER-R15 风险，保留搜索相关性、运营域与模型平台等后续建设项。
-- 已记录用户确定决策：客户端可见曝光回执 + 服务端资格/签名/幂等；硬预算上限 + 预占后计费。
-- 已按 AGENTS 完成五类只读角色分析；形成后端架构、契约提案、技术取舍、分阶段候选计划与验证矩阵。
-- 已创建任务分支 `feat/enterprise-reliability-plan`，原项目目录作业，无新增 worktree。
-- ER-DOC-01/02：DONE（文档范围）；独立审查 3 个 high、2 个 medium 均修订闭合，DRAFT_REVIEW_PASS；本地链接、依赖 DAG、围栏、差异及用户既有文件哈希检查通过，见 [REVIEW](docs/design/enterprise-reliability/REVIEW.md)。
-- 规划阶段仅交付文档；本轮实施验证以各 ER-Sxx_RESULT 为准，不将规划检查替代业务验收。
-- 文档提交 `9bcb18e5`（评估）及 `10ecfb01`（计划）已由任务分支正常 fast-forward 合并并推送 `origin/main`；远程 `main` 已核验为 `10ecfb0147cbd92648b887c1a993ba739cadbdb0`。本记录后续仅同步交付事实，最终记录提交以 Git 历史为准。
-- 六个既有用户文件哈希保持一致，仅本轮十个 Markdown 文件进入交付。无新增 worktree；既有忽略的配置、模型、数据、构建/缓存目录均保留，未清理。
+- 首版政策已确认：sandbox；CNY 六位小数、每次收费 HALF_UP；Asia/Shanghai 预算日，跨日义务归预占日，调低预算不得低于消费加预占；图文 50% 连续可见 1 秒，hidden 重置，资格/预占 5 分钟且服务端到期前接受回执。
+- 评估与计划、五类前端只读角色分析、独立草案审查已落盘；文档提交 `9bcb18e5`、`10ecfb01`、`eca38650` 已在 main，无需重做总体规划。
+- ER-S01 DONE，提交 `9cad79fc` 已合并推送 main：修正旧预算分/元，未知不伪零，报价按自身单位展示。21 项后端、9 项前端、2 项浏览器测试通过，截图已查看；见 ER-S01_RESULT。
+- ER-S02 DONE，分支 `feat/sandbox-budget-account`，正在执行验证后的 Git 交付：账户/幂等命令、NUMERIC 约束、明确 adDb 事务、版本迁移与 SHA 校验、billing.v1 RPC、ADMIN HTTP API 已完成。最终 43 项钱链路测试通过（新增 29，真实 PG 11），旧权限/预算展示 21 项额外回归通过；见 ER-S02_RESULT。默认关闭，不修改旧收费链路。
+- 迁移说明、配置、查询未知结果与回退方式写入 SANDBOX_BUDGET_RUNBOOK；只操作过临时 Testcontainers PG，没有迁移共享数据库。
 
 ## 已修改文件
 
-当前实施变更：advertiser 的 Service/Repository/AdvertiserView 与预算回归测试；console 预算列表/详情、报价表/图/漏斗/重放、API 类型、金额辅助函数与单测/E2E；本目录 CONTRACTS/IMPLEMENTATION_SLICES/ER-S01_RESULT、PLAN 与本进度。此前规划交付文件如下（已在 main）：
+ER-S02 当前范围：
 
-- `docs/12-企业级搜推广评估.md`
-- `docs/design/enterprise-reliability/PLAN.md`
-- `docs/design/enterprise-reliability/BACKEND_ARCHITECTURE.md`
-- `docs/design/enterprise-reliability/CONTRACTS_DRAFT.md`
-- `docs/design/enterprise-reliability/TECH_SELECTION.md`
-- `docs/design/enterprise-reliability/VALIDATION_PLAN.md`
-- `docs/design/enterprise-reliability/REVIEW.md`
-- `README.md`、`docs/07-后续路线执行清单.md`（入口链接）
-- `CODEX_PROGRESS.md`
+- `recsys-ad-common/src/{main,test}/java/com/recsys/common/ad/billing/`：金额/账户/命令/结果契约与校验。
+- `recsys-ad/src/{main,test}/java/com/recsys/ad/billing/`、`recsys-ad/pom.xml`：Repository、用例、专属事务装配及真实 PG 测试。
+- `recsys-ad/src/main/resources/db/ad-billing/V001__budget_account.sql`：三个带注释的版本/账户/命令表。
+- `recsys-proto/src/main/proto/billing.proto`、BudgetProtoMapper 及测试。
+- `recsys-ad-serving/.../grpc/SandboxBudgetGrpcService.java` 及测试。
+- `recsys-advertiser/.../billing/`：RPC adapter、HTTP 控制器及测试。
+- `docs/design/enterprise-reliability/CONTRACTS.md`、TECH_SELECTION、IMPLEMENTATION_SLICES、ER-S02_RESULT、SANDBOX_BUDGET_RUNBOOK、本进度。
 
 ## 未完成
 
-- ER-S01 正常 Git 交付；随后继续 ER-S02 的预算命令、持久化和真实 PG 并发验证。
-- ER-D0/CPM 的具体预算/定价/预占/回执 API 与迁移契约逐片冻结。26 个实施项未整体完成，进度以 IMPLEMENTATION_SLICES 为准。
-- CPA 归因/迟到窗口、真实来源/期初账务、容量及恢复目标仍待确定；已确认的 CPM 政策不重复询问。
+- ER-S02 正常提交、合并、推送后记录实际 SHA，继续 ER-S02A 精确定价；当前不应再重做 S01/S02 的已通过测试。
+- ER-D0/CPM 的定价、预占、交付、资格、回执和事件契约逐片冻结；ER-S02A、ER-S03～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
+- 优先形成 ER-S02～ER-S07 的最小 sandbox 曝光资金闭环，再推进自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
+- CPA 归因/迟到窗口、正式来源与期初账务、容量和恢复目标仍待确定；不阻碍无关切片，不重复询问已确定 CPM 政策。
 
 ## 当前问题
 
-- 用户已批准实施计划；新的高风险业务参数按正式契约冻结，例行实施/验证/Git 交付无需再次请求授权。
-- 历史代码存在响应即曝光/扣费、Redis 预算、RPC 写入重试与未知结果吞错、多数据源事务、尽力消息发送等风险；本轮仅记录，没有修复。
-- 既有用户改动须原样保留：`docker/docker-compose.yml`、`docs/08-本地运行.md`、`docs/09-权限接入auth-platform.md`、`docs/skills/19-工程化-容器编排与可观测.md`、`scripts/dev-local.sh`、未跟踪 `PROGRESS.md`。该 PROGRESS 属于此前本地启动任务，不与本文件合并、不纳入本次提交。
+- 历史响应即曝光/扣费、Redis 预算、尽力发送等风险仍在旧链路；新预算入口默认关闭，未声称整体整改完成。
+- 根 Maven 未配置 formatter/static-analysis；Code Hygiene 为 IMPLEMENTATION_COMPLETE_WITH_LIMITATIONS（无 formatter），保留现有风格，不新建工具链。
+- 新预算入口需要显式可信 advertiser 服务身份，旧通用身份 `recsys` 无权调用；详细配置见 runbook。共享签名方案未升级成独立服务密钥。
+- 六个用户既有文件须原样保留、不纳入提交：`docker/docker-compose.yml`、`docs/08-本地运行.md`、`docs/09-权限接入auth-platform.md`、`docs/skills/19-工程化-容器编排与可观测.md`、`scripts/dev-local.sh`、未跟踪 `PROGRESS.md`。已有哈希保护通过。
+- `console/test-results/` 为 S01 可重建的未跟踪截图/测试产物，不纳入源码提交，暂保留作为本地观察证据。忽略的本地配置、数据、模型和构建目录不清理。只有原项目工作目录，无新增 worktree。
 
 ## 下一步建议
 
-1. 从 [实施状态](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md) 恢复当前片，不重做计划。
-2. 完成 ER-S01 验证与交付；继续 ER-S02/ER-S02A，依赖满足后依次推进预占、交付、回执与 Outbox。
-3. 优先完成 ER-S02～ER-S07 的 sandbox 预算/曝光最小闭环，逐片实现、真实组件验证与记录。
-4. 继续 CPC/CPA、可靠事件、恢复及效果门禁；生产切换和部署需独立范围/环境授权。
+1. 核实本片 Git 交付实际状态，完成必要的正常提交/合并/推送；只显式暂存本片路径，不夹带用户文件或截图。
+2. 冻结 C02A：BiddingService 报价进入新账务的精确边界、HALF_UP、不可变报价持久化；旧模式兼容不暗改真实收费。
+3. 依次推进预占、整个交付操作的持久化恢复、回执、账本/Outbox 与前端验收；逐片验证和记录，不要求用户再输入继续。
 
 ## 恢复 Prompt
 
-请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，继续当前未完成切片。实施已获授权，首版 sandbox、金额/时区和图文曝光政策已确认，不重复询问。保留既有用户改动，逐片验证、更新进度和正常 Git 交付，不因完成一个切片就停下；不将尚未完成的整体计划宣称完成，不执行生产切换或部署。
+请读取 `CODEX_PROGRESS.md`、`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md` 与 `CONTRACTS.md`，从未完成片继续。实施已获授权，sandbox、金额/时区、硬预算和图文曝光政策已确认，不重复询问。保留既有用户改动，逐片验证、更新进度并正常 Git 交付；不因完成一个切片就停下，不将整体计划宣称完成，不执行真实收费切换或生产部署。
