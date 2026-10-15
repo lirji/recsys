@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.derived.TowerEmbeddingMapper">
+    <update id="truncateAll">TRUNCATE item_tower_embedding</update>
+    <insert id="upsert">
+        INSERT INTO item_tower_embedding(item_id,embedding)
+        VALUES(#{row.itemId},#{row.embedding,jdbcType=OTHER,typeHandler=org.apache.ibatis.type.ObjectTypeHandler})
+        ON CONFLICT(item_id) DO UPDATE SET embedding=EXCLUDED.embedding
+    </insert>
+    <select id="countAll" resultType="java.lang.Long" useCache="false">
+        SELECT count(*) FROM item_tower_embedding
+    </select>
+</mapper>

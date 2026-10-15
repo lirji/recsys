@@ -144,7 +144,7 @@
 | [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | DONE MP13b1；见MP13B1_RESULT |
 | [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | TODO |
 | [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | TODO |
-| [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | TODO |
+| [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | DONE MP13c4：500行BATCH/独立bootstrap；见MP13C4_RESULT |
 | [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | DONE MP13c2：derived仅UPDATE融合；见MP13C2_RESULT |

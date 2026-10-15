@@ -4,7 +4,8 @@ import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.TowerEmbeddingStore;
+import com.recsys.offline.persistence.mapper.derived.TowerEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -32,17 +33,20 @@ public class ImportTowerJob implements OfflineJob {
     private static final String DEFAULT_FILE = "train/item_tower.csv";
     private static final int BATCH = 500;
 
-    private final JdbcTemplate jdbc;
+    private final TowerEmbeddingStore persistence;
 
-    public ImportTowerJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 导入解析与派生库写入分开，存储层保持原500行批次及资源归属。 */
+    public ImportTowerJob(TowerEmbeddingStore persistence) {
+        this.persistence = persistence;
     }
 
+    /** 保持训练产物导入命令入口。 */
     @Override
     public String name() {
         return "import-tower";
     }
 
+    /** 缺文件先返回；存在的文件继续按原规则清表、跳脏行和分批覆盖。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String file = stringArg(args, "file", DEFAULT_FILE);
@@ -53,11 +57,9 @@ public class ImportTowerJob implements OfflineJob {
             return;
         }
 
-        ensureTable();
-        jdbc.update("TRUNCATE item_tower_embedding");
+        persistence.rebuild();
 
-        List<long[]> ids = new ArrayList<>();   // 仅用于日志计数
-        List<Object[]> batch = new ArrayList<>(BATCH);
+        List<TowerEmbeddingMapper.Row> batch = new ArrayList<>(BATCH);
         int total = 0, bad = 0;
         try (BufferedReader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
@@ -82,37 +84,18 @@ public class ImportTowerJob implements OfflineJob {
                     bad++;
                     continue;
                 }
-                batch.add(new Object[]{itemId, new PGvector(vec)});
+                batch.add(new TowerEmbeddingMapper.Row(itemId, new PGvector(vec)));
                 if (batch.size() >= BATCH) {
-                    total += flush(batch);
+                    total += persistence.writeBatch(batch);
                     batch.clear();
                 }
             }
         }
         if (!batch.isEmpty()) {
-            total += flush(batch);
+            total += persistence.writeBatch(batch);
         }
-        Long cnt = jdbc.queryForObject("SELECT count(*) FROM item_tower_embedding", Long.class);
+        Long cnt = persistence.count();
         log.info("import-tower 完成:写入 {} 条(跳过脏行 {}),item_tower_embedding 总数 {}", total, bad, cnt);
-    }
-
-    private int flush(List<Object[]> batch) {
-        // upsert:item 表外键约束要求 item 已存在(import-items 先跑)
-        int[] r = jdbc.batchUpdate(
-                "INSERT INTO item_tower_embedding(item_id,embedding) VALUES(?,?) " +
-                "ON CONFLICT(item_id) DO UPDATE SET embedding=EXCLUDED.embedding",
-                batch);
-        return r.length;
-    }
-
-    private void ensureTable() {
-        jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
-        // #3:去 REFERENCES item 外键(派生库拆分后 item 在 content 库,跨库外键不成立)
-        jdbc.execute("CREATE TABLE IF NOT EXISTS item_tower_embedding (" +
-                "item_id BIGINT PRIMARY KEY, embedding vector(64))");
-        jdbc.execute("COMMENT ON TABLE item_tower_embedding IS '双塔召回模型生成的物品侧向量'");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_item_tower_hnsw " +
-                "ON item_tower_embedding USING hnsw (embedding vector_cosine_ops)");
     }
 
     private static String stringArg(ApplicationArguments a, String k, String def) {
