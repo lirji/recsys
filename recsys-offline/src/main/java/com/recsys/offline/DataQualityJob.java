@@ -3,7 +3,11 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.DataQualityInputMapper;
+import com.recsys.offline.persistence.mapper.derived.DataQualityCoverageMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
+import com.recsys.offline.persistence.model.AdEventSource;
+import com.recsys.content.persistence.model.CatalogTable;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -37,13 +41,13 @@ public class DataQualityJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(DataQualityJob.class);
     private static final String OUT_DIR = "eval";
 
-    private final JdbcTemplate jdbc;
-    private final JdbcTemplate derived;   // #3:item_embedding/user_embedding 覆盖率计数走派生库
+    private final DataQualityInputMapper inputs;
+    private final DataQualityCoverageMapper coverage;
 
-    public DataQualityJob(JdbcTemplate jdbc,
-                          @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived) {
-        this.jdbc = jdbc;
-        this.derived = derived;
+    /** 主源分母/事件与派生源向量计数分开注入，避免巡检误读同名表。 */
+    public DataQualityJob(DataQualityInputMapper inputs, DataQualityCoverageMapper coverage) {
+        this.inputs = inputs;
+        this.coverage = coverage;
     }
 
     @Override
@@ -51,16 +55,11 @@ public class DataQualityJob implements OfflineJob {
         return "data-quality";
     }
 
-    /** #2:行为读来源表(默认 user_behavior;run() 设、helper 读——离线作业单次运行、无并发)。 */
-    private String bt = "user_behavior";
-    private String it = "item";   // #3:item 读来源表(默认 item)
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        bt = BehaviorQuery.table(args);
-        it = ItemQuery.table(args);
-        aet = AdEventQuery.table(args);
+        BehaviorSource behaviorSource = BehaviorQuery.source(args);
+        CatalogTable itemSource = ItemQuery.source(args);
+        AdEventSource adSource = AdEventQuery.source(args);
         double minCoverage = doubleArg(args, "min-embedding-coverage", 0.9);
         double maxEce = doubleArg(args, "max-ece", 0.05);
         double maxPsi = doubleArg(args, "max-psi", 0.25);
@@ -71,10 +70,10 @@ public class DataQualityJob implements OfflineJob {
 
         // 1. Embedding 覆盖率
         try {
-            long items = count("SELECT count(*) FROM " + it);
-            long itemEmb = derived.queryForObject("SELECT count(*) FROM item_embedding", Long.class);
-            long users = count("SELECT count(DISTINCT user_id) FROM " + bt + "");
-            long userEmb = derived.queryForObject("SELECT count(*) FROM user_embedding", Long.class);
+            long items = inputs.countItems(itemSource);
+            long itemEmb = coverage.countItemEmbeddings();
+            long users = inputs.countUsers(behaviorSource);
+            long userEmb = coverage.countUserEmbeddings();
             double itemCov = DataQuality.coverage(itemEmb, items);
             double userCov = DataQuality.coverage(userEmb, users);
             report.put("item_embedding_coverage", fmt(itemCov));
@@ -93,7 +92,7 @@ public class DataQualityJob implements OfflineJob {
 
         // 2. pCTR 校准偏差(ECE),来自 ad_event
         try {
-            double ece = calibrationEce();
+            double ece = calibrationEce(adSource);
             if (!Double.isNaN(ece)) {
                 report.put("pctr_ece", fmt(ece));
                 log.info("pCTR 校准偏差 ECE = {}", fmt(ece));
@@ -109,7 +108,7 @@ public class DataQualityJob implements OfflineJob {
 
         // 3. 类目分布 PSI(近 N 天 vs 全历史)
         try {
-            double psi = categoryPsi(days);
+            double psi = categoryPsi(behaviorSource, itemSource, days);
             if (!Double.isNaN(psi)) {
                 report.put("category_psi_" + days + "d", fmt(psi));
                 report.put("category_psi_level", DataQuality.psiLevel(psi));
@@ -137,50 +136,36 @@ public class DataQualityJob implements OfflineJob {
     }
 
     /** 从 ad_event 按 pctr_calib 十分桶,比对实际 CTR,算 ECE。无数据返回 NaN。 */
-    private double calibrationEce() {
-        String sql =
-                "WITH impr AS (" +
-                "  SELECT request_id, ad_id, pctr_calib, " +
-                "         width_bucket(pctr_calib, 0, 1, 10) AS bin " +
-                "  FROM " + aet + " WHERE event_type='IMPRESSION' AND pctr_calib IS NOT NULL), " +
-                "clk AS (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') " +
-                "SELECT i.bin AS bin, count(*) AS n, avg(i.pctr_calib) AS mean_pred, " +
-                "  avg(CASE WHEN c.request_id IS NOT NULL THEN 1.0 ELSE 0.0 END) AS actual " +
-                "FROM impr i LEFT JOIN clk c ON c.request_id=i.request_id AND c.ad_id=i.ad_id " +
-                "GROUP BY i.bin ORDER BY i.bin";
-        List<long[]> counts = new ArrayList<>();
-        List<double[]> preds = new ArrayList<>();
-        jdbc.query(sql, rs -> {
-            counts.add(new long[]{rs.getLong("n")});
-            preds.add(new double[]{rs.getDouble("mean_pred"), rs.getDouble("actual")});
-        });
-        if (counts.isEmpty()) {
+    private double calibrationEce(AdEventSource source) {
+        var bins = inputs.loadCalibrationBins(source);
+        if (bins.isEmpty()) {
             return Double.NaN;
         }
-        long[] n = new long[counts.size()];
-        double[] mean = new double[counts.size()];
-        double[] actual = new double[counts.size()];
-        for (int i = 0; i < counts.size(); i++) {
-            n[i] = counts.get(i)[0];
-            mean[i] = preds.get(i)[0];
-            actual[i] = preds.get(i)[1];
+        long[] n = new long[bins.size()];
+        double[] mean = new double[bins.size()];
+        double[] actual = new double[bins.size()];
+        for (int i = 0; i < bins.size(); i++) {
+            var bin = bins.get(i);
+            n[i] = bin.count();
+            mean[i] = bin.meanPrediction();
+            actual[i] = bin.actualRate();
         }
         return DataQuality.expectedCalibrationError(n, mean, actual);
     }
 
     /** 近 N 天正反馈的类目分布 vs 全历史基线的 PSI。数据不足返回 NaN。 */
-    private double categoryPsi(int days) {
+    private double categoryPsi(BehaviorSource behavior, CatalogTable items, int days) {
         Map<String, Long> base = new LinkedHashMap<>();
         Map<String, Long> recent = new LinkedHashMap<>();
-        jdbc.query(
-                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN " + it + " i ON i.item_id=b.item_id " +
-                "WHERE b.action IN ('CLICK','LIKE','PLAY','RATING') AND i.category IS NOT NULL GROUP BY i.category",
-                rs -> { base.put(rs.getString("cat"), rs.getLong("c")); });
-        jdbc.query(
-                "SELECT i.category AS cat, count(*) AS c FROM " + bt + " b JOIN " + it + " i ON i.item_id=b.item_id " +
-                "WHERE b.action IN ('CLICK','LIKE','PLAY','RATING') AND i.category IS NOT NULL " +
-                "  AND b.ts >= now() - (? || ' days')::interval GROUP BY i.category",
-                rs -> { recent.put(rs.getString("cat"), rs.getLong("c")); }, String.valueOf(days));
+        // null只表示全历史；0/负days仍是原时间下界，不能当作关闭过滤。
+        inputs.scanCategories(behavior, items, null, context -> {
+            var row = context.getResultObject();
+            base.put(row.category(), row.count());
+        });
+        inputs.scanCategories(behavior, items, days, context -> {
+            var row = context.getResultObject();
+            recent.put(row.category(), row.count());
+        });
         if (base.isEmpty() || recent.isEmpty()) {
             return Double.NaN;
         }
@@ -194,11 +179,6 @@ public class DataQualityJob implements OfflineJob {
             i++;
         }
         return DataQuality.psi(e, a);
-    }
-
-    private long count(String sql) {
-        Long v = jdbc.queryForObject(sql, Long.class);
-        return v == null ? 0 : v;
     }
 
     private void writeReport(Map<String, String> report, List<String> breaches) throws Exception {

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.DataQualityInputMapper">
+    <resultMap id="calibration" type="com.recsys.offline.persistence.mapper.primary.DataQualityInputMapper$CalibrationBin">
+        <constructor>
+            <arg name="count" column="n" javaType="_long"/>
+            <arg name="meanPrediction" column="mean_pred" javaType="_double"/>
+            <arg name="actualRate" column="actual" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="category" type="com.recsys.offline.persistence.mapper.primary.DataQualityInputMapper$CategoryCount">
+        <constructor>
+            <arg name="category" column="cat" javaType="java.lang.String"/>
+            <arg name="count" column="c" javaType="_long"/>
+        </constructor>
+    </resultMap>
+    <sql id="items"><choose><when test="items.name() == 'REPLICA'">item_local</when><otherwise>item</otherwise></choose></sql>
+    <sql id="behavior"><choose><when test="behavior.name() == 'BEHAVIOR_LOG'">behavior_log</when><otherwise>user_behavior</otherwise></choose></sql>
+    <sql id="adEvents"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <select id="countItems" resultType="java.lang.Long" useCache="false">
+        SELECT count(*) FROM <include refid="items"/>
+    </select>
+    <select id="countUsers" resultType="java.lang.Long" useCache="false">
+        SELECT count(DISTINCT user_id) FROM <include refid="behavior"/>
+    </select>
+    <select id="loadCalibrationBins" resultMap="calibration" useCache="false">
+        WITH impr AS (
+            SELECT request_id,ad_id,pctr_calib,width_bucket(pctr_calib,0,1,10) AS bin
+            FROM <include refid="adEvents"/> WHERE event_type='IMPRESSION' AND pctr_calib IS NOT NULL
+        ),clk AS (SELECT DISTINCT request_id,ad_id FROM <include refid="adEvents"/> WHERE event_type='CLICK')
+        SELECT i.bin AS bin,count(*) AS n,avg(i.pctr_calib) AS mean_pred,
+               avg(CASE WHEN c.request_id IS NOT NULL THEN 1.0 ELSE 0.0 END) AS actual
+        FROM impr i LEFT JOIN clk c ON c.request_id=i.request_id AND c.ad_id=i.ad_id
+        GROUP BY i.bin ORDER BY i.bin
+    </select>
+    <select id="scanCategories" resultMap="category" useCache="false">
+        SELECT i.category AS cat,count(*) AS c FROM <include refid="behavior"/> b
+        JOIN <include refid="items"/> i ON i.item_id=b.item_id
+        WHERE b.action IN ('CLICK','LIKE','PLAY','RATING') AND i.category IS NOT NULL
+        <if test="days != null">AND b.ts &gt;= now()-(#{days}::text || ' days')::interval</if>
+        GROUP BY i.category
+    </select>
+</mapper>

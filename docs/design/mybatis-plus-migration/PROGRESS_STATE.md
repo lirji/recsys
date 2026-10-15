@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划及Mapper/XML形式已批准。MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5、f1～f5实施与验证已完成；f4=a871eb76，f5及其验收证据见MP13F5_RESULT，两片按原授权相邻正常交付。MP13f3之前已正常合并/push main至0a4481f9，CI38776191398五门禁全部SUCCESS。逐片源码指纹、行为证据和历史交付记录见下方各RESULT；此段是当前入口，不以历史阶段状态覆盖最新事实。
+`IN_PROGRESS`。整体计划及Mapper/XML形式已批准。MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5、f1～f6实施与验证已完成；f4=a871eb76、f5=f2e4ccff已正常交付，f6本地完成，证据见MP13F6_RESULT。已正常合并/push main至f2e4ccff，CI38779450526四专项成功、build在途；此前0a4481f9 CI38776191398五门禁全部SUCCESS。逐片源码指纹、行为证据和历史交付记录见下方各RESULT；此段是当前入口，不以历史阶段状态覆盖最新事实。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -55,12 +55,12 @@
 
 - 计划已批准；无需重复确认。
 - MP00～MP12已完成；MP13剩余离线作业、MP14、MP15及追加统一错误码目标未完成。
-- 当前验证以最新MP13F4_RESULT/MP13F5_RESULT为准；全仓clean verify和显式浏览器最终验收留待MP15，未执行项不记PASS。
+- 当前验证以最新MP13F6_RESULT为准；全仓clean verify和显式浏览器最终验收留待MP15，未执行项不记PASS。
 - 最新完整成功CI为0a4481f9的38776191398；后续提交须按对应SHA核验，不能继承该远程结果。
 
 ## 已修改文件
 
-本批改动为MP13f5 oCPC输入及必要测试/文档；f4为a871eb76独立提交，两片相邻交付。根恢复文档只更新活跃任务前缀，旧暂停交接字节保留；下方历史章节不代表仍未完成。
+本批改动为MP13f6数据质量双源输入及必要测试/文档；f4/f5已交付，下一片清理过渡装配。根恢复文档只更新活跃任务前缀，旧暂停交接字节保留；下方历史章节不代表仍未完成。
 
 ## 保护内容
 
@@ -79,7 +79,7 @@
 
 ## 下一步
 
-1. 继续DataQuality主/派生源统计、旧装配清理及Flink类目加载；核验本批对应远程CI。
+1. 清理无生产消费者的表名/旧JdbcTemplate入口，验证advertiser Boot主源和派生工厂身份；随后Flink类目加载与MP15。
 2. 继续MP13～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -494,3 +494,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 见MP13F5_RESULT。旧9、新关联10、完整离线271/45类、全仓24 reactor测试编译/hygiene通过。7源指纹890bf1921467a5088b3ce124482acedab3eba295f10de59fab3b3dad1d1cc344。oCPC四SQL进入真实分片目标Mapper及主源反馈Mapper，bigint数组、AVG、普通JOIN乘积、精确点击时间窗口、未来转化排除、延迟权重和Redis部分发布保持。days<=0的epoch下界与旧说明差异列入后续提示治理。0a4481f9 CI38776191398五门禁全部SUCCESS；f4=a871eb76与本片正常ff/push后继续DataQuality最后七次查询。
 
 残留结构核查：业务SQL清单仅DataQuality与RealtimeFeatureJob待迁移。最终清理还须处理offline/ad旧JdbcTemplate Bean及advertiser隐藏派生DataSource适配；advertiser不能因新增DataSource Bean使Boot主分片源自动配置退避，应沿已有真实装配测试验证。R9内部JdbcTemplate仅承担无SQL连接适配，保留已测试的手动事务边界。
+
+## MP13f6最终验证
+
+见MP13F6_RESULT。旧9、新关联10、完整离线280/46类、全仓24 reactor测试编译/hygiene通过。8源指纹657516695e99c7540f2c4b557ae0c9e73b926e5c0ad891252ee92bc21a6e48cd。数据质量七次查询迁入主/派生Mapper，具名校准记录替代平行数组；六份完整CSV与旧一致，互相矛盾的双源计数、PG分桶、精确days边界、独立失败跳过与原错误通过提示均有真实证据。业务SQL清单只剩Flink，MP13仍需f7装配/表名过渡入口清理。f2e4ccff已交付，CI四专项成功/build在途。

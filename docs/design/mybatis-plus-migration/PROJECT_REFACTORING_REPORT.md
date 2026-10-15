@@ -65,9 +65,9 @@
 
 证据入口：PLAN、SQL_INVENTORY、BACKEND_ARCHITECTURE、TECH_SELECTION、PROGRESS_STATE；本轮编译日志 `/tmp/recsys-mybatis-baseline-compile.log`。
 
-## 当前增量状态（MP13f5）
+## 当前增量状态（MP13f6）
 
-前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5及f1～f5；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线271/45类及全仓24 reactor测试编译/hygiene通过，不代表最终全仓验收。
+前文MP01是初始基线。当前已完成MP00～MP12、MP13a1/a2、b1～b8、c1～c7、d1～d5、e1～e5及f1～f6；逐片证据以PROGRESS_STATE及对应RESULT为准，MP13其余作业、MP14与MP15尚未完成。最新完整离线280/46类及全仓24 reactor测试编译/hygiene通过，不代表最终全仓验收。
 
 新增已证实技术债：ImportR9EmbeddingsJob原手动事务会提交/回滚外层先行工作，迁移R9EmbeddingStore保持该边界并用真实PG保护；未来事务治理须独立决定传播策略。Lookalike/Hot沿用两条Redis命令删除后写入，窗口仍存在，不能宣称原子替换；查询失败发生在删除前时旧数据保留已实证，见MP13C7_RESULT/MP13D1_RESULT。
 
@@ -80,3 +80,5 @@
 AdReport原无效点击计数异常降级为0，不能区分“无无效点击”与“未知”。本次保留SQL兼容，后续错误提示治理应明确状态，见MP13F4_RESULT。
 
 oCPC的days<=0实际仍排除epoch之前及NULL点击，旧说明“全部”不精确；无效lambda/旧k读取降级、Redis多广告主部分发布边界保持。后续提示治理应区分降级与正常输入，不宣称多键原子，见MP13F5_RESULT。
+
+DataQuality检查全部因缺表跳过时仍记breaches=0和巡检通过，真实旧/新测试已固定该历史行为；后续统一提示需以已执行检查数和检查状态区分未检查与通过，见MP13F6_RESULT。
