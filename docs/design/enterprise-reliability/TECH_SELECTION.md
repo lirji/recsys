@@ -48,3 +48,6 @@ ER-S11C2测试装配补充：为验证同一真实资金owner在in-process和TCP
 
 
 ER-S12C2测试装配：ad-serving增加现有advertiser的`test-support`普通类包（`${project.version}`，仅test scope）；沿engine既有process-classes打包到target/test-support的方案，验证真实SandboxConversionController、AdvertiserAuthz与GrpcSandboxConversionClient跨TCP调用资金owner。没有新增第三方组件/版本或生产依赖边；权限SDK仍为项目既有版本，调用其已有fullyConsistent能力，测试替身不证明真实权限关系数据。Code Hygiene本批`approvedDependencies=[recsys-advertiser,maven-jar-plugin]`仅覆盖该测试边与同项目既有打包插件的显式执行，原安全扫描报告模式的限制保持。
+
+
+ER-S13A：沿ad owner的现有PostgreSQL/JDBC，对单账户原预算日用REQUIRES_NEW+REPEATABLE_READ+readOnly+5秒截止实现一致核查。逐条READ_COMMITTED可能跨捕获提交读取不一致；锁账户会增加资金写等待，均不选。新增V016账户日索引，不改历史迁移。没有新第三方组件/依赖/版本/调度器；offline可信调用的依赖仅在后续C契约批准后引入。数据源/只读/隔离语义通过真实PG并发验证，不编造容量或RTO/RPO数字。

@@ -120,3 +120,6 @@ AdConversionCapturedV1独立序列化契约与V014投影，固定EventFamily.CON
 
 
 ER-S12C2：CPA交付沿固定ChargeMode.CONVERSION，engine primary V005保存不可变整页和领取fence，adDb V015保存准备原请求/结果；RPC/报价/预占不跨owner事务。engine仅生成CPA交付与可见观测，advertiser通过每次edit/fullyConsistent判权提交或查询业务转化，再以独立advertiser caller进入资金owner。ADMIN和旧authz disabled/shadow均不能绕过新转化守卫；内部engine caller不能提交业务转化。回调区分自身实收和资格实收，返回原决定及最新资金状态。两种展示模式共用同一owner，异常无旧outcome/Redis回退；CPA与CPM/CPC可同时装配，所有同类型仓储/交付服务显式Qualifier。
+
+
+ER-S13A按[C13设计](C13_DESIGN.md)增加ad owner内部只读对账能力。资金真值、事件传输、投影状态分离，同库一致快照不锁账户；offline后续仅契约驱动，不能成为第二资金写入口。持久任务/受控恢复仍由后续B/C正式契约承接，A不宣称父S13完成。

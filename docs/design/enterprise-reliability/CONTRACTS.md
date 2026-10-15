@@ -227,3 +227,8 @@ S11C内事件验证单元，正式字段校验/Inbox幂等/投递与位点恢复
 ## C12C2：CPA稳定交付与广告主认证
 
 正式协议见[C12C2设计](C12_DESIGN.md#c12c2-稳定交付与外部授权边界)。独立conversion-offer、ad V015/engine V005和conversion.v1；展示/可见仅独立engine，转化仅独立advertiser caller。广告主PUT/GET每次强制edit/fullyConsistent，不受disabled/shadow或ADMIN绕过；业务事件自身实收与资格实收分离，迟到/重复不能被误读为再次收费。外部边界验证通过后才完成父S12。
+
+
+## C13A：账户预算日一致快照
+
+正式字段、差额方向、逐事件身份核查及状态定义见[C13设计](C13_DESIGN.md#c13a正式契约内部只读账户日快照)。单adDb只读REPEATABLE_READ事务，账户缺失/依赖未知/投影落后分别表达，零额也核对笔数。A只有内部查询；父S13仍要求B持久化有界任务、C受控续办/RPC/离线作业与PG/Kafka恢复验收。

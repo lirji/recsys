@@ -463,3 +463,12 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 5. 暂停新增资格使用conversion-preparation-admission-enabled=false，停止新条件使用conversion-receipt-admission-enabled=false；保持owner/查询、到期工作器和可靠事件排空，不能关整个sandbox遗弃held。回滚按既有expand-only迁移保留新表，先停止新增并排空；旧程序无法继续新CPA义务，不能仅回退镜像就宣称业务恢复。
 
 本片验证使用独占PG schema、真实TCP RPC和HTTP边界；候选/实验与权限引擎为隔离替身，不声称真实SpiceDB、生产收费、容量或灾备验证。未修改共享dev_infra、既有运行配置或真实账户。
+
+
+## S13A：只读账户日对账
+
+显式安装adDb V016索引迁移并保留摘要；需要三族既有资金/投影结构（V001/003/005/006/008/009/010/012/013/014）。应用仅校验，不自动建表。`recsys.ad.billing.sandbox-enabled=true`和`reconciliation-enabled=true`共同安装，默认关闭，不依赖新收费admission。当前只有内部服务，公开RPC/offline待S13C，运营接口待S14。
+
+每次只核验指定广告主和原预算日，资金BALANCED不等于投影CAUGHT_UP。pending/DEAD/最老创建时间解释传输积压；PUBLISHED仍可能缺fact。0元也必须有相应事件笔数，due-but-held仍属于账户held。缺账户显示ACCOUNT_MISSING，缺表/数据库故障/5秒超时保持未知，禁止把异常转0。observedAt与accountVersion仅解释本次快照，不能当全局水位。
+
+报告仅诊断，不自动改余额/账本/fact。资金差额或已有坏事实须保留证据；不能靠重新收费、删账或重建历史平账。停用本片只停止新核查，可保留V016索引。当前未证明生产规模、保留期或恢复承诺；测试使用独占PG。

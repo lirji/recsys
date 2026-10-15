@@ -9,35 +9,33 @@
 - S01～S10已交付，细节见各ER-Sxx_RESULT；S10=b0b19432。
 - S11完整CPC闭环：A365595e2、Bb2c2911a、C1e599b3e5、C2f914f571；旧浏览器fixture名称修复6904889c，继承CI38699749896全部SUCCESS，原失败已关闭。
 - S12完整CPA闭环已DONE/PASS：A2f5c3dab、B2d107e28、C1f23ca416；三批CI分别38699749896、38701260200、38702085570全部五门禁SUCCESS。
-- S12C2本地完成：严格广告主edit/fullyConsistent、独立engine/advertiser caller、稳定双模式交付、转化回调与原结果查询，原业务事件自身费用不混同资格费用。详见ER-S12C2_RESULT/ER-S12_RESULT。
+- S12C2已交付b8cf737b，CI38705469195五门禁全部SUCCESS：严格广告主edit/fullyConsistent、独立engine/advertiser caller、稳定双模式交付、转化回调与原结果查询，原业务事件自身费用不混同资格费用。详见ER-S12C2_RESULT/ER-S12_RESULT。
 - C2最终验证：355钱链路/67类0失败/错误/跳过；全仓其余328项/81类0失败/错误、4个既有按需fixture跳过；最终CPA专项45项0失败/错误/跳过；显式广告4+自然5+混排5真实浏览器全部PASS。最后三套脚本实际执行了默认跳过的三个浏览器宿主。
 
 ## 已修改文件
 
-- 当前原目录唯一worktree，任务分支feat/sandbox-conversion-settlement。本批C2基线f23ca416368d2a80147858a33b79ad07937abda8；本地验证已完，接下来立即正常Git交付。
-- C2共31个源码/测试/POM路径：`/tmp/recsys-s12c2-source-paths.json`；最终源指纹`12dc4ace6f0df1430185201e3af27f69220dbc777bfcbc2ebd93778dc33d30f3`（排序路径+NUL+内容+NUL的SHA256）。
-- 主要路径：common-ad ConversionDelivery/ChargeMode；ad ConversionPreparation/V015和固定模式仓储；engine ConversionDelivery配置/HTTP/V005及gateway；proto conversion.v1/ConversionProtoMapper；ad-serving SandboxConversionGrpcService；advertiser严格Authz、GrpcSandboxConversionClient、SandboxConversionController及7类验证/fixture。
-- ad-serving仅test scope新增advertiser test-support，沿既有maven-jar-plugin打到target/test-support；没有新版本或生产依赖。TECH_SELECTION已登记两条hygiene许可。
-- 本片同步C12_DESIGN、BACKEND_ARCHITECTURE、TECH_SELECTION、SANDBOX_BUDGET_RUNBOOK、IMPLEMENTATION_SLICES、B/C1真实CI证据、C2/父S12_RESULT与本文件。
+- 当前原目录唯一worktree，分支feat/sandbox-billing-reconciliation，S13A基线b8cf737b。
+- S13A共6源文件，清单`/tmp/recsys-s13a-source-paths.json`：BillingReconciliation、ReconciliationRepository/Service/Configuration、V016、ReconciliationPostgresTest。
+- 最终源指纹`9f3d8e1753aa89dd580a5860c416432e14c7c5a38d1251c40dea40321059a2bb`，验证后未改源码。
+- 同步C13_DESIGN、CONTRACTS、BACKEND_ARCHITECTURE、TECH_SELECTION、IMPLEMENTATION_SLICES、SANDBOX_BUDGET_RUNBOOK、ER-S13A_RESULT、S12C2实际交付证据及本文件。
 
 ## 未完成
 
-- S12C2尚待本批Git commit/正常merge/push和实际远程CI核验；不能将本地PASS说成已推送或远程通过。
-- 原S13～S25全部继续。下一片S13账户预算日对账/未决恢复；已只读考察，但尚未正式冻结C13契约或实现产品代码。临时设计笔记`/tmp/recsys-c13-design-notes.md`可复用，不是正式批准契约。
-- S15必须同时包含自然Outbox和旧BehaviorService可靠事件；用户未跟踪C15A_DESIGN只是备选草案，不替代原S15范围。
+- S13A DONE/PASS，待当前Git交付与远程CI核查；父S13仍IN_PROGRESS。B持久化任务、C受控续办/RPC/offline均须完成。
+- 原S14～S25继续；S15必须同时包含自然Outbox与旧BehaviorService可靠事件，未跟踪C15A草案不替代原范围。
 
 ## 当前问题
 
-- 无当前实现阻塞。C2hygiene初次发现两处magic字面量比较和既有打包插件未登记，已改用HttpStatus/BidType、登记同项目既有插件，最终专项重编译验证通过；没有放宽断言/跳过关键测试。
-- Code Hygiene最终IMPLEMENTATION_COMPLETE_WITH_LIMITATIONS；统一formatter未配置，独立Java静态分析未配置，沿周边约定，不引入新工具。
-- 必须保持7项用户文件指纹`/tmp/recsys-s11b-protected.json`：docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、未跟踪PROGRESS.md、未跟踪docs/design/enterprise-reliability/C15A_DESIGN.md。最近检查全部未变。
-- console/test-results和忽略的env/数据/模型/venv/构建产物保留，无清理授权，无额外worktree。
+- 无当前实现阻塞。S13A真实PG 11项和完整资金链路366项/68类全部0失败/错误/跳过；日志`/tmp/recsys-s13a-postgres-final.log`、`/tmp/recsys-s13a-money.log`。
+- Hygiene COMPLETE_WITH_LIMITATIONS，无阻塞；统一formatter及独立Java静态分析未配置，审查细节见ER-S13A_RESULT。
+- 7项用户文件指纹`/tmp/recsys-s11b-protected.json`全部不变。保留docker/docker-compose.yml、docs/08-本地运行.md、docs/09-权限接入auth-platform.md、docs/skills/19-工程化-容器编排与可观测.md、scripts/dev-local.sh、PROGRESS.md、C15A_DESIGN.md；不stage。
+- console/test-results和忽略env/数据/模型/venv/构建产物保留，无清理授权，无额外worktree。
 
 ## 下一步建议
 
-1. 核对源码指纹/保护文件与显式暂存清单，正常提交C2、ff合并本地main并push origin/main；用户持续授权涵盖正常Git联网，不再问确认，不强推。
-2. 检查该提交CI，更新真实交付证据。同时在原目录建立/复用S13独立分支，按原F12细化正式C13契约与有限实施切片，不扩张为自动冲正。
-3. S13完成后继续S14～S25直到原目标全部处理；独立后续工作不因尚未定的生产参数停止。
+1. 核对Git事实，完成S13A显式路径提交、ff合并、push main与CI记录；不得重复提交已交付内容。
+2. 细化并冻结C13B持久化只读任务、检查点/fence、取消/重试/审计，随后实现；继续C13C受控续办与offline。临时笔记`/tmp/recsys-c13b-notes.md`不是正式契约。
+3. 继续原S14～S25，不因尚未定的生产参数停止独立sandbox工作。
 
 ## 重要上下文
 
@@ -56,4 +54,4 @@
 
 ## 恢复 Prompt
 
-读取CODEX_PROGRESS.md、IMPLEMENTATION_SLICES和原PLAN，从真实Git状态继续。S12完整本地验收已完成，先核对/完成S12C2本批Git交付与CI，然后执行原S13～S25。CPA五分钟/一次收费/先转化等待/迟到非计费已批准，不再询问。保护七项用户文件与本地数据，不重开已完成规划、不等用户反复输入继续，不启用真实收费或生产部署。
+读取CODEX_PROGRESS.md、IMPLEMENTATION_SLICES与原PLAN，从真实Git状态继续。S12已全部交付且CI38705469195全绿；S13A本地验证已PASS，先核对其Git交付，继而完成B/C与S14～S25。CPA五分钟/一次收费/先转化等待/迟到非计费已批准，不再询问。保护七项用户文件和本地数据，不重开全部规划，不等待重复继续，不启用真实收费或生产部署。
