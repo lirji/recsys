@@ -222,3 +222,8 @@ S11C内事件验证单元，正式字段校验/Inbox幂等/投递与位点恢复
 ## C12C1：CPA可靠捕获事实
 
 正式协议见[C12C1设计](C12_DESIGN.md#c12c1-可靠捕获事件与投影)。AdConversionCapturedV1独立版本/目的地与唯一业务事实索引，复用固定EventFamily和有限投递；V014新增Inbox、重放审计和日投影。每广告主conversionEventId唯一，跨广告主可重复；两类身份命名空间不混同。只有本地投影事务提交后允许确认位点，C2公开授权入口仍是父S12必需工作。
+
+
+## C12C2：CPA稳定交付与广告主认证
+
+正式协议见[C12C2设计](C12_DESIGN.md#c12c2-稳定交付与外部授权边界)。独立conversion-offer、ad V015/engine V005和conversion.v1；展示/可见仅独立engine，转化仅独立advertiser caller。广告主PUT/GET每次强制edit/fullyConsistent，不受disabled/shadow或ADMIN绕过；业务事件自身实收与资格实收分离，迟到/重复不能被误读为再次收费。外部边界验证通过后才完成父S12。

@@ -19,3 +19,5 @@ V013新增独立CPA资格/可见回执/广告主作用域业务事实/账本/捕
 8源文件指纹`07a894e209c52d3cbbb73684a7bf4112d671733e633169e3f79a99e96ec3777d`，路径清单/tmp/recsys-s12b-source-paths.json。同步C12设计/契约、架构、手册、切片和根进度；用户七项指纹不变，保留未跟踪/忽略文件，无新worktree。
 
 SKILL_HANDOFF: backend-implementation → implementation-validation → project-documentation → update-progress-docs → task-git-delivery；ER-S12B DONE，validation=PASS，gate=PASS_WITH_LIMITATIONS。下一项ER-S12C1可靠事件，随后C2外部授权/稳定交付；按已有授权正常Git交付，不执行生产部署。
+
+Git交付：2d107e28已正常提交、快进合并并推送origin/main，远程CI待核对；原任务分支继续C1。

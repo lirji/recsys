@@ -419,3 +419,32 @@ SELECT delivery_state,count(*),min(created_at) FROM ad_conversion_outbox GROUP B
 ~~~
 
 诊断不导出qualification_token/actor/payload_hash。签名key覆盖在途未提交请求；已完成请求原ID恢复不重验旧key，新业务键或可见回执必须仍可验签。回退保留事实，不删除历史或回滚资金效果；本轮没有共享环境启用或生产部署。
+
+## S12C1：CPA可靠事件与独立投影
+
+V014 `db/ad-billing/V014__conversion_event_delivery.sql`新增重放审计、Inbox明细和转化收费日汇总，显式追加且保存checksum；不改V013原捕获事实。通过独立`recsys.ad.billing.conversion-events.relay-enabled` / `projection-enabled`开启，默认false。topic默认`ad-conversion-captured-v1`，group默认`recsys-sandbox-conversion-projection-v1`，相同前缀下topic/group可按环境隔离；显式预建topic与权限，沿原可靠传输强制ACK/幂等/有界超时，禁用自动提交和自动建topic。
+
+停止新CPA准备/接收后保持事件组件运行，无需签名key或conversions-enabled才能排空历史。三个事件族使用独立配置、表、指标前缀ad.billing / ad.billing.click / ad.billing.conversion；不把CPA事件送入点击或曝光消费者。现有原始载荷冻结逻辑目的地，publisher将其映射到明确配置的物理topic。
+
+发送成功需broker确认再以有效fence标记，租约超时旧执行器不得写回；最多20次耗尽转DEAD并保留原事件。人工恢复沿原受控replay用例和审计，不改账本或eventId。消费先提交Inbox+日汇总，再offset+1；毒消息停止并保留位点，修复/审查后续跑，不能跳过当成功。
+
+去重同时约束eventId/qualification/visible/outcome和(advertiser,conversionEventId)。不同广告主同业务UUID合法；可见UUID与内部outcome UUID属于两个命名空间，允许值恰相同。重复事件不累加，低账户版本的独立事实仍累加。只有捕获事件进入日conversion_count；业务事实表中的迟到、重复和等待不能直接累加实收。
+
+~~~sql
+-- 投影与原账本可能因发送/消费延迟暂时不同，先核对Outbox和位点追平。
+WITH l AS (
+  SELECT advertiser_id,budget_date,count(*) AS n,sum(amount) AS amount
+  FROM ad_conversion_ledger GROUP BY advertiser_id,budget_date
+)
+SELECT coalesce(l.advertiser_id,p.advertiser_id) AS advertiser_id,
+       coalesce(l.budget_date,p.budget_date) AS budget_date,
+       coalesce(l.n,0)-coalesce(p.conversion_count,0) AS count_gap,
+       coalesce(l.amount,0)-coalesce(p.charged_amount,0) AS amount_gap
+FROM l FULL JOIN ad_conversion_projection_daily p USING(advertiser_id,budget_date)
+ORDER BY advertiser_id,budget_date LIMIT 100;
+
+SELECT delivery_state,count(*),min(created_at) AS oldest
+FROM ad_conversion_outbox GROUP BY delivery_state;
+~~~
+
+这里仅CPA子账本投影核对；共享预算必须合计三类账本和未决义务。未测容量/RTO/RPO/保留期不承诺达标。验证在隔离PG和临时Kafka进行，暂停/恢复仅操作测试拥有的broker；没有共享环境启用。公开CPA接收与稳定交付仍待S12C2。

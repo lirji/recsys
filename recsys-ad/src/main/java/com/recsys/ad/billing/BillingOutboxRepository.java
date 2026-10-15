@@ -12,7 +12,8 @@ public class BillingOutboxRepository {
     /** 仅允许两组服务端固定表族，不接受外部表名或SQL片段。 */
     public enum EventFamily {
         IMPRESSION("ad_billing",6,MIGRATION,"ad.billing"),
-        CLICK("ad_click",10,"db/ad-billing/V010__click_event_delivery.sql","ad.billing.click");
+        CLICK("ad_click",10,"db/ad-billing/V010__click_event_delivery.sql","ad.billing.click"),
+        CONVERSION("ad_conversion",14,"db/ad-billing/V014__conversion_event_delivery.sql","ad.billing.conversion");
         private final String prefix;
         private final int version;
         private final String migration;
@@ -26,7 +27,7 @@ public class BillingOutboxRepository {
     private final JdbcTemplate jdbc;
     private final EventFamily family;
     public BillingOutboxRepository(JdbcTemplate jdbc) { this(jdbc,EventFamily.IMPRESSION); }
-    /** 点击复用可靠投递算法，独立表族和迁移仍由明确owner配置。 */
+    /** 点击与CPA复用可靠投递算法，独立表族和迁移仍由明确owner配置。 */
     public BillingOutboxRepository(JdbcTemplate jdbc,EventFamily family) {
         this.family=java.util.Objects.requireNonNull(family);
         // 专属模板限制单条领取/标记的数据库等待，不改变宿主共享模板。

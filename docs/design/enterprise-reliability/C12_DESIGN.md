@@ -55,3 +55,18 @@ B验证：真实PG两种到达顺序、重复/并发/跨资格同eventId/跨广�
 投影按eventId、qualificationId、visibleReceiptId、outcomeId及(advertiserId,conversionEventId)约束唯一；不同广告主可有同业务eventId，VISIBLE UUID与内部outcome UUID属于不同命名空间，不能误用CPC的跨种类回执索引限制它们。相同事件原负载重复可ACK，换事件重用任一业务身份或同ID改负载拒绝；账户低版本独立事实仍累加conversion_count和精确金额，不拿最大版本丢弃事实。明细与汇总同本地事务，不访问权威账户/账本。
 
 验收复用真实隔离PG/Kafka覆盖：提交后未发、ACK后未标记、投影提交后未提交offset、重复/乱序与同业务身份冲突、同UUID跨广告主合法、领取fence/耗尽/审计恢复、依赖故障与毒消息不跳过；独立配置及旧CPM/CPC回归。外部授权与稳定交付仍属于C2，C1完成不完成父S12。
+
+
+## C12C2 稳定交付与外部授权边界
+
+继续沿S11C2固定ChargeMode装配扩展CONVERSION；独立ad V015 conversion preparation和engine V005 conversion delivery，不改变旧迁移、CPM/CPC或原API。ConversionDelivery.Offer用途conversion-offer，候选纯CPA价格，准备调用同一B owner；先冻结整页再逐项准备，租约/fence/原结果不可变、不续期、不补位。conversions-enabled/conversion-settlement-enabled/conversion-delivery-enabled与sandbox共同安装，默认关闭；停止新交付用B的preparation-admission，保留原ID续办。
+
+engine ADMIN HTTP：PUT/GET /api/sandbox/conversion-ad-deliveries/{operationId}复用既有Request和最终位置/Prepared形状，明确CPA/PER_CONVERSION/CPA_GSP_CNY6_V1；PUT/GET /api/sandbox/conversion-impressions/{receiptId}提交原资格和可见观测；GET /api/sandbox/conversion-settlements/{qualificationId}查当前状态。认证主体服务端注入，返回视图脱敏，不输出offer、actor或完整内部快照。200 COMPLETE/原回执已接受，202准备中；422可见持久化拒绝；未知503保持同ID。
+
+advertiser HTTP：PUT/GET /api/advertiser/{advertiserId}/sandbox-conversions/{eventId}，body={qualificationToken,occurredAt}，eventId UUID、occurredAt为UTC ISO文本至微秒。角色必须已认证ADVERTISER或ADMIN；主体取认证上下文。AdvertiserAuthz增加独立强制入口，所有模式都调用AuthzEngine.check(user主体,edit,advertiser:id,fullyConsistent)，不允许disabled/shadow bypass或ADMIN硬编码绕过；每次PUT/GET/恢复都判权。权限拒绝403、引擎缺失/故障503、匿名401；依赖错误不泄漏内部消息。
+
+回调返回原OutcomeView（ID均字符串、原status/occurredAt/receivedAt/decidedAt/canonicalOutcomeId）及脱敏当前settlement，另有chargedForThisOutcome和该事件自身chargedAmount：只有该outcome就是canonical且当前CAPTURED才为true/金额；重复业务事件虽然引用已收费资格，自身也必须false/null。原WAITING事件后来捕获时该字段可变true，而原status不变。200包括等待/捕获/重复资格，422为持久化窗口/状态拒绝；400格式/证明、409同业务键变内容、404未观察到、503结果未知。
+
+新conversion.v1 SandboxConversionService包括候选/准备/原结果、可见接收/查询/结算查询，以及广告主转化接收/查询。前一组只接受独立engine caller，后一组只接受独立advertiser caller，nosec/通用recsys或错caller不能绕过。actor在可信advertiser边界认证授权后传递；不能允许engine任意声明广告主。gateway的gRPC/in-process展示路径指向同一owner，失败不退回旧recordConversion/Redis/outcome。金额字符串、UUID规范、显式枚举、发生时间微秒及结果身份严格校验，原命令可恢复但新调用仍须当前授权。
+
+验收必须包括真实PG+TCP/HTTP双模式、稳定交付丢响应后原ID恢复、两条件顺序、转化业务冲突/迟到/重复自身非计费、错误主体/caller/nosec/default-off、严格Authz disabled/shadow/enforce均拒绝或故障不放行且fullyConsistent、新旧装配共存，以及完整钱链路/旧浏览器回归。权限依赖替身只证明边界策略，不能冒称真实SpiceDB端到端验证；不启用共享环境/真实收费/生产部署。
