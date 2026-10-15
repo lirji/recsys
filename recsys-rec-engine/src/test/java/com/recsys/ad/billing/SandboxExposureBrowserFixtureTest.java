@@ -98,7 +98,7 @@ class SandboxExposureBrowserFixtureTest {
         @Bean SandboxPreparationService preparations(){return state.preparation;}
         @Bean ImpressionReceiptService receipts(){return state.receipt;}
         @Bean AdServingGateway gateway(AdPipeline pipeline){return new InProcessAdServingGateway(pipeline);}
-        @Bean DeliveryOperationService operations(AdServingGateway gateway){
+        @Bean("deliveryOperationService") DeliveryOperationService operations(AdServingGateway gateway){
             QueryUnderstandingService queries=(query,user)->new StructuredQuery(query,query,null,null,null,null);
             return new DeliveryOperationService(state.operations,queries,mock(ExperimentService.class),new AdProperties(),gateway);
         }

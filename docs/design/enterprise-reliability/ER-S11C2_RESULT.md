@@ -40,3 +40,5 @@ ad V011独立点击准备检查点；engine V004独立整次点击交付。共�
 全仓4项跳过为原PostgresIntegrationGateTest与3个专用浏览器fixture/acceptance（SandboxExposureBrowserFixtureTest、NaturalExposureBrowserAcceptanceTest、FeedExposureBrowserAcceptanceTest），需其专用启动命令，非本片必需钱链路跳过。当前249项money-chain全部实际执行；本片没有新增skip。
 
 SKILL_HANDOFF: backend-implementation → implementation-validation → project-documentation → update-progress-docs → task-git-delivery；ER-S11C2与父ER-S11 DONE，validation=PASS，gate=PASS_WITH_LIMITATIONS（既有formatter/独立Java静态分析未配置）；下一项ER-S12 CPA，Q-04已批准，无需再次确认。
+
+Git交付：`f914f57184f36b17ca11302ed53686f3a3e48516`已正常提交、快进合并并推送origin/main；切到原目录新任务分支feat/sandbox-conversion-settlement继续S12。远程CI38698175497已完成：build、money-chain、natural-exposure、security四项成功；sandbox-exposure-browser失败。原因是旧按需浏览器宿主@Bean名称operations未匹配新显式Qualifier("deliveryOperationService")，未启动即退出。修复及专用浏览器证据见ER-S11C2_FIX_RESULT.md，不能把原clean verify的按需跳过当作已执行浏览器验证。
