@@ -4,7 +4,8 @@ import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper;
+import com.recsys.offline.persistence.mapper.derived.UserEmbeddingMapper;
 import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
 import com.recsys.offline.persistence.model.BehaviorSource;
 import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
@@ -31,20 +32,23 @@ public class UserEmbeddingJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(UserEmbeddingJob.class);
 
     private final PositiveFeedbackMapper feedback;
-    private final JdbcTemplate derived;   // #3:item_embedding 读 + user_embedding 写走派生库(user_behavior 读留 @Primary)
+    private final ItemEmbeddingMapper items;
+    private final UserEmbeddingMapper users;
 
-    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
-    public UserEmbeddingJob(PositiveFeedbackMapper feedback,
-                            @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived) {
+    /** 主源行为与派生向量分别绑定Mapper，权威数据来源和算法保持。 */
+    public UserEmbeddingJob(PositiveFeedbackMapper feedback, ItemEmbeddingMapper items, UserEmbeddingMapper users) {
         this.feedback = feedback;
-        this.derived = derived;
+        this.items = items;
+        this.users = users;
     }
 
+    /** 保持原用户向量构建命令。 */
     @Override
     public String name() {
         return "user-embedding";
     }
 
+    /** 仅有产出时才重建；单条写入和外层事务保持原失败语义。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         double minRating = doubleArg(args, "min-rating", 4.0);
@@ -106,7 +110,7 @@ public class UserEmbeddingJob implements OfflineJob {
 
         // 3. L2 归一化并写库
         if (rebuild) {
-            derived.update("TRUNCATE user_embedding");
+            users.truncateAll();
         }
         int written = 0;
         for (var e : acc.entrySet()) {
@@ -117,19 +121,20 @@ public class UserEmbeddingJob implements OfflineJob {
                 log.info("已写 {} / {} 用户向量...", written, acc.size());
             }
         }
-        Long total = derived.queryForObject("SELECT count(*) FROM user_embedding", Long.class);
+        Long total = users.countAll();
         log.info("user-embedding 完成:写入 {} 个用户向量;user_embedding 总数 {}", written, total);
     }
 
     private Map<Long, float[]> loadItemVectors() {
         Map<Long, float[]> map = new HashMap<>();
         // 用 ::text 读取,避免 PGvector 类型注册问题(与 VectorRecaller 降级路径一致)
-        derived.query("SELECT item_id, embedding::text AS v FROM item_embedding", rs -> {
-            String s = rs.getString("v");
+        items.scanVectors(context -> {
+            var row = context.getResultObject();
+            String s = row.vector();
             if (s == null) {
                 return;
             }
-            map.put(rs.getLong("item_id"), parseVector(s));
+            map.put(row.itemId(), parseVector(s));
         });
         return map;
     }
@@ -167,15 +172,7 @@ public class UserEmbeddingJob implements OfflineJob {
     }
 
     private void upsert(long userId, float[] vec) {
-        PGvector pv = new PGvector(vec);
-        derived.update(con -> {
-            var ps = con.prepareStatement(
-                    "INSERT INTO user_embedding(user_id,embedding) VALUES(?,?) " +
-                    "ON CONFLICT(user_id) DO UPDATE SET embedding=EXCLUDED.embedding");
-            ps.setLong(1, userId);
-            ps.setObject(2, pv);
-            return ps;
-        });
+        users.upsert(userId, new PGvector(vec));
     }
 
     private static double doubleArg(ApplicationArguments a, String k, double def) {

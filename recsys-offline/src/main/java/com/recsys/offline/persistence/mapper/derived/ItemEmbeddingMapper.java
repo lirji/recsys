@@ -2,6 +2,7 @@ package com.recsys.offline.persistence.mapper.derived;
 
 import com.pgvector.PGvector;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.session.ResultHandler;
 import java.util.List;
 
 /** 派生物品向量的存在检查与回填写入，不读取或改写主源内容。 */
@@ -18,4 +19,8 @@ public interface ItemEmbeddingMapper {
     List<String> vectorText(@Param("itemId") long itemId);
     /** 只更新仍存在的向量行，不能因并发删除而重新插入。 */
     int updateExisting(@Param("itemId") long itemId, @Param("vector") PGvector vector, @Param("model") String model);
+    /** 物品主键非空，向量允许NULL并由原算法跳过。 */
+    record Vector(long itemId, String vector) { }
+    /** 在会话内逐行回调，保留原物品向量扫描的资源边界。 */
+    void scanVectors(ResultHandler<Vector> handler);
 }

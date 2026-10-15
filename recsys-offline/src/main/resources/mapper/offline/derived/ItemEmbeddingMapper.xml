@@ -24,4 +24,13 @@
         SET embedding=#{vector,jdbcType=OTHER,typeHandler=org.apache.ibatis.type.ObjectTypeHandler},model=#{model,jdbcType=VARCHAR}
         WHERE item_id=#{itemId}
     </update>
+    <resultMap id="vectorRow" type="com.recsys.offline.persistence.mapper.derived.ItemEmbeddingMapper$Vector">
+        <constructor>
+            <arg name="itemId" column="item_id" javaType="_long"/>
+            <arg name="vector" column="v" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+    <select id="scanVectors" resultMap="vectorRow" useCache="false">
+        SELECT item_id,embedding::text AS v FROM item_embedding
+    </select>
 </mapper>

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID修复52f9fba8及连接探针773cf8c3已ff/push main；MP13b7=ac21c920已ff/push main；MP13b8=42b2de17已ff/push main；MP13c1=cd144c02已ff/push main；MP13c2本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a已交付5bc7cf2e；MP12b已交付2a02851a；MP12c已交付3108245f；MP12d已交付541651d7，原生窗口修复85804013；MP12整体完成。MP13a1=6e307304、MP13a2=ae9ec1c4均已正常ff/push main；MP13b1=6b96d0d3、b2=dcac4a8d、b3=37c51498均已ff/push main；MP13b4=13f6a9ef、b5=abe65238均已ff/push main；MP13b6=19592ca6已ff/push main；正反馈可空ID修复52f9fba8及连接探针773cf8c3已ff/push main；MP13b7=ac21c920已ff/push main；MP13b8=42b2de17已ff/push main；MP13c1=cd144c02已ff/push main；MP13c2=38e404f1已ff/push main；MP13c3本地DONE/PASS。MP12d远程CI38741661134五门禁及console-ci38741660789全部SUCCESS；MP13其余业务迁移继续。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -79,7 +79,7 @@ MP00～MP12及MP13a1/a2、b1～b6已交付。当前修复共用正反馈Mapper�
 
 ## 下一步
 
-1. MP13c2本地完成并等待交付；下一片MP13c3 UserEmbeddingJob余下派生SQL，先旧pgvector保护。
+1. MP13c3本地完成并等待交付；下一片MP13c4 ImportTowerJob，先旧pgvector保护重复ID及500行批次。
 2. 继续MP13～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -380,3 +380,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13c2最终验证
 
 见MP13C2_RESULT。旧6再补为7项全部通过，新多模态7+文本4+装配1共12项、全离线125/25类、全仓编译通过。4源指纹92f51aaf666049dcaddd886a6724389709b779d54128d20da29b74414d5e624f；原UPDATE-only、NULL/海报/limit/融合结果及部分失败边界保持。已记录历史unsupported错误提示可能误称未改数据，留给后续统一提示阶段修正。下一片UserEmbeddingJob。
+
+## MP13c3最终验证
+
+见MP13C3_RESULT。旧7、新关联19、全离线132/26类、24 reactor测试编译、hygiene通过。6源指纹ce7d862a633826dc32e1b49f24e5a7ad7242e1d953bdc61fea8118a2ca6fc77e。UserEmbedding已无业务SQL，主/派生源边界、权重/时间、无输入不清理及TRUNCATE部分失败/外层回滚保持。下一片ImportTowerJob，先保护重复ID后沿原500行BATCH迁移，不能用单个多VALUES改变冲突行为。
