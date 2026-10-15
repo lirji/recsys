@@ -1330,6 +1330,41 @@
       "httpStatus": 0,
       "message": "没有可用样本产出，输出可能仅含表头；请补齐广告物品关联后重新生成",
       "httpDefault": false
+    },
+    {
+      "name": "JOB_GENERATION_INPUT_EMPTY",
+      "code": "JOB_GENERATION_INPUT_EMPTY",
+      "httpStatus": 0,
+      "message": "输入物品为空，未生成新数据；如启用了 clear，旧数据可能已清除，请补齐物品后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_NO_ADS",
+      "code": "JOB_NO_ADS",
+      "httpStatus": 0,
+      "message": "没有可用广告，未生成模拟事件；请先运行 seed-ads 或检查广告目录",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_SEED_CLEAR_FAILED",
+      "code": "JOB_SEED_CLEAR_FAILED",
+      "httpStatus": 0,
+      "message": "清理未完整完成，尚未开始生成广告；部分旧数据可能已清除，请检查存储并核对后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_CREATIVE_INPUT_UNAVAILABLE",
+      "code": "JOB_CREATIVE_INPUT_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "创意目录读取失败，未开始生成事件；请检查分片表与连接后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE",
+      "code": "JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "创意目录为空，模拟事件仍已生成，但不包含创意归因；请补齐创意后再评估创意效果",
+      "httpDefault": false
     }
   ],
   "families": [

@@ -37,3 +37,5 @@ EC05b DONE/PASS（本地）：Flink类目不可读不再健康启动；向量/�
 EC05c DONE/PASS（本地）：五导入Job必需输入/坏参数/部分完成及R9校验目录化，JobArguments复用；合法semantic训练header、原空文件清除/批次/事务与可选ratings明确fallback保持。175码原166/8族不变；65后端/10类、前端57专项、Python7、24compile及目录/SQL/hygiene通过，详见EC05C_DESIGN/RESULT。Java工具限制保持。B已ff/push f09ccef8，CI四门成功、build仍运行。EC05其余业务Job及EC06～08继续。
 
 EC05d DONE/PASS（本地）：十二召回/样本Job无输入/无产出明确码，合法空词表/全负标签与部分关联缺失保持有效输出并受控提示；数字参数复用并前置拒绝。目录189，原175/8族保持；完整offline及依赖453项/83类0失败错误、1项CI环境探针skip（实际PG等均运行），前端57、24compile和目录/SQL/hygiene通过。见EC05D_DESIGN/RESULT。C已ff/push cb701520、CI四门成功/build仍运行；父EC05余项及EC06～08继续。
+
+EC05e DONE/PASS（本地）：种子/模拟参数先于清理校验，清理部分失败阻止生成；创意读取失败拒绝写事件，真实空创意保留NULL归因并受控提示。目录194原189/8族保持；55后端/7类含真实PG FK与Redis ACL故障及恢复、前端57、24compile和目录/SQL/hygiene通过。见EC05E_DESIGN/RESULT。D已ff/push bc781867，CI38811445623仍运行；EC05评估/报表/投影/共享CLI及EC06～08继续。

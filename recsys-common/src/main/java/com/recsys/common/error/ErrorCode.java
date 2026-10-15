@@ -190,7 +190,12 @@ public enum ErrorCode {
     JOB_NO_MATURE_ASSIGNMENTS("JOB_NO_MATURE_ASSIGNMENTS", "没有已成熟的实验分配，本次未生成样本；请检查 as-of、时间范围与归因窗口", 0),
     JOB_SAMPLES_ALL_NEGATIVE("JOB_SAMPLES_ALL_NEGATIVE", "样本已生成，但全部为负标签；请检查曝光后的正反馈与归因窗口再训练", 0),
     JOB_SAMPLES_MISSING_ITEM("JOB_SAMPLES_MISSING_ITEM", "样本已生成，但已跳过无物品关联的广告点击；请检查广告物品映射及样本覆盖范围", 0),
-    JOB_NO_SAMPLE_OUTPUT("JOB_NO_SAMPLE_OUTPUT", "没有可用样本产出，输出可能仅含表头；请补齐广告物品关联后重新生成", 0);
+    JOB_NO_SAMPLE_OUTPUT("JOB_NO_SAMPLE_OUTPUT", "没有可用样本产出，输出可能仅含表头；请补齐广告物品关联后重新生成", 0),
+    JOB_GENERATION_INPUT_EMPTY("JOB_GENERATION_INPUT_EMPTY", "输入物品为空，未生成新数据；如启用了 clear，旧数据可能已清除，请补齐物品后重试", 0),
+    JOB_NO_ADS("JOB_NO_ADS", "没有可用广告，未生成模拟事件；请先运行 seed-ads 或检查广告目录", 0),
+    JOB_SEED_CLEAR_FAILED("JOB_SEED_CLEAR_FAILED", "清理未完整完成，尚未开始生成广告；部分旧数据可能已清除，请检查存储并核对后重试", 0),
+    JOB_CREATIVE_INPUT_UNAVAILABLE("JOB_CREATIVE_INPUT_UNAVAILABLE", "创意目录读取失败，未开始生成事件；请检查分片表与连接后重试", 0),
+    JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE("JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE", "创意目录为空，模拟事件仍已生成，但不包含创意归因；请补齐创意后再评估创意效果", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

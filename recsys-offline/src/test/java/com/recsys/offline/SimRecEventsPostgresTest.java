@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import org.junit.jupiter.api.*;
 import com.recsys.offline.persistence.RecSimulationWriter;
 import com.recsys.offline.persistence.mapper.primary.RecSimulationMapper;
@@ -74,23 +78,27 @@ class SimRecEventsPostgresTest {
         assertWriterClosed();
     }
 
-    @Test void clearStillPrecedesEmptyCatalogAndSourceValidation() {
+    @Test void emptyCatalogCanFollowClearButInvalidSourceCannotClear() {
         db.execute("TRUNCATE item");
-        job.run(new DefaultApplicationArguments("--clear"));
+        assertEquals(ErrorCode.JOB_GENERATION_INPUT_EMPTY, assertThrows(PublicErrorException.class, () ->
+                job.run(new DefaultApplicationArguments("--clear"))).errorCode());
         assertEquals(0, simulationRows());
         assertEquals(38, db.queryForObject("SELECT count(*) FROM user_behavior", Integer.class));
         db.execute("INSERT INTO user_behavior(scene) VALUES('sim-rec')");
         assertThrows(IllegalArgumentException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=item;DROP TABLE item_local")));
-        assertEquals(0, simulationRows());
+        assertEquals(1, simulationRows());
         assertEquals(2, db.queryForObject("SELECT count(*) FROM item_local", Integer.class));
         assertWriterClosed();
     }
 
-    @Test void zeroSessionsPreservesPriorRowsUnlessClearIsRequested() {
-        job.run(new DefaultApplicationArguments("--sessions=0"));
-        assertEquals(1, simulationRows());
-        job.run(new DefaultApplicationArguments("--sessions=0", "--clear"));
-        assertEquals(0, simulationRows());
+    @Test void invalidParametersIncludingZeroSessionsCannotClearPriorRows() {
+        for (String option : new String[]{"--sessions=0", "--sessions=-1", "--slate=0", "--users=0",
+                "--like-rate=1.1", "--decay=NaN", "--seed=private"}) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () ->
+                    job.run(new DefaultApplicationArguments(option, "--clear"))).errorCode());
+            assertEquals(1, simulationRows());
+            assertEquals(98L, db.queryForObject("SELECT item_id FROM user_behavior WHERE scene='sim-rec'", Long.class));
+        }
         assertWriterClosed();
     }
 

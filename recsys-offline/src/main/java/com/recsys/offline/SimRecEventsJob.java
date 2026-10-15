@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -54,22 +57,25 @@ public class SimRecEventsJob implements OfflineJob {
     /** 保留原随机生成顺序及单个大批次，避免改变样本与失败进度。 */
     @Override
     public void run(ApplicationArguments args) {
-        int sessions = intArg(args, "sessions", 5000);
-        int slate = intArg(args, "slate", 10);
-        int users = intArg(args, "users", 610);
-        double decay = doubleArg(args, "decay", 0.85);
-        double likeRate = doubleArg(args, "like-rate", 0.3);
-        long seed = (long) doubleArg(args, "seed", 42);
+        int sessions = JobArguments.integer(args, "sessions", 5000);
+        int slate = JobArguments.integer(args, "slate", 10);
+        int users = JobArguments.integer(args, "users", 610);
+        double decay = JobArguments.decimal(args, "decay", 0.85);
+        double likeRate = JobArguments.decimal(args, "like-rate", 0.3);
+        long seed = (long) JobArguments.decimal(args, "seed", 42);
 
+        if (sessions <= 0 || slate <= 0 || users <= 0 || decay < 0 || decay > 1 || likeRate < 0 || likeRate > 1) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+        var source = ItemQuery.source(args);
         if (args.containsOption("clear")) {
             int del = mapper.deleteSimulation();
             log.info("已清空既有 sim-rec 行 {} 条", del);
         }
 
-        List<Long> items = mapper.itemIds(ItemQuery.source(args));
+        List<Long> items = mapper.itemIds(source);
         if (items.isEmpty()) {
-            log.warn("item 表为空;先跑 --job=import-items");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_GENERATION_INPUT_EMPTY);
         }
         // 物品"真实相关性"代理 = 评分热度归一化([0,1]):让点击同时依赖位次与<b>物品特征</b>,
         // 这样 relevance 头能学到 item_pop_norm→点击,PAL 头分担位置偏置(两信号都可识别)。
@@ -127,11 +133,4 @@ public class SimRecEventsJob implements OfflineJob {
         return rel;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

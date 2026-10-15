@@ -1,5 +1,9 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
 import com.zaxxer.hikari.HikariDataSource;
 import com.recsys.offline.persistence.AdSimulationWriter;
 import com.recsys.offline.persistence.mapper.sharded.AdSimulationCatalogMapper;
@@ -25,6 +29,7 @@ import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** 真实分片目录与独占事件库验证大JDBC批次的实际失败边界，不推断其天然原子性。 */
+@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 @Testcontainers
 class SimAdEventsPostgresTest {
     @Container static final PostgreSQLContainer<?> ZERO = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -121,22 +126,39 @@ class SimAdEventsPostgresTest {
 
     @Test void emptyShardsAndZeroRequestsDoNotWriteEvents() {
         zero.execute("TRUNCATE ad"); one.execute("TRUNCATE ad");
-        job.run(new DefaultApplicationArguments());
+        assertEquals(ErrorCode.JOB_NO_ADS, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments())).errorCode());
         assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
         one.execute("INSERT INTO ad VALUES(9,1)");
-        job.run(new DefaultApplicationArguments("--requests=0"));
+        assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--requests=0"))).errorCode());
         assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
     }
 
-    @Test void missingCreativeTablesKeepOriginalNullAttributionFallback() {
+    @Test void missingCreativeTablesFailBeforeGeneratingAnyEvents() {
         for (var db : List.of(zero, one)) db.execute("ALTER TABLE ad_creative RENAME TO ad_creative_missing");
         try {
-            job.run(new DefaultApplicationArguments("--requests=100"));
-            assertEquals(100, count("IMPRESSION"));
+            assertEquals(ErrorCode.JOB_CREATIVE_INPUT_UNAVAILABLE, assertThrows(PublicErrorException.class, () ->
+                    job.run(new DefaultApplicationArguments("--requests=100"))).errorCode());
+            assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
             assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event WHERE creative_id IS NOT NULL", Integer.class));
         } finally {
             for (var db : List.of(zero, one)) db.execute("ALTER TABLE ad_creative_missing RENAME TO ad_creative");
         }
+    }
+
+    @Test void genuinelyEmptyCreativesKeepNullAttributionWithExplicitWarning(org.springframework.boot.test.system.CapturedOutput output) {
+        for (var db : List.of(zero, one)) db.execute("TRUNCATE ad_creative");
+        job.run(new DefaultApplicationArguments("--requests=100"));
+        assertEquals(100, count("IMPRESSION"));
+        assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event WHERE creative_id IS NOT NULL", Integer.class));
+        assertTrue(output.getAll().contains("[JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE]"));
+        assertWriterClosed();
+    }
+    @Test void invalidOptionsCannotCreatePartialEvents() {
+        for (String option : List.of("--requests=-1", "--days=-1", "--conv-delay-days=-1", "--conv-delay-days=NaN", "--seed=private")) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () ->
+                    job.run(new DefaultApplicationArguments(option))).errorCode());
+        }
+        assertEquals(0, events.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
     }
 
     @Test void outerCommitKeepsExistingSimpleSessionUsableAfterBatchClose() {

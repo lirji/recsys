@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
@@ -60,17 +63,21 @@ public class SeedAdsJob implements OfflineJob {
         return "seed-ads";
     }
 
+    /** 参数先于清理验证；清理失败不得继续生成并声称完整成功。 */
     @Override
     public void run(ApplicationArguments args) {
-        int numAds = intArg(args, "ads", 800);
-        int numAdvertisers = intArg(args, "advertisers", 30);
-        int creativesPerAd = intArg(args, "creatives-per-ad", 3);
-        long seed = intArg(args, "seed", 42);
+        int numAds = JobArguments.integer(args, "ads", 800);
+        int numAdvertisers = JobArguments.integer(args, "advertisers", 30);
+        int creativesPerAd = JobArguments.integer(args, "creatives-per-ad", 3);
+        long seed = JobArguments.integer(args, "seed", 42);
+        if (numAds <= 0 || numAdvertisers <= 0 || creativesPerAd <= 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+        CatalogTable it = ItemQuery.source(args);
         if (args.containsOption("clear")) {
             clear();
         }
         Random rnd = new Random(seed);
-        CatalogTable it = ItemQuery.source(args);   // #3:item 读来源表(默认 item)
 
         // 取一批随机 item 作为广告创意(优先有向量的 item,让 SEMANTIC_AD 可用)
         List<long[]> items = new ArrayList<>(); // [itemId]
@@ -88,8 +95,7 @@ public class SeedAdsJob implements OfflineJob {
             categories.add(row.category());
         }
         if (items.isEmpty()) {
-            log.warn("item 表为空,先跑 --job=import-items");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_GENERATION_INPUT_EMPTY);
         }
         int m = items.size();
 
@@ -190,23 +196,28 @@ public class SeedAdsJob implements OfflineJob {
 
     private void clear() {
         // #3:ad_event / ad_embedding 走 ad-serving 自有库(adDb)
-        adDb.clearData();
+        try { adDb.clearData(); }
+        catch (RuntimeException failure) { throw new PublicErrorException(ErrorCode.JOB_SEED_CLEAR_FAILED, failure); }
+        RuntimeException failure = null;
         // 分片库:advertiser/ad/bidword/ad_creative(ShardingSphere 把 TRUNCATE 下发到各分片;逐表避免依赖多表语法)
         for (SeedAdMapper.ClearTable t : SeedAdMapper.ClearTable.values()) {
             try {
                 sharded.truncate(t);
-            } catch (Exception e) {
-                log.warn("清空分片表 {} 失败(忽略): {}", t.code(), e.getMessage());
+            } catch (RuntimeException error) {
+                // 保留逐表继续清理，但任何失败都阻止后续生成；部分效果不能当回滚。
+                if (failure == null) failure = error; else if (failure != error) failure.addSuppressed(error);
             }
         }
         try {
-            Set<String> keys = redis.keys("bidword:inv:*");
-            if (keys != null && !keys.isEmpty()) {
-                redis.delete(keys);
+            Set<String> keys = redis.keys(RedisKeys.bidwordInv("*"));
+            if (keys == null) throw new PublicErrorException(ErrorCode.JOB_SEED_CLEAR_FAILED);
+            if (!keys.isEmpty()) {
+                if (redis.delete(keys) == null) throw new PublicErrorException(ErrorCode.JOB_SEED_CLEAR_FAILED);
             }
-        } catch (Exception e) {
-            log.warn("清理 Redis 倒排失败(忽略): {}", e.getMessage());
+        } catch (RuntimeException error) {
+            if (failure == null) failure = error; else if (failure != error) failure.addSuppressed(error);
         }
+        if (failure != null) throw new PublicErrorException(ErrorCode.JOB_SEED_CLEAR_FAILED, failure);
         log.info("已清空广告相关表 + Redis 倒排");
     }
 
@@ -218,7 +229,4 @@ public class SeedAdsJob implements OfflineJob {
         return Math.round(v * 100) / 100.0;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
 }

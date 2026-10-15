@@ -1,5 +1,8 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -56,18 +59,21 @@ public class SimAdEventsJob implements OfflineJob {
         return "sim-ad-events";
     }
 
+    /** 先验证参数和目录完整性，查询故障不能伪装成缺少创意的有效模拟。 */
     @Override
     public void run(ApplicationArguments args) {
-        int requests = intArg(args, "requests", 20000);
-        long seed = intArg(args, "seed", 7);
-        int days = intArg(args, "days", 14);
-        double meanDelayDays = dblArg(args, "conv-delay-days", 3.0);
+        int requests = JobArguments.integer(args, "requests", 20000);
+        long seed = JobArguments.integer(args, "seed", 7);
+        int days = JobArguments.integer(args, "days", 14);
+        double meanDelayDays = JobArguments.decimal(args, "conv-delay-days", 3.0);
+        if (requests <= 0 || days < 0 || meanDelayDays < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
         // 注:用裸 MAX(ad_id)(不裹 COALESCE)——ShardingSphere 的聚合归并能识别裸聚合、跨分片合并成单值;
         // COALESCE(MAX(...),0) 会被当成普通投影 → 每分片各返一行 → queryForObject 报 "actual 2"。空表则 null。
         Long maxAdId = catalog.maxAdId();
         if (maxAdId == null || maxAdId == 0) {
-            log.warn("无广告,先跑 --job=seed-ads");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_NO_ADS);
         }
         Random rnd = new Random(seed);
 
@@ -116,6 +122,7 @@ public class SimAdEventsJob implements OfflineJob {
         writer.impressions(impressions);
         writer.clicks(clicks);
         writer.conversions(conversions);
+        if (creativesByAd.isEmpty()) log.warn("{}", ErrorCode.JOB_CREATIVE_ATTRIBUTION_UNAVAILABLE.displayMessage());
 
         log.info("sim-ad-events 完成(教学用):曝光 {} / 点击 {} / 转化 {}(其中已到达 {},尚未到达 {} = 延迟删失)。"
                         + "经验 CTR≈{}。窗口 {} 天、平均转化延迟 {} 天。"
@@ -125,7 +132,7 @@ public class SimAdEventsJob implements OfflineJob {
                 round4((double) clicks.size() / impressions.size()), days, meanDelayDays);
     }
 
-    /** 载入每广告的创意 id 列表(DCO 归因用);无 ad_creative 表/数据 → 空 map,creative_id 落 NULL。 */
+    /** 成功查询后空创意允许NULL归因；读失败在写事件前拒绝，避免生成伪完整数据。 */
     private Map<Long, long[]> loadCreatives() {
         Map<Long, List<Long>> tmp = new HashMap<>();
         try {
@@ -133,9 +140,8 @@ public class SimAdEventsJob implements OfflineJob {
                 var row = context.getResultObject();
                 tmp.computeIfAbsent(row.adId(), k -> new ArrayList<>()).add(row.creativeId());
             });
-        } catch (Exception e) {
-            log.warn("无 ad_creative(先跑 --job=seed-ads 造创意),曝光不归因创意: {}", e.getMessage());
-            return Map.of();
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_CREATIVE_INPUT_UNAVAILABLE, failure);
         }
         Map<Long, long[]> out = new HashMap<>(tmp.size());
         tmp.forEach((ad, list) -> {
@@ -169,11 +175,4 @@ public class SimAdEventsJob implements OfflineJob {
         return Math.round(v * 10000) / 10000.0;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

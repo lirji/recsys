@@ -1,5 +1,13 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+
+
+import com.recsys.offline.persistence.mapper.primary.SeedItemMapper;
+import com.recsys.offline.persistence.mapper.addb.SeedAdVectorMapper;
+import com.recsys.offline.persistence.mapper.derived.SeedItemVectorMapper;
+import com.recsys.offline.persistence.mapper.sharded.SeedAdMapper;
 import com.recsys.common.ad.BidwordInvCodec;
 import com.recsys.common.constant.RedisKeys;
 import com.zaxxer.hikari.HikariDataSource;
@@ -26,6 +34,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** 两个真实分片、独立主/广告/派生schema和独占Redis保护种子四源路径。 */
+@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 @Testcontainers
 class SeedAdsPostgresTest {
     @Container static final PostgreSQLContainer<?> ZERO = new PostgreSQLContainer<>(
@@ -158,7 +167,8 @@ class SeedAdsPostgresTest {
 
     @Test void emptyCatalogDoesNotCreateAdvertisersOrRedisEntries() {
         primary.execute("TRUNCATE item");
-        job.run(new DefaultApplicationArguments("--ads=4", "--advertisers=3"));
+        assertEquals(ErrorCode.JOB_GENERATION_INPUT_EMPTY, assertThrows(PublicErrorException.class, () ->
+                job.run(new DefaultApplicationArguments("--ads=4", "--advertisers=3"))).errorCode());
         assertEquals(0, zero.queryForObject("SELECT count(*) FROM advertiser", Integer.class));
         assertEquals(0, one.queryForObject("SELECT count(*) FROM advertiser", Integer.class));
         assertTrue(invertedIndex().isEmpty());
@@ -176,6 +186,69 @@ class SeedAdsPostgresTest {
                 () -> job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE ad")));
         assertTrue(ads().isEmpty());
         assertTrue(invertedIndex().isEmpty());
+    }
+
+    @Test void invalidParametersAndSourcesAreRejectedBeforeClear() {
+        job.run(new DefaultApplicationArguments("--ads=2", "--advertisers=2"));
+        adDb.execute("INSERT INTO ad_event VALUES(999)");
+        var original=ads();var originalRedis=invertedIndex();
+        for (String option : List.of("--ads=0", "--ads=-1", "--advertisers=0", "--creatives-per-ad=0", "--seed=private", "--ads")) {
+            assertEquals(ErrorCode.JOB_INVALID_ARGUMENT, assertThrows(PublicErrorException.class, () ->
+                    job.run(new DefaultApplicationArguments("--clear", option))).errorCode());
+        }
+        assertThrows(IllegalArgumentException.class, () -> job.run(new DefaultApplicationArguments("--clear", "--item-table=private")));
+        assertEquals(original, ads());assertEquals(originalRedis, invertedIndex());
+        assertEquals(1, adDb.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
+    }
+
+    @Test void actualShardTruncateFailureKeepsPartialCleanupButStopsGeneration(org.springframework.boot.test.system.CapturedOutput output) {
+        job.run(new DefaultApplicationArguments("--ads=2", "--advertisers=2"));
+        adDb.execute("INSERT INTO ad_event VALUES(999)");
+        create(zero, "seed_clear_guard", "id BIGINT PRIMARY KEY,bidword_id BIGINT REFERENCES bidword(id)");
+        int before=output.getAll().length();
+        try {
+            assertEquals(ErrorCode.JOB_SEED_CLEAR_FAILED, assertThrows(PublicErrorException.class, () ->
+                    job.run(new DefaultApplicationArguments("--clear", "--ads=2", "--advertisers=2"))).errorCode());
+            assertTrue(zero.queryForObject("SELECT count(*) FROM bidword", Integer.class) > 0);
+            assertTrue(ads().isEmpty());assertTrue(invertedIndex().isEmpty());
+            assertEquals(0, adDb.queryForObject("SELECT count(*) FROM ad_event", Integer.class));
+            assertEquals(0, zero.queryForObject("SELECT count(*) FROM advertiser", Integer.class));
+            assertEquals(0, one.queryForObject("SELECT count(*) FROM advertiser", Integer.class));
+            String failedRun=output.getAll().substring(before);
+            assertFalse(failedRun.contains("已清空广告相关表"));assertFalse(failedRun.contains("seed-ads 完成"));
+        } finally {
+            zero.execute("DROP TABLE seed_clear_guard");
+        }
+        job.run(new DefaultApplicationArguments("--clear", "--ads=2", "--advertisers=2"));
+        assertEquals(2, ads().size());
+    }
+
+    @Test void realRedisCleanupDenialStopsSeedingAfterDatabaseCleanup() throws Exception {
+        job.run(new DefaultApplicationArguments("--ads=2", "--advertisers=2"));
+        var oldIndex=invertedIndex();assertFalse(oldIndex.isEmpty());
+        var acl=REDIS.execInContainer("redis-cli", "ACL", "SETUSER", "seed-clear-test", "on", ">test-only-password", "+@all", "-keys", "~*");
+        assertEquals(0, acl.getExitCode());
+        var config=new org.springframework.data.redis.connection.RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379));
+        config.setUsername("seed-clear-test");config.setPassword("test-only-password");
+        var factory=new LettuceConnectionFactory(config);factory.afterPropertiesSet();factory.start();
+        try {
+            var restricted=new SeedAdsJob(context.getBean(SeedItemMapper.class), context.getBean(SeedAdVectorMapper.class),
+                    context.getBean(SeedItemVectorMapper.class), context.getBean(SeedAdMapper.class), new StringRedisTemplate(factory));
+            var error=assertThrows(PublicErrorException.class, () -> restricted.run(new DefaultApplicationArguments("--clear", "--ads=2", "--advertisers=2")));
+            assertEquals(ErrorCode.JOB_SEED_CLEAR_FAILED, error.errorCode());
+            assertTrue(ads().isEmpty());assertEquals(oldIndex, invertedIndex());
+        } finally { factory.destroy(); }
+        job.run(new DefaultApplicationArguments("--clear", "--ads=2", "--advertisers=2"));
+        assertEquals(2, ads().size());
+    }
+
+    @Test void emptyInputAfterClearReportsThatOldDataMayAlreadyBeRemoved() {
+        job.run(new DefaultApplicationArguments("--ads=2", "--advertisers=2"));
+        primary.execute("TRUNCATE item");
+        var failure=assertThrows(PublicErrorException.class, () -> job.run(new DefaultApplicationArguments("--clear")));
+        assertEquals(ErrorCode.JOB_GENERATION_INPUT_EMPTY, failure.errorCode());
+        assertTrue(failure.getMessage().contains("旧数据可能已清除"));
+        assertTrue(ads().isEmpty());assertTrue(invertedIndex().isEmpty());
     }
 
     private static List<Map<String,Object>> ads() {
