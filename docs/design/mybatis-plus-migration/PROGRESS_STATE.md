@@ -455,4 +455,8 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 
 ## FTRL跨架构模型测试修正
 
-见FTRL_FLOAT_RESULT。amd64纯计算探针精确复现CI两个失败摘要，StrictMath.exp对照恢复旧摘要，实证最大差2.8422e-14/40ULP。生产算法不改；完整模型JSON所有键/坐标严格比较，有限数值max(1e-14,128ULP)，错误seed/排序物品池反例均被拦截。专项7、全离线205/37类、全仓24 reactor编译/hygiene通过。4源指纹8f006eaa0454875a90344781d20d3bd3140e80bff0ebaebbf9caaa5a732ee5ab。原CI38764359355 attempt1失败保留；attempt2 money遇Maven Central429，未验证原CPA失败。
+见FTRL_FLOAT_RESULT。amd64纯计算探针精确复现CI两个失败摘要，StrictMath.exp对照恢复旧摘要，实证最大差2.8422e-14/40ULP。生产算法不改；完整模型JSON所有键/坐标严格比较，有限数值max(1e-14,128ULP)，错误seed/排序物品池反例均被拦截。专项7、全离线205/37类、全仓24 reactor编译通过；tests-only hygiene NOT_APPLICABLE，diff检查通过。4源指纹8f006eaa0454875a90344781d20d3bd3140e80bff0ebaebbf9caaa5a732ee5ab。原CI38764359355 attempt1失败保留；attempt2 money遇Maven Central429，未验证原CPA失败。
+
+## CPA午夜预算测试夹具修正
+
+见CONVERSION_CLOCK_RESULT。旧单日初始化在模拟跨日的两模式稳定复现ACCOUNT_MISSING/空证明；修正测试预算后原10+新2共12通过，完整money384/68类通过。最后收紧测试自身日期观察和当前/次日预算后受影响12再次通过，全仓24 reactor编译通过；tests-only hygiene N/A、diff检查通过。最终2源指纹09785e15bae9b396fee36b9521d8de2e19f95f60b69504d522e991f754f3b713；生产逻辑与403/零收费断言不变。e2=6b0bdaf9、FTRL浮点测试=c6450c99与本片正常ff/push后继续e3，须核验新CI。

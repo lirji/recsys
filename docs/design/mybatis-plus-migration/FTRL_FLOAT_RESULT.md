@@ -21,7 +21,7 @@
 
 - 最终FTRL7项真实PG/Redis通过：`/tmp/recsys-ftrl-model-tolerance.log`。
 - 完整离线205项/37类0失败/错误/跳过：`/tmp/recsys-ftrl-tolerance-offline.log`。
-- 全仓24 reactor测试编译及hygiene通过：`/tmp/recsys-ci-fixtures-{compile.log,hygiene.json}`；Java formatter与独立静态分析未配置限制保持。
+- 全仓24 reactor测试编译通过；tests-only hygiene为NOT_APPLICABLE，git diff --check通过：`/tmp/recsys-ci-fixtures-{compile.log,hygiene.json}`；Java formatter与独立静态分析未配置限制保持。
 - 原CI attempt1真实失败保留；不将旧SHA的重跑或本地成功宣称为新提交远程全绿。CPA午夜夹具问题另见CONVERSION_CLOCK_RESULT；attempt2 money因Maven Central HTTP429未跑到原失败用例。
 
 本修正与MP13e2可正常ff/push后核验新CI；继续MP13e3及原全部范围。

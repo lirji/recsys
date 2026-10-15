@@ -46,7 +46,9 @@ class ConversionOnlineFixture implements AutoCloseable {
     final QueryUnderstandingService queries=mock(QueryUnderstandingService.class);
     final ExperimentService experiments=mock(ExperimentService.class);
     Server server;ManagedChannel channel;
-    ConversionOnlineFixture(PostgreSQLContainer<?> pg) throws Exception {
+    ConversionOnlineFixture(PostgreSQLContainer<?> pg) throws Exception { this(pg,0); }
+    /** setupDaysAgo仅供独占测试模拟建预算后跨北京时间零点，不替换产品数据库时钟。 */
+    ConversionOnlineFixture(PostgreSQLContainer<?> pg,int setupDaysAgo) throws Exception {
         adDs=schema(pg,"ad");engineDs=schema(pg,"engine");ad=new JdbcTemplate(adDs);engine=new JdbcTemplate(engineDs);
         sessions=new SqlSessionTemplate(SpringSqlSessions.create(adDs, "classpath*:mapper/ad/addb/**/*.xml"));
         engineSessions=new SqlSessionTemplate(SpringSqlSessions.create(engineDs, "classpath*:mapper/recengine/primary/**/*.xml"));
@@ -66,8 +68,12 @@ class ConversionOnlineFixture implements AutoCloseable {
                 transactions(adDs),true,true);
         preparations=new ConversionPreparationService(pipeline,preparationRepository,quotes,settlements,tokens,true);
         budgets=new BudgetConfiguration().budgetAccountService(new BudgetRepository(sessions),adDs,5);
-        var day=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
-        budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),day.toString(),"CNY","10",0,"admin"));
+        var currentDay=preparationRepository.now().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
+        var setupDay=currentDay.minusDays(setupDaysAgo);
+        // 保留模拟建账日，并覆盖实际当天和次日；跨日测试自身也不依赖恰好避开真实零点。
+        for(var budgetDay:new LinkedHashSet<>(List.of(setupDay,currentDay,currentDay.plusDays(1)))) {
+            budgets.setLimit(BudgetCommand.parse(Long.MAX_VALUE,UUID.randomUUID().toString(),budgetDay.toString(),"CNY","10",0,"admin"));
+        }
         when(pipeline.sandboxConversionCandidates(anyLong(),any(),anyInt(),anyString(),anyDouble())).thenAnswer(i->{
             var price=new ConversionPrice(new GspPrice(new BigDecimal("0.123456"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE));
             var a=new SponsoredAd(Long.MAX_VALUE-1,Long.MAX_VALUE-2,Long.MAX_VALUE,0,"冻结转化正文",AdChannel.KW_EXACT,1,1,1,1,1,1,1,1,Long.MAX_VALUE-3,"CPA");

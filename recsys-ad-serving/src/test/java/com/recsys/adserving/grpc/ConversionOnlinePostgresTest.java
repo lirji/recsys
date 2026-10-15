@@ -151,6 +151,7 @@ class ConversionOnlinePostgresTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void malformedUnauthorizedOutsideWindowAndReleasedRequestsCannotCharge(boolean remote) throws Exception {
         var gateway=f.gateway(remote,f.preparations,f.settlements);var p=f.delivery(gateway).deliver(request()).plan().getFirst().result();
+        assertFalse(p.qualificationToken().isBlank(),"权限测试前置资格未完成预占："+p.status());
         var mvc=advertiser();var event=UUID.randomUUID();var body=body(p.qualificationToken(),occurred(p.childId()));
         mvc.perform(put(path(event)).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
         mvc.perform(put(path(event)).principal(login("viewer","USER")).contentType("application/json").content(body)).andExpect(status().isForbidden());
@@ -167,6 +168,22 @@ class ConversionOnlinePostgresTest {
         f.settlements.release(p.childId(),"admin");
         mvc.perform(put(path(UUID.randomUUID())).principal(actor).contentType("application/json").content(body)).andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.status").value("NOT_HELD")).andExpect(jsonPath("$.chargedForThisOutcome").value(false));
+        assertEquals(0,f.ad.queryForObject("SELECT count(*) FROM ad_conversion_ledger",Integer.class));
+    }
+    /** 建预算发生在前一天、准备发生在新一天时，权限测试仍必须拿到有效资格，不能把空证明400误当归属拒绝。 */
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void budgetSetupBeforeMidnightStillProvidesQualificationForOwnershipChecks(boolean remote) throws Exception {
+        f.close();f=new ConversionOnlineFixture(PG,1);
+        var gateway=f.gateway(remote,f.preparations,f.settlements);
+        var prepared=f.delivery(gateway).deliver(request()).plan().getFirst().result();
+        assertFalse(prepared.qualificationToken().isBlank(),"跨日夹具未预占："+prepared.status());
+        var settlement=f.settlements.find(prepared.childId(),"admin").orElseThrow();
+        assertEquals(Decision.HELD,settlement.prepared().decision());
+        assertEquals(settlement.prepared().preparedAt().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate(),settlement.prepared().budgetDate());
+        advertiser().perform(put("/api/advertiser/1/sandbox-conversions/"+UUID.randomUUID()).principal(actor)
+                .contentType("application/json").content(body(prepared.qualificationToken(),occurred(prepared.childId()))))
+                .andExpect(status().isForbidden());
+        assertEquals(0,f.ad.queryForObject("SELECT count(*) FROM ad_conversion_outcome",Integer.class));
         assertEquals(0,f.ad.queryForObject("SELECT count(*) FROM ad_conversion_ledger",Integer.class));
     }
     @Test void realRpcSeparatesAdvertiserAndEngineCallersAndRejectsMissingTime() throws Exception {
