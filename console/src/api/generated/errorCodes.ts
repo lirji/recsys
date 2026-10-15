@@ -937,6 +937,38 @@ export const errorCodes = {
     message: '多模态回填未完整完成，部分物品可能已更新；请检查图像、向量结果及数据源后核对回填范围',
     httpStatus: 0,
   },
+  JOB_BANDIT_NO_INPUT: {
+    message: '缺少可用推荐曝光，原 Bandit 模型保持不变；请补齐曝光数据后重试',
+    httpStatus: 0,
+  },
+  JOB_BANDIT_MODEL_FALLBACK: {
+    message: '增量 Bandit 模型缺失或不兼容，本次从零累计；请核对输入窗口与模型版本',
+    httpStatus: 0,
+  },
+  JOB_BANDIT_MODEL_INVALID: {
+    message: 'Bandit 特征或模型包含无效数值，未发布新模型；请检查特征和模型状态',
+    httpStatus: 0,
+  },
+  JOB_BANDIT_FAILED: {
+    message: 'Bandit 作业未完成，请检查依赖并核对模型发布状态后重试',
+    httpStatus: 0,
+  },
+  JOB_FTRL_NO_INPUT: {
+    message: 'FTRL 训练物品为空或正样本少于100条，原模型保持不变；请补齐训练输入',
+    httpStatus: 0,
+  },
+  JOB_FTRL_MODEL_FALLBACK: {
+    message: '增量 FTRL 状态缺失或无效，本次从零训练；请核对输入窗口与模型状态',
+    httpStatus: 0,
+  },
+  JOB_FTRL_MODEL_INVALID: {
+    message: 'FTRL 训练状态或权重包含无效数值，未发布新模型；请检查训练参数与状态',
+    httpStatus: 0,
+  },
+  JOB_FTRL_FAILED: {
+    message: 'FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

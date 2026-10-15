@@ -234,7 +234,15 @@ public enum ErrorCode {
     JOB_OCPC_FAILED("JOB_OCPC_FAILED", "oCPC 校准未完成；部分广告主系数可能已更新，请检查数据源和发布状态后重试", 0),
     JOB_MULTIMODAL_NO_INPUT("JOB_MULTIMODAL_NO_INPUT", "没有可融合的多模态输入，未更新向量；请检查海报目录与文本向量", 0),
     JOB_MULTIMODAL_UNSUPPORTED("JOB_MULTIMODAL_UNSUPPORTED", "当前模型不支持所需的图像向量，回填未完成；部分物品可能已更新，请检查模型后核对回填范围", 0),
-    JOB_MULTIMODAL_PARTIAL_FAILED("JOB_MULTIMODAL_PARTIAL_FAILED", "多模态回填未完整完成，部分物品可能已更新；请检查图像、向量结果及数据源后核对回填范围", 0);
+    JOB_MULTIMODAL_PARTIAL_FAILED("JOB_MULTIMODAL_PARTIAL_FAILED", "多模态回填未完整完成，部分物品可能已更新；请检查图像、向量结果及数据源后核对回填范围", 0),
+    JOB_BANDIT_NO_INPUT("JOB_BANDIT_NO_INPUT", "缺少可用推荐曝光，原 Bandit 模型保持不变；请补齐曝光数据后重试", 0),
+    JOB_BANDIT_MODEL_FALLBACK("JOB_BANDIT_MODEL_FALLBACK", "增量 Bandit 模型缺失或不兼容，本次从零累计；请核对输入窗口与模型版本", 0),
+    JOB_BANDIT_MODEL_INVALID("JOB_BANDIT_MODEL_INVALID", "Bandit 特征或模型包含无效数值，未发布新模型；请检查特征和模型状态", 0),
+    JOB_BANDIT_FAILED("JOB_BANDIT_FAILED", "Bandit 作业未完成，请检查依赖并核对模型发布状态后重试", 0),
+    JOB_FTRL_NO_INPUT("JOB_FTRL_NO_INPUT", "FTRL 训练物品为空或正样本少于100条，原模型保持不变；请补齐训练输入", 0),
+    JOB_FTRL_MODEL_FALLBACK("JOB_FTRL_MODEL_FALLBACK", "增量 FTRL 状态缺失或无效，本次从零训练；请核对输入窗口与模型状态", 0),
+    JOB_FTRL_MODEL_INVALID("JOB_FTRL_MODEL_INVALID", "FTRL 训练状态或权重包含无效数值，未发布新模型；请检查训练参数与状态", 0),
+    JOB_FTRL_FAILED("JOB_FTRL_FAILED", "FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

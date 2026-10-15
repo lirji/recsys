@@ -57,3 +57,5 @@ EC06c2 DONE/PASS（本地）：巡检页面三项显式状态和有效数值联�
 EC06d DONE/PASS（本地）：oCPC缺失/损坏/依赖故障区分，缺λ安全降级、坏值/参数/非有限计算受控失败，部分更新准确提示；原合法保持/聚合/权重/ID/clamp保持。230目录，45后端/5类、57FE、24compile/守卫/hygiene通过，见EC06D_DESIGN/RESULT。c2已ff/push6f5c1b8f，CI38820005105运行；剩Multimodal/Bandit/FTRL及EC07/08。
 
 EC06e DONE/PASS（本地）：多模态部分更新/unsupported/非法向量/影响行数如实报告；原融合/limit/事务保持。233目录，33后端/4类、57FE、24compile/守卫/hygiene通过；已提取常量PROGRESS_INTERVAL的advisory判误报。见EC06E_DESIGN/RESULT。D已ff/push7a492716；父EC06剩Bandit/FTRL和EC07/08继续。
+
+EC06f及父EC06 DONE/PASS（本地）：Bandit/FTRL安全读取/回退/发布与有限模型校验，正常完整模型保持；原9Job全部验收。241目录；58专项/8类、完整offline及依赖497/84类0失败错误1原CI探针skip（真实集成执行）、全前端182、24compile/守卫/hygiene通过。见EC06F_RESULT与EC06_RESULT，7源指纹119733371340214816b71ad9a79f0398fd7fb1c7f2decfde32b4f9cf731a73ed。E已ff/pushaaa3b01a；EC07/08及最终SHA CI五门继续。

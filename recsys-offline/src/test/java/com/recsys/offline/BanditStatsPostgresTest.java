@@ -1,6 +1,13 @@
 package com.recsys.offline;
 
 import com.recsys.common.error.PublicErrorException;
+import com.recsys.common.error.ErrorCode;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.bandit.BanditModelDto;
@@ -44,6 +51,7 @@ class BanditStatsPostgresTest {
     static FeatureService features;
     static ContentService content;
     static BanditStatsJob job;
+    final ListAppender<ILoggingEvent> logs=new ListAppender<>();
     static final ObjectMapper JSON=new ObjectMapper();
 
     @BeforeAll static void prepare() throws Exception {
@@ -69,7 +77,12 @@ class BanditStatsPostgresTest {
         job=new BanditStatsJob(sessions.getMapper(PositiveFeedbackMapper.class),sessions.getMapper(BanditImpressionMapper.class),redis,features,content);
     }
     @AfterAll static void close(){if(redisFactory!=null)redisFactory.destroy();}
-    @BeforeEach void reset(){db.execute("TRUNCATE user_behavior,behavior_log");redis.delete(RedisKeys.BANDIT_MODEL);clearInvocations(features,content);}
+    @BeforeEach void reset(){logs.start();((Logger)LoggerFactory.getLogger(BanditStatsJob.class)).addAppender(logs);db.execute("TRUNCATE user_behavior,behavior_log");redis.delete(RedisKeys.BANDIT_MODEL);clearInvocations(features,content);}
+
+    @AfterEach void closeLogAndConnections(){
+        ((Logger)LoggerFactory.getLogger(BanditStatsJob.class)).detachAppender(logs);logs.stop();
+        source.assertClosed(admin,"bandit-stats-reader");
+    }
 
     @Test void repeatedImpressionsAndNullableIdentitiesKeepOriginalRewards() throws Exception {
         db.execute("INSERT INTO user_behavior VALUES(1,10,'IMPRESSION',NULL,NULL),(1,10,'IMPRESSION',NULL,NULL),(2,20,'IMPRESSION',NULL,NULL),(NULL,NULL,'IMPRESSION',NULL,NULL),(9223372036854775807,9223372036854775807,'IMPRESSION',NULL,NULL),(1,10,'CLICK',1,NULL),(NULL,NULL,'LIKE',1,NULL),(2,20,'RATING',3.9,NULL)");
@@ -104,7 +117,7 @@ class BanditStatsPostgresTest {
 
     @Test void emptyInputAndInvalidSourceKeepExistingModel() {
         redis.opsForValue().set(RedisKeys.BANDIT_MODEL,"keep");
-        job.run(new DefaultApplicationArguments());
+        rejected(job,ErrorCode.JOB_BANDIT_NO_INPUT);
         assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
         assertEquals("keep",redis.opsForValue().get(RedisKeys.BANDIT_MODEL));verifyNoInteractions(features,content);
         source.assertClosed(admin,"bandit-stats-reader");
@@ -113,9 +126,65 @@ class BanditStatsPostgresTest {
     @Test void missingSourcePropagatesBeforeReplacingExistingModel() {
         redis.opsForValue().set(RedisKeys.BANDIT_MODEL,"keep");db.execute("ALTER TABLE user_behavior RENAME TO hidden_behavior");
         try{
-            assertThrows(BadSqlGrammarException.class,()->job.run(new DefaultApplicationArguments()));
+            assertInstanceOf(BadSqlGrammarException.class,rejected(job,ErrorCode.JOB_BANDIT_FAILED).getCause());
             assertEquals("keep",redis.opsForValue().get(RedisKeys.BANDIT_MODEL));source.assertClosed(admin,"bandit-stats-reader");
         }finally{db.execute("ALTER TABLE hidden_behavior RENAME TO user_behavior");}
+    }
+
+    @Test void damagedOrIncompatibleModelsFallBackWithSafeCode() throws Exception {
+        db.execute("INSERT INTO user_behavior VALUES(1,10,'IMPRESSION',1,NULL)");
+        for(String value:List.of("PRIVATE_BAD_JSON", "null", "{}",
+                "{\"order\":[\"x\"],\"lambda\":1,\"n\":0,\"a\":[[1]],\"b\":[0]}")) {
+            redis.opsForValue().set(RedisKeys.BANDIT_MODEL,value);logs.list.clear();
+            job.run(new DefaultApplicationArguments("--days=0","--incremental"));assertModel(1,0,1);
+            assertTrue(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("[JOB_BANDIT_MODEL_FALLBACK]")));
+            assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("PRIVATE_")));
+        }
+        var dto=JSON.readValue(redis.opsForValue().get(RedisKeys.BANDIT_MODEL),BanditModelDto.class);
+        var order=new java.util.ArrayList<>(dto.order());java.util.Collections.swap(order,0,1);
+        redis.opsForValue().set(RedisKeys.BANDIT_MODEL,JSON.writeValueAsString(new BanditModelDto(order,1,99,dto.a(),dto.b())));
+        job.run(new DefaultApplicationArguments("--days=0","--incremental"));assertModel(1,0,1);
+        redis.opsForValue().set(RedisKeys.BANDIT_MODEL,JSON.writeValueAsString(new BanditModelDto(dto.order(),1,Long.MAX_VALUE,dto.a(),dto.b())));
+        rejected(job,ErrorCode.JOB_BANDIT_MODEL_INVALID,"--days=0","--incremental");
+    }
+    @Test void invalidArgumentsAndNonfiniteFeaturesPreserveModel() {
+        redis.opsForValue().set(RedisKeys.BANDIT_MODEL,"keep");
+        for(String option:List.of("--days","--lambda=0","--lambda=-1","--lambda=NaN","--min-rating=Infinity")) {
+            rejected(job,ErrorCode.JOB_INVALID_ARGUMENT,option);
+        }
+        db.execute("INSERT INTO user_behavior VALUES(1,10,'IMPRESSION',1,NULL)");
+        try {
+            for(double value:new double[]{Double.NaN,Double.MAX_VALUE}) {
+                when(features.userFeatures(anyLong())).thenReturn(Map.of("user_act_norm",value,"user_avg_rating",0.0));
+                rejected(job,ErrorCode.JOB_BANDIT_MODEL_INVALID,"--days=0");
+                assertEquals("keep",redis.opsForValue().get(RedisKeys.BANDIT_MODEL));
+            }
+        } finally {when(features.userFeatures(anyLong())).thenReturn(Map.of("user_act_norm",0.0,"user_avg_rating",0.0));}
+    }
+    @Test void redisReadAndWriteFaultsCannotPretendFreshOrPublished() throws Exception {
+        db.execute("INSERT INTO user_behavior VALUES(1,10,'IMPRESSION',1,NULL)");
+        redis.opsForValue().set(RedisKeys.BANDIT_MODEL,"keep");
+        for(String command:List.of("get","set")) {
+            String user="bandit-"+command;
+            assertEquals(0,REDIS.execInContainer("redis-cli","ACL","SETUSER",user,"on",">test-password","resetkeys","~*","+@all","-"+command).getExitCode());
+            var config=new RedisStandaloneConfiguration(REDIS.getHost(),REDIS.getMappedPort(6379));config.setUsername(user);config.setPassword("test-password");
+            var denied=new LettuceConnectionFactory(config);denied.afterPropertiesSet();denied.start();
+            try {
+                var sessions=new SqlSessionTemplate(SpringSqlSessions.create(source,"classpath*:mapper/offline/primary/**/*.xml"));
+                var restricted=new BanditStatsJob(sessions.getMapper(PositiveFeedbackMapper.class),sessions.getMapper(BanditImpressionMapper.class),new StringRedisTemplate(denied),features,content);
+                var failure=rejected(restricted,ErrorCode.JOB_BANDIT_FAILED,"--days=0","--incremental");
+                assertInstanceOf(DataAccessException.class,failure.getCause());
+                assertEquals("keep",redis.opsForValue().get(RedisKeys.BANDIT_MODEL));
+            } finally {denied.destroy();}
+        }
+        job.run(new DefaultApplicationArguments("--days=0"));assertModel(1,0,1);
+    }
+    private PublicErrorException rejected(BanditStatsJob target,ErrorCode expected,String... args) {
+        logs.list.clear();var failure=assertThrows(PublicErrorException.class,()->target.run(new DefaultApplicationArguments(args)));
+        assertEquals(expected,failure.errorCode());assertEquals(expected.message(),failure.getMessage());
+        assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("bandit-stats 完成")));
+        assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("PRIVATE_")));
+        return failure;
     }
 
     private static void assertModel(long samples,long positives,double lambda) throws Exception {

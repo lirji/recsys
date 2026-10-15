@@ -1,6 +1,9 @@
 package com.recsys.offline;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -39,6 +42,10 @@ import java.util.Random;
 public class FtrlTrainJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(FtrlTrainJob.class);
+    private static final int MIN_POSITIVE_SAMPLES = 100;
+    private static final int COORD_Z = 0;
+    private static final int COORD_N = 1;
+    private static final int COORDINATE_SIZE = 2;
 
     private final TrainingCatalogMapper catalog;
     private final PositiveFeedbackMapper feedback;
@@ -52,24 +59,39 @@ public class FtrlTrainJob implements OfflineJob {
         this.redis = redis;
     }
 
+    /** 保留原近线训练命令名。 */
     @Override
     public String name() {
         return "train-ftrl";
     }
 
+    /** 两键按原顺序发布，任何失败必须保留未知或部分结果语义。 */
     @Override
     public void run(ApplicationArguments args) {
+        try {
+            train(args);
+        } catch (PublicErrorException failure) {
+            throw failure;
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_FAILED, failure);
+        }
+    }
+
+    private void train(ApplicationArguments args) {
         boolean incremental = args.containsOption("incremental");
-        int neg = intArg(args, "neg", 2);
-        int epochs = intArg(args, "epochs", 1);
-        double minRating = doubleArg(args, "min-rating", 4.0);
+        int neg = JobArguments.integer(args, "neg", 2);
+        int epochs = JobArguments.integer(args, "epochs", 1);
+        double minRating = JobArguments.decimal(args, "min-rating", 4.0);
         Long maxTs = BehaviorQuery.maxTs(args);
         BehaviorSource source = BehaviorQuery.source(args);
         CatalogTable itemTable = ItemQuery.source(args);
-        long seed = intArg(args, "seed", 42);
-        FtrlProximal model = new FtrlProximal(
-                doubleArg(args, "alpha", 0.1), doubleArg(args, "beta", 1.0),
-                doubleArg(args, "l1", 1.0), doubleArg(args, "l2", 1.0));
+        long seed = JobArguments.integer(args, "seed", 42);
+        double alpha = JobArguments.decimal(args, "alpha", 0.1), beta = JobArguments.decimal(args, "beta", 1.0);
+        double l1 = JobArguments.decimal(args, "l1", 1.0), l2 = JobArguments.decimal(args, "l2", 1.0);
+        if (alpha <= 0 || beta < 0 || l1 < 0 || l2 < 0 || neg < 0 || epochs < 0) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+        FtrlProximal model = new FtrlProximal(alpha, beta, l1, l2);
 
         if (incremental) {
             loadState(model);
@@ -78,8 +100,7 @@ public class FtrlTrainJob implements OfflineJob {
         // 负采样物品池
         List<Long> items = catalog.itemIds(itemTable);
         if (items.isEmpty()) {
-            log.warn("item 表为空,先跑 import-items");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_NO_INPUT);
         }
         // 正样本 (user,item)
         List<long[]> pos = new ArrayList<>();
@@ -87,9 +108,8 @@ public class FtrlTrainJob implements OfflineJob {
             var row = context.getResultObject();
             pos.add(new long[]{row.userId(), row.itemId()});
         });
-        if (pos.size() < 100) {
-            log.warn("正样本太少({} 条),先跑 import-behavior", pos.size());
-            return;
+        if (pos.size() < MIN_POSITIVE_SAMPLES) {
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_NO_INPUT);
         }
         log.info("train-ftrl 开始:正样本 {} 对, item 池 {}, neg={}, epochs={}, incremental={}",
                 pos.size(), items.size(), neg, epochs, incremental);
@@ -105,11 +125,17 @@ public class FtrlTrainJob implements OfflineJob {
                     long negItem = items.get(rng.nextInt(items.size()));
                     model.update(FtrlHashing.features(u, negItem), 0.0);
                 }
-                steps += 1 + neg;
+                steps += 1L + neg;
             }
         }
 
         Map<Integer, Double> weights = model.serveWeights();
+        // 两键都依赖完整有效的训练结果，不能先写权重才发现续训状态已损坏。
+        if (!validCoordinate(model.biasState()) || !Double.isFinite(model.serveBias())
+                || model.stateCoords().values().stream().anyMatch(state -> !validCoordinate(state))
+                || weights.values().stream().anyMatch(value -> !Double.isFinite(value))) {
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_MODEL_INVALID);
+        }
         saveWeights(model.serveBias(), weights);
         saveState(model);
         log.info("train-ftrl 完成:更新 {} 步;非零权重 {} 个(bias={});已写 {} + {}",
@@ -130,44 +156,68 @@ public class FtrlTrainJob implements OfflineJob {
     private void saveState(FtrlProximal model) {
         ObjectNode root = mapper.createObjectNode();
         ArrayNode bias = root.putArray("bias");
-        bias.add(model.biasState()[0]);
-        bias.add(model.biasState()[1]);
+        bias.add(model.biasState()[COORD_Z]);
+        bias.add(model.biasState()[COORD_N]);
         ObjectNode c = root.putObject("c");
         for (var en : model.stateCoords().entrySet()) {
             ArrayNode zn = c.putArray(String.valueOf(en.getKey()));
-            zn.add(en.getValue()[0]);
-            zn.add(en.getValue()[1]);
+            zn.add(en.getValue()[COORD_Z]);
+            zn.add(en.getValue()[COORD_N]);
         }
         writeJson(RedisKeys.FTRL_STATE, root);
     }
 
+    /** 先完整解析后装载，坏JSON仍安全降级；Redis读取异常由作业边界传播。 */
     private void loadState(FtrlProximal model) {
-        try {
-            String json = redis.opsForValue().get(RedisKeys.FTRL_STATE);
-            if (json == null || json.isBlank()) {
-                log.info("无 ftrl:state,--incremental 退化为从零训");
+        String json = redis.opsForValue().get(RedisKeys.FTRL_STATE);
+        if (json != null && !json.isBlank()) {
+            try {
+                JsonNode root = mapper.readTree(json);
+                if (root == null || !root.isObject() || !root.path("c").isObject()) {
+                    throw new PublicErrorException(ErrorCode.JOB_FTRL_MODEL_INVALID);
+                }
+                double[] bias = readCoordinate(root.path("bias"));
+                Map<Integer, double[]> coords = new HashMap<>();
+                var fields = root.path("c").fields();
+                while (fields.hasNext()) {
+                    var entry = fields.next();
+                    int key = Integer.parseInt(entry.getKey());
+                    if (!Integer.toString(key).equals(entry.getKey())) {
+                        throw new PublicErrorException(ErrorCode.JOB_FTRL_MODEL_INVALID);
+                    }
+                    coords.put(key, readCoordinate(entry.getValue()));
+                }
+                model.loadState(bias, coords);
+                log.info("已 warm-start:载入 {} 个坐标状态", coords.size());
                 return;
+            } catch (JsonProcessingException | RuntimeException ignored) {
+                // 保留既有坏状态从零训练策略；固定目录提示，禁止输出任意JSON或解析异常。
             }
-            JsonNode root = mapper.readTree(json);
-            double[] bias = {root.path("bias").path(0).asDouble(), root.path("bias").path(1).asDouble()};
-            Map<Integer, double[]> coords = new HashMap<>();
-            JsonNode c = root.path("c");
-            c.fieldNames().forEachRemaining(k -> {
-                JsonNode v = c.get(k);
-                coords.put(Integer.parseInt(k), new double[]{v.path(0).asDouble(), v.path(1).asDouble()});
-            });
-            model.loadState(bias, coords);
-            log.info("已 warm-start:载入 {} 个坐标状态", coords.size());
-        } catch (Exception ex) {
-            log.warn("载入 ftrl:state 失败,从零训: {}", ex.getMessage());
         }
+        ErrorCode code = ErrorCode.JOB_FTRL_MODEL_FALLBACK;
+        log.warn("[{}] {}", code.code(), code.message());
+    }
+
+    private static double[] readCoordinate(JsonNode node) {
+        if (!node.isArray() || node.size() != COORDINATE_SIZE || !node.path(COORD_Z).isNumber()
+                || !node.path(COORD_N).isNumber()) {
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_MODEL_INVALID);
+        }
+        double[] coordinate = {node.get(COORD_Z).doubleValue(), node.get(COORD_N).doubleValue()};
+        if (!validCoordinate(coordinate)) throw new PublicErrorException(ErrorCode.JOB_FTRL_MODEL_INVALID);
+        return coordinate;
+    }
+
+    private static boolean validCoordinate(double[] coordinate) {
+        return coordinate.length == COORDINATE_SIZE && Double.isFinite(coordinate[COORD_Z])
+                && Double.isFinite(coordinate[COORD_N]) && coordinate[COORD_N] >= 0;
     }
 
     private void writeJson(String key, ObjectNode node) {
         try {
             redis.opsForValue().set(key, mapper.writeValueAsString(node));
-        } catch (Exception e) {
-            log.warn("写 {} 失败: {}", key, e.getMessage());
+        } catch (JsonProcessingException | RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_FTRL_FAILED, failure);
         }
     }
 
@@ -175,11 +225,4 @@ public class FtrlTrainJob implements OfflineJob {
         return Math.round(v * 10000) / 10000.0;
     }
 
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double doubleArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
-    }
 }

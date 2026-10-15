@@ -1,6 +1,13 @@
 package com.recsys.offline;
 
 import com.recsys.common.error.PublicErrorException;
+import com.recsys.common.error.ErrorCode;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,6 +47,7 @@ class FtrlTrainPostgresTest {
     static StringRedisTemplate redis;
     static LettuceConnectionFactory redisFactory;
     static FtrlTrainJob job;
+    final ListAppender<ILoggingEvent> logs=new ListAppender<>();
     static final ObjectMapper JSON=new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     @BeforeAll static void prepare() throws Exception {
@@ -62,7 +70,12 @@ class FtrlTrainPostgresTest {
         job=new FtrlTrainJob(sessions.getMapper(PositiveFeedbackMapper.class),sessions.getMapper(TrainingCatalogMapper.class),redis);
     }
     @AfterAll static void close(){if(redisFactory!=null)redisFactory.destroy();}
-    @BeforeEach void reset(){db.execute("TRUNCATE user_behavior,behavior_log,item,item_local");redis.delete(List.of(RedisKeys.FTRL_WEIGHTS,RedisKeys.FTRL_STATE));}
+    @BeforeEach void reset(){logs.start();((Logger)LoggerFactory.getLogger(FtrlTrainJob.class)).addAppender(logs);db.execute("TRUNCATE user_behavior,behavior_log,item,item_local");redis.delete(List.of(RedisKeys.FTRL_WEIGHTS,RedisKeys.FTRL_STATE));}
+
+    @AfterEach void closeLogAndConnections(){
+        ((Logger)LoggerFactory.getLogger(FtrlTrainJob.class)).detachAppender(logs);logs.stop();
+        source.assertClosed(admin,"ftrl-reader");
+    }
 
     @Test void defaultTrainingPreservesPoolOrderAndEntireServedModelAndState() throws Exception {
         seedPrimary();job.run(new DefaultApplicationArguments());String first=fingerprint();
@@ -89,9 +102,9 @@ class FtrlTrainPostgresTest {
     }
 
     @Test void emptyPoolAndNinetyNinePositivesKeepBothPublishedValues() {
-        oldModel();job.run(new DefaultApplicationArguments());assertOldModel();
+        oldModel();rejected(job,ErrorCode.JOB_FTRL_NO_INPUT);assertOldModel();
         db.execute("INSERT INTO item VALUES(1);INSERT INTO user_behavior SELECT 1,1,'CLICK',1,NULL FROM generate_series(1,99)");
-        job.run(new DefaultApplicationArguments());assertOldModel();source.assertClosed(admin,"ftrl-reader");
+        rejected(job,ErrorCode.JOB_FTRL_NO_INPUT);assertOldModel();source.assertClosed(admin,"ftrl-reader");
     }
 
     @Test void zeroEpochsKeepsOriginalEmptyModelPublicationAtHundredSampleThreshold() throws Exception {
@@ -104,10 +117,10 @@ class FtrlTrainPostgresTest {
     @Test void missingOrInvalidCatalogAndNullSamplePoolDoNotReplaceModel() {
         oldModel();assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--item-table=item;DROP TABLE item_local")));
         db.execute("ALTER TABLE item RENAME TO hidden_item");
-        try{assertThrows(BadSqlGrammarException.class,()->job.run(new DefaultApplicationArguments()));assertOldModel();source.assertClosed(admin,"ftrl-reader");}
+        try{assertInstanceOf(BadSqlGrammarException.class,rejected(job,ErrorCode.JOB_FTRL_FAILED).getCause());assertOldModel();source.assertClosed(admin,"ftrl-reader");}
         finally{db.execute("ALTER TABLE hidden_item RENAME TO item");}
         db.execute("INSERT INTO item VALUES(NULL);INSERT INTO user_behavior SELECT 1,1,'CLICK',1,NULL FROM generate_series(1,100)");
-        assertThrows(NullPointerException.class,()->job.run(new DefaultApplicationArguments()));assertOldModel();source.assertClosed(admin,"ftrl-reader");
+        assertInstanceOf(NullPointerException.class,rejected(job,ErrorCode.JOB_FTRL_FAILED).getCause());assertOldModel();source.assertClosed(admin,"ftrl-reader");
     }
 
     @Test void completeModelComparisonRejectsChangedSeedAndSortedNegativePool() throws Exception {
@@ -117,6 +130,57 @@ class FtrlTrainPostgresTest {
         job.run(new DefaultApplicationArguments());
         assertThrows(AssertionError.class,()->assertGolden("default"));
         source.assertClosed(admin,"ftrl-reader");
+    }
+
+    @Test void malformedStateIsValidatedCompletelyBeforeSafeFreshFallback() throws Exception {
+        seedPrimary();job.run(new DefaultApplicationArguments());String fresh=fingerprint();
+        for(String value:List.of("PRIVATE_BAD_JSON","null","{}",
+                "{\"bias\":[0,-1],\"c\":{}}", "{\"bias\":[\"0\",0],\"c\":{}}",
+                "{\"bias\":[0,0],\"c\":{\"1\":[3,2],\"2\":[0,-1]}}",
+                "{\"bias\":[0,0],\"c\":{\"01\":[1,1]}}")) {
+            redis.opsForValue().set(RedisKeys.FTRL_STATE,value);logs.list.clear();
+            job.run(new DefaultApplicationArguments("--incremental"));assertEquals(fresh,fingerprint());
+            assertTrue(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("[JOB_FTRL_MODEL_FALLBACK]")));
+            assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("PRIVATE_")));
+        }
+    }
+    @Test void invalidParametersAndNonfiniteTrainingDoNotPublish() {
+        oldModel();
+        for(String option:List.of("--alpha=0","--alpha=NaN","--beta=-1","--l1=-1","--l2=-1","--neg=-1","--epochs=-1","--epochs","--seed=bad")) {
+            rejected(job,ErrorCode.JOB_INVALID_ARGUMENT,option);assertOldModel();
+        }
+        seedPrimary();rejected(job,ErrorCode.JOB_FTRL_MODEL_INVALID,"--alpha=4.9e-324");assertOldModel();
+    }
+    @Test void redisReadFailureAndSecondWriteFailurePreserveActualPartialResult() throws Exception {
+        seedPrimary();oldModel();
+        for(String mode:List.of("read","state-write")) {
+            String user="ftrl-"+mode;
+            String[] rules=mode.equals("read")?new String[]{"~*","+@all","-get"}
+                    :new String[]{"%R~*","%W~"+RedisKeys.FTRL_WEIGHTS,"+@all"};
+            var command=new java.util.ArrayList<>(List.of("redis-cli","ACL","SETUSER",user,"on",">test-password","resetkeys"));command.addAll(List.of(rules));
+            assertEquals(0,REDIS.execInContainer(command.toArray(String[]::new)).getExitCode());
+            var config=new RedisStandaloneConfiguration(REDIS.getHost(),REDIS.getMappedPort(6379));config.setUsername(user);config.setPassword("test-password");
+            var denied=new LettuceConnectionFactory(config);denied.afterPropertiesSet();denied.start();
+            try {
+                var sessions=new SqlSessionTemplate(SpringSqlSessions.create(source,"classpath*:mapper/offline/primary/**/*.xml"));
+                var restricted=new FtrlTrainJob(sessions.getMapper(PositiveFeedbackMapper.class),sessions.getMapper(TrainingCatalogMapper.class),new StringRedisTemplate(denied));
+                var failure=rejected(restricted,ErrorCode.JOB_FTRL_FAILED,"--incremental");
+                assertInstanceOf(DataAccessException.class,failure.getCause());
+                if(mode.equals("read"))assertOldModel();
+                else {
+                    assertNotEquals("keep-weights",redis.opsForValue().get(RedisKeys.FTRL_WEIGHTS));
+                    assertEquals("keep-state",redis.opsForValue().get(RedisKeys.FTRL_STATE));
+                }
+            } finally {denied.destroy();}
+        }
+        job.run(new DefaultApplicationArguments());assertGolden("default");
+    }
+    private PublicErrorException rejected(FtrlTrainJob target,ErrorCode expected,String... args) {
+        logs.list.clear();var failure=assertThrows(PublicErrorException.class,()->target.run(new DefaultApplicationArguments(args)));
+        assertEquals(expected,failure.errorCode());assertEquals(expected.message(),failure.getMessage());
+        assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("train-ftrl 完成")));
+        assertFalse(logs.list.stream().anyMatch(e->e.getFormattedMessage().contains("PRIVATE_")));
+        return failure;
     }
 
     /** 旧JDBC完整模型作为参考；键/数组长度精确一致，浮点仅容忍CPU数学函数累积的尾数误差。 */

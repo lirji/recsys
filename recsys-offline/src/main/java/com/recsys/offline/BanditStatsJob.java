@@ -1,6 +1,9 @@
 package com.recsys.offline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import com.recsys.common.bandit.BanditModelDto;
 import com.recsys.common.bandit.LinUcbModel;
 import com.recsys.common.constant.RedisKeys;
@@ -72,9 +75,20 @@ public class BanditStatsJob implements OfflineJob {
     /** 曝光为空时保留原模型；窗口只约束曝光，奖励沿原独立上界。 */
     @Override
     public void run(ApplicationArguments args) {
-        int days = intArg(args, "days", 30);
-        double lambda = dblArg(args, "lambda", 1.0);
-        double minRating = dblArg(args, "min-rating", 4.0);
+        try {
+            aggregate(args);
+        } catch (PublicErrorException failure) {
+            throw failure;
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_BANDIT_FAILED, failure);
+        }
+    }
+
+    private void aggregate(ApplicationArguments args) {
+        int days = JobArguments.integer(args, "days", 30);
+        double lambda = JobArguments.decimal(args, "lambda", 1.0);
+        double minRating = JobArguments.decimal(args, "min-rating", 4.0);
+        if (lambda <= 0) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         boolean incremental = args.containsOption("incremental");
         Long maxTs = BehaviorQuery.maxTs(args);
         var source = BehaviorQuery.source(args);
@@ -83,8 +97,7 @@ public class BanditStatsJob implements OfflineJob {
 
         List<BanditImpressionMapper.Impression> impressions = impressionMapper.load(source, days, maxTs);
         if (impressions.isEmpty()) {
-            log.warn("无 IMPRESSION 行(推荐曝光闭环);先跑 --job=sim-rec-events 造曝光+点击,或灌真实曝光");
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_BANDIT_NO_INPUT);
         }
 
         // 正反馈集合作 reward 标签(与 gen-samples/FtrlTrainJob 同口径:CLICK/LIKE/PLAY 或 RATING≥min)
@@ -95,7 +108,11 @@ public class BanditStatsJob implements OfflineJob {
         });
 
         // 模型:warm-start(增量)或全新
-        LinUcbModel model = incremental ? loadOrFresh(d, lambda) : LinUcbModel.create(d, lambda);
+        LinUcbModel model = incremental ? loadOrFresh(order, lambda) : LinUcbModel.create(d, lambda);
+
+        if (model.getN() > Long.MAX_VALUE - impressions.size()) {
+            throw new PublicErrorException(ErrorCode.JOB_BANDIT_MODEL_INVALID);
+        }
 
         // 批量预取候选特征 + 类目(消除逐条 N+1)
         Set<Long> distinctItems = new HashSet<>();
@@ -113,6 +130,9 @@ public class BanditStatsJob implements OfflineJob {
             Item item = items.get(it);
             String cat = item == null ? null : item.category();
             double[] x = FeatureAssembler.assemble(uf, itemFeats.getOrDefault(it, Map.of()), cat, order);
+            for (double value : x) {
+                if (!Double.isFinite(value)) throw new PublicErrorException(ErrorCode.JOB_BANDIT_MODEL_INVALID);
+            }
             double reward = positives.contains(u + ":" + it) ? 1.0 : 0.0;
             if (reward > 0) {
                 posCount++;
@@ -125,41 +145,45 @@ public class BanditStatsJob implements OfflineJob {
                 impressions.size(), posCount, d, lambda, model.getN(), incremental, RedisKeys.BANDIT_MODEL);
     }
 
-    /** 增量:从 Redis warm-start;维度不符/缺失/解析失败则从零。 */
-    private LinUcbModel loadOrFresh(int d, double lambda) {
-        try {
-            String json = redis.opsForValue().get(RedisKeys.BANDIT_MODEL);
-            if (json == null || json.isBlank()) {
-                log.info("无 {},--incremental 退化为从零", RedisKeys.BANDIT_MODEL);
-                return LinUcbModel.create(d, lambda);
+    /** 缺失或损坏模型保留原从零策略；依赖不可读不能当成缺失。 */
+    private LinUcbModel loadOrFresh(List<String> order, double lambda) {
+        String json = redis.opsForValue().get(RedisKeys.BANDIT_MODEL);
+        if (json != null && !json.isBlank()) {
+            try {
+                BanditModelDto dto = mapper.readValue(json, BanditModelDto.class);
+                if (validModel(dto, order)) {
+                    log.info("warm-start:载入已有 bandit 模型 n={}", dto.n());
+                    return dto.toModel();
+                }
+            } catch (JsonProcessingException | IllegalArgumentException ignored) {
+                // 仅解析失败进入下方固定码降级；不暴露模型内容或解析器异常消息。
             }
-            BanditModelDto dto = mapper.readValue(json, BanditModelDto.class);
-            if (dto.order() == null || dto.order().size() != d) {
-                log.warn("已存模型维度({})与当前({})不符,从零", dto.order() == null ? -1 : dto.order().size(), d);
-                return LinUcbModel.create(d, lambda);
-            }
-            log.info("warm-start:载入已有 bandit 模型 n={}", dto.n());
-            return dto.toModel();
-        } catch (Exception ex) {
-            log.warn("载入 {} 失败,从零: {}", RedisKeys.BANDIT_MODEL, ex.getMessage());
-            return LinUcbModel.create(d, lambda);
         }
+        ErrorCode code = ErrorCode.JOB_BANDIT_MODEL_FALLBACK;
+        log.warn("[{}] {}", code.code(), code.message());
+        return LinUcbModel.create(order.size(), lambda);
+    }
+
+    /** 校验真正参与在线计算的结构和有限数；相同维度不代表相同特征顺序。 */
+    private static boolean validModel(BanditModelDto dto, List<String> order) {
+        int dimension = order.size();
+        if (dto == null || !order.equals(dto.order()) || !Double.isFinite(dto.lambda()) || dto.lambda() <= 0
+                || dto.n() < 0 || dto.a() == null || dto.a().length != dimension
+                || dto.b() == null || dto.b().length != dimension) return false;
+        for (int i = 0; i < dimension; i++) {
+            if (!Double.isFinite(dto.b()[i]) || dto.a()[i] == null || dto.a()[i].length != dimension) return false;
+            for (double value : dto.a()[i]) if (!Double.isFinite(value)) return false;
+        }
+        return true;
     }
 
     private void writeModel(List<String> order, LinUcbModel model) {
+        BanditModelDto dto = BanditModelDto.from(order, model);
+        if (!validModel(dto, order)) throw new PublicErrorException(ErrorCode.JOB_BANDIT_MODEL_INVALID);
         try {
-            redis.opsForValue().set(RedisKeys.BANDIT_MODEL,
-                    mapper.writeValueAsString(BanditModelDto.from(order, model)));
-        } catch (Exception e) {
-            log.warn("写 {} 失败: {}", RedisKeys.BANDIT_MODEL, e.getMessage());
+            redis.opsForValue().set(RedisKeys.BANDIT_MODEL, mapper.writeValueAsString(dto));
+        } catch (JsonProcessingException | RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_BANDIT_FAILED, failure);
         }
-    }
-
-    private static int intArg(ApplicationArguments a, String k, int def) {
-        return a.containsOption(k) ? Integer.parseInt(a.getOptionValues(k).get(0)) : def;
-    }
-
-    private static double dblArg(ApplicationArguments a, String k, double def) {
-        return a.containsOption(k) ? Double.parseDouble(a.getOptionValues(k).get(0)) : def;
     }
 }
