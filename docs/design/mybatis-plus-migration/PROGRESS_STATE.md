@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b DONE/PASS，旧/新39项及宿主10项通过；交付后进入MP03c。
+`IN_PROGRESS`。用户于 2026-10-15 回复“确认执行”，整体计划和 Mapper + XML 形式已批准，MP00 基线已通过；MP01已交付；MP02a已交付29eb343c；MP02b已交付fe410e66；MP03a已交付9c063f2c；MP03b已交付50b2febd；MP03c1 DONE/PASS，模块43项及最终宿主14项通过；交付后进入MP03c2。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -14,6 +14,7 @@
 
 ## 已完成
 
+- MP03c1普通向量/语义ANN与派生源隔离完成，见MP03C1_RESULT。
 - MP03b召回输入完成，见MP03B_RESULT。
 - MP03a词形查询完成，见MP03A_RESULT。
 - MP02b目录/FTS迁移及双来源回归完成，见MP02B_RESULT。
@@ -28,13 +29,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00、MP01 已通过；MP02～MP15 迁移/全仓验收/结构终审未完成。
+- MP00～MP02 已完成；MP03进行中，MP04～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
-- MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372运行中。
+- MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03a已交付。当前MP03b：recall依赖/五个读取者/Mapper/XML/配置/真实PG与R9测试、本目录证据。历史SQL和原用户文件未修改。
+MP01～MP03b已交付。当前MP03c1：两种向量召回器/派生Mapper/XML/配置/VectorMatch/共享派生工厂/真实PG多源测试、本目录证据。历史SQL和原用户文件未修改。
 
 ## 保护内容
 
@@ -53,8 +54,8 @@ MP01～MP03a已交付。当前MP03b：recall依赖/五个读取者/Mapper/XML/�
 
 ## 下一步
 
-1. 显式路径交付MP03b，记录当前CI实际结论。
-2. 执行MP03c向量/语义、MP03d排序SQL迁移。
+1. 显式路径交付MP03c1，记录当前CI实际结论。
+2. 执行MP03c2图/多兴趣/双塔、MP03c3语义ID/TIGER，再继续MP03d。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt

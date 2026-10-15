@@ -10,10 +10,11 @@ import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 语义 query 召回:把一段文本向量化后在 {@code item_embedding} 做余弦最近邻。
@@ -35,17 +36,16 @@ public class SemanticRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(SemanticRecaller.class);
 
-    private final JdbcTemplate jdbc;                 // item_embedding 向量 ANN(派生读模型,非 item 表,不切)
+    private final EmbeddingMapper mapper;                 // item_embedding 向量 ANN(派生读模型,非 item 表,不切)
     private final ItemCatalogReader itemCatalog;     // #3:伪 query 取近期标题的 item 读经此 seam(db|replica)
     private final ObjectProvider<EmbeddingClient> embeddingProvider;
     private final RecallProperties props;
 
-    public SemanticRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                            JdbcTemplate jdbc,   // #3:item_embedding ANN 走派生库
+    public SemanticRecaller(EmbeddingMapper mapper,   // #3:item_embedding ANN 走派生库
                             ItemCatalogReader itemCatalog,
                             ObjectProvider<EmbeddingClient> embeddingProvider,
                             RecallProperties props) {
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.itemCatalog = itemCatalog;
         this.embeddingProvider = embeddingProvider;
         this.props = props;
@@ -73,15 +73,8 @@ public class SemanticRecaller implements ChannelRecaller {
             }
             int limit = props.getQuota().getSemantic();
             PGvector pv = new PGvector(vec);
-            return jdbc.query(
-                    "SELECT item_id, 1 - (embedding <=> ?) AS sim " +
-                    "FROM item_embedding ORDER BY embedding <=> ? LIMIT ?",
-                    ps -> {
-                        ps.setObject(1, pv);
-                        ps.setObject(2, pv);
-                        ps.setInt(3, limit);
-                    },
-                    (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("sim"), RecallChannel.SEMANTIC));
+            return mapper.nearestItems(pv, limit).stream()
+                    .map(row -> row.toRecallItem(RecallChannel.SEMANTIC)).collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("语义召回失败(可能是 embedding 配额/网络),降级返回空 user={}: {}",
                     ctx.userId(), e.getMessage());

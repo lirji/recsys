@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.recall.persistence.mapper.derived.EmbeddingMapper">
+    <resultMap id="match" type="com.recsys.recall.persistence.model.VectorMatch">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="sim" javaType="_double"/></constructor>
+    </resultMap>
+    <select id="userEmbedding" resultType="string">
+        SELECT embedding::text FROM user_embedding WHERE user_id=#{userId}
+    </select>
+    <select id="nearestItems" resultMap="match">
+        SELECT item_id, COALESCE(1 - (embedding &lt;=> #{vector,jdbcType=OTHER}), 0) AS sim
+        FROM item_embedding ORDER BY embedding &lt;=> #{vector,jdbcType=OTHER} LIMIT #{limit}
+    </select>
+</mapper>

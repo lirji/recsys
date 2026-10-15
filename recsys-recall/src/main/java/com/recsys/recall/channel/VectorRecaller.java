@@ -8,10 +8,11 @@ import com.recsys.recall.RecallProperties;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.EmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 向量召回:取 user_embedding 中该用户的向量,在 item_embedding 中找余弦最近邻。
@@ -27,12 +28,11 @@ public class VectorRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(VectorRecaller.class);
 
-    private final JdbcTemplate jdbc;
+    private final EmbeddingMapper mapper;
     private final RecallProperties props;
 
-    public VectorRecaller(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                          JdbcTemplate jdbc, RecallProperties props) {   // #3:向量读走派生库(默认 recsys)
-        this.jdbc = jdbc;
+    public VectorRecaller(EmbeddingMapper mapper, RecallProperties props) {   // #3:向量读走派生库(默认 recsys)
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -51,15 +51,8 @@ public class VectorRecaller implements ChannelRecaller {
         int limit = props.getQuota().getVector();
         PGvector pv = new PGvector(userVec);
         // <=> 余弦距离;sim = 1 - 距离
-        return jdbc.query(
-                "SELECT item_id, 1 - (embedding <=> ?) AS sim " +
-                "FROM item_embedding ORDER BY embedding <=> ? LIMIT ?",
-                ps -> {
-                    ps.setObject(1, pv);
-                    ps.setObject(2, pv);
-                    ps.setInt(3, limit);
-                },
-                (rs, n) -> new RecallItem(rs.getLong("item_id"), rs.getDouble("sim"), RecallChannel.VECTOR));
+        return mapper.nearestItems(pv, limit).stream()
+                    .map(row -> row.toRecallItem(RecallChannel.VECTOR)).collect(Collectors.toList());
     }
 
     /** 熔断打开 / ANN 异常时的兜底:返回空,交由其它召回路(HOT 等)补齐。 */
@@ -75,9 +68,7 @@ public class VectorRecaller implements ChannelRecaller {
      * 全仓未注册该类型,故直接查 {@code ::text} 一次到位,免去必然失败的 getObject 尝试。
      */
     private float[] loadUserVector(long userId) {
-        List<String> rows = jdbc.query(
-                "SELECT embedding::text FROM user_embedding WHERE user_id=?",
-                (rs, n) -> rs.getString(1), userId);
+        List<String> rows = mapper.userEmbedding(userId);
         if (rows.isEmpty() || rows.get(0) == null) {
             return null;
         }
