@@ -3,6 +3,9 @@ package com.recsys.advertiser.billing;
 import com.recsys.common.ad.billing.BudgetAccount;
 import com.recsys.common.ad.billing.BudgetCommand;
 import com.recsys.common.ad.billing.BudgetCommandResult;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.platform.web.PublicHttpException;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.BudgetProtoMapper;
 import com.recsys.proto.billing.v1.GetBudgetAccountRequest;
 import com.recsys.proto.billing.v1.GetBudgetCommandRequest;
@@ -10,9 +13,7 @@ import com.recsys.proto.billing.v1.SandboxBudgetServiceGrpc;
 import io.grpc.StatusRuntimeException;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -46,18 +47,17 @@ public class GrpcSandboxBudgetClient {
         try {
             return call.get();
         } catch (StatusRuntimeException ex) {
+            if (GrpcErrors.isInternalAccessFailure(ex)) throw new PublicHttpException(ErrorCode.BUDGET_DEPENDENCY_UNAVAILABLE);
             throw switch (ex.getStatus().getCode()) {
-                case INVALID_ARGUMENT -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "预算命令参数非法");
-                case ALREADY_EXISTS -> new ResponseStatusException(HttpStatus.CONFLICT, "commandId 已用于不同预算命令");
-                case NOT_FOUND -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "当前未查到账户或命令；在途命令请保留原 commandId 查询或重试");
-                case UNAUTHENTICATED, PERMISSION_DENIED -> new ResponseStatusException(HttpStatus.FORBIDDEN, "内部调用方无账务权限");
-                default -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                        "账务结果未知，请保留原 commandId 查询或重试");
+                case INVALID_ARGUMENT -> new PublicHttpException(ErrorCode.BUDGET_INVALID_ARGUMENT);
+                case ALREADY_EXISTS -> new PublicHttpException(ErrorCode.BUDGET_COMMAND_CONFLICT);
+                case NOT_FOUND -> new PublicHttpException(ErrorCode.BUDGET_RESULT_NOT_OBSERVED);
+                case PERMISSION_DENIED -> new PublicHttpException(ErrorCode.FORBIDDEN);
+                default -> new PublicHttpException(ErrorCode.BUDGET_RESULT_UNKNOWN);
             };
         } catch (IllegalArgumentException ex) {
             // 上游回复格式错误不属于终端输入错误，不能把未知写入结果变成确定失败。
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "账务响应无法验证，请保留原 commandId 查询");
+            throw new PublicHttpException(ErrorCode.BUDGET_RESPONSE_INVALID);
         }
     }
 }

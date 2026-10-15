@@ -23,6 +23,41 @@ function responseError(status: number, data: unknown) {
 }
 
 describe('统一安全错误展示', () => {
+  it.each([
+    [503, 'SERVICE_UNAVAILABLE', '账务结果未知，请保留原 commandId 查询或重试'],
+    [503, 'SERVICE_UNAVAILABLE', '账务服务暂不可用，请保留原 commandId 查询或重试'],
+    [502, 'BAD_GATEWAY', '账务响应无法验证，请保留原 commandId 查询'],
+    [404, 'NOT_FOUND', '当前未查到账户或命令；在途命令请保留原 commandId 查询或重试'],
+  ])('预算上下文提示保留旧码%s/%s并恢复原ID查询说明', (status, code, message) => {
+    const error = toApiError(responseError(status as number, { code, message }));
+    expect(error.code).toBe(code);
+    expect(error.message).toBe(`[${code}] ${message}`);
+  });
+
+  it.each([
+    '账务结果未知，请保留原 commandId 查询或重试 SQL private',
+    '账务结果未知，请保留原 commandId 查询或重试\n',
+    '<html>账务结果未知，请保留原 commandId 查询或重试</html>',
+    { message: '账务结果未知，请保留原 commandId 查询或重试' },
+    ['账务结果未知，请保留原 commandId 查询或重试'],
+  ])('上下文只精确匹配目录，不显示修改或畸形消息%j', (message) => {
+    expect(toApiError(responseError(503, { code: 'SERVICE_UNAVAILABLE', message })).message).toBe(
+      formatError('SERVICE_UNAVAILABLE'),
+    );
+  });
+
+  it('目录上下文不能绕过实际HTTP状态或错用其他wire code', () => {
+    const message = '账务结果未知，请保留原 commandId 查询或重试';
+    expect(toApiError(responseError(400, { code: 'SERVICE_UNAVAILABLE', message })).message).toBe(
+      formatError('BAD_REQUEST'),
+    );
+    expect(toApiError(responseError(503, { code: 'FUTURE_UNKNOWN', message })).message).toBe(
+      '[FUTURE_UNKNOWN] 服务暂时不可用，请稍后重试',
+    );
+    expect(toApiError(responseError(503, { message })).message).toBe(
+      formatError('SERVICE_UNAVAILABLE'),
+    );
+  });
   it('本地受控错误保留可行动文案，仍不信任Error.message', () => {
     const error = new ClientError('NATURAL_DELIVERY_RESPONSE_MISMATCH');
     error.message = 'SQL private';

@@ -13,6 +13,20 @@ public final class GrpcErrors {
 
     private GrpcErrors() {}
 
+    /** 内部认证失败不是HTTP用户无权限；只识别匹配协议状态的单个明确caller码。 */
+    public static boolean isInternalAccessFailure(StatusRuntimeException failure) {
+        Status.Code status = failure.getStatus().getCode();
+        if (status == Status.Code.UNAUTHENTICATED) return true;
+        if (status != Status.Code.PERMISSION_DENIED || failure.getTrailers() == null) return false;
+        Iterable<String> codes = failure.getTrailers().getAll(ERROR_CODE);
+        if (codes == null) return false;
+        var iterator = codes.iterator();
+        if (!iterator.hasNext()) return false;
+        String code = iterator.next();
+        return !iterator.hasNext() && (ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN.code().equals(code)
+                || ErrorCode.RPC_BUDGET_CALLER_FORBIDDEN.code().equals(code));
+    }
+
     /** 业务边界显式选择状态与目录码；构造失败不能用OK伪造成功。 */
     public static StatusRuntimeException exception(Status.Code status, ErrorCode error) {
         Objects.requireNonNull(status, "status");
@@ -51,7 +65,7 @@ public final class GrpcErrors {
         private final ErrorCode error;
 
         private CatalogException(Status.Code status, ErrorCode error) {
-            super(Status.fromCode(status).withDescription("[" + error.code() + "] " + error.message()), trailers(error));
+            super(Status.fromCode(status).withDescription(error.displayMessage()), trailers(error));
             this.error = error;
         }
     }

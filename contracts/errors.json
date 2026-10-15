@@ -806,6 +806,96 @@
       "httpStatus": 0,
       "message": "结果未知，请保留原ID查询或重试",
       "httpDefault": false
+    },
+    {
+      "name": "BUDGET_INVALID_ARGUMENT",
+      "code": "BUDGET_INVALID_ARGUMENT",
+      "httpStatus": 400,
+      "message": "预算命令参数非法",
+      "httpDefault": false,
+      "wireCode": "BAD_REQUEST"
+    },
+    {
+      "name": "BUDGET_COMMAND_CONFLICT",
+      "code": "BUDGET_COMMAND_CONFLICT",
+      "httpStatus": 409,
+      "message": "commandId 已用于不同预算命令",
+      "httpDefault": false,
+      "wireCode": "CONFLICT"
+    },
+    {
+      "name": "BUDGET_RESULT_NOT_OBSERVED",
+      "code": "BUDGET_RESULT_NOT_OBSERVED",
+      "httpStatus": 404,
+      "message": "当前未查到账户或命令；在途命令请保留原 commandId 查询或重试",
+      "httpDefault": false,
+      "wireCode": "NOT_FOUND"
+    },
+    {
+      "name": "BUDGET_RESULT_UNKNOWN",
+      "code": "BUDGET_RESULT_UNKNOWN",
+      "httpStatus": 503,
+      "message": "账务结果未知，请保留原 commandId 查询或重试",
+      "httpDefault": false,
+      "wireCode": "SERVICE_UNAVAILABLE"
+    },
+    {
+      "name": "BUDGET_RESPONSE_INVALID",
+      "code": "BUDGET_RESPONSE_INVALID",
+      "httpStatus": 502,
+      "message": "账务响应无法验证，请保留原 commandId 查询",
+      "httpDefault": false,
+      "wireCode": "BAD_GATEWAY"
+    },
+    {
+      "name": "BUDGET_DEPENDENCY_UNAVAILABLE",
+      "code": "BUDGET_DEPENDENCY_UNAVAILABLE",
+      "httpStatus": 503,
+      "message": "账务服务暂不可用，请保留原 commandId 查询或重试",
+      "httpDefault": false,
+      "wireCode": "SERVICE_UNAVAILABLE"
+    },
+    {
+      "name": "RPC_INTERNAL_CALLER_FORBIDDEN",
+      "code": "RPC_INTERNAL_CALLER_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "内部调用方无服务访问权限",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_INTERNAL_ACCESS_FAILURE",
+      "code": "RPC_INTERNAL_ACCESS_FAILURE",
+      "httpStatus": 0,
+      "message": "内部服务身份不可用，请保留原ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_DELIVERY_REPLY_INVALID",
+      "code": "RPC_DELIVERY_REPLY_INVALID",
+      "httpStatus": 0,
+      "message": "交付响应无法验证，请保留原 operationId 查询",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECEIPT_REPLY_INVALID",
+      "code": "RPC_RECEIPT_REPLY_INVALID",
+      "httpStatus": 0,
+      "message": "账务响应无法验证，请保留原 receiptId 查询",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CLICK_REPLY_INVALID",
+      "code": "RPC_CLICK_REPLY_INVALID",
+      "httpStatus": 0,
+      "message": "点击响应无法验证，请按原ID查询",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_CONVERSION_REPLY_INVALID",
+      "code": "RPC_CONVERSION_REPLY_INVALID",
+      "httpStatus": 0,
+      "message": "CPA响应无法验证，请按原ID查询",
+      "httpDefault": false
     }
   ],
   "families": [

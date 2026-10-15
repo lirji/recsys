@@ -84,6 +84,10 @@ class SandboxGrpcErrorContractTest {
         ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", server.getPort()).usePlaintext().build();
         try {
             assertError(b, channel, Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
+            Channel wrongCaller = ClientInterceptors.intercept(channel,
+                    new InternalAuthGrpcClientInterceptor("x-internal-token", "wrong-service", "SERVICE", 60, SECRET));
+            assertError(b, wrongCaller, Status.Code.PERMISSION_DENIED,
+                    b.caller().equals("advertiser") ? ErrorCode.RPC_BUDGET_CALLER_FORBIDDEN : ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN);
             Channel trusted = ClientInterceptors.intercept(channel,
                     new InternalAuthGrpcClientInterceptor("x-internal-token", b.caller(), "SERVICE", 60, SECRET));
             assertError(b, trusted, Status.Code.NOT_FOUND, b.missing());

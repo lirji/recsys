@@ -41,7 +41,7 @@ public class SandboxImpressionGrpcService extends SandboxImpressionServiceGrpc.S
         try {
             String subject = InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
             if (subject == null) throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
-            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
+            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN);
             T result=action.get(); observer.onNext(result); observer.onCompleted();
         } catch (ImpressionReceipt.Conflict ex) {
             observer.onError(GrpcErrors.exception(Status.Code.ALREADY_EXISTS, ErrorCode.RPC_RECEIPT_CONFLICT));

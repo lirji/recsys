@@ -4,6 +4,8 @@ import com.recsys.common.ad.delivery.SandboxDelivery.Candidate;
 import com.recsys.common.ad.delivery.SandboxDelivery.Query;
 import com.recsys.common.ad.delivery.SandboxDelivery.Prepared;
 import com.recsys.common.ad.delivery.SandboxDelivery.Prepare;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.proto.grpc.GrpcErrors;
 import java.util.Optional;
 import java.util.UUID;
 import com.recsys.proto.DeliveryProtoMapper;
@@ -65,28 +67,40 @@ public class GrpcAdServingGateway implements AdServingGateway {
     @Override
     public List<Candidate> sandboxCandidates(
             Query query) {
-        return deliveryStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream()
-                .map(DeliveryProtoMapper::fromProto).toList();
+        var input = DeliveryProtoMapper.toProto(query);
+        try {
+            var reply = deliveryStub.candidates(input);
+            return ownerReply(ErrorCode.RPC_DELIVERY_REPLY_INVALID,
+                    () -> reply.getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList());
+        } catch (StatusRuntimeException ex) { throw GrpcErrors.sanitize(ex, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN); }
     }
     /** 新方法保持公共 deadline interceptor 的边界，不把 UNIMPLEMENTED 伪装为成功候选。 */
     @Override
     public List<Candidate> sandboxFeedCandidates(Query query) {
-        return deliveryStub.feedCandidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream()
-                .map(DeliveryProtoMapper::fromProto).toList();
+        var input = DeliveryProtoMapper.toProto(query);
+        try {
+            var reply = deliveryStub.feedCandidates(input);
+            return ownerReply(ErrorCode.RPC_DELIVERY_REPLY_INVALID,
+                    () -> reply.getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList());
+        } catch (StatusRuntimeException ex) { throw GrpcErrors.sanitize(ex, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN); }
     }
     @Override
     public Prepared prepareSandbox(
             Prepare request) {
-        return DeliveryProtoMapper.fromProto(deliveryStub.prepare(DeliveryProtoMapper.toProto(request)));
+        var input = DeliveryProtoMapper.toProto(request);
+        try {
+            var reply = deliveryStub.prepare(input);
+            return ownerReply(ErrorCode.RPC_DELIVERY_REPLY_INVALID, () -> DeliveryProtoMapper.fromProto(reply));
+        } catch (StatusRuntimeException ex) { throw GrpcErrors.sanitize(ex, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN); }
     }
     @Override
     public Optional<Prepared> findSandboxPreparation(UUID id, String subject) {
         try {
-            return Optional.of(DeliveryProtoMapper.fromProto(deliveryStub.getPreparation(
-                    GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build())));
+            var reply = deliveryStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build());
+            return Optional.of(ownerReply(ErrorCode.RPC_DELIVERY_REPLY_INVALID, () -> DeliveryProtoMapper.fromProto(reply)));
         } catch (StatusRuntimeException ex) {
             if (ex.getStatus().getCode() == Status.Code.NOT_FOUND) return Optional.empty();
-            throw ex;
+            throw GrpcErrors.sanitize(ex, ErrorCode.RPC_DELIVERY_RESULT_UNKNOWN);
         }
     }
 
@@ -96,25 +110,30 @@ public class GrpcAdServingGateway implements AdServingGateway {
     /** 不套旧吞错 fallback，写入超时可能已经提交。 */
     @Override
     public ImpressionReceipt.Result acceptSandboxImpression(ImpressionReceipt.Command command) {
-        try { return ImpressionProtoMapper.fromProto(impressionStub.accept(ImpressionProtoMapper.toProto(command))); }
+        var input = ImpressionProtoMapper.toProto(command);
+        try {
+            var reply = impressionStub.accept(input);
+            return ownerReply(ErrorCode.RPC_RECEIPT_REPLY_INVALID, () -> ImpressionProtoMapper.fromProto(reply));
+        }
         catch (StatusRuntimeException ex) { throw receiptFailure(ex); }
     }
     @Override
     public Optional<ImpressionReceipt.Result> findSandboxImpression(UUID id, String subject) {
         try {
-            return Optional.of(ImpressionProtoMapper.fromProto(impressionStub.getReceipt(GetVisibleReceiptRequest.newBuilder()
-                    .setReceiptId(id.toString()).setSubject(subject).build())));
+            var reply = impressionStub.getReceipt(GetVisibleReceiptRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build());
+            return Optional.of(ownerReply(ErrorCode.RPC_RECEIPT_REPLY_INVALID, () -> ImpressionProtoMapper.fromProto(reply)));
         } catch (StatusRuntimeException ex) {
             if (ex.getStatus().getCode() == Status.Code.NOT_FOUND) return Optional.empty();
             throw receiptFailure(ex);
         }
     }
     private RuntimeException receiptFailure(StatusRuntimeException ex) {
+        if (GrpcErrors.isInternalAccessFailure(ex)) return GrpcErrors.exception(ex.getStatus().getCode(), ErrorCode.RPC_INTERNAL_ACCESS_FAILURE);
         return switch (ex.getStatus().getCode()) {
             case ALREADY_EXISTS -> new ImpressionReceipt.Conflict();
             case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
-            case INVALID_ARGUMENT -> new IllegalArgumentException("回执格式非法");
-            default -> ex;
+            case INVALID_ARGUMENT -> new IllegalArgumentException(ErrorCode.RPC_RECEIPT_INVALID_ARGUMENT.displayMessage());
+            default -> GrpcErrors.sanitize(ex, ErrorCode.RPC_RECEIPT_RESULT_UNKNOWN);
         };
     }
 
@@ -123,35 +142,57 @@ public class GrpcAdServingGateway implements AdServingGateway {
 
     /** 点击RPC不使用旧Retry/fallback，超时保留原ID恢复；公共拦截器仍限制deadline。 */
     @Override public List<Candidate> sandboxClickCandidates(Query query) {
-        try { return clickStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList(); }
+        var input = DeliveryProtoMapper.toProto(query);
+        try {
+            var reply = clickStub.candidates(input);
+            return ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> reply.getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList());
+        }
         catch(StatusRuntimeException ex) { throw clickFailure(ex,false); }
     }
     @Override public Prepared prepareSandboxClick(Prepare request) {
-        try { return DeliveryProtoMapper.fromProto(clickStub.prepare(DeliveryProtoMapper.toProto(request))); }
+        var input = DeliveryProtoMapper.toProto(request);
+        try {
+            var reply = clickStub.prepare(input);
+            return ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> DeliveryProtoMapper.fromProto(reply));
+        }
         catch(StatusRuntimeException ex) { throw clickFailure(ex,false); }
     }
     @Override public Optional<Prepared> findSandboxClickPreparation(UUID id,String subject) {
-        try { return Optional.of(DeliveryProtoMapper.fromProto(clickStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build()))); }
+        try {
+            var reply = clickStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build());
+            return Optional.of(ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> DeliveryProtoMapper.fromProto(reply)));
+        }
         catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,false); }
     }
     @Override public ClickSettlement.Result acceptSandboxClick(ClickSettlement.Command command) {
-        try { return ClickProtoMapper.fromProto(clickStub.accept(ClickProtoMapper.toProto(command))); }
+        var input = ClickProtoMapper.toProto(command);
+        try {
+            var reply = clickStub.accept(input);
+            return ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> ClickProtoMapper.fromProto(reply));
+        }
         catch(StatusRuntimeException ex) { throw clickFailure(ex,true); }
     }
     @Override public Optional<ClickSettlement.Result> findSandboxClickReceipt(UUID id,String subject) {
-        try { return Optional.of(ClickProtoMapper.fromProto(clickStub.getReceipt(GetClickReceiptRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build()))); }
+        try {
+            var reply = clickStub.getReceipt(GetClickReceiptRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build());
+            return Optional.of(ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> ClickProtoMapper.fromProto(reply)));
+        }
         catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,true); }
     }
     @Override public Optional<ClickSettlement.Snapshot> findSandboxClickSettlement(UUID id,String subject) {
-        try { return Optional.of(ClickProtoMapper.fromProto(clickStub.getSettlement(GetClickSettlementRequest.newBuilder().setQualificationId(id.toString()).setSubject(subject).build()))); }
+        try {
+            var reply = clickStub.getSettlement(GetClickSettlementRequest.newBuilder().setQualificationId(id.toString()).setSubject(subject).build());
+            return Optional.of(ownerReply(ErrorCode.RPC_CLICK_REPLY_INVALID, () -> ClickProtoMapper.fromProto(reply)));
+        }
         catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw clickFailure(ex,true); }
     }
     private RuntimeException clickFailure(StatusRuntimeException ex,boolean receipt) {
+        if (GrpcErrors.isInternalAccessFailure(ex)) return GrpcErrors.exception(ex.getStatus().getCode(), ErrorCode.RPC_INTERNAL_ACCESS_FAILURE);
         return switch(ex.getStatus().getCode()) {
             case ALREADY_EXISTS -> receipt?new ClickSettlement.Conflict():new com.recsys.common.ad.delivery.SandboxDelivery.Conflict();
             case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
-            case INVALID_ARGUMENT -> new IllegalArgumentException("点击请求格式非法");
-            default -> ex;
+            case INVALID_ARGUMENT -> new IllegalArgumentException(ErrorCode.RPC_CLICK_INVALID_ARGUMENT.displayMessage());
+            default -> GrpcErrors.sanitize(ex, ErrorCode.RPC_CLICK_RESULT_UNKNOWN);
         };
     }
 
@@ -160,52 +201,53 @@ public class GrpcAdServingGateway implements AdServingGateway {
 
     /** CPA RPC不使用旧Retry/fallback，超时保留原ID恢复；公共拦截器仍限制deadline。 */
     @Override public List<Candidate> sandboxConversionCandidates(Query query) {
-        try { return conversionReply(()->{
+        try { return ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var values=conversionStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream().map(DeliveryProtoMapper::fromProto).toList();
             if(values.stream().anyMatch(c->!com.recsys.common.ad.BidType.CPA.name().equals(c.ad().bidType())))throw new IllegalArgumentException("CPA候选类型不一致");
             return values;
         }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,false); }
     }
     @Override public Prepared prepareSandboxConversion(Prepare request) {
-        try { return conversionReply(()->{
+        try { return ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var result=DeliveryProtoMapper.fromProto(conversionStub.prepare(DeliveryProtoMapper.toProto(request)));
             if(!request.childId().equals(result.childId()))throw new IllegalArgumentException("CPA准备身份不一致");return result;
         }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,false); }
     }
     @Override public Optional<Prepared> findSandboxConversionPreparation(UUID id,String subject) {
-        try { return Optional.of(conversionReply(()->{
+        try { return Optional.of(ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var result=DeliveryProtoMapper.fromProto(conversionStub.getPreparation(GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build()));
             if(!id.equals(result.childId()))throw new IllegalArgumentException("CPA准备身份不一致");return result;
         })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,false); }
     }
     @Override public ConversionSettlement.VisibleResult acceptSandboxConversionVisible(ConversionSettlement.VisibleCommand command) {
-        try { return conversionReply(()->{
+        try { return ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var result=ConversionProtoMapper.fromProto(conversionStub.acceptVisible(ConversionProtoMapper.toProto(command)));
             if(!command.receiptId().equals(result.receipt().receiptId()))throw new IllegalArgumentException("CPA可见身份不一致");return result;
         }); } catch(StatusRuntimeException ex) { throw conversionFailure(ex,true); }
     }
     @Override public Optional<ConversionSettlement.VisibleResult> findSandboxConversionVisible(UUID id,String subject) {
-        try { return Optional.of(conversionReply(()->{
+        try { return Optional.of(ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var result=ConversionProtoMapper.fromProto(conversionStub.getVisible(GetConversionVisibleRequest.newBuilder().setReceiptId(id.toString()).setSubject(subject).build()));
             if(!id.equals(result.receipt().receiptId()))throw new IllegalArgumentException("CPA可见身份不一致");return result;
         })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,true); }
     }
     @Override public Optional<ConversionSettlement.Snapshot> findSandboxConversionSettlement(UUID id,String subject) {
-        try { return Optional.of(conversionReply(()->{
+        try { return Optional.of(ownerReply(ErrorCode.RPC_CONVERSION_REPLY_INVALID, ()->{
             var result=ConversionProtoMapper.fromProto(conversionStub.getSettlement(GetConversionSettlementRequest.newBuilder().setQualificationId(id.toString()).setSubject(subject).build()));
             if(!id.equals(result.prepared().qualificationId()))throw new IllegalArgumentException("CPA结算身份不一致");return result;
         })); } catch(StatusRuntimeException ex) { if(ex.getStatus().getCode()==Status.Code.NOT_FOUND)return Optional.empty();throw conversionFailure(ex,true); }
     }
     /** owner响应损坏属于依赖未知，不把它误报成客户端400或成功空结果。 */
-    private <T> T conversionReply(java.util.function.Supplier<T> call) {
-        try {return call.get();}catch(IllegalArgumentException ex){throw new IllegalStateException("CPA响应无法验证，请按原ID查询");}
+    private <T> T ownerReply(ErrorCode invalidReply, java.util.function.Supplier<T> call) {
+        try {return call.get();}catch(IllegalArgumentException ex){throw new IllegalStateException(invalidReply.displayMessage());}
     }
     private RuntimeException conversionFailure(StatusRuntimeException ex,boolean receipt) {
+        if (GrpcErrors.isInternalAccessFailure(ex)) return GrpcErrors.exception(ex.getStatus().getCode(), ErrorCode.RPC_INTERNAL_ACCESS_FAILURE);
         return switch(ex.getStatus().getCode()) {
             case ALREADY_EXISTS -> receipt?new ConversionSettlement.Conflict():new com.recsys.common.ad.delivery.SandboxDelivery.Conflict();
             case PERMISSION_DENIED -> new com.recsys.common.ad.delivery.SandboxDelivery.InvalidProof();
-            case INVALID_ARGUMENT -> new IllegalArgumentException("CPA请求格式非法");
-            default -> ex;
+            case INVALID_ARGUMENT -> new IllegalArgumentException(ErrorCode.RPC_CONVERSION_INVALID_ARGUMENT.displayMessage());
+            default -> GrpcErrors.sanitize(ex, ErrorCode.RPC_CONVERSION_RESULT_UNKNOWN);
         };
     }
 

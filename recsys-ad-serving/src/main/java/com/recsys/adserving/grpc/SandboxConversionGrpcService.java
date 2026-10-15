@@ -77,7 +77,7 @@ public class SandboxConversionGrpcService extends SandboxConversionServiceGrpc.S
         try {
             var subject=InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
             if(subject==null)throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
-            if(!expectedCaller.equals(subject))throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
+            if(!expectedCaller.equals(subject))throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN);
             observer.onNext(action.get());observer.onCompleted();
         } catch(SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
             observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_CONVERSION_FORBIDDEN));

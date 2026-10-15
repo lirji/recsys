@@ -51,4 +51,22 @@ class GrpcErrorsTest {
         assertEquals(Status.Code.INTERNAL, failure.getStatus().getCode());
         assertEquals(ErrorCode.INTERNAL_ERROR.code(), failure.getTrailers().get(GrpcErrors.ERROR_CODE));
     }
+
+    @Test void internalIdentityRequiresProtocolAndUnambiguousAllowedCode() {
+        assertTrue(GrpcErrors.isInternalAccessFailure(Status.UNAUTHENTICATED.asRuntimeException()));
+        assertFalse(GrpcErrors.isInternalAccessFailure(Status.PERMISSION_DENIED.asRuntimeException()));
+        for (ErrorCode code : new ErrorCode[]{ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN, ErrorCode.RPC_BUDGET_CALLER_FORBIDDEN}) {
+            Metadata metadata = new Metadata();
+            metadata.put(GrpcErrors.ERROR_CODE, code.code());
+            assertTrue(GrpcErrors.isInternalAccessFailure(Status.PERMISSION_DENIED.asRuntimeException(metadata)));
+            assertFalse(GrpcErrors.isInternalAccessFailure(Status.INVALID_ARGUMENT.asRuntimeException(metadata)));
+            metadata.put(GrpcErrors.ERROR_CODE, code.code());
+            assertFalse(GrpcErrors.isInternalAccessFailure(Status.PERMISSION_DENIED.asRuntimeException(metadata)));
+        }
+        for (String code : new String[]{"RPC_RECEIPT_FORBIDDEN", "FUTURE_FORBIDDEN", "private SQL token"}) {
+            Metadata metadata = new Metadata();
+            metadata.put(GrpcErrors.ERROR_CODE, code);
+            assertFalse(GrpcErrors.isInternalAccessFailure(Status.PERMISSION_DENIED.asRuntimeException(metadata)));
+        }
+    }
 }

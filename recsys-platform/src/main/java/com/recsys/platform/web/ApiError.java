@@ -21,7 +21,7 @@ public record ApiError(
 
     /** 从共享目录取稳定代码与安全提示，不将内部异常消息作为用户文案。 */
     public static ApiError of(ErrorCode error, String path, Map<String, String> fields) {
-        return of(error.code(), error.message(), path, fields);
+        return of(error.wireCode(), error.message(), path, fields);
     }
 
     /** 保留业务码族和所属边界的状态判断，公开文案统一由目录维护。 */

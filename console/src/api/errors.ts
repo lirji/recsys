@@ -1,5 +1,10 @@
 import { AxiosError, isAxiosError, isCancel } from 'axios';
-import { defaultHttpErrorCodes, errorCodes, type KnownErrorCode } from './generated/errorCodes';
+import {
+  defaultHttpErrorCodes,
+  errorCodes,
+  httpErrorVariants,
+  type KnownErrorCode,
+} from './generated/errorCodes';
 
 /** 前端主动拒绝也必须选择目录码；构造入口不接收服务端消息或任意展示文本。 */
 export class ClientError extends Error {
@@ -90,6 +95,20 @@ export function toApiError(error: unknown): ApiErrorInfo {
     if (!isKnownCode(wireCode)) displayCode = wireCode;
     else if (errorCodes[wireCode].httpStatus === status) displayCode = code = wireCode;
   }
+  // 响应文本只作目录候选的精确选择器；展示的仍是本地固定文本，不拼接任何远端内容。
+  let message: string = errorCodes[code].message;
+  if (
+    wireCode === code &&
+    status === errorCodes[code].httpStatus &&
+    typeof body?.message === 'string'
+  ) {
+    const variant = httpErrorVariants[code]?.find(
+      (candidate) =>
+        errorCodes[candidate].httpStatus === status &&
+        errorCodes[candidate].message === body.message,
+    );
+    if (variant) message = errorCodes[variant].message;
+  }
   const rawTraceId = body?.traceId;
   const traceId =
     typeof rawTraceId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(rawTraceId)
@@ -107,7 +126,7 @@ export function toApiError(error: unknown): ApiErrorInfo {
   return {
     status,
     code: displayCode,
-    message: `[${displayCode}] ${errorCodes[code].message}`,
+    message: `[${displayCode}] ${message}`,
     traceId,
     cancelled: false,
     url,

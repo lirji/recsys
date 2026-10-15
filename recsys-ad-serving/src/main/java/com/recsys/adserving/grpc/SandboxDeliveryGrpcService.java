@@ -63,7 +63,7 @@ public class SandboxDeliveryGrpcService extends SandboxDeliveryServiceGrpc.Sandb
         try {
             String subject = InternalAuthGrpcServerInterceptor.CALLER_SUBJECT.get();
             if (subject == null) throw GrpcErrors.exception(Status.Code.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED);
-            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.FORBIDDEN);
+            if (!caller.equals(subject)) throw GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_INTERNAL_CALLER_FORBIDDEN);
             T result = action.get(); observer.onNext(result); observer.onCompleted();
         } catch (SandboxDelivery.InvalidProof | Reservation.AccessDenied ex) {
             observer.onError(GrpcErrors.exception(Status.Code.PERMISSION_DENIED, ErrorCode.RPC_DELIVERY_FORBIDDEN));

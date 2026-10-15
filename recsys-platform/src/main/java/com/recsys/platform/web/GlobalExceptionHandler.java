@@ -115,6 +115,10 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiError> frameworkError(ErrorResponse error, HttpServletRequest req) {
+        if (error instanceof PublicHttpException known) {
+            return ResponseEntity.status(known.getStatusCode()).headers(known.getHeaders())
+                    .body(ApiError.of(known.errorCode(), req.getRequestURI(), null));
+        }
         HttpStatus status = HttpStatus.resolve(error.getStatusCode().value());
         // 保留原来对未知HTTP状态的500回退；异常不能构造成功响应。
         if (status == null || !status.isError()) status = HttpStatus.INTERNAL_SERVER_ERROR;

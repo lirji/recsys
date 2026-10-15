@@ -66,6 +66,25 @@ class ErrorCodeContractTest(unittest.TestCase):
             with self.subTest(candidate=candidate), self.assertRaises(ValueError):
                 generator.validate(candidate)
 
+    def test_wire_aliases_reject_cycles_wrong_status_and_non_http_messages(self):
+        def variant(c):
+            return next(e for e in c["errors"] if e["code"] == "BUDGET_RESULT_UNKNOWN")
+        mutations = [
+            lambda c: variant(c).update(wireCode=None),
+            lambda c: variant(c).update(wireCode=[]),
+            lambda c: variant(c).update(wireCode="MISSING"),
+            lambda c: variant(c).update(wireCode="BUDGET_RESULT_UNKNOWN"),
+            lambda c: variant(c).update(wireCode="BUDGET_DEPENDENCY_UNAVAILABLE"),
+            lambda c: variant(c).update(wireCode="BAD_REQUEST"),
+            lambda c: variant(c).update(httpStatus=0),
+            lambda c: next(e for e in c["errors"] if e["code"] == "SERVICE_UNAVAILABLE").update(wireCode="BUDGET_RESULT_UNKNOWN"),
+        ]
+        for mutate in mutations:
+            candidate = copy.deepcopy(self.catalog)
+            mutate(candidate)
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                generator.validate(candidate)
+
     def test_family_metadata_does_not_change_flattened_client_contract(self):
         old = copy.deepcopy(self.catalog)
         old.pop("families")

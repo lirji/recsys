@@ -9,3 +9,5 @@ EC07a DONE/PASS，已正常ff/push main交付8ff3c2d21eb93d4b086b3bc432f1acb1b94
 EC02b DONE/PASS，已正常ff/push main交付bb0b318bad9e7e655b61141add688a09c0ca295d，父EC02验收完成：旧4项Bearer/限流保护、新完整后端88项/16类、真实Netty HTTP、全仓compile、目录/持久边界守卫通过，详见EC02B_RESULT。EC03 DONE/PASS，已正常ff/push main交付f2149d7fa9140e29d543ddd55d51752e3cc8b36b：11个局部控制器目录化，8个显式码族与生成器校验；改前资金384/自然75、新兼容测试10项过，改后HTTP专项70、资金393、自然76、全仓24模块compile及Python5项通过。Hygiene无阻断，Java格式化/独立静态分析未配置。详见EC03_RESULT。EC04 IN_PROGRESS；EC05～EC06与EC08 TODO，EC07剩余范围待做。整体错误治理IN_PROGRESS，最新远程CI与实际交付SHA以根交接和Git为准。
 
 EC04a DONE/PASS：五个sandbox gRPC服务与内部认证接入115项目录；只公开目录码/文案和受控trailer，拦截原异常描述与任意metadata。改前23项、改后41项（含五服务真实TCP）、钱398、前端139/构建/格式、全仓24模块compile和目录/SQL守卫全部过，见EC04A_RESULT。Javaformatter/独立静态分析仍未配置。EC04b客户端/其他RPC及其余公开错误待做，父EC04不能标DONE。
+
+EC04b DONE/PASS（本地验证）：三个sandbox客户端、四服务caller码、预算wireCode上下文与前端精确安全选择器；127项目录，原115项保持。内部服务身份失败有意纠正为依赖503，业务拒绝保持403；损坏CPM/CPC/曝光回复保持未知。47项基线、72项专项、406资金、76自然、149前端、24模块编译、广告4/自然5/混排5真实浏览器及目录/SQL守卫全过，详见EC04B_RESULT。24源指纹740d83f1dd96302d6c1b994734518aaab82de822eb71d8236cd13b7cfa052343。Hygiene无阻断，Java工具限制保持。基线bf078299 CI38795249788五门SUCCESS，当前片新提交CI另核验。父EC04其余普通RPC/HTTP/正常对象内错误继续，整体IN_PROGRESS。

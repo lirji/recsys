@@ -42,6 +42,15 @@ def validate(catalog):
             if status == NO_HTTP_STATUS or status in defaults:
                 raise ValueError(f"HTTP默认错误码重复或没有状态: {status}")
             defaults.add(status)
+    by_code = {e["code"]: e for e in catalog["errors"]}
+    for entry in catalog["errors"]:
+        if "wireCode" not in entry:
+            continue
+        wire = entry["wireCode"]
+        target = by_code.get(wire) if isinstance(wire, str) else None
+        if (target is None or target is entry or "wireCode" in target or entry["httpDefault"]
+                or entry["httpStatus"] == NO_HTTP_STATUS or entry["httpStatus"] != target["httpStatus"]):
+            raise ValueError("wireCode须引用同HTTP状态的非别名条目；禁止默认项/无HTTP/循环别名")
     families = catalog.get("families", [])
     if not isinstance(families, list):
         raise ValueError("families须为数组")
@@ -72,7 +81,8 @@ def validate(catalog):
 def outputs(catalog):
     entries = validate(catalog)
     quoted = lambda value: json.dumps(value, ensure_ascii=False)
-    constants = ",\n".join(f"    {e['name']}({quoted(e['code'])}, {quoted(e['message'])}, {e['httpStatus']})" for e in entries)
+    constants = ",\n".join(f"    {e['name']}({quoted(e['code'])}, {quoted(e['message'])}, {e['httpStatus']}"
+                             + (f", {quoted(e['wireCode'])}" if "wireCode" in e else "") + ")" for e in entries)
     defaults = "\n".join(f"            case {e['httpStatus']} -> {e['name']};" for e in entries if e["httpDefault"])
     java = '''package com.recsys.common.error;
 
@@ -85,18 +95,30 @@ public enum ErrorCode {
     private final String code;
     private final String message;
     private final int httpStatus;
+    private final String wireCode;
 
     ErrorCode(String code, String message, int httpStatus) {
+        this(code, message, httpStatus, code);
+    }
+
+    ErrorCode(String code, String message, int httpStatus, String wireCode) {
         this.code = code;
         this.message = message;
         this.httpStatus = httpStatus;
+        this.wireCode = wireCode;
     }
 
     /** 使用显式稳定字符串，不用枚举ordinal或依赖重命名后的name。 */
     public String code() { return code; }
 
+    /** HTTP兼容码；有上下文安全文案时仍保留已发布的响应code。 */
+    public String wireCode() { return wireCode; }
+
     /** 可直接向用户展示的固定文案，禁止拼接内部异常详情。 */
     public String message() { return message; }
+
+    /** RPC/CLI等直接展示场景统一包含目录码；HTTP的code与message字段仍分别序列化。 */
+    public String displayMessage() { return "[" + code + "] " + message; }
 
     /** 默认协议状态；业务适配层仍须保留其既有状态分类。 */
     public int httpStatus() { return httpStatus; }
@@ -129,6 +151,14 @@ public enum ErrorCode {
     ts += "export type KnownErrorCode = keyof typeof errorCodes;\n\n"
     ts += "export const defaultHttpErrorCodes: Readonly<Record<number, KnownErrorCode>> = {\n"
     ts += "".join(f"  {e['httpStatus']}: {ts_string(e['code'])},\n" for e in entries if e["httpDefault"])
+    ts += "};\n"
+    variants = {}
+    for entry in entries:
+        if "wireCode" in entry:
+            variants.setdefault(entry["wireCode"], []).append(entry["code"])
+    ts += "\nexport const httpErrorVariants: Readonly<\n  Partial<Record<KnownErrorCode, readonly KnownErrorCode[]>>\n> = {\n"
+    for wire, members in variants.items():
+        ts += f"  {wire}: [" + ", ".join(ts_string(member) for member in members) + "],\n"
     ts += "};\n"
     families = ",\n".join(f"    {f['name']}({quoted(f['prefix'])}, ErrorCode.{f['fallback']})" for f in catalog.get("families", []))
     family_java = '''package com.recsys.common.error;

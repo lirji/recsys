@@ -29,6 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -102,6 +103,23 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
     }
 
+    @ParameterizedTest
+    @CsvSource({"BUDGET_INVALID_ARGUMENT,400,BAD_REQUEST", "BUDGET_COMMAND_CONFLICT,409,CONFLICT",
+            "BUDGET_RESULT_NOT_OBSERVED,404,NOT_FOUND", "BUDGET_RESULT_UNKNOWN,503,SERVICE_UNAVAILABLE",
+            "BUDGET_RESPONSE_INVALID,502,BAD_GATEWAY", "BUDGET_DEPENDENCY_UNAVAILABLE,503,SERVICE_UNAVAILABLE"})
+    void contextualCatalogMessagesKeepLegacyCodeAndIgnoreMutableDetails(String variant, int status, String wireCode) throws Exception {
+        var result = mvc.perform(get("/public-http/" + variant)).andExpect(status().is(status))
+                .andExpect(jsonPath("$.code").value(wireCode))
+                .andExpect(jsonPath("$.message").value(ErrorCode.valueOf(variant).message()))
+                .andExpect(jsonPath("$.timestamp").isNumber()).andReturn().getResponse();
+        assertThat(result.getContentAsString()).doesNotContain(INTERNAL_DETAIL);
+    }
+
+    @Test void rpcOnlyCatalogCannotCreateHttpStatusZero() {
+        assertThatThrownBy(() -> new PublicHttpException(ErrorCode.RPC_BUDGET_RESULT_UNKNOWN))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test
     void malformedJsonIsClientFailureWithoutParserDetails() throws Exception {
         mvc.perform(post("/body").contentType(MediaType.APPLICATION_JSON).content("{broken-private"))
@@ -159,6 +177,12 @@ class GlobalExceptionHandlerTest {
         }
         @GetMapping("/non-http-error")
         String nonHttpError() { throw new PublicErrorException(ErrorCode.NETWORK_ERROR); }
+        @GetMapping("/public-http/{variant}")
+        String publicHttp(@PathVariable String variant) {
+            var failure = new PublicHttpException(ErrorCode.valueOf(variant));
+            failure.getBody().setDetail(INTERNAL_DETAIL);
+            throw failure;
+        }
         @GetMapping("/missing-resource")
         String resource() throws NoResourceFoundException {
             throw new NoResourceFoundException(HttpMethod.GET, INTERNAL_DETAIL);

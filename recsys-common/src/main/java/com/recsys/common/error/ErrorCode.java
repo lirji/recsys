@@ -116,25 +116,49 @@ public enum ErrorCode {
     RPC_CONVERSION_FORBIDDEN("RPC_CONVERSION_FORBIDDEN", "CPA证明或主体无效", 0),
     RPC_CONVERSION_CONFLICT("RPC_CONVERSION_CONFLICT", "CPA标识负载冲突", 0),
     RPC_CONVERSION_INVALID_ARGUMENT("RPC_CONVERSION_INVALID_ARGUMENT", "CPA请求格式非法", 0),
-    RPC_CONVERSION_RESULT_UNKNOWN("RPC_CONVERSION_RESULT_UNKNOWN", "结果未知，请保留原ID查询或重试", 0);
+    RPC_CONVERSION_RESULT_UNKNOWN("RPC_CONVERSION_RESULT_UNKNOWN", "结果未知，请保留原ID查询或重试", 0),
+    BUDGET_INVALID_ARGUMENT("BUDGET_INVALID_ARGUMENT", "预算命令参数非法", 400, "BAD_REQUEST"),
+    BUDGET_COMMAND_CONFLICT("BUDGET_COMMAND_CONFLICT", "commandId 已用于不同预算命令", 409, "CONFLICT"),
+    BUDGET_RESULT_NOT_OBSERVED("BUDGET_RESULT_NOT_OBSERVED", "当前未查到账户或命令；在途命令请保留原 commandId 查询或重试", 404, "NOT_FOUND"),
+    BUDGET_RESULT_UNKNOWN("BUDGET_RESULT_UNKNOWN", "账务结果未知，请保留原 commandId 查询或重试", 503, "SERVICE_UNAVAILABLE"),
+    BUDGET_RESPONSE_INVALID("BUDGET_RESPONSE_INVALID", "账务响应无法验证，请保留原 commandId 查询", 502, "BAD_GATEWAY"),
+    BUDGET_DEPENDENCY_UNAVAILABLE("BUDGET_DEPENDENCY_UNAVAILABLE", "账务服务暂不可用，请保留原 commandId 查询或重试", 503, "SERVICE_UNAVAILABLE"),
+    RPC_INTERNAL_CALLER_FORBIDDEN("RPC_INTERNAL_CALLER_FORBIDDEN", "内部调用方无服务访问权限", 0),
+    RPC_INTERNAL_ACCESS_FAILURE("RPC_INTERNAL_ACCESS_FAILURE", "内部服务身份不可用，请保留原ID查询或重试", 0),
+    RPC_DELIVERY_REPLY_INVALID("RPC_DELIVERY_REPLY_INVALID", "交付响应无法验证，请保留原 operationId 查询", 0),
+    RPC_RECEIPT_REPLY_INVALID("RPC_RECEIPT_REPLY_INVALID", "账务响应无法验证，请保留原 receiptId 查询", 0),
+    RPC_CLICK_REPLY_INVALID("RPC_CLICK_REPLY_INVALID", "点击响应无法验证，请按原ID查询", 0),
+    RPC_CONVERSION_REPLY_INVALID("RPC_CONVERSION_REPLY_INVALID", "CPA响应无法验证，请按原ID查询", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
     private final String code;
     private final String message;
     private final int httpStatus;
+    private final String wireCode;
 
     ErrorCode(String code, String message, int httpStatus) {
+        this(code, message, httpStatus, code);
+    }
+
+    ErrorCode(String code, String message, int httpStatus, String wireCode) {
         this.code = code;
         this.message = message;
         this.httpStatus = httpStatus;
+        this.wireCode = wireCode;
     }
 
     /** 使用显式稳定字符串，不用枚举ordinal或依赖重命名后的name。 */
     public String code() { return code; }
 
+    /** HTTP兼容码；有上下文安全文案时仍保留已发布的响应code。 */
+    public String wireCode() { return wireCode; }
+
     /** 可直接向用户展示的固定文案，禁止拼接内部异常详情。 */
     public String message() { return message; }
+
+    /** RPC/CLI等直接展示场景统一包含目录码；HTTP的code与message字段仍分别序列化。 */
+    public String displayMessage() { return "[" + code + "] " + message; }
 
     /** 默认协议状态；业务适配层仍须保留其既有状态分类。 */
     public int httpStatus() { return httpStatus; }

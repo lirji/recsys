@@ -88,7 +88,8 @@ class GrpcSandboxBudgetClientTest {
     void conflictsNotFoundAndUnavailableKeepDistinctHttpSemantics() {
         for (var scenario : new Object[][]{
                 {Status.ALREADY_EXISTS, 409}, {Status.NOT_FOUND, 404}, {Status.INVALID_ARGUMENT, 400},
-                {Status.PERMISSION_DENIED, 403}, {Status.UNAUTHENTICATED, 403}, {Status.UNAVAILABLE, 503}}) {
+                // 内部token无效不是终端用户权限不足，旧服务不带metadata时也不能误导用户去申请权限。
+                {Status.PERMISSION_DENIED, 403}, {Status.UNAUTHENTICATED, 503}, {Status.UNAVAILABLE, 503}}) {
             error.set((Status) scenario[0]);
             var failure = assertThrows(ResponseStatusException.class, () -> client.setLimit(command));
             assertEquals(scenario[1], failure.getStatusCode().value());

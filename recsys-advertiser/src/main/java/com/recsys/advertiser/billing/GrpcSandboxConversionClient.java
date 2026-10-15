@@ -1,14 +1,15 @@
 package com.recsys.advertiser.billing;
 
 import com.recsys.common.ad.billing.ConversionSettlement.*;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.platform.web.PublicHttpException;
+import com.recsys.proto.grpc.GrpcErrors;
 import com.recsys.proto.ConversionProtoMapper;
 import com.recsys.proto.conversion.v1.*;
 import io.grpc.StatusRuntimeException;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -32,15 +33,16 @@ public class GrpcSandboxConversionClient {
             if(result.outcome().advertiserId()!=advertiserId || !result.outcome().eventId().equals(eventId)) throw new IllegalArgumentException("owner响应身份不一致");
             return result;
         } catch(StatusRuntimeException ex) {
+            if (GrpcErrors.isInternalAccessFailure(ex)) throw new PublicHttpException(ErrorCode.CONVERSION_503);
             throw switch(ex.getStatus().getCode()) {
-                case INVALID_ARGUMENT->new ResponseStatusException(HttpStatus.BAD_REQUEST,"转化请求格式非法");
-                case ALREADY_EXISTS->new ResponseStatusException(HttpStatus.CONFLICT,"业务事件已用于其他请求");
-                case NOT_FOUND->new ResponseStatusException(HttpStatus.NOT_FOUND,"当前未观察到业务事件，请保留原ID");
-                case UNAUTHENTICATED,PERMISSION_DENIED->new ResponseStatusException(HttpStatus.FORBIDDEN,"转化证明或内部调用方无效");
-                default->new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"转化结果未知，请保留原ID查询或重试");
+                case INVALID_ARGUMENT->new PublicHttpException(ErrorCode.CONVERSION_400);
+                case ALREADY_EXISTS->new PublicHttpException(ErrorCode.CONVERSION_409);
+                case NOT_FOUND->new PublicHttpException(ErrorCode.CONVERSION_404);
+                case PERMISSION_DENIED->new PublicHttpException(ErrorCode.CONVERSION_403);
+                default->new PublicHttpException(ErrorCode.CONVERSION_503);
             };
         } catch(IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"转化响应无法验证，请保留原ID查询");
+            throw new PublicHttpException(ErrorCode.CONVERSION_503);
         }
     }
 }

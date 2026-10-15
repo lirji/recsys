@@ -460,6 +460,54 @@ export const errorCodes = {
     message: '结果未知，请保留原ID查询或重试',
     httpStatus: 0,
   },
+  BUDGET_INVALID_ARGUMENT: {
+    message: '预算命令参数非法',
+    httpStatus: 400,
+  },
+  BUDGET_COMMAND_CONFLICT: {
+    message: 'commandId 已用于不同预算命令',
+    httpStatus: 409,
+  },
+  BUDGET_RESULT_NOT_OBSERVED: {
+    message: '当前未查到账户或命令；在途命令请保留原 commandId 查询或重试',
+    httpStatus: 404,
+  },
+  BUDGET_RESULT_UNKNOWN: {
+    message: '账务结果未知，请保留原 commandId 查询或重试',
+    httpStatus: 503,
+  },
+  BUDGET_RESPONSE_INVALID: {
+    message: '账务响应无法验证，请保留原 commandId 查询',
+    httpStatus: 502,
+  },
+  BUDGET_DEPENDENCY_UNAVAILABLE: {
+    message: '账务服务暂不可用，请保留原 commandId 查询或重试',
+    httpStatus: 503,
+  },
+  RPC_INTERNAL_CALLER_FORBIDDEN: {
+    message: '内部调用方无服务访问权限',
+    httpStatus: 0,
+  },
+  RPC_INTERNAL_ACCESS_FAILURE: {
+    message: '内部服务身份不可用，请保留原ID查询或重试',
+    httpStatus: 0,
+  },
+  RPC_DELIVERY_REPLY_INVALID: {
+    message: '交付响应无法验证，请保留原 operationId 查询',
+    httpStatus: 0,
+  },
+  RPC_RECEIPT_REPLY_INVALID: {
+    message: '账务响应无法验证，请保留原 receiptId 查询',
+    httpStatus: 0,
+  },
+  RPC_CLICK_REPLY_INVALID: {
+    message: '点击响应无法验证，请按原ID查询',
+    httpStatus: 0,
+  },
+  RPC_CONVERSION_REPLY_INVALID: {
+    message: 'CPA响应无法验证，请按原ID查询',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;
@@ -481,4 +529,14 @@ export const defaultHttpErrorCodes: Readonly<Record<number, KnownErrorCode>> = {
   408: 'REQUEST_TIMEOUT',
   406: 'NOT_ACCEPTABLE',
   413: 'PAYLOAD_TOO_LARGE',
+};
+
+export const httpErrorVariants: Readonly<
+  Partial<Record<KnownErrorCode, readonly KnownErrorCode[]>>
+> = {
+  BAD_REQUEST: ['BUDGET_INVALID_ARGUMENT'],
+  CONFLICT: ['BUDGET_COMMAND_CONFLICT'],
+  NOT_FOUND: ['BUDGET_RESULT_NOT_OBSERVED'],
+  SERVICE_UNAVAILABLE: ['BUDGET_RESULT_UNKNOWN', 'BUDGET_DEPENDENCY_UNAVAILABLE'],
+  BAD_GATEWAY: ['BUDGET_RESPONSE_INVALID'],
 };
