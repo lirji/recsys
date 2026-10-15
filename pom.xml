@@ -27,6 +27,9 @@
         <onnxruntime.version>1.17.1</onnxruntime.version>
         <lombok.version>1.18.30</lombok.version>
         <postgresql.version>42.7.3</postgresql.version>
+        <!-- MP01：保持 Boot 3.2.5，集中钉住持久层组件，禁止子模块混用不同 Starter。 -->
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <mybatis-spring.version>3.0.5</mybatis-spring.version>
         <!-- 实时特征流作业(recsys-streaming):Flink 1.20 支持 Java 21 -->
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
@@ -49,6 +52,7 @@
 
     <modules>
         <module>recsys-common</module>
+        <module>recsys-persistence</module>
         <module>recsys-platform</module>
         <module>recsys-ad-common</module>
         <module>recsys-proto</module>
@@ -74,6 +78,18 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-bom</artifactId>
+                <version>${mybatis-plus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis-spring</artifactId>
+                <version>${mybatis-spring.version}</version>
+            </dependency>
             <!-- Spring Boot BOM -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
@@ -133,6 +149,11 @@
             <dependency>
                 <groupId>com.recsys</groupId>
                 <artifactId>recsys-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.recsys</groupId>
+                <artifactId>recsys-persistence</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- 统一权限平台(auth-platform)消费方 SDK:细粒度 ReBAC 归属判权(SpiceDB 经判权服务)。

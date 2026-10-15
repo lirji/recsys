@@ -1,0 +1,291 @@
+# SQL / JDBC 初筛清单
+
+基线：`e7838776a0b09904a0d4702589639534901d27ee`；2026-10-15。状态：全部生产迁移未开始。
+
+范围：`rg --files` 可见的生产 Java 和独立 SQL 资源，排除 target/node_modules。匹配 JDBC 使用或 SQL 关键字。注释、嵌套 SELECT、重复字符串也计数；这不是独立 SQL 条数或完成率。逐条语义映射将在相应工作包实施前补充。
+
+`SQL 模式命中=0` 的文件通常为数据源装配或调用公共查询工具，仍必须检查。首次命中行用于定位，并不表示整份文件已逐行审完。测试源码不在下表，但每批必须检索构造器/方法引用并调整其装配。
+
+## 模块汇总
+
+| 模块 | Java 文件 | SQL 模式命中 | 工作包 |
+|---|---:|---:|---|
+| recsys-ad-serving | 2 | 15 | MP04c |
+| recsys-ad | 41 | 206 | MP04 / MP05 / MP08～MP12 |
+| recsys-advertiser | 3 | 36 | MP04b |
+| recsys-behavior | 3 | 16 | MP06a/b |
+| recsys-console | 2 | 9 | MP06c |
+| recsys-content | 5 | 21 | MP02 |
+| recsys-offline | 44 | 161 | MP13 |
+| recsys-query | 1 | 2 | MP03a |
+| recsys-rank | 2 | 2 | MP03d |
+| recsys-rec-engine | 14 | 33 | MP07 / MP12 |
+| recsys-recall | 12 | 22 | MP03b/c |
+| recsys-streaming | 1 | 1 | MP14 |
+| recsys-user | 1 | 2 | MP01b |
+
+合计：13 个模块、131 个 Java 文件、526 处模式命中。
+
+## 文件级核销清单
+
+迁移时把 `TODO` 替换为实际 Mapper/XML 路径、验证证据和提交；保留的非业务 SQL 必须填明确原因，不能简单删行。
+
+### recsys-ad-serving
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/adserving/catalog/AdServableRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/catalog/AdServableRepository.java) | 12 | 14 | TODO |
+| [com/recsys/adserving/report/AdReportStatsRepository.java](../../../recsys-ad-serving/src/main/java/com/recsys/adserving/report/AdReportStatsRepository.java) | 4 | 1 | TODO |
+
+### recsys-ad
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/ad/AdEmbeddingSimilarity.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdEmbeddingSimilarity.java) | 5 | 1 | TODO |
+| [com/recsys/ad/AdEventLogger.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdEventLogger.java) | 11 | 4 | TODO |
+| [com/recsys/ad/AdOutcomeService.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdOutcomeService.java) | 4 | 1 | TODO |
+| [com/recsys/ad/AdRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdRepository.java) | 10 | 3 | TODO |
+| [com/recsys/ad/AdShardingConfig.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdShardingConfig.java) | 10 | 0 | TODO |
+| [com/recsys/ad/CreativeSelector.java](../../../recsys-ad/src/main/java/com/recsys/ad/CreativeSelector.java) | 8 | 2 | TODO |
+| [com/recsys/ad/GuaranteedDeliveryService.java](../../../recsys-ad/src/main/java/com/recsys/ad/GuaranteedDeliveryService.java) | 10 | 1 | TODO |
+| [com/recsys/ad/PacingService.java](../../../recsys-ad/src/main/java/com/recsys/ad/PacingService.java) | 9 | 1 | TODO |
+| [com/recsys/ad/ShardedAdCatalogReader.java](../../../recsys-ad/src/main/java/com/recsys/ad/ShardedAdCatalogReader.java) | 7 | 6 | TODO |
+| [com/recsys/ad/UpliftAssignmentService.java](../../../recsys-ad/src/main/java/com/recsys/ad/UpliftAssignmentService.java) | 9 | 5 | TODO |
+| [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | TODO |
+| [com/recsys/ad/billing/BillingOutboxRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingOutboxRepository.java) | 3 | 12 | TODO |
+| [com/recsys/ad/billing/BillingProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingProjectionRepository.java) | 3 | 3 | TODO |
+| [com/recsys/ad/billing/BudgetConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetConfiguration.java) | 8 | 0 | TODO |
+| [com/recsys/ad/billing/BudgetRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BudgetRepository.java) | 7 | 11 | TODO |
+| [com/recsys/ad/billing/ClickEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickEventConfiguration.java) | 13 | 0 | TODO |
+| [com/recsys/ad/billing/ClickPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickPreparationConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ClickProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickProjectionRepository.java) | 3 | 5 | TODO |
+| [com/recsys/ad/billing/ClickQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ClickQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickQuoteRepository.java) | 5 | 9 | TODO |
+| [com/recsys/ad/billing/ClickSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementConfiguration.java) | 11 | 0 | TODO |
+| [com/recsys/ad/billing/ClickSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ClickSettlementRepository.java) | 6 | 22 | TODO |
+| [com/recsys/ad/billing/ConversionEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionEventConfiguration.java) | 13 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionPreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionPreparationConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionProjectionRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionProjectionRepository.java) | 3 | 3 | TODO |
+| [com/recsys/ad/billing/ConversionQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionQuoteRepository.java) | 5 | 9 | TODO |
+| [com/recsys/ad/billing/ConversionSettlementConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementConfiguration.java) | 10 | 0 | TODO |
+| [com/recsys/ad/billing/ConversionSettlementRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ConversionSettlementRepository.java) | 6 | 24 | TODO |
+| [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | TODO |
+| [com/recsys/ad/billing/CpmQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteRepository.java) | 5 | 8 | TODO |
+| [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | TODO |
+| [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | TODO |
+| [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | TODO |
+| [com/recsys/ad/billing/ImpressionReceiptRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptRepository.java) | 7 | 10 | TODO |
+| [com/recsys/ad/billing/PreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationConfiguration.java) | 14 | 0 | TODO |
+| [com/recsys/ad/billing/PreparationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationRepository.java) | 6 | 8 | TODO |
+| [com/recsys/ad/billing/ReconciliationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationConfiguration.java) | 6 | 0 | TODO |
+| [com/recsys/ad/billing/ReconciliationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReconciliationRepository.java) | 6 | 36 | TODO |
+| [com/recsys/ad/billing/ReservationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationConfiguration.java) | 9 | 0 | TODO |
+| [com/recsys/ad/billing/ReservationRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ReservationRepository.java) | 6 | 14 | TODO |
+
+### recsys-advertiser
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/advertiser/AdvertiserDataSourceConfig.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserDataSourceConfig.java) | 6 | 0 | TODO |
+| [com/recsys/advertiser/AdvertiserRepository.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/AdvertiserRepository.java) | 8 | 35 | TODO |
+| [com/recsys/advertiser/DbAdReportReader.java](../../../recsys-advertiser/src/main/java/com/recsys/advertiser/DbAdReportReader.java) | 4 | 1 | TODO |
+
+### recsys-behavior
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/behavior/BehaviorService.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/BehaviorService.java) | 15 | 2 | TODO |
+| [com/recsys/behavior/exposure/NaturalReceiptConfiguration.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptConfiguration.java) | 11 | 0 | TODO |
+| [com/recsys/behavior/exposure/NaturalReceiptRepository.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptRepository.java) | 9 | 14 | TODO |
+
+### recsys-console
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/console/report/ReportService.java](../../../recsys-console/src/main/java/com/recsys/console/report/ReportService.java) | 12 | 2 | TODO |
+| [com/recsys/console/user/UserProfileService.java](../../../recsys-console/src/main/java/com/recsys/console/user/UserProfileService.java) | 7 | 7 | TODO |
+
+### recsys-content
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/content/AbstractItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/AbstractItemCatalogReader.java) | 5 | 16 | TODO |
+| [com/recsys/content/DbItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/DbItemCatalogReader.java) | 4 | 0 | TODO |
+| [com/recsys/content/JdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/JdbcContentService.java) | 5 | 5 | TODO |
+| [com/recsys/content/ReplicaItemCatalogReader.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaItemCatalogReader.java) | 4 | 0 | TODO |
+| [com/recsys/content/ReplicaJdbcContentService.java](../../../recsys-content/src/main/java/com/recsys/content/ReplicaJdbcContentService.java) | 4 | 0 | TODO |
+
+### recsys-offline
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/offline/AbReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AbReportJob.java) | 6 | 3 | TODO |
+| [com/recsys/offline/AdCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdCalibrateJob.java) | 8 | 2 | TODO |
+| [com/recsys/offline/AdExploreStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdExploreStatsJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | TODO |
+| [com/recsys/offline/AttributionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AttributionJob.java) | 6 | 1 | TODO |
+| [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | TODO |
+| [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | TODO |
+| [com/recsys/offline/BehaviorQuery.java](../../../recsys-offline/src/main/java/com/recsys/offline/BehaviorQuery.java) | 51 | 1 | TODO |
+| [com/recsys/offline/BuildFeaturesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BuildFeaturesJob.java) | 7 | 7 | TODO |
+| [com/recsys/offline/ColdBanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ColdBanditStatsJob.java) | 8 | 1 | TODO |
+| [com/recsys/offline/DataQualityJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DataQualityJob.java) | 6 | 9 | TODO |
+| [com/recsys/offline/DelayModelJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/DelayModelJob.java) | 8 | 1 | TODO |
+| [com/recsys/offline/EvalJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/EvalJob.java) | 14 | 2 | TODO |
+| [com/recsys/offline/FtrlTrainJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/FtrlTrainJob.java) | 13 | 1 | TODO |
+| [com/recsys/offline/GenAdCvrSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdCvrSamplesJob.java) | 11 | 3 | TODO |
+| [com/recsys/offline/GenAdUpliftSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenAdUpliftSamplesJob.java) | 7 | 2 | TODO |
+| [com/recsys/offline/GenSamplesImprJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesImprJob.java) | 7 | 4 | TODO |
+| [com/recsys/offline/GenSamplesJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/GenSamplesMtJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/GenSamplesMtJob.java) | 7 | 3 | TODO |
+| [com/recsys/offline/HotJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/HotJob.java) | 9 | 1 | TODO |
+| [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | TODO |
+| [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | TODO |
+| [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | TODO |
+| [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | TODO |
+| [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | TODO |
+| [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | TODO |
+| [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | TODO |
+| [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | TODO |
+| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | TODO |
+| [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | TODO |
+| [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | TODO |
+| [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | TODO |
+| [com/recsys/offline/SeedAdsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SeedAdsJob.java) | 10 | 11 | TODO |
+| [com/recsys/offline/SimAdEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdEventsJob.java) | 7 | 5 | TODO |
+| [com/recsys/offline/SimAdUpliftDataJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimAdUpliftDataJob.java) | 7 | 2 | TODO |
+| [com/recsys/offline/SimRecEventsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SimRecEventsJob.java) | 7 | 4 | TODO |
+| [com/recsys/offline/SwingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SwingJob.java) | 9 | 0 | TODO |
+| [com/recsys/offline/SyncAdEventLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncAdEventLogJob.java) | 6 | 9 | TODO |
+| [com/recsys/offline/SyncBehaviorLogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncBehaviorLogJob.java) | 6 | 10 | TODO |
+| [com/recsys/offline/SyncItemCatalogJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/SyncItemCatalogJob.java) | 6 | 9 | TODO |
+| [com/recsys/offline/TuneFusionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/TuneFusionJob.java) | 11 | 1 | TODO |
+| [com/recsys/offline/UserCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserCfJob.java) | 9 | 0 | TODO |
+| [com/recsys/offline/UserEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/UserEmbeddingJob.java) | 7 | 4 | TODO |
+
+### recsys-query
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/query/IdfWeighter.java](../../../recsys-query/src/main/java/com/recsys/query/IdfWeighter.java) | 8 | 2 | TODO |
+
+### recsys-rank
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/rank/DienRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DienRankService.java) | 22 | 1 | TODO |
+| [com/recsys/rank/DinRankService.java](../../../recsys-rank/src/main/java/com/recsys/rank/DinRankService.java) | 22 | 1 | TODO |
+
+### recsys-rec-engine
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/recengine/PersonalizationScorer.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/PersonalizationScorer.java) | 5 | 2 | TODO |
+| [com/recsys/recengine/coldstart/ColdStartDetector.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/coldstart/ColdStartDetector.java) | 7 | 2 | TODO |
+| [com/recsys/recengine/delivery/ClickDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ClickDeliveryConfiguration.java) | 12 | 0 | TODO |
+| [com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/ConversionDeliveryConfiguration.java) | 12 | 0 | TODO |
+| [com/recsys/recengine/delivery/DeliveryOperationConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationConfiguration.java) | 12 | 0 | TODO |
+| [com/recsys/recengine/delivery/DeliveryOperationRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/delivery/DeliveryOperationRepository.java) | 11 | 8 | TODO |
+| [com/recsys/recengine/experiment/ExposureLogger.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/experiment/ExposureLogger.java) | 13 | 1 | TODO |
+| [com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryConfiguration.java) | 13 | 0 | TODO |
+| [com/recsys/recengine/exposure/NaturalDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/exposure/NaturalDeliveryRepository.java) | 8 | 8 | TODO |
+| [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | TODO |
+| [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | TODO |
+| [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | TODO |
+| [com/recsys/recengine/rerank/DppReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/DppReranker.java) | 7 | 1 | TODO |
+| [com/recsys/recengine/rerank/MmrReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/MmrReranker.java) | 7 | 1 | TODO |
+
+### recsys-recall
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/recall/BehaviorSequenceSource.java](../../../recsys-recall/src/main/java/com/recsys/recall/BehaviorSequenceSource.java) | 8 | 2 | TODO |
+| [com/recsys/recall/channel/DbUserProfileReader.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/DbUserProfileReader.java) | 7 | 1 | TODO |
+| [com/recsys/recall/channel/GraphRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/GraphRecaller.java) | 13 | 2 | TODO |
+| [com/recsys/recall/channel/I2iRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/I2iRecaller.java) | 12 | 1 | TODO |
+| [com/recsys/recall/channel/MultiInterestRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/MultiInterestRecaller.java) | 18 | 1 | TODO |
+| [com/recsys/recall/channel/RecentPositiveItemsSource.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/RecentPositiveItemsSource.java) | 3 | 1 | TODO |
+| [com/recsys/recall/channel/SemanticIdRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SemanticIdRecaller.java) | 9 | 3 | TODO |
+| [com/recsys/recall/channel/SemanticRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SemanticRecaller.java) | 13 | 1 | TODO |
+| [com/recsys/recall/channel/SwingRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/SwingRecaller.java) | 12 | 1 | TODO |
+| [com/recsys/recall/channel/TigerRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/TigerRecaller.java) | 17 | 5 | TODO |
+| [com/recsys/recall/channel/TwoTowerRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/TwoTowerRecaller.java) | 19 | 2 | TODO |
+| [com/recsys/recall/channel/VectorRecaller.java](../../../recsys-recall/src/main/java/com/recsys/recall/channel/VectorRecaller.java) | 11 | 2 | TODO |
+
+### recsys-streaming
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/streaming/RealtimeFeatureJob.java](../../../recsys-streaming/src/main/java/com/recsys/streaming/RealtimeFeatureJob.java) | 26 | 1 | TODO |
+
+### recsys-user
+
+| 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
+|---|---:|---:|---|
+| [com/recsys/user/UserProfileService.java](../../../recsys-user/src/main/java/com/recsys/user/UserProfileService.java) | 6 | 2 | MP01 DONE：UserProfileMapper / mapper/user/primary/UserProfileMapper.xml；见 MP01_RESULT |
+
+## 追加关联路径
+
+- `recsys-offline/.../ItemQuery.java`：来源表参数工具，无 JDBC/SQL 关键词不等于无迁移关联；与 BehaviorQuery 一并核验。
+- 各 `src/test`、`src/main/resources/application*.yml`、sharding 配置、应用启动类、pom、Testcontainers fixtures 与浏览器宿主：按 Mapper 注册/构造参数变化定位，不能只机械改上表。
+- schema/摘要校验 SELECT 属于生产查询，也迁移到明确 Mapper；连接初始化语句和 DDL 脚本 runner 属于有说明的例外。
+
+## 独立 SQL 资源基线
+
+以下内容保留，不修改已执行迁移。新追加或从 Java 提取的 DDL 使用新资源路径，不覆盖历史文件。SHA-256 用于最终核验未漂移。
+
+| 资源 | SHA-256 | 处理 |
+|---|---|---|
+| [recsys-ad/src/main/resources/db/ad-billing/V001__budget_account.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V001__budget_account.sql) | `3c0b345728ed04c990ba51c5da93eef556e6eef95bf87fa8ff2173624cdb6d3f` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql) | `3288d2666d3da60af2533afebc468dec3f38a2f553128e8fc4920fd465776262` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql) | `1accbc28fb909db983593de5286ace01f0daed8a3ac82a4f49f84b844d57f17f` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V004__delivery_preparation.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V004__delivery_preparation.sql) | `225cff7afdc43ffc295b5e4f9441a653b1349fbbfd3ced20e2cea813bb9c1bd9` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V005__impression_capture.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V005__impression_capture.sql) | `dc4203de1e4ba5a3e39148279cd27f1caa6c2925fb3e9cfe23b2581448a74f14` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V006__billing_event_delivery.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V006__billing_event_delivery.sql) | `ee9dbfa9bf14dfe20c6fb5e60cb082525648e243d021abc7302c684ec278702f` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V007__feed_frequency.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V007__feed_frequency.sql) | `fdc8de11fcfdfe67fd8bdee761ec07ecdf41c86ed663a94f5f1879fb87779412` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V008__click_quote.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V008__click_quote.sql) | `54c9ca8abebf7dbfb468e2134d0cd3b3942bdfec8c9534c388518455591ff214` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V009__click_settlement.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V009__click_settlement.sql) | `a3565fddeac60707b13df2752ef8f2c34d484ca2f74f4f64fa30f01a1a3a5302` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V010__click_event_delivery.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V010__click_event_delivery.sql) | `fc9d3b771a0517245e0fd7b4d2c1b3670dd5973002c061afad0a78d0d96d2b93` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V011__click_preparation.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V011__click_preparation.sql) | `09815445a1c2b0c062e411faeb13f6339dea1dd7fbc92940959f56ccf8781808` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V012__conversion_quote.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V012__conversion_quote.sql) | `6ff7b33e6caa156767bddbfc7259c7fe9f860dc24298ddd9bf9501941fc4f266` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V013__conversion_settlement.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V013__conversion_settlement.sql) | `f5f9dc1a1285926ad5608480d6d189987d5b2e30298abf5008bee5d7cf90bffe` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V014__conversion_event_delivery.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V014__conversion_event_delivery.sql) | `6168dbb3f9cd7d8e1d6be1380ac7b008e4827d92427634091d497f399195b2c7` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V015__conversion_preparation.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V015__conversion_preparation.sql) | `5a9cb8e31f55c2a2094e2f08dff5cc574d2b08e643f1e8240d76d6077276e512` | 保留/核验 |
+| [recsys-ad/src/main/resources/db/ad-billing/V016__reconciliation_indexes.sql](../../../recsys-ad/src/main/resources/db/ad-billing/V016__reconciliation_indexes.sql) | `67aa36bbd73c1f37a6f8b4cdf023ec18dbfed1a781706321bbfe7a8d7461c715` | 保留/核验 |
+| [recsys-behavior/src/main/resources/db/natural-exposure/V001__natural_receipt.sql](../../../recsys-behavior/src/main/resources/db/natural-exposure/V001__natural_receipt.sql) | `6f78424221c76819ec7fbff4fa308583c8afb017d69d4115e48e11b756e43e19` | 保留/核验 |
+| [recsys-offline/sql/00_spicedb_bootstrap.sql](../../../recsys-offline/sql/00_spicedb_bootstrap.sql) | `a78e09435a3120460b8b2ab7c4006456a94f5b22b592758afbd9492f9a7b8004` | 保留/核验 |
+| [recsys-offline/sql/01_schema.sql](../../../recsys-offline/sql/01_schema.sql) | `624b9852e856f35d2eb2bb388478a0e0351a8aec8a18d1d604f96d13304be703` | 保留/核验 |
+| [recsys-offline/sql/02_ad_schema.sql](../../../recsys-offline/sql/02_ad_schema.sql) | `f58635ebbb7d88a1c3574c54f20f0dfb3c6424ed40ca96939cf60941e162692a` | 保留/核验 |
+| [recsys-offline/sql/02_two_tower.sql](../../../recsys-offline/sql/02_two_tower.sql) | `abec73f11cb9c8c35783ad865253acbacda48b3584ec176cff2953c033b6bf1c` | 保留/核验 |
+| [recsys-offline/sql/03_semantic_id.sql](../../../recsys-offline/sql/03_semantic_id.sql) | `0021d7778605c36f83aa5024e0029a42a8677655c9edf174aa8058b403702584` | 保留/核验 |
+| [recsys-offline/sql/04_ad_sharding.sql](../../../recsys-offline/sql/04_ad_sharding.sql) | `0eb577fa5f8596967b104b3857a611cb3e90aa081d023bf158a91c6b74293889` | 保留/核验 |
+| [recsys-offline/sql/04b_ds1_bootstrap.sql](../../../recsys-offline/sql/04b_ds1_bootstrap.sql) | `f1c5d41ed7990df2b42794192fe6cd2ca8cc4cba4ceb67d244657375fbc73d56` | 保留/核验 |
+| [recsys-offline/sql/05_partitioning.sql](../../../recsys-offline/sql/05_partitioning.sql) | `caf1e4173f6aae6df0dc5484f4695b5ac4924fec732474000d2974b1d3653c62` | 保留/核验 |
+| [recsys-offline/sql/06_eval_report.sql](../../../recsys-offline/sql/06_eval_report.sql) | `ff4731fded9e365021d7c147882270467601a6fe6895e1595601615e6f49f9bd` | 保留/核验 |
+| [recsys-offline/sql/08_ad_servable.sql](../../../recsys-offline/sql/08_ad_servable.sql) | `40f1a6a7a2b24185eb6fbb41737a7b0825b3820ffed7c1f2b2ad6359d9be5228` | 保留/核验 |
+| [recsys-offline/sql/09_behavior_log.sql](../../../recsys-offline/sql/09_behavior_log.sql) | `591858344ceae19bfa96eb26d1c6cbb46e5e4eb7dcc1d78e52869da40bf4ffa3` | 保留/核验 |
+| [recsys-offline/sql/10_behavior_db.sql](../../../recsys-offline/sql/10_behavior_db.sql) | `7aca2677d9c9d241fd05b5f2efd88b53912ee4203c81075b097342eec0005480` | 保留/核验 |
+| [recsys-offline/sql/11_item_local.sql](../../../recsys-offline/sql/11_item_local.sql) | `a6b3923abbb883294b924774ae06243e10bc59879c8c69849f29b180d5987ce6` | 保留/核验 |
+| [recsys-offline/sql/12_content_db.sql](../../../recsys-offline/sql/12_content_db.sql) | `6e4d32b306a72735260db0158654d80467b662bdc346d0487e15a995007df4ea` | 保留/核验 |
+| [recsys-offline/sql/13_ad_serving_db.sql](../../../recsys-offline/sql/13_ad_serving_db.sql) | `b3a740fff435c6079a62fb8b7e69f8f9dc9e89ed2c1f940d1091a2405b47e710` | 保留/核验 |
+| [recsys-offline/sql/14_ad_event_log.sql](../../../recsys-offline/sql/14_ad_event_log.sql) | `9e88d034e3b03a899af52daa110b824f0079c116620889005b53057c261aeddf` | 保留/核验 |
+| [recsys-offline/sql/15_derived_db.sql](../../../recsys-offline/sql/15_derived_db.sql) | `de1d8a3e017c69f640687dbf3034a734458fbfd0d83e034280d548b7f9bda7b6` | 保留/核验 |
+| [recsys-offline/sql/16_exposure_click_idempotency.sql](../../../recsys-offline/sql/16_exposure_click_idempotency.sql) | `9256620bac271a0e1c6217b6844a4f8f0669e1f1224372085483c37a6cbc7a7d` | 保留/核验 |
+| [recsys-offline/sql/16_item_indexes.sql](../../../recsys-offline/sql/16_item_indexes.sql) | `bc35ea294f4e1c981b239c1427d148447f5b8b14950e3df15e99033cb5df9d2a` | 保留/核验 |
+| [recsys-offline/sql/17_table_comments.sql](../../../recsys-offline/sql/17_table_comments.sql) | `8a27c982eb4e1993dcced79c89db21a4ecb2b2714162f5ea617fad83c73ab7ab` | 保留/核验 |
+| [recsys-offline/sql/18_advanced_recall.sql](../../../recsys-offline/sql/18_advanced_recall.sql) | `88b717ad057ae2ee5f1b74f05e9b0fb1166815d9b9db54b555557069229060e5` | 保留/核验 |
+| [recsys-offline/sql/19_ad_uplift.sql](../../../recsys-offline/sql/19_ad_uplift.sql) | `1b754737f891c3e48085e26ca30dfa0e841ca43bf11e6abcadf86265131f9c2b` | 保留/核验 |
+| [recsys-offline/sql/20_ds1_bootstrap.sql](../../../recsys-offline/sql/20_ds1_bootstrap.sql) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | 保留/核验 |
+| [recsys-rec-engine/src/main/resources/db/engine-delivery/V001__delivery_operation.sql](../../../recsys-rec-engine/src/main/resources/db/engine-delivery/V001__delivery_operation.sql) | `47ec047ba74bd9fbe5ee21338ab6ce3c56396e54130d38f8425c854a7b85f357` | 保留/核验 |
+| [recsys-rec-engine/src/main/resources/db/engine-delivery/V002__natural_delivery.sql](../../../recsys-rec-engine/src/main/resources/db/engine-delivery/V002__natural_delivery.sql) | `85fb2af9bfcab31907ccb0f2df8174e9fac6be993fb431700c9068bb667f1742` | 保留/核验 |
+| [recsys-rec-engine/src/main/resources/db/engine-delivery/V003__feed_delivery.sql](../../../recsys-rec-engine/src/main/resources/db/engine-delivery/V003__feed_delivery.sql) | `41c0fc6fe92fa9c0e5d59f912791fcc73e0026a58f887f4edf382e2d4e61e530` | 保留/核验 |
+| [recsys-rec-engine/src/main/resources/db/engine-delivery/V004__click_delivery.sql](../../../recsys-rec-engine/src/main/resources/db/engine-delivery/V004__click_delivery.sql) | `3d53a3e09bd9011501350bd510415da6b60e3f4d8f148c44d4416663f68f1cbc` | 保留/核验 |
+| [recsys-rec-engine/src/main/resources/db/engine-delivery/V005__conversion_delivery.sql](../../../recsys-rec-engine/src/main/resources/db/engine-delivery/V005__conversion_delivery.sql) | `aef1ad0697d23a46bdab4d8c46d2a80b0e116da7221834222ce81e8a6cba1c9b` | 保留/核验 |
+
+## 单语句映射模板
+
+每个 SQL 方法在迁移前记录：来源类/方法 → 新 Mapper statement ID → 数据源 → 参数/空值/主键策略 → 结果/排序/limit → 事务/锁/超时/缓存 → 错误/影响行数 → 对应真实数据库测试 → 验证 revision。
+
+机械关键词扫描只能发现遗漏；最终还需调用链、Mapper 实际注册/资源打包和真实业务测试共同证明覆盖。

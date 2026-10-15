@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.user.persistence.mapper.UserProfileMapper">
+    <!-- 合并指定键，不能将更新偏好退化为覆盖整个 profile。JSONB 类型由处理器显式绑定。 -->
+    <insert id="updateInterests">
+        INSERT INTO app_user(user_id, profile)
+        VALUES (#{userId}, jsonb_build_object('categories',
+            #{categoriesJson,typeHandler=com.recsys.persistence.typehandler.JsonbStringTypeHandler}))
+        ON CONFLICT (user_id) DO UPDATE
+        SET profile = COALESCE(app_user.profile, '{}'::jsonb)
+            || jsonb_build_object('categories',
+                #{categoriesJson,typeHandler=com.recsys.persistence.typehandler.JsonbStringTypeHandler}),
+            updated_at = now()
+    </insert>
+
+    <select id="findInterests" resultType="java.lang.String">
+        SELECT jsonb_array_elements_text(profile->'categories')
+        FROM app_user
+        WHERE user_id = #{userId}
+    </select>
+</mapper>
