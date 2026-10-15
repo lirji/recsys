@@ -44,7 +44,8 @@ class OfflineSessionBindingsPostgresTest {
         var imports=OfflineAdShardingConfig.class.getAnnotation(Import.class);
         assertNotNull(imports);
         // 宿主Import已包含实际四路Mapper扫描配置，无需在测试中复制扫描规则。
-        var runner = new ApplicationContextRunner().withUserConfiguration(imports.value());
+        var runner = new ApplicationContextRunner().withUserConfiguration(imports.value())
+                .withUserConfiguration(com.recsys.offline.persistence.R9EmbeddingStore.class);
         for(var source:SOURCES.entrySet()) {
             runner=runner.withBean(SOURCE_BEANS.get(source.getKey()),DataSource.class,source::getValue);
         }
@@ -52,6 +53,9 @@ class OfflineSessionBindingsPostgresTest {
             assertNull(context.getStartupFailure());
             assertEquals(4,context.getBeansOfType(SqlSessionTemplate.class).size());
             assertNotNull(context.getBean(PositiveFeedbackMapper.class));
+            assertNotNull(context.getBean(com.recsys.offline.persistence.R9EmbeddingStore.class));
+            assertEquals(4,context.getBeansOfType(DataSource.class).size());
+            assertTrue(context.getBeansOfType(com.recsys.offline.persistence.mapper.manual.R9EmbeddingMapper.class).isEmpty());
             var feedbackFactory = context.getBean("&positiveFeedbackMapper", MapperFactoryBean.class);
             assertSame(context.getBean("sqlSessionTemplate"), feedbackFactory.getSqlSession());
             for (var binding : Map.of("seedAdMapper", "shardedSqlSessionTemplate",
@@ -63,6 +67,7 @@ class OfflineSessionBindingsPostgresTest {
                 var sessions=context.getBean(SESSION_BEANS.get(source.getKey()),SqlSessionTemplate.class);
                 var config=sessions.getSqlSessionFactory().getConfiguration();
                 assertSame(source.getValue(),config.getEnvironment().getDataSource());
+                assertFalse(config.hasMapper(com.recsys.offline.persistence.mapper.manual.R9EmbeddingMapper.class));
                 assertFalse(config.isCacheEnabled());assertEquals(LocalCacheScope.STATEMENT,config.getLocalCacheScope());
                 for(String other:SOURCES.keySet()) {
                     String statement="offline.probe."+other+".schema";

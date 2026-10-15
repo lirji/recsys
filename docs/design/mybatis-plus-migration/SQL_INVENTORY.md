@@ -142,7 +142,7 @@
 | [com/recsys/offline/HotJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/HotJob.java) | 9 | 1 | TODO |
 | [com/recsys/offline/IdfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/IdfJob.java) | 9 | 6 | TODO |
 | [com/recsys/offline/ImportBehaviorJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportBehaviorJob.java) | 7 | 3 | DONE MP13b1；见MP13B1_RESULT |
-| [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | TODO |
+| [com/recsys/offline/ImportR9EmbeddingsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportR9EmbeddingsJob.java) | 7 | 10 | DONE MP13c6：手动版本事务/专用Mapper；见MP13C6_RESULT |
 | [com/recsys/offline/ImportSemanticIdJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportSemanticIdJob.java) | 6 | 6 | DONE MP13c5：500行BATCH/独立bootstrap；见MP13C5_RESULT |
 | [com/recsys/offline/ImportTowerJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ImportTowerJob.java) | 7 | 6 | DONE MP13c4：500行BATCH/独立bootstrap；见MP13C4_RESULT |
 | [com/recsys/offline/ItemCfJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/ItemCfJob.java) | 9 | 0 | DONE MP13a2：共用正反馈Mapper/XML；见MP13A2_RESULT |

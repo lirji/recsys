@@ -392,3 +392,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13c5最终验证
 
 见MP13C5_RESULT。旧5两次、新关联14、完整离线145/28类、24 reactor测试编译/hygiene通过。6源指纹7d0df28a39b598a70659692705a144bf8cefe08c308bd3de20fe745b1fbe1511；宽松CSV/数值边界/500行重复覆盖与失败、bootstrap/事务保持。9d7897b5的CI38754987441五门禁全部SUCCESS，前序连接探针失败已由后续完整成功关闭。继续MP13c6 ImportR9EmbeddingsJob，先测三组版本与原手动事务。
+
+## MP13c6最终验证
+
+见MP13C6_RESULT。旧7、新关联11、完整离线153/29类、24 reactor测试编译/hygiene通过。7源指纹3ad536aa463234c17255560a6342baaad9081ce1a36de220e0ca90de0908e0de；三组版本替换、500批次、晚失败整体回滚与历史手动事务边界保持。R9私有MANAGED会话复用原连接、6 SQL进入XML，补3表9列注释；普通四源会话不受影响。MP13c4=e527177c及c5=d06e66c7均已ff/push，CI38757206178四门禁成功/build在途。继续LookalikeJob。

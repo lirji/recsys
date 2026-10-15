@@ -94,3 +94,11 @@ HTTP/gRPC、Kafka 消息、Redis 键、租户/广告主过滤、业务开关及�
 ## 大JDBC批次的等价迁移（MP13b6实证）
 
 PG自动提交大批次可在驱动内部Sync处保留部分进度，不能一概替换为多VALUES或新事务。SpringMapperBatches在原Spring会话工厂开独立BATCH会话，单个原逻辑批次一次flush，不主动commit；实际SpringManagedTransaction保留连接归属和关闭规则。已有SIMPLE事务会话可继续使用。helper不接受SQL，只接收Mapper回调，不新增依赖或池。真实默认20000行、晚失败部分提交、后批失败、连接释放、外层提交/回滚证据见MP13B6_RESULT。原1000条有界导入/同步的VALUES方案仍由各片独立PG故障测试支持，不把一种批次结论泛化到全部路径。
+
+## R9手动事务适配（MP13c6旧实现实证）
+
+旧7项真实PG测试通过：三表同版本替换500行分批、第三组晚失败整体回滚、其他版本/缺省组保留。旧connection.commit会提交外层先行写入，旧rollback会回滚外层先行写入；这是已测历史边界与技术债，本次框架迁移不改成REQUIRED或REQUIRES_NEW。
+
+R9EmbeddingStore独占私有MP会话工厂，仅载入manual目录R9 XML，实际DataSource从derivedSqlSessionTemplate取得。采用[MyBatis ManagedTransactionFactory](https://mybatis.org/mybatis-3/xref/org/apache/ibatis/transaction/managed/ManagedTransactionFactory.html)的closeConnection=false，将原JdbcTemplate连接回调提供的Connection交给BATCH会话；[ManagedTransaction](https://mybatis.org/mybatis-3/xref/org/apache/ibatis/transaction/managed/ManagedTransaction.html)不提交/回滚/关闭该连接。原回调继续承担事务和资源释放，JdbcTemplate只做连接适配，不含SQL；不改共享工厂配置、不新增池或通用任意SQL接口。普通SpringManagedTransactionFactory不支持给定Connection，不能直接复用普通SpringMapperBatches。
+
+DELETE后立即flush、INSERT每500行flush，三组依原顺序，业务语句只在XML。MyBatis异常链还原底层SQLException交回原Spring翻译，以保持SQLSTATE分类。运行时DDL进入独立bootstrap并补3表9列注释，历史18_advanced_recall.sql不变。外层事务边界和SQLSTATE分类必须继续用原测试验收。

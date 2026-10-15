@@ -4,16 +4,14 @@ import com.pgvector.PGvector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ConnectionCallback;
+import com.recsys.offline.persistence.R9EmbeddingStore;
+import com.recsys.offline.persistence.mapper.manual.R9EmbeddingMapper.Row;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -28,15 +26,17 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(ImportR9EmbeddingsJob.class);
     private static final int DIM = 64;
-    private final JdbcTemplate jdbc;
+    private final R9EmbeddingStore persistence;
 
-    public ImportR9EmbeddingsJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                 JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 作业负责输入验证，存储层保持原三组共同的手动发布事务。 */
+    public ImportR9EmbeddingsJob(R9EmbeddingStore persistence) {
+        this.persistence = persistence;
     }
 
+    /** 保持原R9训练产物发布命令。 */
     @Override public String name() { return "import-r9-embeddings"; }
 
+    /** 所有文件校验成功后才触发建表与版本替换。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         Path mindPath = Path.of(arg(args, "mind-file", "train/mind_item_embedding.csv"));
@@ -55,53 +55,9 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
             return;
         }
         String version = singleVersion(mind, graphUsers, graphItems);
-        ensureTables();
-        jdbc.execute((ConnectionCallback<Void>) connection -> {
-            boolean oldAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                replace(connection.prepareStatement(
-                        "DELETE FROM multi_interest_item_embedding WHERE model_version=?"),
-                        connection.prepareStatement("INSERT INTO multi_interest_item_embedding" +
-                                "(model_version,item_id,embedding) VALUES(?,?,?)"), version, mind);
-                replace(connection.prepareStatement(
-                        "DELETE FROM graph_user_embedding WHERE model_version=?"),
-                        connection.prepareStatement("INSERT INTO graph_user_embedding" +
-                                "(model_version,user_id,embedding) VALUES(?,?,?)"), version, graphUsers);
-                replace(connection.prepareStatement(
-                        "DELETE FROM graph_item_embedding WHERE model_version=?"),
-                        connection.prepareStatement("INSERT INTO graph_item_embedding" +
-                                "(model_version,item_id,embedding) VALUES(?,?,?)"), version, graphItems);
-                connection.commit();
-            } catch (Exception e) {
-                connection.rollback();
-                if (e instanceof SQLException sql) throw sql;
-                throw new SQLException("R9 向量事务发布失败", e);
-            } finally {
-                connection.setAutoCommit(oldAutoCommit);
-            }
-            return null;
-        });
+        persistence.publish(version, mind, graphUsers, graphItems);
         log.info("R9 向量发布成功 version={}:mind-item={},graph-user={},graph-item={}",
                 version, mind.size(), graphUsers.size(), graphItems.size());
-    }
-
-    private static void replace(PreparedStatement delete, PreparedStatement insert,
-                                String version, List<Row> rows) throws SQLException {
-        try (delete; insert) {
-            if (rows.isEmpty()) return;
-            delete.setString(1, version);
-            delete.executeUpdate();
-            int queued = 0;
-            for (Row row : rows) {
-                insert.setString(1, row.version());
-                insert.setLong(2, row.id());
-                insert.setObject(3, new PGvector(row.vector()));
-                insert.addBatch();
-                if (++queued % 500 == 0) insert.executeBatch();
-            }
-            if (queued % 500 != 0) insert.executeBatch();
-        }
     }
 
     static List<Row> read(Path path, boolean required) throws Exception {
@@ -137,7 +93,7 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
                 if (norm < 0.81 || norm > 1.21) {
                     throw new IllegalArgumentException(path + ":" + number + " 向量未近似 L2 归一化,norm2=" + norm);
                 }
-                out.add(new Row(version, id, vector));
+                out.add(new Row(version, id, new PGvector(vector)));
             }
         }
         return List.copyOf(out);
@@ -151,27 +107,8 @@ public class ImportR9EmbeddingsJob implements OfflineJob {
         return versions.iterator().next();
     }
 
-    private void ensureTables() {
-        jdbc.execute("CREATE EXTENSION IF NOT EXISTS vector");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS multi_interest_item_embedding(" +
-                "model_version TEXT NOT NULL,item_id BIGINT NOT NULL,embedding vector(64) NOT NULL," +
-                "PRIMARY KEY(model_version,item_id))");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS graph_user_embedding(" +
-                "model_version TEXT NOT NULL,user_id BIGINT NOT NULL,embedding vector(64) NOT NULL," +
-                "PRIMARY KEY(model_version,user_id))");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS graph_item_embedding(" +
-                "model_version TEXT NOT NULL,item_id BIGINT NOT NULL,embedding vector(64) NOT NULL," +
-                "PRIMARY KEY(model_version,item_id))");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_multi_interest_item_hnsw ON " +
-                "multi_interest_item_embedding USING hnsw(embedding vector_cosine_ops)");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_graph_item_hnsw ON " +
-                "graph_item_embedding USING hnsw(embedding vector_cosine_ops)");
-    }
-
     private static String arg(ApplicationArguments args, String key, String def) {
         List<String> values = args.getOptionValues(key);
         return values == null || values.isEmpty() ? def : values.get(0).trim();
     }
-
-    record Row(String version, long id, float[] vector) { }
 }
