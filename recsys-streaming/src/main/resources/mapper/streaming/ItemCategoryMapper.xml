@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.streaming.persistence.mapper.ItemCategoryMapper">
+    <resultMap id="categoryRow" type="com.recsys.streaming.persistence.mapper.ItemCategoryMapper$ItemCategory">
+        <constructor>
+            <arg column="item_id" javaType="_long" name="itemId"/>
+            <arg column="category" javaType="java.lang.String" name="category"/>
+        </constructor>
+    </resultMap>
+    <!-- COALESCE仅还原原ResultSet.getLong(NULL)=0，不去重、不把空类目改成默认值。 -->
+    <select id="scan" resultMap="categoryRow" useCache="false">
+        SELECT COALESCE(item_id, 0) AS item_id, category FROM item
+    </select>
+</mapper>

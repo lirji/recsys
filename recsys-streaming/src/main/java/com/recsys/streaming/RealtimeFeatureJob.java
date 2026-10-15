@@ -3,6 +3,7 @@ package com.recsys.streaming;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.streaming.persistence.ItemCategoryLoader;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -23,10 +24,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -156,15 +153,12 @@ public class RealtimeFeatureJob {
             this.pass = pass;
         }
 
+        /** 连接与会话仅在启动加载期间存在，不能进入Flink算子的序列化状态。 */
         @Override
         public void open(Configuration parameters) {
             catMap = new HashMap<>();
-            try (Connection c = DriverManager.getConnection(url, user, pass);
-                 Statement st = c.createStatement();
-                 ResultSet rs = st.executeQuery("SELECT item_id, category FROM item")) {
-                while (rs.next()) {
-                    catMap.put(rs.getLong(1), rs.getString(2));
-                }
+            try {
+                ItemCategoryLoader.loadInto(url, user, pass, catMap);
                 log.info("类目富化:加载 item→category {} 条", catMap.size());
             } catch (Exception e) {
                 log.warn("加载 item 类目失败(类目偏好管线将无类目):{}", e.getMessage());

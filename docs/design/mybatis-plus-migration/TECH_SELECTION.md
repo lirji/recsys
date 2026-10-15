@@ -32,3 +32,9 @@ MyBatis-Plus 的 Boot3 starter 名称及避免重复引入 MyBatis starter 的�
 不引入动态数据源路由框架：现有 DataSource 及 owner 事务已经显式定义，添加另一套路由会增加切换和事务绑定的不确定性。保持每源一套 factory/template 与精确扫描，配真实路由测试。
 
 失败分支：首选 MP 版本不兼容时定位具体传递依赖，在保持 Boot 3.2.5/Java21 的边界内选可用稳定补丁版本并记录证据；如果必须改变运行栈或协议才能推进，再提交明确技术取舍。不能因版本尚未实测把设计状态标为已接入。
+
+## MP14非Boot接入落地
+
+沿已批准的MP14范围，streaming新增对已有recsys-persistence的模块依赖，仅传递MP核心/PG类型设置，optional Spring依赖不传递。JUnit Jupiter/Testcontainers Jupiter/PostgreSQL均为test scope，版本复用父BOM；maven-failsafe-plugin 3.2.5与既有Surefire同版本，在package之后执行独立JVM的真实PG产物测试。这些是原MP14真实PG/XML打包验收的必要实现，不新增运行基础设施或升级Flink。
+
+ItemCategoryLoader使用原连接参数构建UnpooledDataSource、JdbcTransactionFactory和MP工厂；openSession(true)还原原自动提交并try关闭。参考[MyBatis Java API](https://mybatis.org/mybatis-3/java-api.html)，行为以6项PG保护和最终shade artifact实际查询为证；产物probe确认缺少Spring ApplicationContext仍运行，PostgreSQL SPI与Mapper XML可用。详见MP14_RESULT。

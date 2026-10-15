@@ -19,6 +19,11 @@
             <groupId>com.recsys</groupId>
             <artifactId>recsys-common</artifactId>
         </dependency>
+        <!-- 仅复用MP核心与PG类型设置；该模块的Spring依赖为optional，不传给Flink。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-persistence</artifactId>
+        </dependency>
 
         <!-- Flink 运行时(fat jar 本地 MiniCluster 跑,故 compile 而非 provided) -->
         <dependency>
@@ -56,7 +61,7 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- 类目富化用 JDBC 读 item 表 -->
+        <!-- 类目Mapper连接PostgreSQL，驱动版本沿父POM -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -67,11 +72,45 @@
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.13</version>
         </dependency>
+        <!-- 类目加载用真实隔离PG验证，不为测试引入Boot宿主。版本复用父BOM。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <finalName>recsys-streaming</finalName>
         <plugins>
+            <!-- package之后用独立JVM+最终fat jar验证XML/SPI及真实PG查询，避免测试classpath掩盖缺包。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                        <streaming.artifact>${project.build.directory}/${project.build.finalName}.jar</streaming.artifact>
+                        <streaming.testClasses>${project.build.testOutputDirectory}</streaming.testClasses>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>integration-test</goal><goal>verify</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- 打 fat jar:Flink 作业标准做法,合并 META-INF/services(KafkaSource 等需要) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

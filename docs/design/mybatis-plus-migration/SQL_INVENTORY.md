@@ -218,7 +218,7 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/streaming/RealtimeFeatureJob.java](../../../recsys-streaming/src/main/java/com/recsys/streaming/RealtimeFeatureJob.java) | 26 | 1 | TODO |
+| [com/recsys/streaming/RealtimeFeatureJob.java](../../../recsys-streaming/src/main/java/com/recsys/streaming/RealtimeFeatureJob.java) | 26 | 1 | DONE MP14：ItemCategoryMapper/XML+非Boot ItemCategoryLoader；旧5/新6及最终shade真实PG1通过，见MP14_RESULT |
 
 ### recsys-user
 

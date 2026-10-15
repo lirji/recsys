@@ -54,9 +54,9 @@ recsys-<业务>/
 
 | 宿主/路径 | 现有资源 | 迁移约束 |
 |---|---|---|
-| engine / ad 的普通读取 | `dataSource` / `jdbcTemplate` | 默认源只注册其拥有的 Mapper；引入多个 SqlSessionFactory 后不能依赖 Boot 单源默认行为 |
-| 广告目录分片 | `adShardingDataSource` / `adShardingJdbc`；advertiser 主源 | 独立 factory/template 与 Mapper 包；保留路由键、广播规则、ShardingSphere 生成 ID |
-| 资金、广告事件、服务目录 | `adDbDataSource` / `adDbJdbc` | 同一个原 DataSource 与本地事务管理器；保留资源身份检查，不新建同 URL 的连接池替代 |
+| engine / ad 的普通读取 | `dataSource` / primary factory/template | 默认源只注册其拥有的 Mapper；引入多个 SqlSessionFactory 后不能依赖 Boot 单源默认行为 |
+| 广告目录分片 | `adShardingDataSource` / sharded factory/template；advertiser 主源 | 独立 factory/template 与 Mapper 包；保留路由键、广播规则、ShardingSphere 生成 ID |
+| 资金、广告事件、服务目录 | `adDbDataSource` / adDb factory/template | 同一个原 DataSource 与本地事务管理器；保留资源身份检查，不新建同 URL 的连接池替代 |
 | 派生向量 | `derivedDbDataSource` / advertiser 非Bean派生源 | 保留 hnsw 会话初始化和原来源；advertiser 在 AdvertiserDataSourceConfig 内直接构建 derivedSqlSessionFactory，派生 DataSource 保持非Bean、无池，保留 Boot 主源创建语义（MP13f7） |
 | offline | 默认、分片、adDb、derived 四路 | 作业参数选择只读来源不改变 owner；既有跨 owner 历史访问记录为遗留边界，本次不扩大 |
 | behavior / content-service / user-service / console | 宿主现有普通或可选 DataSource | 不让跨模块 Mapper 扫描误强制开启数据库；可选 DB/能力关闭模式保留 |
@@ -102,3 +102,7 @@ PG自动提交大批次可在驱动内部Sync处保留部分进度，不能一�
 R9EmbeddingStore独占私有MP会话工厂，仅载入manual目录R9 XML，实际DataSource从derivedSqlSessionTemplate取得。采用[MyBatis ManagedTransactionFactory](https://mybatis.org/mybatis-3/xref/org/apache/ibatis/transaction/managed/ManagedTransactionFactory.html)的closeConnection=false，将原JdbcTemplate连接回调提供的Connection交给BATCH会话；[ManagedTransaction](https://mybatis.org/mybatis-3/xref/org/apache/ibatis/transaction/managed/ManagedTransaction.html)不提交/回滚/关闭该连接。原回调继续承担事务和资源释放，JdbcTemplate只做连接适配，不含SQL；不改共享工厂配置、不新增池或通用任意SQL接口。普通SpringManagedTransactionFactory不支持给定Connection，不能直接复用普通SpringMapperBatches。
 
 DELETE后立即flush、INSERT每500行flush，三组依原顺序，业务语句只在XML。MyBatis异常链还原底层SQLException交回原Spring翻译，以保持SQLSTATE分类。运行时DDL进入独立bootstrap并补3表9列注释，历史18_advanced_recall.sql不变。外层事务边界和SQLSTATE分类必须继续用原测试验收。
+
+## Flink类目读取落地（MP14）
+
+streaming/persistence/ItemCategoryLoader仅负责非Boot工厂与一次性会话，ItemCategoryMapper/XML负责查询；原CategoryEnricher仍负责解析、快照、失败边界，不添加透传Repository。工厂/连接均为open内局部变量，自动提交、无池；ResultHandler逐行写入原Map，保留晚失败的部分状态。6项真实PG和1项最终shade独立JVM查询通过，序列化与资源释放见MP14_RESULT。
