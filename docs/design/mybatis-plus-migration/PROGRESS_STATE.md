@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c DONE/PASS，MP08整体完成。当前准备本批Git交付，随后MP09点击报价。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a点击报价DONE/PASS，待本批Git交付；随后MP09b点击结算。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -60,7 +60,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP08c：准备/回执Mapper/XML、Repository/配置及跨模块测试宿主，本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP09a：点击报价Mapper/XML、Repository/配置及构造引用测试，本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -79,7 +79,7 @@ MP01～MP03已交付。当前MP08c：准备/回执Mapper/XML、Repository/配置
 
 ## 下一步
 
-1. MP08c已验证完成，正常提交/ff合并/push，然后MP09a。
+1. MP09a验证通过，完成Git后继续MP09b。
 2. 继续MP09～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
@@ -156,3 +156,11 @@ DONE/PASS，见MP08B_RESULT。25源文件指纹f63df6b52a2bda1dc9f20efaf0e25f3ba
 ## MP08c最终验证
 
 DONE/PASS，MP08整体完成。23源文件指纹8b86c433e636bb540a70472e6c2c2a1b3a179787aef4a033c2a682e292480d21；旧/新专项38项，新增锁超时兼容测试后准备9项通过，最终全仓24 reactor资金链372项/68类全通过；sandbox4/feed5浏览器、推荐宿主3项通过，hygiene无阻塞。最初超时异常预期错误，现直接对照旧JdbcTemplate确认相同异常类别和SQLSTATE57014，产品逻辑未改。45历史SQL/8保护文件不变。MP08b CI38728391213已SUCCESS。Git后继续MP09a ClickQuoteRepository/Configuration，装配ClickEventConfiguration及全部构造调用；保持CPC/OCPC价格/摘要/五分钟期限、位置冲突优先于过期、主体先校验与5秒超时。当前完整资金链可作为旧实现基线。
+
+## MP09a迁移基线
+
+MP08c最终资金链372项作为旧路径基线，包含ClickQuotePostgresTest6项、点击准备/结算、三模式兼容与在线宿主。迁移ClickQuoteRepository六条SQL，保留原hash编码、CPC/OCPC价格构造、期限/冲突优先级/鉴权和5秒超时。构造装配和相关测试同步使用adDbSqlSessionTemplate，点击结算SQL仍待MP09b。
+
+## MP09a最终验证
+
+DONE/PASS，见MP09A_RESULT。12源文件指纹1bb4d22620fd45bad3db3158826fa3c7c4c3311b054c568da82b1359cb58d307；迁移后点击/转化兼容及在线宿主85项/8类通过，推荐宿主3项、全仓24 reactor编译和hygiene通过。45历史SQL/8保护文件不变。本片不重复未改变路径的CPM/混排浏览器，MP08c刚验证且MP15仍要求最终全量门禁。Git后MP09b：ClickSettlementRepository现181行，查询回执原决定与当前结算状态须保留同一JOIN快照，quote→rate→account锁序、SKIP LOCKED、条件计数/版本/held更新、账本/Outbox同事务、5秒超时及原结果构造顺序不变。旧基线MP08c372资金链和本片ClickSettlement22/ClickOnline8等已通过。

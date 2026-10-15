@@ -1,5 +1,7 @@
 package com.recsys.ad.billing;
 
+import org.mybatis.spring.SqlSessionTemplate;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import com.recsys.common.ad.BidType;
 import com.recsys.common.ad.billing.*;
 import com.recsys.common.ad.billing.ClickSettlement.*;
@@ -38,7 +40,7 @@ class ClickEventsFixture {
                 BEGIN NEW.issued_at=NEW.issued_at-interval '2 seconds'; NEW.expires_at=NEW.expires_at-interval '2 seconds'; RETURN NEW; END; $$;
                 CREATE TRIGGER test_click_issue_time BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_issue_time();
                 """);
-        quotes=new ClickQuoteRepository(jdbc);
+        quotes=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         settlement=new ClickSettlementService(new ClickSettlementRepository(jdbc,JSON),quotes,cpm.reservations,cpm.tokens,
                 BudgetConfiguration.transactions(ds,5),true,true,new ClickSettlementService.FraudPolicy(true,20));
         outbox=new BillingOutboxRepository(jdbc,BillingOutboxRepository.EventFamily.CLICK);outbox.verifySchema();

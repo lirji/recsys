@@ -36,7 +36,7 @@ class ClickQuotePostgresTest {
                 statement.execute(new String(in.readAllBytes(),StandardCharsets.UTF_8));
             }
         }
-        repository = new ClickQuoteRepository(jdbc); repository.verifySchema();
+        repository = new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); repository.verifySchema();
     }
     @Test void concurrentIdenticalIntentAndRestartKeepOneFrozenQuoteWithoutHoldingMoney() throws Exception {
         var d = draft(); var ready = new CountDownLatch(1); var values = new ArrayList<FrozenClickQuote>();
@@ -48,7 +48,7 @@ class ClickQuotePostgresTest {
         assertTrue(values.stream().allMatch(values.getFirst()::equals));
         assertEquals("0.000001",values.getFirst().price().amount().toPlainString());
         assertEquals(Duration.ofMinutes(5),Duration.between(values.getFirst().issuedAt(),values.getFirst().expiresAt()));
-        assertEquals(values.getFirst(),new ClickQuoteRepository(jdbc).freezeBefore(d,deadline()).orElseThrow());
+        assertEquals(values.getFirst(),new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).freezeBefore(d,deadline()).orElseThrow());
         assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM ad_click_quote WHERE quote_id=?",Integer.class,d.quoteId()));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ad_budget_account",Integer.class));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ad_budget_reservation",Integer.class));

@@ -103,7 +103,7 @@ class ConversionQuotePostgresTest {
                 AND col_description(attrelid,attnum) IS NULL
                 """,Integer.class));
         assertNotNull(jdbc.queryForObject("SELECT obj_description('ad_conversion_quote'::regclass,'pg_class')",String.class));
-        var clicks=new ClickQuoteRepository(jdbc);clicks.verifySchema();
+        var clicks=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));clicks.verifySchema();
         var d=draft();var click=new ClickQuoteRepository.Draft(d.quoteId(),d.operationId(),d.subject(),d.userId(),d.advertiserId(),d.adId(),d.creativeId(),d.itemId(),d.slot(),d.title(),
                 new ClickPrice(BidType.CPC,d.price().basis()));
         var oldClick=clicks.freezeBefore(click,deadline()).orElseThrow();

@@ -332,7 +332,7 @@ class ConversionSettlementPostgresTest {
     @Test void cpaCpcAndCpmConcurrentHoldsShareOneHardLimit() throws Exception {
         long adv=IDS.incrementAndGet();budget(adv,today(),"0.5");
         var conversionQuotes=new ArrayList<FrozenConversionQuote>();var clickQuotes=new ArrayList<FrozenClickQuote>();var cpmQuotes=new ArrayList<FrozenCpmQuote>();
-        var clickRepo=new ClickQuoteRepository(jdbc);var cpmRepo=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
+        var clickRepo=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var cpmRepo=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         for(int i=0;i<6;i++) {
             conversionQuotes.add(quote(adv,1,"0.1",accounts.databaseNow().minusSeconds(2)));
             var basis=new GspPrice(new BigDecimal("0.1"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE);

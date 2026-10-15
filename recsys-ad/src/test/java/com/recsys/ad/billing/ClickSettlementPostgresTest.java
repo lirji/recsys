@@ -64,7 +64,7 @@ class ClickSettlementPostgresTest {
                 IF FOUND THEN NEW.issued_at=t; NEW.expires_at=t+interval '5 minutes'; END IF; RETURN NEW; END; $$;
                 CREATE TRIGGER test_click_clock BEFORE INSERT ON ad_click_quote FOR EACH ROW EXECUTE FUNCTION test_click_clock();
                 """);
-        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ClickQuoteRepository(jdbc);
+        accounts=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); quotes=new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));
         budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(ds,5));
         repository=new ClickSettlementRepository(jdbc,JSON); repository.verifySchema();
         tokens=new DeliveryTokenCodec(JSON,"test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
@@ -388,7 +388,7 @@ class ClickSettlementPostgresTest {
         runner.withPropertyValues("recsys.ad.serving.mode=grpc","spring.application.name=recsys-rec-engine")
                 .run(c->assertThat(c).hasNotFailed().doesNotHaveBean(ClickSettlementService.class));
         jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=9","0".repeat(64));
-        try { runner.run(c->assertThat(c).hasFailed()); new ClickQuoteRepository(jdbc).verifySchema(); new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema(); }
+        try { runner.run(c->assertThat(c).hasFailed()); new ClickQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema(); new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(jdbc.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))).verifySchema(); }
         finally { jdbc.update("UPDATE ad_billing_schema_history SET script_sha256=? WHERE version=9",BudgetRepository.migrationSha256(ClickSettlementRepository.MIGRATION)); }
         assertThrows(IllegalArgumentException.class,()->new ClickSettlementService.FraudPolicy(true,0));
     }

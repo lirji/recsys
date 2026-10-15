@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.ClickQuoteMapper">
+    <resultMap id="quote" type="com.recsys.ad.persistence.mapper.addb.ClickQuoteMapper$Stored">
+        <constructor><arg column="operation_id" javaType="java.util.UUID"/><arg column="subject_key" javaType="string"/>
+            <arg column="user_id" javaType="_long"/><arg column="advertiser_id" javaType="_long"/><arg column="ad_id" javaType="_long"/>
+            <arg column="creative_id" javaType="_long"/><arg column="item_id" javaType="_long"/><arg column="slot" javaType="_int"/>
+            <arg column="title" javaType="string"/><arg column="bid_type" javaType="string"/><arg column="amount" javaType="java.math.BigDecimal"/>
+            <arg column="threshold" javaType="string"/><arg column="bill_factor" javaType="string"/>
+            <arg column="increment_amount" javaType="java.math.BigDecimal"/><arg column="floor_amount" javaType="java.math.BigDecimal"/>
+            <arg column="cap_amount" javaType="java.math.BigDecimal"/><arg column="payload_hash" javaType="string"/>
+            <arg column="price_unit" javaType="string"/><arg column="pricing_version" javaType="string"/>
+            <arg column="issued_at" javaType="java.time.OffsetDateTime"/><arg column="expires_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=8</select>
+    <select id="verifyQuote" resultType="map" timeout="5">SELECT quote_id,bid_type,payload_hash FROM ad_click_quote LIMIT 0</select>
+    <insert id="freeze" timeout="5">
+        WITH issued AS (SELECT clock_timestamp() AS instant)
+        INSERT INTO ad_click_quote(quote_id,operation_id,subject_key,user_id,advertiser_id,ad_id,creative_id,item_id,
+            slot,title,bid_type,amount,threshold,bill_factor,increment_amount,floor_amount,cap_amount,payload_hash,issued_at,expires_at)
+        SELECT #{quoteId},#{operationId},#{subject},#{userId},#{advertiserId},#{adId},#{creativeId},#{itemId},#{slot},#{title},
+            #{bidType},#{amount},#{threshold},#{billFactor},#{increment},#{floor},#{cap},#{payloadHash},instant,instant+interval '5 minutes'
+        FROM issued WHERE instant &lt; #{deadline} ON CONFLICT DO NOTHING
+    </insert>
+    <select id="atPosition" resultType="boolean" timeout="5">
+        SELECT EXISTS(SELECT 1 FROM ad_click_quote WHERE operation_id=#{operationId} AND slot=#{slot})
+    </select>
+    <select id="beforeDeadline" resultType="boolean" timeout="5" useCache="false">SELECT clock_timestamp() &lt; #{deadline}</select>
+    <select id="find" resultMap="quote" timeout="5">
+        SELECT operation_id,subject_key,user_id,advertiser_id,ad_id,creative_id,item_id,slot,title,bid_type,amount,threshold,bill_factor,
+            increment_amount,floor_amount,cap_amount,payload_hash,price_unit,pricing_version,issued_at,expires_at
+        FROM ad_click_quote WHERE quote_id=#{id}
+    </select>
+</mapper>
