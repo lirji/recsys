@@ -210,9 +210,7 @@ test('原生 Chromium 标签页 hidden 与实际离屏不计费，恢复重新�
         intervals: [25],
       })
       .toBe(true);
-    // 创建页签后显式激活，避免CI中创建完成但原页签仍处于前台。
-    const hiddenTab = await browser.send('Target.createTarget', { url: 'about:blank' });
-    await browser.send('Target.activateTarget', { targetId: hiddenTab.targetId });
+    await browser.background();
     await expect.poll(() => browser.evaluate<string>('document.visibilityState')).toBe('hidden');
     await new Promise((resolve) => setTimeout(resolve, 1300));
     expect((await totals()).ledgerCount).toBe(0);

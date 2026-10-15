@@ -286,9 +286,7 @@ test('原生hidden重置混排广告计时，离屏不产生自然或资金事�
         { intervals: [25] },
       )
       .toBe(true);
-    // 创建页签后显式激活，避免CI中创建完成但原页签仍处于前台。
-    const hiddenTab = await browser.send('Target.createTarget', { url: 'about:blank' });
-    await browser.send('Target.activateTarget', { targetId: hiddenTab.targetId });
+    await browser.background();
     await expect.poll(() => browser.evaluate<string>('document.visibilityState')).toBe('hidden');
     await new Promise((r) => setTimeout(r, 1200));
     expect((await facts(request, id)).ledgers).toBe(0);

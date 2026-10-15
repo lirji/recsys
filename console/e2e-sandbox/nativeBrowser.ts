@@ -13,7 +13,8 @@ export async function nativeBrowser() {
     '--remote-debugging-port=0',
     '--window-size=1280,560',
     '--user-data-dir=' + profile,
-    'about:blank',
+    // 由CDP单独创建测试窗口，避免启动空白窗口晚到后抢占新页签的目标窗口。
+    '--no-startup-window',
   ]);
   // close 等待 stdio 和子进程退出；exit 事件后 Chromium 仍可能有收尾写盘。
   let closed = false;
@@ -103,7 +104,9 @@ export async function nativeBrowser() {
         });
         ws.send(JSON.stringify({ id, method, params, sessionId }));
       });
-    const target = await send('Target.createTarget', { url: 'about:blank' });
+    const target = await send('Target.createTarget', { url: 'about:blank', newWindow: true });
+    await send('Target.activateTarget', { targetId: target.targetId });
+    const ownerWindow = await send('Browser.getWindowForTarget', { targetId: target.targetId });
     const attached = await send('Target.attachToTarget', {
       targetId: target.targetId,
       flatten: true,
@@ -114,6 +117,15 @@ export async function nativeBrowser() {
       send,
       targetId: target.targetId as string,
       page: (method: string, params = {}) => send(method, params, sessionId),
+      background: async () => {
+        // 必须在同一窗口切换真实页签；激活另一个窗口不能证明当前页面已hidden。
+        const other = await send('Target.createTarget', { url: 'about:blank', newWindow: false });
+        const otherWindow = await send('Browser.getWindowForTarget', { targetId: other.targetId });
+        if (ownerWindow.windowId !== otherWindow.windowId) {
+          throw new Error('原生后台测试的两个页签不在同一窗口');
+        }
+        await send('Target.activateTarget', { targetId: other.targetId });
+      },
       evaluate: async <T>(expression: string): Promise<T> => {
         const response = await send(
           'Runtime.evaluate',

@@ -224,9 +224,7 @@ test('原生 Chromium 离屏与后台不生成自然事实，返回重新连续�
         intervals: [25],
       })
       .toBe(true);
-    // 创建页签后显式激活，避免CI中创建完成但原页签仍处于前台。
-    const hiddenTab = await browser.send('Target.createTarget', { url: 'about:blank' });
-    await browser.send('Target.activateTarget', { targetId: hiddenTab.targetId });
+    await browser.background();
     await expect.poll(() => browser.evaluate<string>('document.visibilityState')).toBe('hidden');
     await new Promise((r) => setTimeout(r, 1300));
     expect(await facts()).toBe(0);
