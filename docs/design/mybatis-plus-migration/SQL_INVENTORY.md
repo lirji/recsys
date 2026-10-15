@@ -73,7 +73,7 @@
 | [com/recsys/ad/billing/CpmQuoteConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteConfiguration.java) | 7 | 0 | TODO |
 | [com/recsys/ad/billing/CpmQuoteRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/CpmQuoteRepository.java) | 5 | 8 | DONE MP08b：见MP08B_RESULT |
 | [com/recsys/ad/billing/FeedCandidateConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateConfiguration.java) | 7 | 0 | TODO |
-| [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | TODO |
+| [com/recsys/ad/billing/FeedCandidateRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/FeedCandidateRepository.java) | 5 | 8 | DONE MP12a：见MP12A_RESULT |
 | [com/recsys/ad/billing/ImpressionReceiptConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptConfiguration.java) | 9 | 0 | TODO |
 | [com/recsys/ad/billing/ImpressionReceiptRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/ImpressionReceiptRepository.java) | 7 | 10 | DONE MP08c：见MP08C_RESULT |
 | [com/recsys/ad/billing/PreparationConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/PreparationConfiguration.java) | 14 | 0 | TODO |

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.FeedCandidateMapper">
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=7</select>
+    <select id="indexNames" resultType="string" timeout="5">SELECT to_regclass(#{name})::text</select>
+    <select id="eligible" resultType="long" timeout="5" useCache="false">
+        WITH target(ad_id,advertiser_id) AS (VALUES
+            <foreach collection="targets" item="target" separator=",">(#{target.adId}::bigint,#{target.advertiserId}::bigint)</foreach>),
+        bounds AS (SELECT date_trunc('day',statement_timestamp() AT TIME ZONE 'Asia/Shanghai')
+            AT TIME ZONE 'Asia/Shanghai' AS start_at)
+        SELECT target.ad_id FROM target,bounds
+        WHERE (SELECT count(*) FROM (SELECT 1 FROM ad_billing_ledger l
+            WHERE l.traffic_class='SANDBOX' AND l.user_id=#{userId} AND l.ad_id=target.ad_id
+              AND l.accepted_at &gt;= bounds.start_at AND l.accepted_at &lt; ((bounds.start_at AT TIME ZONE 'Asia/Shanghai')+interval '1 day') AT TIME ZONE 'Asia/Shanghai'
+            LIMIT #{perAd}) hits) &lt; #{perAd}
+          AND (SELECT count(*) FROM (SELECT 1 FROM ad_billing_ledger l
+            WHERE l.traffic_class='SANDBOX' AND l.user_id=#{userId} AND l.advertiser_id=target.advertiser_id
+              AND l.accepted_at &gt;= bounds.start_at AND l.accepted_at &lt; ((bounds.start_at AT TIME ZONE 'Asia/Shanghai')+interval '1 day') AT TIME ZONE 'Asia/Shanghai'
+            LIMIT #{perAdvertiser}) hits) &lt; #{perAdvertiser}
+    </select>
+</mapper>

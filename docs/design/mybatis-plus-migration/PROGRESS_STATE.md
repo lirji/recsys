@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c DONE/PASS，MP11整体完成，准备Git后继续MP12a候选频控。
+`IN_PROGRESS`。整体计划已批准；MP00～MP07及MP08a已交付，MP08a=b7853b47。MP08b已交付ddcd60ba；MP08c已交付14679624，MP08整体完成。MP09a已交付394fb6a2；MP09b/c已交付345dcb23，MP09整体完成。MP10a已交付30eb28be；MP10b/c已交付e0949431，MP10整体完成；MP11a已交付b8e01cc2，原生页签修复34a2a7a7一起推main；MP11b已交付50b677ae；MP11c已交付b596eeb2，MP11整体完成；MP12a DONE/PASS，准备Git后继续MP12b三模式交付操作。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
@@ -246,3 +246,17 @@ MP11c完整资金链378项/68类、全仓24 reactor测试编译通过（/tmp/rec
 ## MP11c最终验证与MP12a入口
 
 DONE/PASS，MP11整体完成，见MP11C_RESULT。5源文件指纹5865eefbd1e7944dc9276d024869d1ff0efb4f0baa4ffb79efbd58675e9f73cf；新旧对账PG各11项、完整资金链378项/68类、全仓24 reactor测试编译及推荐宿主3项全部通过；hygiene无阻塞、8保护文件/45历史SQL不变。下一片MP12a仅FeedCandidateRepository/Configuration及两构造fixture：FeedDeliveryPostgresTest、FeedExposureBrowserAcceptanceTest。三条SQL（摘要、to_regclass索引检查、有界候选频控）进入addb Mapper/XML，候选只传adId/advertiserId目标记录，用foreach绑定VALUES；空列表仍直接返回，非法参数校验顺序保持。两个索引名称为服务端固定值，to_regclass NULL必须继续触发原缺索引错误。5秒超时、statement_timestamp上海接受日与原预算日分离、两级计数LIMIT阈值保持。现有FeedDeliveryPostgresTest11项已在378项钱链通过，其中跨用户/广告主/仅接受账本和日边界已保护；可新增缺索引NULL映射、空候选不查询账本保护后跑旧路径，再迁移。其FeedDeliveryRepository留到MP12d，不借此扩大改动。
+
+## MP12a迁移前保护
+
+MP11c=b596eeb2已正常提交/ff合并/push main。FeedDeliveryPostgresTest新增缺索引to_regclass NULL报错、空候选不查询账本两项真实PG保护；仅临时重命名独占测试schema中的索引/表并finally恢复。旧实现运行/tmp/recsys-mp12a-before.log，尚未改FeedCandidate产品代码。
+
+MP12a旧路径15项（PG13+配置2）通过/tmp/recsys-mp12a-before.log；3条SQL已进入FeedCandidateMapper/XML，具名Target列表foreach绑定，空列表与参数校验顺序保持，两个fixture已适配。迁移后含推荐宿主测试运行中/tmp/recsys-mp12a-after.log。6源文件指纹0d7a12e5e5e4b2175ae069df1356f1c917cd214662cb1d26c82881de2fe27458，清单/tmp/recsys-mp12a-source-paths.json。
+
+## MP12a最终验证与MP12b入口
+
+DONE/PASS，见MP12A_RESULT。6源文件指纹0d7a12e5e5e4b2175ae069df1356f1c917cd214662cb1d26c82881de2fe27458；旧15、新18项（包含宿主3）、混排真实浏览器5项、全仓24 reactor编译全部通过，hygiene无阻塞；45历史SQL/8保护文件不变。MP11c CI38737280136运行中，security/自然成功，其他待核验。
+
+下一片MP12b DeliveryOperationRepository（三模式）共8条SQL，固定表选择移入XML；owner主源为sqlSessionTemplate，XML应放mapper/recengine/primary，factory测试pattern=classpath*:mapper/recengine/primary/**/*.xml。原create的INSERT和后续find保持独立提交；acquire UPDATE RETURNING必须affectData=true/flushCache=true/useCache=false，全部5秒超时。原JSON编解码/异常、subject先于JSON校验、bucket/reserve冻结、lease30秒、fence/旧plan比较及可空plan保持。progress状态可用已有State枚举name，保持持久化值不变。
+
+配置引用DeliveryOperationConfiguration/ClickDeliveryConfiguration/ConversionDeliveryConfiguration；测试三DeliveryOperationPostgresTest（可新增static sessions复用故障子类）、ClickOnlineFixture/ConversionOnlineFixture（engine源独立sessions不能误用已有adDb sessions）、SandboxExposureBrowserFixtureTest（engineDs）。当前完整资金链378已涵盖旧三模式/在线；可在CPM旧测试增加acquire显式事务回滚不消耗fence/lease保护，再跑三模式/在线与宿主。自然与混排Repository留MP12c/d。

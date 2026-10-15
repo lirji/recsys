@@ -123,7 +123,7 @@ class FeedExposureBrowserAcceptanceTest {
                         return new BiddingService.QuotedAd(ad,new CpmPrice(new BigDecimal("0.123456"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE));
                     },mode==Mode.BUDGET_DENIED?"BUDGET_DENIED":"NORMAL"));
             var preparation=new SandboxPreparationService(pipeline,preparations,quotes,reservationService,adTokens);
-            var frequency=new FeedCandidateRepository(adDb);frequency.verifySchema();
+            var frequency=new FeedCandidateRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));frequency.verifySchema();
             var candidates=new FeedCandidateService(preparation,frequency,true,1,8);
             var capture=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),preparations,reservations,quotes,adTokens,tx,true);
             var local=new InProcessAdServingGateway(pipeline) {

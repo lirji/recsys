@@ -2,25 +2,26 @@ package com.recsys.ad.billing;
 
 import com.recsys.common.ad.delivery.SandboxDelivery;
 import com.recsys.common.ad.delivery.SandboxDelivery.Candidate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.addb.FeedCandidateMapper;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.dao.support.DataAccessUtils;
 import java.util.*;
 
 /** 广告 owner 的只读频控；不把旧响应计数或未接受预占误当曝光。 */
 public class FeedCandidateRepository {
     public static final String MIGRATION = "db/ad-billing/V007__feed_frequency.sql";
-    private final JdbcTemplate jdbc;
-    public FeedCandidateRepository(JdbcTemplate jdbc) {
-        this.jdbc = new JdbcTemplate(Objects.requireNonNull(jdbc.getDataSource()));
-        this.jdbc.setQueryTimeout(5);
+    private final FeedCandidateMapper mapper;
+    /** 复用adDb实际会话，不新建连接池；XML逐语句保留5秒超时。 */
+    public FeedCandidateRepository(SqlSessionTemplate sessions) {
+        this.mapper=sessions.getMapper(FeedCandidateMapper.class);
     }
     /** 启动验证新增索引和摘要，不自动改动正在使用的账务库。 */
     public void verifySchema() {
-        if (!BudgetRepository.migrationSha256(MIGRATION).equals(jdbc.queryForObject(
-                "SELECT script_sha256 FROM ad_billing_schema_history WHERE version=7", String.class))) {
+        if (!BudgetRepository.migrationSha256(MIGRATION).equals(DataAccessUtils.requiredSingleResult(mapper.migrationHashes()))) {
             throw new IllegalStateException("feed 频控迁移缺失或摘要漂移");
         }
         for (String name : List.of("ad_ledger_user_ad_time_idx", "ad_ledger_user_advertiser_time_idx")) {
-            if (jdbc.queryForObject("SELECT to_regclass(?)::text", String.class, name) == null) {
+            if (DataAccessUtils.requiredSingleResult(mapper.indexNames(name)) == null) {
                 throw new IllegalStateException("feed 频控索引缺失");
             }
         }
@@ -31,25 +32,7 @@ public class FeedCandidateRepository {
             throw new IllegalArgumentException("feed 频控查询范围非法");
         }
         if (candidates.isEmpty()) return Set.of();
-        var parameters = new ArrayList<Object>();
-        for (var c : candidates) { parameters.add(c.ad().adId()); parameters.add(c.ad().advertiserId()); }
-        // 仅生成最多十组绑定占位符；没有将请求值拼接为 SQL 标识或字面量。
-        String targets = String.join(",", Collections.nCopies(candidates.size(), "(?::bigint,?::bigint)"));
-        String sql = """
-                WITH target(ad_id,advertiser_id) AS (VALUES %s),
-                bounds AS (SELECT date_trunc('day',statement_timestamp() AT TIME ZONE 'Asia/Shanghai')
-                    AT TIME ZONE 'Asia/Shanghai' AS start_at)
-                SELECT target.ad_id FROM target,bounds
-                WHERE (SELECT count(*) FROM (SELECT 1 FROM ad_billing_ledger l
-                    WHERE l.traffic_class='SANDBOX' AND l.user_id=? AND l.ad_id=target.ad_id
-                      AND l.accepted_at>=bounds.start_at AND l.accepted_at<((bounds.start_at AT TIME ZONE 'Asia/Shanghai')+interval '1 day') AT TIME ZONE 'Asia/Shanghai'
-                    LIMIT ?) hits) < ?
-                  AND (SELECT count(*) FROM (SELECT 1 FROM ad_billing_ledger l
-                    WHERE l.traffic_class='SANDBOX' AND l.user_id=? AND l.advertiser_id=target.advertiser_id
-                      AND l.accepted_at>=bounds.start_at AND l.accepted_at<((bounds.start_at AT TIME ZONE 'Asia/Shanghai')+interval '1 day') AT TIME ZONE 'Asia/Shanghai'
-                    LIMIT ?) hits) < ?
-                """.formatted(targets);
-        parameters.addAll(List.of(userId, perAd, perAd, userId, perAdvertiser, perAdvertiser));
-        return Set.copyOf(jdbc.queryForList(sql, Long.class, parameters.toArray()));
+        var targets=candidates.stream().map(c->new FeedCandidateMapper.Target(c.ad().adId(),c.ad().advertiserId())).toList();
+        return Set.copyOf(mapper.eligible(userId,targets,perAd,perAdvertiser));
     }
 }

@@ -80,7 +80,7 @@ class FeedDeliveryPostgresTest {
         naturalTokens=new NaturalQualificationToken("test",Map.of("test",Base64.getEncoder().encodeToString(new byte[32])));
         owner=new SandboxPreparationService(mock(AdPipeline.class),preparations,quotes,reservationService,adTokens);
         capture=new ImpressionReceiptService(receipts,preparations,reservations,quotes,adTokens,transactions(),true);
-        frequency=new FeedCandidateRepository(adDb); frequency.verifySchema();
+        frequency=new FeedCandidateRepository(new SqlSessionTemplate(SpringSqlSessions.create(adDb.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))); frequency.verifySchema();
     }
     static DriverManagerDataSource source(String schema) { return new DriverManagerDataSource(PG.getJdbcUrl()+"?currentSchema="+schema,PG.getUsername(),PG.getPassword()); }
     static void migrate(DriverManagerDataSource ds,String path) throws Exception {
@@ -246,6 +246,21 @@ class FeedDeliveryPostgresTest {
         assertThrows(IllegalArgumentException.class,()->new Request(UUID.randomUUID(),"admin",1,51,"feed",null));
         var tx=new TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(engine.getDataSource()));
         tx.executeWithoutResult(t->assertThrows(IllegalStateException.class,()->service().deliver(request()))); verifyNoInteractions(gateway);
+    }
+    /** to_regclass返回NULL仍应报告缺索引，不能把空值映射成正常启用。 */
+    @Test void frequencySchemaRejectsMissingIndexAndRecoversAfterRestore() {
+        adDb.execute("ALTER INDEX ad_ledger_user_ad_time_idx RENAME TO test_unavailable_frequency_idx");
+        try {
+            var failure=assertThrows(IllegalStateException.class,frequency::verifySchema);
+            assertEquals("feed 频控索引缺失",failure.getMessage());
+        } finally {adDb.execute("ALTER INDEX test_unavailable_frequency_idx RENAME TO ad_ledger_user_ad_time_idx");}
+        assertDoesNotThrow(frequency::verifySchema);
+    }
+    /** 无候选时不应触发无意义的账本查询，即使账本暂不可读也能返回空结果。 */
+    @Test void emptyFrequencyCandidatesDoNotQueryLedger() {
+        adDb.execute("ALTER TABLE ad_billing_ledger RENAME TO test_unavailable_frequency_ledger");
+        try {assertEquals(Set.of(),frequency.eligible(1,List.of(),1,1));}
+        finally {adDb.execute("ALTER TABLE test_unavailable_frequency_ledger RENAME TO ad_billing_ledger");}
     }
     @Test void actualAcceptedLedgerFiltersByAdAdvertiserAndUserWithoutCountingHeld() throws Exception {
         var r=request(); var a=candidate(r,99,"10"); when(gateway.sandboxFeedCandidates(any())).thenReturn(List.of(a));
