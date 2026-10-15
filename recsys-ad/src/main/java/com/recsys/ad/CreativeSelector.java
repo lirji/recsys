@@ -3,9 +3,8 @@ package com.recsys.ad;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,13 +31,14 @@ public class CreativeSelector {
     private static final Logger log = LoggerFactory.getLogger(CreativeSelector.class);
 
     /** 分片库:ad_creative 按 ad_id 分布在 ds_0/ds_1(ad_id IN 查询路由/广播)。 */
-    private final JdbcTemplate jdbc;
+    private final AdCatalogMapper mapper;
     private final StringRedisTemplate redis;
     private final AdProperties props;
 
-    public CreativeSelector(@Qualifier("adShardingJdbc") JdbcTemplate jdbc,
+    /** 只读取已审核活跃创意，分片与排序留在Mapper/XML中。 */
+    public CreativeSelector(AdCatalogMapper mapper,
                             StringRedisTemplate redis, AdProperties props) {
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.redis = redis;
         this.props = props;
     }
@@ -56,15 +56,14 @@ public class CreativeSelector {
             return out;
         }
         try {
-            Map<Long, List<long[]>> creativesByAd = loadCreatives(adIds);   // adId → [(creativeId)]
+            Map<Long, List<Long>> creativesByAd = loadCreatives(adIds);   // adId → creativeId有序列表
             Map<Long, String> titleById = new HashMap<>();                   // creativeId → title
             loadCreativeTitles(adIds, creativesByAd, titleById);
             double coef = props.getDco().getUcbCoef();
-            for (Map.Entry<Long, List<long[]>> e : creativesByAd.entrySet()) {
+            for (Map.Entry<Long, List<Long>> e : creativesByAd.entrySet()) {
                 long adId = e.getKey();
                 List<CreativeBandit.Arm> arms = new ArrayList<>(e.getValue().size());
-                for (long[] c : e.getValue()) {
-                    long cid = c[0];
+                for (long cid : e.getValue()) {
                     long[] s = readStats(adId, cid);
                     arms.add(new CreativeBandit.Arm(cid, s[0], s[1]));
                 }
@@ -81,30 +80,23 @@ public class CreativeSelector {
     }
 
     /** 批量加载各广告的活跃创意 id(保持稳定顺序,空臂时 UCB 取首条)。 */
-    private Map<Long, List<long[]>> loadCreatives(Collection<Long> adIds) {
-        Map<Long, List<long[]>> byAd = new LinkedHashMap<>();
-        String ph = String.join(",", adIds.stream().map(x -> "?").toList());
-        jdbc.query(
-                "SELECT ad_id, creative_id FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN (" + ph + ") " +
-                "ORDER BY ad_id, creative_id",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        byAd.computeIfAbsent(rs.getLong("ad_id"), k -> new ArrayList<>())
-                                .add(new long[]{rs.getLong("creative_id")}),
-                adIds.toArray());
+    private Map<Long, List<Long>> loadCreatives(Collection<Long> adIds) {
+        Map<Long, List<Long>> byAd = new LinkedHashMap<>();
+        mapper.activeCreatives(adIds, context -> {
+            var row = context.getResultObject();
+            byAd.computeIfAbsent(row.adId(), k -> new ArrayList<>()).add(row.creativeId());
+        });
         return byAd;
     }
 
-    private void loadCreativeTitles(Collection<Long> adIds, Map<Long, List<long[]>> creativesByAd,
+    private void loadCreativeTitles(Collection<Long> adIds, Map<Long, List<Long>> creativesByAd,
                                     Map<Long, String> titleById) {
         if (creativesByAd.isEmpty()) {
             return;
         }
-        String ph = String.join(",", adIds.stream().map(x -> "?").toList());
-        jdbc.query(
-                "SELECT creative_id, title FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN (" + ph + ")",
-                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                        titleById.put(rs.getLong("creative_id"), rs.getString("title")),
-                adIds.toArray());
+        mapper.creativeTitles(adIds, context -> {
+            var row = context.getResultObject(); titleById.put(row.creativeId(), row.title());
+        });
     }
 
     /** 读创意级统计 ad:cstats:{adId}:{creativeId}="imp,clk";缺失/异常 → {0,0}(新创意,UCB 强制探索)。 */

@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.primary.AdContractMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -30,14 +30,15 @@ public class GuaranteedDeliveryService {
 
     private static final Logger log = LoggerFactory.getLogger(GuaranteedDeliveryService.class);
 
-    private final JdbcTemplate jdbc;                 // 主库:ad_contract(单表)
+    private final AdContractMapper mapper;                 // 主库:ad_contract(单表)
     private final AdCatalogReader catalog;           // 目录读(sharded|replica):ad 详情
     private final ObjectProvider<StringRedisTemplate> redisProvider;
     private final AdProperties props;
 
-    public GuaranteedDeliveryService(JdbcTemplate jdbc, AdCatalogReader catalog,
+    /** 主源合约读取与目录来源各自绑定，算法和交付计数仍由本服务编排。 */
+    public GuaranteedDeliveryService(AdContractMapper mapper, AdCatalogReader catalog,
                                      ObjectProvider<StringRedisTemplate> redisProvider, AdProperties props) {
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.catalog = catalog;
         this.redisProvider = redisProvider;
         this.props = props;
@@ -56,26 +57,18 @@ public class GuaranteedDeliveryService {
         long now = System.currentTimeMillis();
         double tol = props.getGd().getTolerance();
         try {
-            List<long[]> contracts = jdbc.query(
-                    "SELECT contract_id, ad_id, advertiser_id, guaranteed, " +
-                    "  (extract(epoch from start_ts)*1000)::bigint AS s, " +
-                    "  (extract(epoch from end_ts)*1000)::bigint AS e, " +
-                    "  (price_cpm*1000)::bigint AS cpm_milli " +
-                    "FROM ad_contract WHERE status='active'",
-                    (rs, n) -> new long[]{rs.getLong("contract_id"), rs.getLong("ad_id"),
-                            rs.getLong("advertiser_id"), rs.getLong("guaranteed"),
-                            rs.getLong("s"), rs.getLong("e"), rs.getLong("cpm_milli")});
+            List<AdContractMapper.Contract> contracts = mapper.activeContracts();
             long bestContract = -1, bestAd = 0, bestAdv = 0, bestCpmMilli = 0;
             double bestUrg = tol;
-            for (long[] c : contracts) {
-                long delivered = delivered(redis, c[0]);
-                double urg = GdPacing.urgency(delivered, c[3], c[4], c[5], now);
+            for (var c : contracts) {
+                long delivered = delivered(redis, c.contractId());
+                double urg = GdPacing.urgency(delivered, c.guaranteed(), c.startMillis(), c.endMillis(), now);
                 if (urg > bestUrg) {
                     bestUrg = urg;
-                    bestContract = c[0];
-                    bestAd = c[1];
-                    bestAdv = c[2];
-                    bestCpmMilli = c[6];
+                    bestContract = c.contractId();
+                    bestAd = c.adId();
+                    bestAdv = c.advertiserId();
+                    bestCpmMilli = c.cpmMilli();
                 }
             }
             if (bestContract < 0) {

@@ -51,4 +51,26 @@
     <select id="attribution" resultMap="attribution">
         SELECT advertiser_id,optimization_type FROM ad WHERE ad_id=#{adId}
     </select>
+    <resultMap id="dailyBudget" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$DailyBudget">
+        <constructor><arg column="advertiser_id" javaType="_long"/><arg column="daily_budget" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="creativeId" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$CreativeId">
+        <constructor><arg column="ad_id" javaType="_long"/><arg column="creative_id" javaType="_long"/></constructor>
+    </resultMap>
+    <resultMap id="creativeTitle" type="com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper$CreativeTitle">
+        <constructor><arg column="creative_id" javaType="_long"/><arg column="title" javaType="string"/></constructor>
+    </resultMap>
+    <select id="dailyBudgets" resultMap="dailyBudget">
+        SELECT advertiser_id,COALESCE(daily_budget,0) AS daily_budget FROM advertiser
+        WHERE advertiser_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="activeCreatives" resultMap="creativeId">
+        SELECT ad_id,creative_id FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+        ORDER BY ad_id,creative_id
+    </select>
+    <select id="creativeTitles" resultMap="creativeTitle">
+        SELECT creative_id,title FROM ad_creative WHERE status='active' AND review_status='approved' AND ad_id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
 </mapper>

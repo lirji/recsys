@@ -2,7 +2,7 @@ package com.recsys.ad;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.derived.AdItemEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -24,11 +24,11 @@ public class AdEmbeddingSimilarity {
 
     private static final Logger log = LoggerFactory.getLogger(AdEmbeddingSimilarity.class);
 
-    private final JdbcTemplate jdbc;
+    private final AdItemEmbeddingMapper mapper;
 
-    public AdEmbeddingSimilarity(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                                 JdbcTemplate jdbc) {   // #3:item_embedding 走派生库
-        this.jdbc = jdbc;
+    /** 向量Mapper精确绑定派生源，与广告自有向量库分开。 */
+    public AdEmbeddingSimilarity(AdItemEmbeddingMapper mapper) {
+        this.mapper = mapper;
     }
 
     /** 为给定 item 集合预载向量,返回相似度闭包(余弦;缺向量则 0)。 */
@@ -47,17 +47,11 @@ public class AdEmbeddingSimilarity {
         if (unique.isEmpty()) {
             return out;
         }
-        String placeholders = String.join(",", unique.stream().map(x -> "?").toList());
         try {
-            jdbc.query(
-                    "SELECT item_id, embedding::text FROM item_embedding WHERE item_id IN (" + placeholders + ")",
-                    rs -> {
-                        String s = rs.getString(2);
-                        if (s != null) {
-                            out.put(rs.getLong(1), parseVector(s));
-                        }
-                    },
-                    unique.toArray());
+            mapper.vectors(unique, context -> {
+                var row = context.getResultObject();
+                if (row.embedding() != null) out.put(row.itemId(), parseVector(row.embedding()));
+            });
         } catch (Exception e) {
             log.warn("List-wise 读取候选向量失败,外部性退化为 0(等同逐条 eCPM): {}", e.getMessage());
         }

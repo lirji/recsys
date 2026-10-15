@@ -1,6 +1,12 @@
 package com.recsys.ad;
 
 import com.recsys.common.ad.AdCandidate;
+import com.recsys.common.constant.RedisKeys;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 import com.recsys.ad.persistence.config.AdPersistenceConfiguration;
 import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import com.recsys.ad.persistence.mapper.addb.AdEmbeddingMapper;
@@ -46,15 +52,15 @@ class ShardedAdCatalogPostgresTest {
         JdbcTemplate zero = new JdbcTemplate(ds0);
         JdbcTemplate one = new JdbcTemplate(ds1);
         for (JdbcTemplate jdbc : List.of(zero, one)) {
-            create(jdbc, "advertiser", "advertiser_id BIGINT PRIMARY KEY, status TEXT", "advertiser_id", "status");
+            create(jdbc, "advertiser", "advertiser_id BIGINT PRIMARY KEY, status TEXT, daily_budget DOUBLE PRECISION", "advertiser_id", "status", "daily_budget");
             create(jdbc, "ad", "ad_id BIGINT PRIMARY KEY, advertiser_id BIGINT, item_id BIGINT, title TEXT, quality_score DOUBLE PRECISION, "
                     + "optimization_type TEXT, target_cpa DOUBLE PRECISION, audience_id BIGINT, status TEXT, review_status TEXT",
                     "ad_id", "advertiser_id", "item_id", "title", "quality_score", "optimization_type", "target_cpa", "audience_id", "status", "review_status");
             create(jdbc, "bidword", "id BIGINT PRIMARY KEY, ad_id BIGINT, keyword TEXT, bid DOUBLE PRECISION", "id", "ad_id", "keyword", "bid");
-            create(jdbc, "ad_creative", "creative_id BIGINT PRIMARY KEY, ad_id BIGINT", "creative_id", "ad_id");
+            create(jdbc, "ad_creative", "creative_id BIGINT PRIMARY KEY, ad_id BIGINT, title TEXT, status TEXT, review_status TEXT", "creative_id", "ad_id", "title", "status", "review_status");
         }
-        zero.update("INSERT INTO advertiser VALUES (2,'active'),(4,'paused'),(6,'active')");
-        one.update("INSERT INTO advertiser VALUES (1,'active'),(3,'active')");
+        zero.update("INSERT INTO advertiser VALUES (2,'active',10),(4,'paused',20),(6,'active',NULL)");
+        one.update("INSERT INTO advertiser VALUES (1,'active',5),(3,'active',10)");
         zero.update("INSERT INTO ad VALUES (102,2,12,'even',1,'CPC',NULL,22,'active','approved'),"
                 + "(104,4,14,'owner-paused',1,'CPC',0,NULL,'active','approved'),"
                 + "(106,6,16,'review-pending',1,'CPC',0,NULL,'active','pending'),"
@@ -64,6 +70,8 @@ class ShardedAdCatalogPostgresTest {
                 + "(111,1,19,'extra',2,'CPC',0,NULL,'active','approved')");
         zero.update("INSERT INTO bidword VALUES (201,102,'space',2),(202,102,'space',4),(205,108,'missing',NULL)");
         one.update("INSERT INTO bidword VALUES (203,101,'alien',5),(204,111,'space',3)");
+        zero.update("INSERT INTO ad_creative VALUES(30,102,NULL,'active','approved'),(31,102,'paused','paused','approved')");
+        one.update("INSERT INTO ad_creative VALUES(20,101,'second','active','approved'),(10,101,'first','active','approved'),(5,101,'pending','active','pending')");
         String yaml;
         try (var input = ShardedAdCatalogPostgresTest.class.getResourceAsStream("/sharding.yaml")) {
             yaml = new String(input.readAllBytes(), StandardCharsets.UTF_8);
@@ -72,6 +80,7 @@ class ShardedAdCatalogPostgresTest {
         sharded = YamlShardingSphereDataSourceFactory.createDataSource(Map.of("ds_0", ds0, "ds_1", ds1),
                 yaml.substring(yaml.indexOf("\nrules:") + 1).getBytes(StandardCharsets.UTF_8));
         context = new AnnotationConfigApplicationContext();
+        context.getBeanFactory().registerSingleton("dataSource", ds0);
         context.getBeanFactory().registerSingleton("adShardingDataSource", sharded);
         context.getBeanFactory().registerSingleton("adDbDataSource", ds0);
         context.getBeanFactory().registerSingleton("derivedDbDataSource", ds1);
@@ -140,6 +149,37 @@ class ShardedAdCatalogPostgresTest {
                 .containsExactly(101L, 102L);
         assertThat(repository.kwByDb(List.of("' OR true --"), Set.of(), 10)).isEmpty();
         assertThat(repository.kwByDb(List.of(), Set.of(), 10)).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void budgetReadsBothShardsAndKeepsNullBudgetAsZero() {
+        var redis = mock(StringRedisTemplate.class); var values = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(anyString())).thenReturn("0");
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        when(values.get(RedisKeys.adBudget(1, today))).thenReturn("100");
+        when(values.get(RedisKeys.adBudget(2, today))).thenReturn("1500");
+        var props = new AdProperties(); props.getPacing().setEnabled(true);
+        var pacing = new PacingService(context.getBean(AdCatalogMapper.class), redis, props);
+        assertThat(pacing.overBudget(List.of(1L, 2L, 6L, 999L))).containsExactlyInAnyOrder(2L, 6L);
+        assertThat(pacing.overBudget(List.of())).isEmpty();
+        var candidates = repository.hot(10);
+        assertThat(pacing.filterBudget(candidates)).allMatch(c -> c.advertiserId() != 2);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void creativeQueriesKeepApprovalFiltersStableOrderAndNullTitles() {
+        var redis = mock(StringRedisTemplate.class); var values = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        var props = new AdProperties(); props.getDco().setEnabled(true);
+        var selector = new CreativeSelector(context.getBean(AdCatalogMapper.class), redis, props);
+        assertThat(selector.selectFor(List.of(101L, 102L, 999L))).containsExactlyInAnyOrderEntriesOf(
+                Map.of(101L, new CreativeSelector.Choice(10, "first"), 102L, new CreativeSelector.Choice(30, null)));
+        assertThat(selector.selectFor(List.of())).isEmpty();
+        props.getDco().setEnabled(false);
+        assertThat(selector.selectFor(List.of(101L))).isEmpty();
     }
 
     private static HikariDataSource source(PostgreSQLContainer<?> container) {

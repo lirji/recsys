@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.primary.AdContractMapper">
+    <resultMap id="contract" type="com.recsys.ad.persistence.mapper.primary.AdContractMapper$Contract">
+        <constructor><arg column="contract_id" javaType="_long"/><arg column="ad_id" javaType="_long"/>
+            <arg column="advertiser_id" javaType="_long"/><arg column="guaranteed" javaType="_long"/>
+            <arg column="s" javaType="_long"/><arg column="e" javaType="_long"/><arg column="cpm_milli" javaType="_long"/></constructor>
+    </resultMap>
+    <select id="activeContracts" resultMap="contract">
+        SELECT contract_id,COALESCE(ad_id,0) AS ad_id,COALESCE(advertiser_id,0) AS advertiser_id,COALESCE(guaranteed,0) AS guaranteed,
+            COALESCE((extract(epoch from start_ts)*1000)::bigint,0) AS s,
+            COALESCE((extract(epoch from end_ts)*1000)::bigint,0) AS e,
+            COALESCE((price_cpm*1000)::bigint,0) AS cpm_milli FROM ad_contract WHERE status='active'
+    </select>
+</mapper>

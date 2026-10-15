@@ -53,4 +53,17 @@ public interface AdCatalogMapper {
 
     /** 归属允许NULL，调用者继续按原规则将无效归属作为无归因。 */
     record Attribution(Long advertiserId, String bidType) { }
+    /** 日预算NULL延续JDBC的0值；缺失广告主仍不返回行。 */
+    void dailyBudgets(@Param("ids") Long[] ids, ResultHandler<DailyBudget> handler);
+    /** 稳定排序确保未探索创意继续优先取最低ID。 */
+    void activeCreatives(@Param("ids") java.util.Collection<Long> ids, ResultHandler<CreativeId> handler);
+    /** 第二次标题查询保持原有查询和失败语义，不合并两个快照。 */
+    void creativeTitles(@Param("ids") java.util.Collection<Long> ids, ResultHandler<CreativeTitle> handler);
+
+    /** 预算查询行。 */
+    record DailyBudget(long advertiserId, double budget) { }
+    /** 创意归属行。 */
+    record CreativeId(long adId, long creativeId) { }
+    /** 创意标题允许NULL。 */
+    record CreativeTitle(long creativeId, String title) { }
 }

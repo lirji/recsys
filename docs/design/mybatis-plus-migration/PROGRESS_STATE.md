@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP04全部已交付，MP04c=2cad7dbc。MP05a DONE/PASS，最终34项联合测试通过，准备交付后继续MP05b。
+`IN_PROGRESS`。整体计划已批准；MP00～MP04全部已交付，MP05a=722c85b4已交付。MP05b DONE/PASS，最终44项联合测试通过，MP05整体完成；准备交付后继续MP06a。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP05b辅助读取完成，MP05整体DONE，见MP05B_RESULT。
 
 - MP05a广告事件/归因/uplift完成，见MP05A_RESULT。
 
@@ -40,13 +42,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP04已完成；MP05～MP15及追加统一错误码目标未完成。
+- MP00～MP05已完成；MP06～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP05a：ad事件/归因/uplift、Mapper/XML/行模型/DDL、对应单测与真实PG测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP05b：ad四个辅助服务、四源配置、Mapper/XML/具名合约行、双片/向量/GD测试及上下文装配、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -65,8 +67,8 @@ MP01～MP03已交付。当前MP05a：ad事件/归因/uplift、Mapper/XML/行模�
 
 ## 下一步
 
-1. MP04c已交付2cad7dbc，MP05a已完成，准备Git交付。
-2. 继续MP05b～MP15，全部SQL完成后处理统一错误码。
+1. MP05a已交付722c85b4，MP05b已完成，准备Git交付。
+2. 继续MP06～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -98,3 +100,7 @@ DONE/PASS，见MP04C_RESULT；29项联合验证全通过。下一片MP05a：AdEv
 ## MP05a检查点
 
 DONE/PASS，见MP05A_RESULT。当前页曝光多VALUES写入的整批失败语义已由新旧真实PG验证；原异步生命周期保留。继续MP05b：分片预算/两次创意查询、主源GD合约、派生源候选向量。可扩展已有真实双分片/向量测试以复用隔离容器，先运行旧实现保护，再迁移；GD需覆盖PG bigint舍入及缺失/NULL数值。
+
+## MP05b检查点
+
+DONE/PASS，见MP05B_RESULT；最终44项通过。下一片MP06a BehaviorService：原两个SQL（行为插入与曝光bucket权威回查），已有BehaviorServicePostgresTest并发CLICK及LIKE差异保护、4项mock归因测试。迁移前补真实NULL bucket/归属不匹配/非点击时间语义；Mapper需要区分“存在但bucket=NULL”和“不存在”，不能单String/null吞掉曝光ID验证。行为和自然回执共享原primary DataSource，后者尚待MP06b迁移，不改变事务边界。

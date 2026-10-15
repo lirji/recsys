@@ -56,6 +56,7 @@ class AdEventsPostgresTest {
         create(events, "ad_event", "id BIGSERIAL PRIMARY KEY,request_id TEXT,query TEXT,user_id BIGINT,ad_id BIGINT,bidword_id BIGINT,position INT CHECK(position>0),event_type TEXT,pctr DOUBLE PRECISION,pctr_calib DOUBLE PRECISION,ecpm DOUBLE PRECISION,charged_price DOUBLE PRECISION,relevance DOUBLE PRECISION,ad_bucket TEXT,creative_id BIGINT");
         create(events, "ad_conversion_fact", "event_id TEXT PRIMARY KEY,advertiser_id BIGINT NOT NULL,user_id BIGINT NOT NULL,objective TEXT NOT NULL,conversion_value DOUBLE PRECISION NOT NULL,occurred_at TIMESTAMP NOT NULL,created_at TIMESTAMP DEFAULT now()");
         context = new AnnotationConfigApplicationContext();
+        context.getBeanFactory().registerSingleton("dataSource", events.getDataSource());
         context.getBeanFactory().registerSingleton("adDbDataSource", events.getDataSource());
         context.getBeanFactory().registerSingleton("adShardingDataSource", catalog.getDataSource());
         context.getBeanFactory().registerSingleton("derivedDbDataSource", events.getDataSource());

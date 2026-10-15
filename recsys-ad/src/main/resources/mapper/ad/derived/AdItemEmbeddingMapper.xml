@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.derived.AdItemEmbeddingMapper">
+    <resultMap id="vector" type="com.recsys.ad.persistence.mapper.derived.AdItemEmbeddingMapper$ItemVector">
+        <constructor><arg column="item_id" javaType="_long"/><arg column="embedding" javaType="string"/></constructor>
+    </resultMap>
+    <select id="vectors" resultMap="vector">
+        SELECT item_id,embedding::text AS embedding FROM item_embedding WHERE item_id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+</mapper>

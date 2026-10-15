@@ -41,14 +41,14 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/ad/AdEmbeddingSimilarity.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdEmbeddingSimilarity.java) | 5 | 1 | TODO |
+| [com/recsys/ad/AdEmbeddingSimilarity.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdEmbeddingSimilarity.java) | 5 | 1 | DONE MP05b |
 | [com/recsys/ad/AdEventLogger.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdEventLogger.java) | 11 | 4 | DONE MP05a |
 | [com/recsys/ad/AdOutcomeService.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdOutcomeService.java) | 4 | 1 | DONE MP05a |
 | [com/recsys/ad/AdRepository.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdRepository.java) | 10 | 3 | DONE MP04a |
 | [com/recsys/ad/AdShardingConfig.java](../../../recsys-ad/src/main/java/com/recsys/ad/AdShardingConfig.java) | 10 | 0 | MP04a复核：连接/会话初始化SQL保留（无业务SQL） |
-| [com/recsys/ad/CreativeSelector.java](../../../recsys-ad/src/main/java/com/recsys/ad/CreativeSelector.java) | 8 | 2 | TODO |
-| [com/recsys/ad/GuaranteedDeliveryService.java](../../../recsys-ad/src/main/java/com/recsys/ad/GuaranteedDeliveryService.java) | 10 | 1 | TODO |
-| [com/recsys/ad/PacingService.java](../../../recsys-ad/src/main/java/com/recsys/ad/PacingService.java) | 9 | 1 | TODO |
+| [com/recsys/ad/CreativeSelector.java](../../../recsys-ad/src/main/java/com/recsys/ad/CreativeSelector.java) | 8 | 2 | DONE MP05b |
+| [com/recsys/ad/GuaranteedDeliveryService.java](../../../recsys-ad/src/main/java/com/recsys/ad/GuaranteedDeliveryService.java) | 10 | 1 | DONE MP05b |
+| [com/recsys/ad/PacingService.java](../../../recsys-ad/src/main/java/com/recsys/ad/PacingService.java) | 9 | 1 | DONE MP05b |
 | [com/recsys/ad/ShardedAdCatalogReader.java](../../../recsys-ad/src/main/java/com/recsys/ad/ShardedAdCatalogReader.java) | 7 | 6 | DONE MP04a |
 | [com/recsys/ad/UpliftAssignmentService.java](../../../recsys-ad/src/main/java/com/recsys/ad/UpliftAssignmentService.java) | 9 | 5 | DONE MP05a |
 | [com/recsys/ad/billing/BillingEventConfiguration.java](../../../recsys-ad/src/main/java/com/recsys/ad/billing/BillingEventConfiguration.java) | 15 | 0 | TODO |

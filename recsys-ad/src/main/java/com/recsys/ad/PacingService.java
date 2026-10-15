@@ -4,9 +4,8 @@ import com.recsys.common.ad.AdCandidate;
 import com.recsys.common.constant.RedisKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.ad.persistence.mapper.sharded.AdCatalogMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -43,13 +42,14 @@ public class PacingService {
     private static final Duration BUDGET_TTL = Duration.ofDays(2);
 
     /** 分片库:advertiser 表(daily_budget)按 advertiser_id 分布在 ds_0/ds_1。 */
-    private final JdbcTemplate jdbc;
+    private final AdCatalogMapper mapper;
     private final StringRedisTemplate redis;
     private final AdProperties props;
 
-    public PacingService(@Qualifier("adShardingJdbc") JdbcTemplate jdbc,
+    /** 日预算继续读取分片广告主，Redis仍承载原消耗与pacing参数。 */
+    public PacingService(AdCatalogMapper mapper,
                          StringRedisTemplate redis, AdProperties props) {
-        this.jdbc = jdbc;
+        this.mapper = mapper;
         this.redis = redis;
         this.props = props;
     }
@@ -176,12 +176,9 @@ public class PacingService {
     private Map<Long, Double> dailyBudgets(Collection<Long> advertiserIds) {
         Long[] ids = advertiserIds.toArray(new Long[0]);
         Map<Long, Double> out = new HashMap<>();
-        jdbc.query(
-                "SELECT advertiser_id, daily_budget FROM advertiser WHERE advertiser_id = ANY(?)",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                rs -> {
-                    out.put(rs.getLong("advertiser_id"), rs.getDouble("daily_budget"));
-                });
+        mapper.dailyBudgets(ids, context -> {
+            var row = context.getResultObject(); out.put(row.advertiserId(), row.budget());
+        });
         return out;
     }
 }

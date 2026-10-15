@@ -55,12 +55,19 @@ class AdVectorSourcesPostgresTest {
                 COMMENT ON COLUMN user_embedding.embedding IS '用户向量';
                 TRUNCATE user_embedding;
                 INSERT INTO user_embedding VALUES (7,'[1,0,0]'),(8,NULL);
+                CREATE TABLE IF NOT EXISTS item_embedding(item_id BIGINT PRIMARY KEY, embedding vector);
+                COMMENT ON TABLE item_embedding IS '广告相似度隔离测试向量';
+                COMMENT ON COLUMN item_embedding.item_id IS '物品标识';
+                COMMENT ON COLUMN item_embedding.embedding IS '允许不同维度的测试向量';
+                TRUNCATE item_embedding;
+                INSERT INTO item_embedding VALUES (1,'[1,0,0]'),(2,'[1,0,0]'),(3,'[-1,0,0]'),(4,NULL),(5,'[0,0,0]'),(6,'[1,0]');
                 """);
         AdCatalogReader catalog = mock(AdCatalogReader.class);
         when(catalog.activeAdDetails(any())).thenReturn(Map.of(101L, new AdCatalogReader.AdDetail(11, 1, 1),
                 102L, new AdCatalogReader.AdDetail(12, 2, 2), 103L, new AdCatalogReader.AdDetail(13, 3, 1)));
         when(catalog.bidMap(any())).thenReturn(Map.of(101L, 2.0));
         context = new AnnotationConfigApplicationContext();
+        context.getBeanFactory().registerSingleton("dataSource", admin.getDataSource());
         context.getBeanFactory().registerSingleton("adShardingDataSource", admin.getDataSource());
         context.getBeanFactory().registerSingleton("adDbDataSource", adDb.getDataSource());
         context.getBeanFactory().registerSingleton("derivedDbDataSource", derived.getDataSource());
@@ -104,6 +111,15 @@ class AdVectorSourcesPostgresTest {
         assertThat(rows.getFirst().channel()).isEqualTo(AdChannel.U2A);
         assertThat(repository.u2a(8, 10)).isEmpty();
         assertThat(repository.u2a(999, 10)).isEmpty();
+    }
+
+    @Test
+    void similarityUsesDerivedVectorsAndKeepsMissingNegativeAndDimensionFallbacks() {
+        var similarity = new AdEmbeddingSimilarity(context.getBean(com.recsys.ad.persistence.mapper.derived.AdItemEmbeddingMapper.class));
+        var sim = similarity.forItems(java.util.List.of(1L, 2L, 3L, 4L, 5L, 6L, 999L));
+        assertThat(sim.between(1, 2)).isEqualTo(1);
+        for (long missing : java.util.List.of(3L, 4L, 5L, 6L, 999L)) assertThat(sim.between(1, missing)).isZero();
+        assertThat(similarity.forItems(java.util.List.of()).between(1, 2)).isZero();
     }
 
     private static DriverManagerDataSource source(String schema) {
