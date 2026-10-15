@@ -2,6 +2,8 @@ package com.recsys.gateway.security;
 
 import com.recsys.platform.security.AuthProperties;
 import com.recsys.platform.security.InternalToken;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
@@ -17,11 +19,27 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IdentityPropagationFilterTest {
 
     private final AuthProperties properties = new AuthProperties();
     private final IdentityPropagationFilter filter = new IdentityPropagationFilter(properties);
+
+    @Test
+    void signingFailureIsCodedAndNeverForwardsAsAnonymous() {
+        properties.setInternalSecret("");
+        var incoming = MockServerWebExchange.from(MockServerHttpRequest.get("/api/advertiser/campaigns"));
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+        var authentication = UsernamePasswordAuthenticationToken.authenticated("alice", "unused", List.of());
+        assertThatThrownBy(() -> filter.filter(incoming, next -> {
+            forwarded.set(next);
+            return Mono.empty();
+        }).contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication)).block())
+                .isInstanceOfSatisfying(PublicErrorException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.IDENTITY_PROPAGATION_FAILED));
+        assertThat(forwarded.get()).isNull();
+    }
 
     @Test
     void stripsLargeExternalAndSpoofedInternalHeadersWithoutAuthentication() {

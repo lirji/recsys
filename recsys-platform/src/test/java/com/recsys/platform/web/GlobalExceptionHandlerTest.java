@@ -1,5 +1,7 @@
 package com.recsys.platform.web;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.AfterEach;
@@ -90,6 +92,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void publicCodesHaveSameStatusAndSafeMessageAcrossServletAndGateway() throws Exception {
+        var result = mvc.perform(get("/public-error")).andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("AUTH_TOKEN_ISSUANCE_FAILED"))
+                .andExpect(jsonPath("$.message").value("登录服务暂时不可用，请稍后重试"))
+                .andReturn().getResponse();
+        assertThat(result.getContentAsString()).doesNotContain(INTERNAL_DETAIL);
+        mvc.perform(get("/non-http-error")).andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    @Test
     void malformedJsonIsClientFailureWithoutParserDetails() throws Exception {
         mvc.perform(post("/body").contentType(MediaType.APPLICATION_JSON).content("{broken-private"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"))
@@ -140,6 +153,12 @@ class GlobalExceptionHandlerTest {
         String argument() { throw new IllegalArgumentException(INTERNAL_DETAIL); }
         @GetMapping("/denied")
         String denied() { throw new AccessDeniedException(INTERNAL_DETAIL); }
+        @GetMapping("/public-error")
+        String publicError() {
+            throw new PublicErrorException(ErrorCode.AUTH_TOKEN_ISSUANCE_FAILED, new IllegalStateException(INTERNAL_DETAIL));
+        }
+        @GetMapping("/non-http-error")
+        String nonHttpError() { throw new PublicErrorException(ErrorCode.NETWORK_ERROR); }
         @GetMapping("/missing-resource")
         String resource() throws NoResourceFoundException {
             throw new NoResourceFoundException(HttpMethod.GET, INTERNAL_DETAIL);

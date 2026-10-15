@@ -56,7 +56,8 @@ public class GatewaySecurityConfig {
 
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, AuthProperties props,
-                                                         EdgeCasdoorProperties casdoor, ReactiveJwtDecoder jwtDecoder) {
+                                                         EdgeCasdoorProperties casdoor, ReactiveJwtDecoder jwtDecoder,
+                                                         GatewaySecurityErrorHandler errors) {
         http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable);
@@ -66,7 +67,8 @@ public class GatewaySecurityConfig {
             return http.build();
         }
 
-        http.authorizeExchange(ex -> ex
+        http.exceptionHandling(ex -> ex.authenticationEntryPoint(errors).accessDeniedHandler(errors))
+                .authorizeExchange(ex -> ex
                         // 健康探针 + prometheus 指标抓取 + 登录端点:公开(/actuator/refresh 等仍需认证)
                         .pathMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus",
                                 "/api/auth/**").permitAll()
@@ -82,7 +84,7 @@ public class GatewaySecurityConfig {
                         .pathMatchers("/api/experiment/**").hasRole("ADMIN")
                         // 其余(行为上报、广告点击/转化计费、写操作等)需登录
                         .anyExchange().authenticated())
-                .oauth2ResourceServer(o -> o.jwt(j -> j
+                .oauth2ResourceServer(o -> o.authenticationEntryPoint(errors).accessDeniedHandler(errors).jwt(j -> j
                         .jwtDecoder(jwtDecoder)
                         .jwtAuthenticationConverter(new ReactiveJwtAuthenticationConverterAdapter(
                                 casdoor.isEnabled() ? casdoorConverter(casdoor) : legacyRolesConverter()))));

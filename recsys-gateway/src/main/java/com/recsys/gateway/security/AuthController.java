@@ -6,13 +6,14 @@ import com.nimbusds.jose.JWSSigner;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import com.recsys.platform.security.AuthProperties;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -42,15 +43,16 @@ public class AuthController {
         this.props = props;
     }
 
+    /** 演示身份校验失败使用固定业务码，不能把签名器或配置异常当成密码错误。 */
     @PostMapping("/login")
     public LoginResponse login(@RequestBody LoginRequest request) {
         DemoUser user = request.username() == null ? null : DEMO_USERS.get(request.username());
         if (user == null || !user.password().equals(request.password())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new PublicErrorException(ErrorCode.AUTH_INVALID_CREDENTIALS);
         }
         long ttl = props.getEdgeTtlSeconds();
         String token = mint(request.username(), user.roles(), ttl);
-        return new LoginResponse(token, "Bearer", ttl, user.roles());
+        return new LoginResponse(token, OAuth2AccessToken.TokenType.BEARER.getValue(), ttl, user.roles());
     }
 
     private String mint(String subject, List<String> roles, long ttlSeconds) {
@@ -67,7 +69,7 @@ public class AuthController {
             jwt.sign(signer);
             return jwt.serialize();
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "令牌签发失败");
+            throw new PublicErrorException(ErrorCode.AUTH_TOKEN_ISSUANCE_FAILED, e);
         }
     }
 

@@ -1,5 +1,7 @@
 package com.recsys.gateway.security;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import com.recsys.platform.security.AuthProperties;
 import com.recsys.platform.security.InternalToken;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -42,8 +44,14 @@ public class IdentityPropagationFilter implements GlobalFilter, Ordered {
                             .map(GrantedAuthority::getAuthority)
                             .map(r -> r.startsWith("ROLE_") ? r.substring("ROLE_".length()) : r)
                             .collect(Collectors.joining(","));
-                    String token = InternalToken.mint(auth.getName(), roles, "edge",
-                            props.getTokenTtlSeconds(), Instant.now().getEpochSecond(), props.getInternalSecret());
+                    String token;
+                    try {
+                        token = InternalToken.mint(auth.getName(), roles, "edge",
+                                props.getTokenTtlSeconds(), Instant.now().getEpochSecond(), props.getInternalSecret());
+                    } catch (RuntimeException failure) {
+                        // 签发失败必须终止转发；不能降级成匿名或把内部密钥/底层异常回显给终端。
+                        throw new PublicErrorException(ErrorCode.IDENTITY_PROPAGATION_FAILED, failure);
+                    }
                     return mutate(exchange, token);
                 })
                 .defaultIfEmpty(mutate(exchange, null))

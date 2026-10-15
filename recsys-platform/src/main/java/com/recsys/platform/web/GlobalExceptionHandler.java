@@ -1,6 +1,7 @@
 package com.recsys.platform.web;
 
 import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -33,6 +34,17 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** 受控业务码跨Servlet/Reactive保持一致，内部cause只用于服务端诊断。 */
+    @ExceptionHandler(PublicErrorException.class)
+    public ResponseEntity<ApiError> handlePublicError(PublicErrorException ex, HttpServletRequest req) {
+        ErrorCode error = ex.errorCode();
+        if (error.httpStatus() == ErrorCode.NO_HTTP_STATUS) error = ErrorCode.INTERNAL_ERROR;
+        if (error.httpStatus() >= HttpStatus.INTERNAL_SERVER_ERROR.value()) {
+            log.error("Public server failure code={} path={}", error.code(), req.getRequestURI(), ex);
+        }
+        return ResponseEntity.status(error.httpStatus()).body(ApiError.of(error, req.getRequestURI(), null));
+    }
 
     /** @Valid 请求体校验失败(POST/PUT body)。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)

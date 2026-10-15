@@ -1,6 +1,8 @@
 package com.recsys.gateway.security;
 
 import com.recsys.platform.security.AuthProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recsys.gateway.web.GatewayErrorResponses;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -25,7 +27,8 @@ class SandboxGatewaySecurityTest {
             when(decoder.decode(role)).thenReturn(Mono.just(Jwt.withTokenValue(role).header("alg","HS256").subject("user")
                     .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).claim("roles",List.of(role)).build()));
         }
-        var chain=new GatewaySecurityConfig().securityWebFilterChain(ServerHttpSecurity.http(),props,casdoor,decoder);
+        var errors=new GatewaySecurityErrorHandler(new GatewayErrorResponses(new ObjectMapper()));
+        var chain=new GatewaySecurityConfig().securityWebFilterChain(ServerHttpSecurity.http(),props,casdoor,decoder,errors);
         var client=WebTestClient.bindToWebHandler(exchange->exchange.getResponse().setComplete()).webFilter(new WebFilterChainProxy(chain)).build();
         for(String path:List.of("/api/sandbox/search-ad-deliveries/id","/api/sandbox/ad-impressions/id","/api/sandbox/natural-deliveries/id","/api/sandbox/natural-impressions/id")) {
             client.get().uri(path).exchange().expectStatus().isUnauthorized();
