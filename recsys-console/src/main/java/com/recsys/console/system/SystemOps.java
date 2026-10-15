@@ -11,8 +11,9 @@ public record SystemOps(
         boolean redisAvailable,
         String message,
         Map<String, String> tuning,
-        List<JobStatus> jobs) {
+        List<JobStatus> jobs,
+        String code) {
 
-    public record JobStatus(String name, String status, String updatedAt, String detail, String raw) {
+    public record JobStatus(String name, String status, String updatedAt, String detail, String raw, String code) {
     }
 }

@@ -20,12 +20,13 @@ class SystemOpsServiceTest {
         assertThat(row.name()).isEqualTo("eval");
         assertThat(row.status()).isEqualTo("ok");
         assertThat(row.updatedAt()).isEqualTo("2026-09-04 08:00:00");
-        assertThat(row.detail()).isEqualTo("done");
+        assertThat(row.detail()).isNull();
+        assertThat(row.raw()).doesNotContain("done");
     }
 
     @Test
     void parseJob_handlesMissingDetailAndBlank() {
-        assertThat(SystemOpsService.parseJob("hot", "failed@2026-09-04 08:00:00").detail()).isNull();
+        assertThat(SystemOpsService.parseJob("hot", "failed@2026-09-04 08:00:00").code()).isEqualTo("JOB_EXECUTION_FAILED");
         assertThat(SystemOpsService.parseJob("idf", null).status()).isEqualTo("UNKNOWN");
         assertThat(SystemOpsService.parseJob("swing", "running").status()).isEqualTo("running");
     }

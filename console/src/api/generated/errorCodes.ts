@@ -596,6 +596,46 @@ export const errorCodes = {
     message: '物品信息暂时无法读取，请稍后重试',
     httpStatus: 503,
   },
+  JOB_UNKNOWN: {
+    message: '作业名称不存在，请检查 --job 或 --targets',
+    httpStatus: 0,
+  },
+  JOB_INVALID_ARGUMENT: {
+    message: '作业参数或依赖计划不合法，请检查参数和作业依赖',
+    httpStatus: 0,
+  },
+  JOB_EXECUTION_FAILED: {
+    message: '作业执行失败，可能已有部分结果，请核对状态后再重试',
+    httpStatus: 0,
+  },
+  JOB_DEPENDENCY_FAILED: {
+    message: '上游作业未完成，本作业尚未执行',
+    httpStatus: 0,
+  },
+  JOB_ALREADY_RUNNING: {
+    message: '已有作业管线在执行，请等待完成后重试',
+    httpStatus: 0,
+  },
+  JOB_LOCK_UNAVAILABLE: {
+    message: '无法确认作业执行锁，本次未开始执行，请稍后重试',
+    httpStatus: 0,
+  },
+  JOB_STATUS_WRITE_FAILED: {
+    message: '作业状态未能确认，业务效果可能已生效，请核对后再重试',
+    httpStatus: 0,
+  },
+  JOB_STATUS_INVALID: {
+    message: '作业状态记录无法识别，当前结果未知，请核对执行记录',
+    httpStatus: 0,
+  },
+  CONSOLE_OPS_UNAVAILABLE: {
+    message: '运行配置与作业状态暂时无法读取，请稍后重试',
+    httpStatus: 0,
+  },
+  JOB_LOCK_RELEASE_FAILED: {
+    message: '作业执行已结束，但锁释放未能确认，请核对锁状态后再运行',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

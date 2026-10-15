@@ -1,5 +1,10 @@
 package com.recsys.offline;
 
+import com.recsys.common.constant.RedisKeys;
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
+import com.recsys.common.job.JobState;
+import com.recsys.common.job.JobStatusRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -9,7 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,7 +40,7 @@ public class DagJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(DagJob.class);
     private static final String LOCK_KEY = "job:dag:lock";
     private static final Duration LOCK_TTL = Duration.ofHours(6);
-    private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Duration STATUS_TTL = Duration.ofDays(7);
 
     /** 作业 → 直接依赖(缺项=无依赖)。口径参照 CLAUDE.md 的引导顺序。 */
     private static final Map<String, List<String>> DEPS = Map.ofEntries(
@@ -75,49 +79,34 @@ public class DagJob implements OfflineJob {
         return "run-dag";
     }
 
+    /** 失败必须停止下游并传播；计划校验和锁确认先于任何业务副作用。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         List<String> targets = resolveTargets(args);
-        if (targets.isEmpty()) {
-            log.error("run-dag:未指定 --targets 且 --pipeline 无效;可选管线 {}", PIPELINES.keySet());
-            return;
-        }
+        if (targets.isEmpty()) throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         List<String> order;
         try {
             order = Dag.plan(targets, DEPS);
         } catch (IllegalStateException cycle) {
-            log.error("run-dag 规划失败:{}", cycle.getMessage());
-            return;
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT, cycle);
+        }
+        Map<String, OfflineJob> byName = jobsByName();
+        if (order.stream().anyMatch(n -> !byName.containsKey(n))) {
+            throw new PublicErrorException(ErrorCode.JOB_UNKNOWN);
         }
         log.info("run-dag 计划({} 个作业,拓扑序):{}", order.size(), order);
-
         if (args.containsOption("dry-run")) {
             log.info("--dry-run:仅打印计划,不执行");
             return;
         }
-
-        Map<String, OfflineJob> byName = jobsByName();
-        List<String> missing = order.stream().filter(n -> !byName.containsKey(n)).toList();
-        if (!missing.isEmpty()) {
-            log.error("run-dag 终止:计划含未知作业 {}(拒绝半跑,以免下游用陈旧数据)", missing);
-            return;
-        }
-
         StringRedisTemplate redis = redisProvider.getIfAvailable();
-        Lock lock = acquireLock(redis);
-        if (lock == Lock.HELD) {
-            log.warn("run-dag:已有 DAG 在跑(锁 {} 被占),本次跳过", LOCK_KEY);
-            return;
-        }
+        acquireLock(redis);
         try {
             execute(order, byName, redis, args);
         } finally {
-            releaseLock(redis, lock == Lock.ACQUIRED);
+            releaseLock(redis);
         }
     }
-
-    /** 锁获取结果:成功持有 / 被他人占用 / 无锁(Redis 缺失或异常,降级无锁运行)。 */
-    private enum Lock { ACQUIRED, HELD, NONE }
 
     private void execute(List<String> order, Map<String, OfflineJob> byName,
                          StringRedisTemplate redis, ApplicationArguments args) {
@@ -127,34 +116,44 @@ public class DagJob implements OfflineJob {
             long t0 = System.currentTimeMillis();
             try {
                 byName.get(name).run(args);
-                recordStatus(redis, name, "ok", null);
-                log.info("✅ {} 完成({} ms)", name, System.currentTimeMillis() - t0);
-            } catch (Exception e) {
-                recordStatus(redis, name, "fail", e.getMessage());
-                List<String> skipped = order.subList(i + 1, order.size());
-                log.error("❌ {} 失败:{};断链即止,跳过下游 {}", name, e.getMessage(), skipped, e);
-                for (String s : skipped) {
-                    recordStatus(redis, s, "skipped", "上游 " + name + " 失败");
-                }
-                return;  // fail-stop
+            } catch (Exception failure) {
+                var safe = JobFailures.publicFailure(failure);
+                recordStatus(redis, name, JobState.FAIL, safe.errorCode());
+                recordSkipped(order.subList(i + 1, order.size()), redis);
+                log.error("{} job={}", safe.errorCode().displayMessage(), name);
+                throw safe;
             }
+            // 状态和业务效果并非一个事务；写状态失败只能停止后续，不能声称业务未执行。
+            if (!recordStatus(redis, name, JobState.OK, null)) {
+                recordSkipped(order.subList(i + 1, order.size()), redis);
+                throw new PublicErrorException(ErrorCode.JOB_STATUS_WRITE_FAILED);
+            }
+            log.info("{} 完成({} ms)", name, System.currentTimeMillis() - t0);
         }
-        log.info("🎉 run-dag 全部完成:{}", order);
+        log.info("run-dag 全部完成:{}", order);
+    }
+
+    private void recordSkipped(List<String> skipped, StringRedisTemplate redis) {
+        for (String name : skipped) recordStatus(redis, name, JobState.SKIPPED, ErrorCode.JOB_DEPENDENCY_FAILED);
     }
 
     private List<String> resolveTargets(ApplicationArguments args) {
         if (args.containsOption("targets")) {
-            String raw = args.getOptionValues("targets").get(0);
+            String raw = option(args, "targets", null);
             List<String> out = new ArrayList<>();
-            for (String t : raw.split(",")) {
-                if (!t.isBlank()) {
-                    out.add(t.trim());
-                }
-            }
+            for (String t : raw.split(",")) if (!t.isBlank()) out.add(t.trim());
             return out;
         }
-        String pipeline = args.containsOption("pipeline") ? args.getOptionValues("pipeline").get(0).trim() : "full";
-        return PIPELINES.getOrDefault(pipeline, List.of());
+        return PIPELINES.getOrDefault(option(args, "pipeline", "full").trim(), List.of());
+    }
+
+    private static String option(ApplicationArguments args, String key, String fallback) {
+        if (!args.containsOption(key)) return fallback;
+        List<String> values = args.getOptionValues(key);
+        if (values == null || values.size() != 1 || values.get(0).isBlank()) {
+            throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
+        }
+        return values.get(0);
     }
 
     private Map<String, OfflineJob> jobsByName() {
@@ -167,40 +166,35 @@ public class DagJob implements OfflineJob {
         return m;
     }
 
-    // ---- Redis 分布式锁 + 状态记录(Redis 不可用则降级:无锁运行 + 不记状态)----
-
-    private Lock acquireLock(StringRedisTemplate redis) {
-        if (redis == null) {
-            return Lock.NONE;   // 无 Redis → 降级无锁运行
-        }
+    // 锁与状态均需可确认；缺少Redis时在执行前拒绝，不无锁运行后报成功。
+    private void acquireLock(StringRedisTemplate redis) {
+        if (redis == null) throw new PublicErrorException(ErrorCode.JOB_LOCK_UNAVAILABLE);
+        Boolean acquired;
         try {
-            Boolean ok = redis.opsForValue().setIfAbsent(LOCK_KEY, LocalDateTime.now().format(TS), LOCK_TTL);
-            return Boolean.TRUE.equals(ok) ? Lock.ACQUIRED : Lock.HELD;
-        } catch (Exception e) {
-            log.warn("获取 DAG 锁失败,降级无锁运行: {}", e.getMessage());
-            return Lock.NONE;   // Redis 异常 → 降级运行,而非误判为被占用
+            acquired = redis.opsForValue().setIfAbsent(LOCK_KEY, LocalDateTime.now().toString(), LOCK_TTL);
+        } catch (RuntimeException failure) {
+            throw new PublicErrorException(ErrorCode.JOB_LOCK_UNAVAILABLE, failure);
+        }
+        if (acquired == null) throw new PublicErrorException(ErrorCode.JOB_LOCK_UNAVAILABLE);
+        if (!acquired) throw new PublicErrorException(ErrorCode.JOB_ALREADY_RUNNING);
+    }
+
+    private void releaseLock(StringRedisTemplate redis) {
+        try {
+            redis.delete(LOCK_KEY);
+        } catch (RuntimeException failure) {
+            // 释放失败仅说明锁可能保留到原TTL，不能撤销已经发生的业务效果。
+            log.warn("{} failureType={}", ErrorCode.JOB_LOCK_RELEASE_FAILED.displayMessage(), failure.getClass().getSimpleName());
         }
     }
 
-    private void releaseLock(StringRedisTemplate redis, boolean locked) {
-        if (redis != null && locked) {
-            try {
-                redis.delete(LOCK_KEY);
-            } catch (Exception ignore) {
-                // 锁到期会自动释放
-            }
-        }
-    }
-
-    private void recordStatus(StringRedisTemplate redis, String job, String status, String detail) {
-        if (redis == null) {
-            return;
-        }
+    private boolean recordStatus(StringRedisTemplate redis, String job, JobState state, ErrorCode code) {
         try {
-            String v = status + "@" + LocalDateTime.now().format(TS) + (detail == null ? "" : (":" + detail));
-            redis.opsForValue().set("job:status:" + job, v, Duration.ofDays(7));
-        } catch (Exception ignore) {
-            // 状态记录失败不影响作业本身
+            redis.opsForValue().set(RedisKeys.jobStatus(job), JobStatusRecord.now(state, code).encoded(), STATUS_TTL);
+            return true;
+        } catch (RuntimeException failure) {
+            log.warn("{} job={} failureType={}", ErrorCode.JOB_STATUS_WRITE_FAILED.displayMessage(), job, failure.getClass().getSimpleName());
+            return false;
         }
     }
 }

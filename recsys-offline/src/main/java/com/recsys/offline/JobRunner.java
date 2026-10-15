@@ -1,5 +1,7 @@
 package com.recsys.offline;
 
+import com.recsys.common.error.ErrorCode;
+import com.recsys.common.error.PublicErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -26,22 +28,29 @@ public class JobRunner implements ApplicationRunner {
                 java.util.stream.Collectors.toMap(OfflineJob::name, j -> j));
     }
 
+    /** 非成功结果必须向上传播，调度调用方不能把失败当作完成。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         List<String> jobNames = args.getOptionValues("job");
-        if (jobNames == null || jobNames.isEmpty()) {
+        if (!args.containsOption("job")) {
             log.info("未指定 --job;可用作业: {}", jobs.keySet());
             return;
         }
+        // 先核对整个请求，避免已运行前面的作业后才发现后面的名称不存在。
+        if (jobNames == null || jobNames.isEmpty() || jobNames.stream().anyMatch(n -> !jobs.containsKey(n))) {
+            throw new PublicErrorException(ErrorCode.JOB_UNKNOWN);
+        }
         for (String name : jobNames) {
             OfflineJob job = jobs.get(name);
-            if (job == null) {
-                log.error("未知作业: {};可用: {}", name, jobs.keySet());
-                continue;
-            }
             log.info("===== 开始作业: {} =====", name);
             long t0 = System.currentTimeMillis();
-            job.run(args);
+            try {
+                job.run(args);
+            } catch (Exception failure) {
+                var safe = JobFailures.publicFailure(failure);
+                log.error("{} job={}", safe.errorCode().displayMessage(), name);
+                throw safe;
+            }
             log.info("===== 完成作业: {},耗时 {} ms =====", name, System.currentTimeMillis() - t0);
         }
     }

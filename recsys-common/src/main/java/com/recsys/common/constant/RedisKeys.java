@@ -8,6 +8,12 @@ public final class RedisKeys {
     private RedisKeys() {
     }
 
+    /** 离线作业状态统一前缀，生产者和控制台读取必须一致。 */
+    public static final String JOB_STATUS_PREFIX = "job:status:";
+
+    /** 作业名由已注册作业提供，不接收任意Redis键。 */
+    public static String jobStatus(String job) { return JOB_STATUS_PREFIX + job; }
+
     /** 用户在线特征 Hash:feat:user:{userId} */
     public static String userFeature(long userId) {
         return "feat:user:" + userId;

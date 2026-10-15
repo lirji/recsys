@@ -338,12 +338,14 @@ export interface SystemJobStatus {
   updatedAt: string | null;
   detail: string | null;
   raw: string | null;
+  code?: string | null;
 }
 export interface SystemOps {
   redisAvailable: boolean;
   message: string | null;
   tuning: Record<string, string>;
   jobs: SystemJobStatus[];
+  code?: string | null;
 }
 
 // ===== 用户360(/api/console/user/{id}) =====

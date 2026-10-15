@@ -150,7 +150,17 @@ public enum ErrorCode {
     CONSOLE_REPORT_READ_FAILED("CONSOLE_REPORT_READ_FAILED", "报表内容无法读取，请检查文件或稍后重试", 500),
     CONSOLE_USER_DATA_UNAVAILABLE("CONSOLE_USER_DATA_UNAVAILABLE", "该部分用户数据暂时无法读取，请稍后重试", 0),
     CONSOLE_USER_REALTIME_UNAVAILABLE("CONSOLE_USER_REALTIME_UNAVAILABLE", "用户实时态暂时无法读取，请稍后重试", 0),
-    CONSOLE_ITEM_QUERY_FAILED("CONSOLE_ITEM_QUERY_FAILED", "物品信息暂时无法读取，请稍后重试", 503);
+    CONSOLE_ITEM_QUERY_FAILED("CONSOLE_ITEM_QUERY_FAILED", "物品信息暂时无法读取，请稍后重试", 503),
+    JOB_UNKNOWN("JOB_UNKNOWN", "作业名称不存在，请检查 --job 或 --targets", 0),
+    JOB_INVALID_ARGUMENT("JOB_INVALID_ARGUMENT", "作业参数或依赖计划不合法，请检查参数和作业依赖", 0),
+    JOB_EXECUTION_FAILED("JOB_EXECUTION_FAILED", "作业执行失败，可能已有部分结果，请核对状态后再重试", 0),
+    JOB_DEPENDENCY_FAILED("JOB_DEPENDENCY_FAILED", "上游作业未完成，本作业尚未执行", 0),
+    JOB_ALREADY_RUNNING("JOB_ALREADY_RUNNING", "已有作业管线在执行，请等待完成后重试", 0),
+    JOB_LOCK_UNAVAILABLE("JOB_LOCK_UNAVAILABLE", "无法确认作业执行锁，本次未开始执行，请稍后重试", 0),
+    JOB_STATUS_WRITE_FAILED("JOB_STATUS_WRITE_FAILED", "作业状态未能确认，业务效果可能已生效，请核对后再重试", 0),
+    JOB_STATUS_INVALID("JOB_STATUS_INVALID", "作业状态记录无法识别，当前结果未知，请核对执行记录", 0),
+    CONSOLE_OPS_UNAVAILABLE("CONSOLE_OPS_UNAVAILABLE", "运行配置与作业状态暂时无法读取，请稍后重试", 0),
+    JOB_LOCK_RELEASE_FAILED("JOB_LOCK_RELEASE_FAILED", "作业执行已结束，但锁释放未能确认，请核对锁状态后再运行", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
