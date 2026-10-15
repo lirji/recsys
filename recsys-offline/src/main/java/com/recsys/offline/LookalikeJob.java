@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.derived.LookalikeMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -19,46 +19,46 @@ import java.util.Set;
  * 把"种子 + 相似用户"物化成人群包 Redis set {@code ad:audience:{id}},供在线广告定向(SISMEMBER)。
  *
  * <p>算法:对每个 audience,取其种子用户的 {@code user_embedding} 求<b>质心</b>,在 user_embedding 上做
- * pgvector 余弦 ANN 取 top-N 相似用户 → 与种子并集写入人群包(原子替换)。这是广告"智能定向"里
+ * pgvector 余弦 ANN 取 top-N 相似用户 → 与种子并集写入人群包(保留原先删除后写入的发布顺序)。这是广告"智能定向"里
  * 用向量相似把小种子扩成大受众的经典做法(种子人群向量扩散)。
  *
  * <p>参数:--top-n(每个人群扩散上限,默认 1000)、--audience(只处理某个 audience_id,默认全部)。
- * 缺 user_embedding / 种子无向量的人群跳过。
+ * 种子无可用向量的人群跳过；缺表或查询失败仍向上抛出，当前人群旧包保留。
  */
 @Component
 public class LookalikeJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(LookalikeJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final LookalikeMapper mapper;
     private final StringRedisTemplate redis;
 
-    public LookalikeJob(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate jdbc,
-                        StringRedisTemplate redis) {   // #3:user_embedding 走派生库
-        this.jdbc = jdbc;
+    /** 派生Mapper绑定由宿主配置确定，作业仅保留质心算法与原Redis发布流程。 */
+    public LookalikeJob(LookalikeMapper mapper, StringRedisTemplate redis) {
+        this.mapper = mapper;
         this.redis = redis;
     }
 
+    /** 保持人群扩散命令入口。 */
     @Override
     public String name() {
         return "lookalike";
     }
 
+    /** 当前人群查询完成后才删除旧包，失败边界沿用原实现。 */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int topN = intArg(args, "top-n", 1000);
         Long only = args.containsOption("audience") ? Long.parseLong(args.getOptionValues("audience").get(0)) : null;
 
-        List<Long> audiences = only != null ? List.of(only) : jdbc.queryForList(
-                "SELECT DISTINCT audience_id FROM ad_audience_seed WHERE audience_id IS NOT NULL", Long.class);
+        List<Long> audiences = only != null ? List.of(only) : mapper.audienceIds();
         if (audiences.isEmpty()) {
             log.warn("无 ad_audience_seed 种子人群;先灌种子(audience_id,user_id)再跑 lookalike");
             return;
         }
 
         for (Long aud : audiences) {
-            List<Long> seeds = jdbc.queryForList(
-                    "SELECT user_id FROM ad_audience_seed WHERE audience_id=?", Long.class, aud);
+            List<Long> seeds = mapper.seedUsers(aud);
             List<float[]> seedVecs = seedVectors(seeds);
             if (seedVecs.isEmpty()) {
                 log.warn("人群 {} 的种子无 user_embedding,跳过", aud);
@@ -67,13 +67,7 @@ public class LookalikeJob implements OfflineJob {
             float[] centroid = centroid(seedVecs);
             // ANN 扩散:质心的 top-N 相似用户
             PGvector pv = new PGvector(centroid);
-            List<Long> expanded = jdbc.query(
-                    "SELECT user_id FROM user_embedding ORDER BY embedding <=> ? LIMIT ?",
-                    ps -> {
-                        ps.setObject(1, pv);
-                        ps.setInt(2, topN);
-                    },
-                    (rs, n) -> rs.getLong("user_id"));
+            List<Long> expanded = mapper.nearestUsers(pv, topN);
 
             Set<String> pkg = new LinkedHashSet<>();
             for (Long s : seeds) {
@@ -95,14 +89,10 @@ public class LookalikeJob implements OfflineJob {
         if (seeds.isEmpty()) {
             return out;
         }
-        String ph = String.join(",", java.util.Collections.nCopies(seeds.size(), "?"));
-        jdbc.query("SELECT embedding::text FROM user_embedding WHERE user_id IN (" + ph + ")",
-                rs -> {
-                    String s = rs.getString(1);
-                    if (s != null) {
-                        out.add(parseVector(s));
-                    }
-                }, seeds.toArray());
+        mapper.scanSeedVectors(seeds, context -> {
+            String text = context.getResultObject();
+            if (text != null) out.add(parseVector(text));
+        });
         return out;
     }
 

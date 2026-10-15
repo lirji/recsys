@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.derived.LookalikeMapper">
+    <select id="audienceIds" resultType="java.lang.Long" useCache="false">
+        SELECT DISTINCT audience_id FROM ad_audience_seed WHERE audience_id IS NOT NULL
+    </select>
+    <select id="seedUsers" resultType="java.lang.Long" useCache="false">
+        SELECT user_id FROM ad_audience_seed WHERE audience_id=#{audienceId}
+    </select>
+    <select id="scanSeedVectors" resultType="java.lang.String" useCache="false">
+        SELECT embedding::text FROM user_embedding WHERE user_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id,jdbcType=BIGINT}</foreach>
+    </select>
+    <select id="nearestUsers" resultType="java.lang.Long" useCache="false">
+        SELECT COALESCE(user_id,0) FROM user_embedding
+        ORDER BY embedding &lt;=&gt; #{vector,jdbcType=OTHER,typeHandler=org.apache.ibatis.type.ObjectTypeHandler}
+        LIMIT #{limit}
+    </select>
+</mapper>

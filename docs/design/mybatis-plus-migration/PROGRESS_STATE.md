@@ -396,3 +396,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13c6最终验证
 
 见MP13C6_RESULT。旧7、新关联11、完整离线153/29类、24 reactor测试编译/hygiene通过。7源指纹3ad536aa463234c17255560a6342baaad9081ce1a36de220e0ca90de0908e0de；三组版本替换、500批次、晚失败整体回滚与历史手动事务边界保持。R9私有MANAGED会话复用原连接、6 SQL进入XML，补3表9列注释；普通四源会话不受影响。MP13c4=e527177c及c5=d06e66c7均已ff/push，CI38757206178四门禁成功/build在途。继续LookalikeJob。
+
+## MP13c7入口
+
+旧Lookalike真实PG/Redis7项通过：重复种子向量只参与一次质心、种子并集、NULL用户/向量、默认1000和指定0、负limit及缺表失败保持旧包。四条查询进入derived LookalikeMapper/XML，继续ResultHandler消费种子向量；不改Redis删除后写入的非原子边界，只纠正注释。先前d06e66c7 CI38757206178后因新提交取消，不记通过；R9=df2ca1a2已ff/push，新CI38758681589在途。
+
+## MP13c7最终验证
+
+见MP13C7_RESULT。旧PG/Redis7、新关联10、完整离线160/30类、全仓24 reactor测试编译/hygiene通过。5源指纹0a13c2eb9f87a11123643b5206e420aba2ce3dbefd72e1f4f8e54bf33a070843；重复/NULL种子、ANN NULL身份0、默认1000、指定0与负limit、缺表和旧包边界保持。四SQL进入派生Mapper/XML，未新增透传层。继续MP13d1 HotJob，历史SQL/用户保护不变。
