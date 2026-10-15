@@ -1,0 +1,8 @@
+{
+  "model": "tiger-test-fixture",
+  "levels": 3,
+  "codes": 2,
+  "code_token_base": 2,
+  "bos": 1,
+  "max_hist": 20
+}

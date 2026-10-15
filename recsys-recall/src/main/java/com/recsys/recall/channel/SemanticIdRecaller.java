@@ -6,7 +6,7 @@ import com.recsys.common.recall.RecallItem;
 import com.recsys.recall.RecallProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.SemanticCodeMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -37,15 +37,15 @@ public class SemanticIdRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(SemanticIdRecaller.class);
 
-    private final JdbcTemplate jdbc;
-    private final JdbcTemplate derived;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
+    private final RecentPositiveItemsSource recentItemsSource;
+    private final SemanticCodeMapper mapper;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
     private final RecallProperties props;
 
-    public SemanticIdRecaller(JdbcTemplate jdbc,
-                              @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+    public SemanticIdRecaller(RecentPositiveItemsSource recentItemsSource,
+                              SemanticCodeMapper mapper,
                               RecallProperties props) {
-        this.jdbc = jdbc;
-        this.derived = derived;
+        this.recentItemsSource = recentItemsSource;
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -75,26 +75,24 @@ public class SemanticIdRecaller implements ChannelRecaller {
 
             // 候选 = 与任一种子同粗簇(c0)的所有 item;在 Java 里按最长公共前缀深度打分
             Map<Long, Double> best = new HashMap<>();
-            derived.query(
-                    "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE c0 = ANY(?)",
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("integer", c0s)),
-                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
-                        long itemId = rs.getLong("item_id");
-                        if (seedSet.contains(itemId)) {
-                            return; // 不召回种子本身
-                        }
-                        int[] cand = {rs.getInt("c0"), rs.getInt("c1"), rs.getInt("c2")};
-                        int depth = 0;
-                        for (int[] seed : seedCodes.values()) {
-                            depth = Math.max(depth, prefixDepth(seed, cand));
-                            if (depth == 3) {
-                                break;
-                            }
-                        }
-                        if (depth > 0) {
-                            best.merge(itemId, depth / 3.0, Math::max); // 归一化到 (0,1]
-                        }
-                    });
+            mapper.candidatesForCodes(c0s, context -> {
+                var row = context.getResultObject();
+                long itemId = row.itemId();
+                if (seedSet.contains(itemId)) {
+                    return; // 不召回种子本身
+                }
+                int[] cand = row.codes();
+                int depth = 0;
+                for (int[] seed : seedCodes.values()) {
+                    depth = Math.max(depth, prefixDepth(seed, cand));
+                    if (depth == 3) {
+                        break;
+                    }
+                }
+                if (depth > 0) {
+                    best.merge(itemId, depth / 3.0, Math::max); // 归一化到 (0,1]
+                }
+            });
 
             int limit = props.getQuota().getGenerative();
             return best.entrySet().stream()
@@ -125,11 +123,7 @@ public class SemanticIdRecaller implements ChannelRecaller {
     private Map<Long, int[]> loadCodes(List<Long> itemIds) {
         Long[] ids = itemIds.toArray(new Long[0]);
         Map<Long, int[]> out = new HashMap<>();
-        derived.query(
-                "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE item_id = ANY(?)",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getLong("item_id"),
-                        new int[]{rs.getInt("c0"), rs.getInt("c1"), rs.getInt("c2")}));
+        mapper.codesForItems(ids).forEach(row -> out.put(row.itemId(), row.codes()));
         return out;
     }
 
@@ -143,9 +137,6 @@ public class SemanticIdRecaller implements ChannelRecaller {
     }
 
     private List<Long> recentItems(long userId, int n) {
-        return jdbc.queryForList(
-                "SELECT DISTINCT item_id FROM user_behavior WHERE user_id=? " +
-                "AND action IN ('CLICK','LIKE','PLAY','RATING') ORDER BY item_id DESC LIMIT ?",
-                Long.class, userId, n);
+        return recentItemsSource.recentPositiveItems(userId, n);
     }
 }

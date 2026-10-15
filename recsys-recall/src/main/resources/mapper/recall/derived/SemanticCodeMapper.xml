@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.recall.persistence.mapper.derived.SemanticCodeMapper">
+    <resultMap id="code" type="com.recsys.recall.persistence.model.SemanticCode">
+        <constructor>
+            <arg column="item_id" javaType="_long"/>
+            <arg column="c0" javaType="_int"/><arg column="c1" javaType="_int"/><arg column="c2" javaType="_int"/>
+        </constructor>
+    </resultMap>
+    <sql id="columns">item_id, COALESCE(c0, 0) AS c0, COALESCE(c1, 0) AS c1, COALESCE(c2, 0) AS c2</sql>
+    <select id="codesForItems" resultMap="code">
+        SELECT <include refid="columns"/> FROM item_semantic_id
+        WHERE item_id = ANY(#{itemIds,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})
+    </select>
+    <select id="candidatesForCodes" resultMap="code">
+        SELECT <include refid="columns"/> FROM item_semantic_id
+        WHERE c0 = ANY(#{codes,typeHandler=com.recsys.persistence.typehandler.IntegerArrayTypeHandler})
+    </select>
+    <select id="matchingThreeLevels" resultType="long">
+        SELECT item_id FROM item_semantic_id WHERE c0=#{c0} AND c1=#{c1} AND c2=#{c2} LIMIT 20
+    </select>
+    <select id="matchingTwoLevels" resultType="long">
+        SELECT item_id FROM item_semantic_id WHERE c0=#{c0} AND c1=#{c1} LIMIT 20
+    </select>
+    <select id="matchingFirstLevel" resultType="long">
+        SELECT item_id FROM item_semantic_id WHERE c0=#{c0} LIMIT 20
+    </select>
+</mapper>

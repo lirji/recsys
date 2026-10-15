@@ -10,6 +10,9 @@ public interface RecallInputMapper {
     /** 时间序列按每个物品最近一次正反馈去重，调用者再转为时间升序。 */
     List<Long> latestPositiveSequence(@Param("userId") long userId, @Param("limit") int limit);
 
+    /** TIGER保留每次正反馈事件，不能复用按物品去重的MIND序列。 */
+    List<Long> latestPositiveEvents(@Param("userId") long userId, @Param("limit") int limit);
+
     /** 旧通道种子保留全评分动作及物品ID排序，与模型序列分开建模。 */
     List<Long> recentPositiveItems(@Param("userId") long userId, @Param("limit") int limit);
 

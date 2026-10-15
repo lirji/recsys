@@ -13,6 +13,11 @@
         SELECT DISTINCT item_id FROM user_behavior WHERE user_id=#{userId}
         AND action IN ('CLICK','LIKE','PLAY','RATING') ORDER BY item_id DESC LIMIT #{limit}
     </select>
+    <select id="latestPositiveEvents" resultType="long">
+        SELECT item_id FROM user_behavior WHERE user_id=#{userId}
+        AND ((action='RATING' AND value>=4) OR action IN ('CLICK','LIKE','PLAY'))
+        ORDER BY ts DESC LIMIT #{limit}
+    </select>
     <select id="categories" resultType="string">
         SELECT jsonb_array_elements_text(profile->'categories') FROM app_user WHERE user_id=#{userId}
     </select>

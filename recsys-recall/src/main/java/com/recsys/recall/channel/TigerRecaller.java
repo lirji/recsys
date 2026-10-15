@@ -14,7 +14,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recall.persistence.mapper.derived.SemanticCodeMapper;
+import com.recsys.recall.persistence.mapper.primary.RecallInputMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -45,8 +46,8 @@ public class TigerRecaller implements ChannelRecaller {
 
     private static final Logger log = LoggerFactory.getLogger(TigerRecaller.class);
 
-    private final JdbcTemplate jdbc;
-    private final JdbcTemplate derived;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
+    private final RecallInputMapper inputMapper;
+    private final SemanticCodeMapper mapper;   // #3:item_semantic_id 走派生库(种子 user_behavior 读留 @Primary)
     private final RecallProperties props;
 
     private OrtEnvironment env;
@@ -55,11 +56,11 @@ public class TigerRecaller implements ChannelRecaller {
     private int levels, codes, base, bos, maxHist;
     private volatile boolean ready = false;
 
-    public TigerRecaller(JdbcTemplate jdbc,
-                         @org.springframework.beans.factory.annotation.Qualifier("derivedJdbc") JdbcTemplate derived,
+    public TigerRecaller(RecallInputMapper inputMapper,
+                         SemanticCodeMapper mapper,
                          RecallProperties props) {
-        this.jdbc = jdbc;
-        this.derived = derived;
+        this.inputMapper = inputMapper;
+        this.mapper = mapper;
         this.props = props;
     }
 
@@ -235,20 +236,15 @@ public class TigerRecaller implements ChannelRecaller {
 
     /** 生成的语义 ID → item:精确 (c0,c1,c2),无则 (c0,c1),再无则 (c0) 前缀兜底。 */
     private List<Long> itemsForCodes(int[] gen) {
-        List<Long> ids = derived.queryForList(
-                "SELECT item_id FROM item_semantic_id WHERE c0=? AND c1=? AND c2=? LIMIT 20",
-                Long.class, gen[0], gen[1], gen[2]);
+        List<Long> ids = mapper.matchingThreeLevels(gen[0], gen[1], gen[2]);
         if (!ids.isEmpty()) {
             return ids;
         }
-        ids = derived.queryForList(
-                "SELECT item_id FROM item_semantic_id WHERE c0=? AND c1=? LIMIT 20",
-                Long.class, gen[0], gen[1]);
+        ids = mapper.matchingTwoLevels(gen[0], gen[1]);
         if (!ids.isEmpty()) {
             return ids;
         }
-        return derived.queryForList(
-                "SELECT item_id FROM item_semantic_id WHERE c0=? LIMIT 20", Long.class, gen[0]);
+        return mapper.matchingFirstLevel(gen[0]);
     }
 
     private Map<Long, int[]> loadCodes(List<Long> itemIds) {
@@ -257,21 +253,13 @@ public class TigerRecaller implements ChannelRecaller {
             return out;
         }
         Long[] ids = itemIds.toArray(new Long[0]);
-        derived.query(
-                "SELECT item_id, c0, c1, c2 FROM item_semantic_id WHERE item_id = ANY(?)",
-                ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
-                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getLong("item_id"),
-                        new int[]{rs.getInt("c0"), rs.getInt("c1"), rs.getInt("c2")}));
+        mapper.codesForItems(ids).forEach(row -> out.put(row.itemId(), row.codes()));
         return out;
     }
 
     /** 用户最近 ≤n 个 ≥4 正反馈 item,返回 oldest→newest(与训练序列方向一致)。 */
     private List<Long> recentItems(long userId, int n) {
-        List<Long> desc = jdbc.queryForList(
-                "SELECT item_id FROM user_behavior WHERE user_id=? " +
-                "AND ((action='RATING' AND value>=4) OR action IN ('CLICK','LIKE','PLAY')) " +
-                "ORDER BY ts DESC LIMIT ?",
-                Long.class, userId, n);
+        List<Long> desc = inputMapper.latestPositiveEvents(userId, n);
         Collections.reverse(desc);
         return desc;
     }
