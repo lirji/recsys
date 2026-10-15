@@ -12,10 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.BanditImpressionMapper;
 import com.recsys.offline.persistence.mapper.primary.PositiveFeedbackMapper;
 import com.recsys.offline.persistence.model.PositiveFeedbackFilter;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -47,28 +46,30 @@ public class BanditStatsJob implements OfflineJob {
 
     private static final Logger log = LoggerFactory.getLogger(BanditStatsJob.class);
 
-    private final JdbcTemplate jdbc;
+    private final BanditImpressionMapper impressionMapper;
     private final PositiveFeedbackMapper feedback;
     private final StringRedisTemplate redis;
     private final FeatureService featureService;
     private final ContentService contentService;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** 正反馈读取统一走主源Mapper，算法与其他存储职责继续由作业保留。 */
-    public BanditStatsJob(PositiveFeedbackMapper feedback, JdbcTemplate jdbc, StringRedisTemplate redis,
-                          FeatureService featureService, ContentService contentService) {
-        this.jdbc = jdbc;
+    /** 曝光与正反馈都绑定主源Mapper，模型算法和Redis发布职责保持。 */
+    public BanditStatsJob(PositiveFeedbackMapper feedback, BanditImpressionMapper impressionMapper,
+                          StringRedisTemplate redis, FeatureService featureService, ContentService contentService) {
+        this.impressionMapper = impressionMapper;
         this.feedback = feedback;
         this.redis = redis;
         this.featureService = featureService;
         this.contentService = contentService;
     }
 
+    /** 保持离线Bandit充分统计命令。 */
     @Override
     public String name() {
         return "bandit-stats";
     }
 
+    /** 曝光为空时保留原模型；窗口只约束曝光，奖励沿原独立上界。 */
     @Override
     public void run(ApplicationArguments args) {
         int days = intArg(args, "days", 30);
@@ -76,21 +77,11 @@ public class BanditStatsJob implements OfflineJob {
         double minRating = dblArg(args, "min-rating", 4.0);
         boolean incremental = args.containsOption("incremental");
         Long maxTs = BehaviorQuery.maxTs(args);
-        String bt = BehaviorQuery.table(args);   // #2
+        var source = BehaviorQuery.source(args);
         List<String> order = FeatureAssembler.FEATURE_ORDER;   // 5 维,与在线 featureSnapshot 同源
         int d = order.size();
 
-        // 曝光上下文:user_behavior 的 IMPRESSION 行(days 下界 + 可选 max-ts 上切)
-        StringBuilder win = new StringBuilder("action='IMPRESSION'");
-        if (days > 0) {
-            win.append(" AND ts >= now() - interval '").append(days).append(" days'");
-        }
-        if (maxTs != null) {
-            win.append(" AND extract(epoch from ts) <= ").append(maxTs);
-        }
-        List<long[]> impressions = new ArrayList<>();
-        jdbc.query("SELECT user_id, item_id FROM " + bt + " WHERE " + win,
-                (RowCallbackHandler) rs -> impressions.add(new long[]{rs.getLong("user_id"), rs.getLong("item_id")}));
+        List<BanditImpressionMapper.Impression> impressions = impressionMapper.load(source, days, maxTs);
         if (impressions.isEmpty()) {
             log.warn("无 IMPRESSION 行(推荐曝光闭环);先跑 --job=sim-rec-events 造曝光+点击,或灌真实曝光");
             return;
@@ -98,7 +89,7 @@ public class BanditStatsJob implements OfflineJob {
 
         // 正反馈集合作 reward 标签(与 gen-samples/FtrlTrainJob 同口径:CLICK/LIKE/PLAY 或 RATING≥min)
         Set<String> positives = new HashSet<>();
-        feedback.scanPairs(new PositiveFeedbackFilter(BehaviorQuery.source(args), minRating, maxTs), context -> {
+        feedback.scanPairs(new PositiveFeedbackFilter(source, minRating, maxTs), context -> {
             var row = context.getResultObject();
             positives.add(row.userId() + ":" + row.itemId());
         });
@@ -108,16 +99,16 @@ public class BanditStatsJob implements OfflineJob {
 
         // 批量预取候选特征 + 类目(消除逐条 N+1)
         Set<Long> distinctItems = new HashSet<>();
-        for (long[] e : impressions) {
-            distinctItems.add(e[1]);
+        for (var impression : impressions) {
+            distinctItems.add(impression.itemId());
         }
         Map<Long, Map<String, Double>> itemFeats = featureService.itemFeatures(distinctItems);
         Map<Long, Item> items = contentService.findByIds(new ArrayList<>(distinctItems));
         Map<Long, Map<String, Double>> userCache = new HashMap<>();
 
         long posCount = 0;
-        for (long[] e : impressions) {
-            long u = e[0], it = e[1];
+        for (var impression : impressions) {
+            long u = impression.userId(), it = impression.itemId();
             Map<String, Double> uf = userCache.computeIfAbsent(u, featureService::userFeatures);
             Item item = items.get(it);
             String cat = item == null ? null : item.category();

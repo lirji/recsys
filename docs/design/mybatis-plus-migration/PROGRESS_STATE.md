@@ -420,3 +420,11 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13d2最终验证
 
 见MP13D2_RESULT。旧5、新关联6、完整离线172/32类、全仓24 reactor测试编译/hygiene通过。5源指纹99d5a1ec28c3f17807a75aad32e16e8681ffaf6d464952c04c5396fa61009f1a；双来源关联/阈值/NULL类目/旧键边界保持，具名long统计替代String[]。R9=df2ca1a2的CI38758681589五门禁全部SUCCESS；c7=2075bcb2/d1=06368027与本片正常ff/push后继续BanditStats剩余曝光SQL。
+
+## MP13d3入口
+
+旧BanditStats真实PG/Redis6项通过：重复曝光/NULL身份0/Long大值、主/读仓/微秒截点、默认30天只限曝光而不限制奖励下界、增量继续已有lambda、坏JSON/维度不匹配重建、空输入/SQL失败旧模型保留。特征服务替身固定x=(1,0,0,0,0)，独立逐元素断言A/b/n/lambda/order，数据库与Redis真实。曝光查询进入BanditImpressionMapper/XML；原long[]输入改具名Impression，模型算法不改。已记录原成功日志中的lambda可与实际加载值不一致，留后续提示统一阶段处理。
+
+## MP13d3最终验证
+
+见MP13D3_RESULT。旧6、新关联11、完整离线178/33类、全仓24 reactor测试编译/hygiene通过。5源指纹a2858616a5db581488d3d70fe777c4813b020d76897c9e0e702bfa755288cc3f；A/b/n/lambda/order矩阵契约与重复/NULL/时间窗口/增量/失败保持。c7/d1/d2均已ff/push到main=2d1712b5，CI38760632548在途。本片本地提交后继续IDF；两个历史Bandit提示问题已记录，留给后续错误码阶段。
