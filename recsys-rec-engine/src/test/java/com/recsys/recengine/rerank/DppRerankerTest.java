@@ -3,7 +3,7 @@ package com.recsys.recengine.rerank;
 import com.recsys.common.dto.RecommendItem;
 import com.recsys.content.Item;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.derived.EngineEmbeddingMapper;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,22 +13,20 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
 /**
- * {@link DppReranker} 单测(R4)——无 DB(mock JdbcTemplate 抛异常 → 无向量 → 走类目相似),
+ * {@link DppReranker} 单测(R4)——无 DB(mock Mapper 抛异常 → 无向量 → 走类目相似),
  * 验证行列式点过程贪心 MAP 确实<b>整页多样化</b>:相关性相近时不把同类目扎堆全选,首位仍是相关性最高。
  */
 class DppRerankerTest {
 
     private DppReranker reranker() {
-        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        EngineEmbeddingMapper mapper = mock(EngineEmbeddingMapper.class);
         // 让向量加载失败 → loadEmbeddings 退空 → 相似度走"同类目=1/异类目=0"
-        doThrow(new RuntimeException("no db")).when(jdbc)
-                .query(anyString(), (org.springframework.jdbc.core.RowCallbackHandler) any(), (Object[]) any());
-        return new DppReranker(jdbc);
+        doThrow(new RuntimeException("no db")).when(mapper).itemVectors(any(), any());
+        return new DppReranker(mapper);
     }
 
     private RerankInput input(int size, Map<Long, Item> items) {

@@ -4,7 +4,7 @@ import com.recsys.common.dto.RecommendItem;
 import com.recsys.content.Item;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.recengine.persistence.mapper.derived.EngineEmbeddingMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -31,11 +31,11 @@ public class MmrReranker implements Reranker {
 
     private static final Logger log = LoggerFactory.getLogger(MmrReranker.class);
 
-    private final JdbcTemplate jdbc;
+    private final EngineEmbeddingMapper mapper;
 
-    public MmrReranker(@org.springframework.beans.factory.annotation.Qualifier("derivedJdbc")
-                       JdbcTemplate jdbc) {   // #3:item_embedding 走派生库
-        this.jdbc = jdbc;
+    /** 向量读取委托派生库Mapper，算法与逐行失败降级策略保持原样。 */
+    public MmrReranker(EngineEmbeddingMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
@@ -139,18 +139,11 @@ public class MmrReranker implements Reranker {
             return out;
         }
         Set<Long> unique = new HashSet<>(ids);
-        String placeholders = String.join(",", unique.stream().map(x -> "?").toList());
         try {
-            jdbc.query(
-                    "SELECT item_id, embedding::text FROM item_embedding WHERE item_id IN (" + placeholders + ")",
-                    rs -> {
-                        long id = rs.getLong(1);
-                        String s = rs.getString(2);
-                        if (s != null) {
-                            out.put(id, parseVector(s));
-                        }
-                    },
-                    unique.toArray());
+            mapper.itemVectors(unique, context -> {
+                var row = context.getResultObject();
+                if (row.embedding() != null) out.put(row.itemId(), parseVector(row.embedding()));
+            });
         } catch (Exception e) {
             log.warn("MMR 读取候选向量失败,退化为类目相似: {}", e.getMessage());
         }

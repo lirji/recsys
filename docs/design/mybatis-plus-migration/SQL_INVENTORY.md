@@ -194,8 +194,8 @@
 | [com/recsys/recengine/feed/FeedDeliveryConfiguration.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryConfiguration.java) | 16 | 0 | TODO |
 | [com/recsys/recengine/feed/FeedDeliveryRepository.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/feed/FeedDeliveryRepository.java) | 7 | 9 | TODO |
 | [com/recsys/recengine/filter/DbSeenItemsSource.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/filter/DbSeenItemsSource.java) | 6 | 1 | DONE MP07a |
-| [com/recsys/recengine/rerank/DppReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/DppReranker.java) | 7 | 1 | TODO |
-| [com/recsys/recengine/rerank/MmrReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/MmrReranker.java) | 7 | 1 | TODO |
+| [com/recsys/recengine/rerank/DppReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/DppReranker.java) | 7 | 1 | DONE MP07b |
+| [com/recsys/recengine/rerank/MmrReranker.java](../../../recsys-rec-engine/src/main/java/com/recsys/recengine/rerank/MmrReranker.java) | 7 | 1 | DONE MP07b |
 
 ### recsys-recall
 
@@ -295,3 +295,5 @@ MP06b：NaturalReceiptRepository/Configuration → `behavior.persistence.mapper.
 MP06c：UserProfileService/ReportService → `console.persistence.mapper.primary.{UserProfileMapper,ReportMapper}` + `mapper/console/primary/*Mapper.xml`；console生产Java SQL已核销，证据见MP06C_RESULT。
 
 MP07a：推荐输入与曝光 → `recengine.persistence.mapper.{primary.EngineBehaviorMapper,derived.EngineEmbeddingMapper}` + `mapper/recengine/{primary,derived}/*.xml`；证据见MP07A_RESULT。
+
+MP07b：MmrReranker/DppReranker → 派生EngineEmbeddingMapper.itemVectors + XML；算法SQL已核销，证据见MP07B_RESULT。

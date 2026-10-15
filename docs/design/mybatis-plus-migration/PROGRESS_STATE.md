@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP06已交付，MP06c=782b3450。MP07a DONE/PASS（12项测试），准备Git交付后继续MP07b。
+`IN_PROGRESS`。整体计划已批准；MP00～MP06与MP07a已交付，MP07a=b686c38f。MP07b DONE/PASS（19项联合测试），MP07整体完成，准备Git交付后继续MP08a。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP07b MMR/DPP向量查询完成，MP07整体DONE，见MP07B_RESULT。
 
 - MP07a推荐输入/曝光日志完成，见MP07A_RESULT。
 
@@ -50,13 +52,13 @@
 ## 未完成
 
 - 计划已批准；无需重复确认。
-- MP00～MP06已完成；MP07～MP15及追加统一错误码目标未完成。
+- MP00～MP07已完成；MP08～MP15及追加统一错误码目标未完成。
 - 当前验证见 MP01_RESULT；全仓 clean verify 和显式浏览器验收留待 MP15，未执行项不记 PASS。
 - MP01已提交/ff合并/push main：e8462f5dbdf7c9d10b95be1ba765f04c39d54473；CI 38711518885被后续CI并发策略取消；MP02a CI 38712301983全绿；MP02b CI 38713385372被后续并发策略取消；最新CI运行/排队，需最终核验。
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP07a：engine依赖、4个输入/曝光类、Mapper/XML/配置、ExposureWrite及测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP07b：MMR/DPP、派生Mapper/XML及对照测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -75,8 +77,8 @@ MP01～MP03已交付。当前MP07a：engine依赖、4个输入/曝光类、Mappe
 
 ## 下一步
 
-1. MP06c已交付782b3450，MP07a已完成，准备Git交付。
-2. 继续MP07b～MP15，全部SQL完成后处理统一错误码。
+1. MP07a已交付b686c38f，MP07b已完成，准备Git交付。
+2. 继续MP08～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -128,3 +130,7 @@ DONE/PASS，见MP06C_RESULT；旧8、新22测试及24 reactor编译通过。MP07
 ## MP07a检查点
 
 DONE/PASS，见MP07A_RESULT；旧8、新12及24 reactor编译通过。MP07b MmrReranker/DppReranker现有相同item_embedding::text查询，去重候选后逐行解析，失败时保留已解析向量并按类目降级；可共用EngineEmbeddingMapper新增具名ResultHandler方法，保留各算法原解析/计算。DppRerankerTest现有2个Mock测试需改Mapper；补真实pgvector对照，确保有向量/NULL/缺行/缺表/候选不足/池裁剪的排序与元数据不变。
+
+## MP07b检查点
+
+DONE/PASS，见MP07B_RESULT。MP08a BudgetRepository/Configuration有schema校验、命令唯一键/摘要、账户插入锁定、UPDATE RETURNING、完成条件更新和原快照读取。多配置（Click/ConversionQuote及三族Event）临时new BudgetRepository做迁移校验；多模块测试/浏览器fixture也手工构造，须完整更新。建议Repository从明确的adDbSqlSessionTemplate获取Mapper及实际DataSource，避免声明DataSource与Mapper真实连接源不一致；不新建池/不改默认关闭条件。真实BudgetAccountPostgresTest已有11项（含并发16、约束失败回滚、迁移漂移、错误池），BudgetConfigurationTest2项；先跑旧实现，新增RETURNING事务/无缓存检查。官方MyBatis XML文档已核验affectData支持自3.5.12，本项目3.5.19满足。
