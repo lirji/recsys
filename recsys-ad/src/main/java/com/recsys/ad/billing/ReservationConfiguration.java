@@ -13,6 +13,7 @@ import javax.sql.DataSource;
 import java.time.Duration;
 
 /** 预占与回收默认仅在 sandbox 装配；停止新增 admission 不停止在途回收。 */
+@org.springframework.context.annotation.Conditional(SandboxOwnerCondition.class)
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "recsys.ad.billing.sandbox-enabled", havingValue = "true")
 public class ReservationConfiguration {

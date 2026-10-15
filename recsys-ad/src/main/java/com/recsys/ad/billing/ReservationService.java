@@ -30,6 +30,9 @@ public class ReservationService {
         this.admissionEnabled = admissionEnabled;
     }
 
+    /** owner 编排启动时验证各步骤使用相同物理资源。 */
+    public javax.sql.DataSource dataSource() { return repository.dataSource(); }
+
     /** 首次准备结果不可变；查询当前状态需调用 find，重试不会重新占用或延长期限。 */
     public Reservation.Prepared prepare(UUID reservationId, UUID quoteId, String subjectKey) {
         validate(reservationId, subjectKey);

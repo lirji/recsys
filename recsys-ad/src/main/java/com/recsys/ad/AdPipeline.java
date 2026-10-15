@@ -105,6 +105,25 @@ public class AdPipeline {
         this.adOutcomeService = adOutcomeService;
     }
 
+    /** 新 sandbox 纯候选：不调用旧曝光、扣费、预算计数、GD 或分配写入；失败交给调用方恢复。 */
+    public List<BiddingService.QuotedAd> sandboxCandidates(long userId, StructuredQuery query, int slots,
+                                                          String scene, double reserve) {
+        com.recsys.common.ad.delivery.SandboxDelivery.requireSlot(slots);
+        if (query == null || query.normalized() == null || query.normalized().isBlank()) return List.of();
+        var candidates = audienceTargeting.filter(userId, relevanceGate.filter(adRecallService.recall(
+                new AdRecallContext(query, userId, props.getRecall().getKw(), List.of()))));
+        if (candidates.isEmpty()) return List.of();
+        Set<Long> ids = candidates.stream().map(AdCandidate::adId).collect(Collectors.toSet());
+        var quotes = biddingService.auctionSandboxCpm(candidates, score(userId, candidates, scene).pctr(),
+                catalogReader.ocpcParams(ids), catalogReader.titles(ids), props.getCalibModel(), slots, reserve);
+        var creativeAds = applyDco(quotes.stream().map(BiddingService.QuotedAd::ad).toList());
+        var result = new ArrayList<BiddingService.QuotedAd>();
+        for (int i = 0; i < quotes.size(); i++) {
+            result.add(new BiddingService.QuotedAd(creativeAds.get(i), quotes.get(i).price()));
+        }
+        return List.copyOf(result);
+    }
+
     /**
      * 执行广告管线。{@code sq} 已由调用方(rec-engine)解析,{@code adBucket}/{@code reserve} 来自实验分配。
      *

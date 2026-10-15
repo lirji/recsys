@@ -11,26 +11,25 @@
 - ER-S01 DONE，提交 `9cad79fc` 已合并推送 main：修正旧预算分/元，未知不伪零，报价按自身单位展示。21 项后端、9 项前端、2 项浏览器测试通过，截图已查看；见 ER-S01_RESULT。
 - ER-S02 DONE，提交 `f05eb60b` 已合并推送 main：账户/幂等命令、NUMERIC 约束、明确 adDb 事务、版本迁移与 SHA 校验、billing.v1 RPC、ADMIN HTTP API 已完成。最终 43 项钱链路测试通过（新增 29，真实 PG 11），旧权限/预算展示 21 项额外回归通过；见 ER-S02_RESULT。默认关闭，不修改旧收费链路。
 - ER-S02A DONE，提交 `56259727` 已合并推送 main：BiddingService 新 CPM/GSP 精确边界、V002 报价持久化、proto 快照完成；57 项钱链路通过（新增 14，真实 PG 5），旧竞价额外 17 项回归通过，见 ER-S02A_RESULT。
-- ER-S03 DONE，当前分支 `feat/sandbox-budget-reservation` 正在 Git 交付：预占/查询/释放、固定原预算日、有界到期 worker、V003 和完整恢复说明。74 项钱链路通过（本片真实 PG 12 + worker 5），最终窄回归 17 项通过；见 ER-S03_RESULT。
-- 已核验 S01/S02/S02A 的 GitHub Actions 均成功；S02A run `38659158459`、S02 run `38658267901`、S01 run `38655809696`。
+- ER-S03 DONE，提交 `7b6636df` 已合并推送 main：预占/查询/释放、固定原预算日、有界到期 worker、V003 和完整恢复说明。74 项钱链路通过（本片真实 PG 12 + worker 5），最终窄回归 17 项通过；见 ER-S03_RESULT。
+- ER-S04 DONE / PASS，待本次正常 Git 交付：纯候选、签名准备、engine 整次持久化恢复、双模式 RPC/ADMIN API、ad V004 + engine V001。103 项钱链路与 25 项审查后窄回归通过（本片新增 29，PG 14）；见 ER-S04_RESULT。
+- 已核验 S03 CI run `38660364391` 成功；S01/S02/S02A 的 GitHub Actions 也均成功；S02A run `38659158459`、S02 run `38658267901`、S01 run `38655809696`。
 - 迁移说明、配置、查询未知结果与回退方式写入 SANDBOX_BUDGET_RUNBOOK；只操作过临时 Testcontainers PG，没有迁移共享数据库。
 
 ## 已修改文件
 
-ER-S03 当前范围：ad-common Reservation；ad 的 ReservationRepository/Service/Configuration/ExpiryJob、V003、两个测试；BudgetConfiguration 复用事务工厂、CpmQuoteRepository 公开同源校验；C03、TECH_SELECTION、状态、runbook、ER-S03_RESULT 和本进度。V001/V002 未改写。此前 ER-S02 范围已交付：
+ER-S04 本片：
 
-- `recsys-ad-common/src/{main,test}/java/com/recsys/common/ad/billing/`：金额/账户/命令/结果契约与校验。
-- `recsys-ad/src/{main,test}/java/com/recsys/ad/billing/`、`recsys-ad/pom.xml`：Repository、用例、专属事务装配及真实 PG 测试。
-- `recsys-ad/src/main/resources/db/ad-billing/V001__budget_account.sql`：三个带注释的版本/账户/命令表。
-- `recsys-proto/src/main/proto/billing.proto`、BudgetProtoMapper 及测试。
-- `recsys-ad-serving/.../grpc/SandboxBudgetGrpcService.java` 及测试。
-- `recsys-advertiser/.../billing/`：RPC adapter、HTTP 控制器及测试。
-- `docs/design/enterprise-reliability/CONTRACTS.md`、TECH_SELECTION、IMPLEMENTATION_SLICES、ER-S02_RESULT、SANDBOX_BUDGET_RUNBOOK、本进度。
+- ad-common `delivery/SandboxDelivery`；ad `AdPipeline.sandboxCandidates`、`delivery/DeliveryTokenCodec`、billing 的 Preparation/OwnerCondition、CpmQuoteRepository 限期签发、ReservationService 同源校验；V004。
+- proto `delivery.proto`、DeliveryProtoMapper；ad-serving SandboxDeliveryGrpcService。
+- engine 两种 AdServingGateway；`delivery/` operation 模型、Repository/Service/Configuration、ADMIN Controller；独立 engine V001。
+- 八个新测试类（29 项）；C04、TECH_SELECTION、IMPLEMENTATION_SLICES、runbook、ER-S04_RESULT 与本进度。
+- V001～V003 未修改。用户已有六文件与 console/test-results 原样保留。
 
 ## 未完成
 
-- ER-S03 已验证，待完成正常 Git 提交/合并/推送并记录实际 SHA；然后继续 ER-S04，不重复实施 S01/S02/S02A/S03。
-- ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S04～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
+- 当前分支 `feat/sandbox-delivery-operation`，基线 `7b6636df`；S04 实现/验证/文档完成，先完成本片 Git 交付，再推进 S05。不要重复实施 S01～S04。
+- ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S05～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
 - 优先形成 ER-S02～ER-S07 的最小 sandbox 曝光资金闭环，再推进自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
 - CPA 归因/迟到窗口、正式来源与期初账务、容量和恢复目标仍待确定；不阻碍无关切片，不重复询问已确定 CPM 政策。
 
@@ -44,9 +43,18 @@ ER-S03 当前范围：ad-common Reservation；ad 的 ReservationRepository/Servi
 
 ## 下一步建议
 
-1. 核实 S03 Git 交付状态，仅显式暂存本片路径，正常提交/合并/推送，不夹带用户文件或截图。
-2. 冻结并实现 C04：纯候选（无旧曝光/扣费）、engine 持久化整次操作和最终位置、稳定子操作、可信跨进程准备与同进程模式一致；丢响应重试必须恢复原条目，不能重选。
-3. 依次推进预占、整个交付操作的持久化恢复、回执、账本/Outbox 与前端验收；逐片验证和记录，不要求用户再输入继续。
+1. 按当前显式路径交付 S04（验证已 PASS），核对提交和远程 CI；继续 S05，不因子片完成等待用户。
+2. 冻结 C05：可见回执输入与原主体、签名资格/数据库准备记录、政策证据及到期、幂等业务键；同 adDb 事务内预占捕获/原结果/账本/Outbox，先与释放统一锁序。
+3. 实施 S05 后继续 S06 可靠投影、S07 sandbox 搜索 UI 的浏览器曝光回执；默认关闭真实收费与部署。
+
+S04 恢复要点：
+
+- 整次操作位于 engine primary，ad preparation/quote/reservation 位于 adDb。两个独立迁移历史，不能跨库假事务。
+- 候选阶段只读及签名；engine 先冻结最终位置和 childId，再 prepare。lease/fence 防旧写；同 ID PUT 恢复，GET 只读。异常不会转成成功空列表。
+- owner prepare 先存请求，再 quote→reservation→结果，故障间隙有已提交 held 也必须沿原 ID 续办。5 分钟 expiry 不刷新，失用 held 由 worker 回收。
+- qualification 首次结果不可变，不代表当前仍 HELD；S05 接受回执必须查当前 reservation/期限。quoteId/reservationId/qualification childId 同一 UUID，父 operationId+slot 唯一。
+- 专用 HMAC key 环无默认值，offer/qualification 用途分离；签名绑定主体/用户/位置/广告/创意/金额/政策/期限。gRPC 必须独立 engine 身份；in-process 同 owner 用例。
+- S04 验证日志 `/tmp/recsys-er-s04-final.log`（103）、`/tmp/recsys-er-s04-review-final.log`（25）；hygiene 无阻塞（formatter 不可用），新编译无依赖增量。
 
 ## 恢复 Prompt
 

@@ -1,6 +1,6 @@
 # sandbox 预算命令运行说明
 
-范围为 [CONTRACTS C02/C02A/C03](CONTRACTS.md)。这是 sandbox 预算、报价与内部预占能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。交付资格、回执与账本切片验收后，才形成曝光资金闭环。
+范围为 [CONTRACTS C02/C02A/C03/C04](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。交付资格、回执与账本切片验收后，才形成曝光资金闭环。
 
 ## 隔离库迁移
 
@@ -16,7 +16,7 @@ psql -X --set ON_ERROR_STOP=on \
   --command 'SELECT version, description, script_sha256, installed_at FROM ad_billing_schema_history ORDER BY version;'
 ```
 
-迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的版本。ER-S02A 增加 V002、ER-S03 增加 V003：按上面相同命令，将 billing_migration 依次改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql`、`recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql`，逐个重新计算摘要并执行。当前新版本启用时分别校验 V001/V002/V003，缺失/漂移拒绝启动；旧应用仍只要求自身版本，扩展迁移支持版本共存，不自动迁移。
+迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的版本。ER-S02A 增加 V002、ER-S03 增加 V003：按上面相同命令，将 billing_migration 依次改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql`、`recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql`，逐个重新计算摘要并执行。ER-S04 再依次执行 `recsys-ad/src/main/resources/db/ad-billing/V004__delivery_preparation.sql`。当前 owner 启用时分别校验 V001～V004，缺失/漂移拒绝启动；旧应用仍只要求自身版本，扩展迁移支持版本共存，不自动迁移。
 
 ## 启用范围与身份
 
@@ -55,7 +55,7 @@ schema 校验失败：核对 adDb 目标与迁移记录摘要，修正配置或�
 
 系统异常日志携带 operation、advertiserId、合法 commandId；命令表持久化 actor、请求摘要、时间、原结果，可关联排查。日志不包含令牌/密钥。查询缺结果时优先处理同 ID，不把响应丢失当作需要补偿扣款。
 
-本片可通过关闭 sandbox 开关停止新增操作并保留表与命令历史；回退代码不删除数据。当前只有额度命令，没有真实资金副作用。后续出现预占、账本和 Outbox 后，关闭签发与处理在途义务必须分开，不能照搬本片回退方式。
+S02 阶段只包含额度命令；当前版本已有 held 义务，不能直接关闭整个 sandbox 后宣称完成回退。先暂停新增预占，保留查询和到期 worker，确认在途义务后再回退代码；所有历史表保留。
 
 命令历史暂不自动删除，避免破坏幂等；长期保留/归档期限由业务风险政策确认，后续清理必须有界且保留去重证据。此片未测试生产吞吐或给出 RTO/RPO 承诺。
 
@@ -65,11 +65,11 @@ ER-S02A 的 `auctionSandboxCpm` 仅产生标准 GSP/CPM 候选与精确计价依
 
 冻结数据位于 `ad_cpm_quote`，quoteId 和 delivery/slot 均唯一，服务器数据库时钟签发并在 5 分钟到期。重试只读原行，不重新计算出价/模型、不刷新期限；同 ID 改定价依据或同交付位置换 ID 冲突。已过期报价仍可查询，后续预占接口必须基于服务端时间拒绝过期报价。展示字段 double 不可用于收费，后续预占与结算只引用服务端持久化 quoteId 的精确金额。
 
-代码回退保留 V002 和报价，不能删表释放业务义务；报价已连接内部预占，公开交付与回执扣费尚未接通。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
+代码回退保留 V002 和报价，不能删表释放业务义务；报价已连接内部预占，公开 sandbox 交付已接通，回执扣费仍由 S05 接入。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
 
 ## 预占、释放与到期回收
 
-ER-S03 提供 owner 内部 `ReservationService.prepare/find/release`；跨进程可信准备入口将在 ER-S04 接入，终端没有提交价格/预算日/广告主的预占接口。调用方先持久化 reservationId/quoteId/原主体，重试保留这些值。prepare 返回首次决策，find 返回当前状态；已释放后的 prepare 重试返回原始 HELD 决策不代表仍持有金额，当前状态必须另查。
+ER-S03 提供 owner 内部 `ReservationService.prepare/find/release`；跨进程可信准备入口已由 ER-S04 接入，终端没有提交价格/预算日/广告主的预占接口。调用方先持久化 reservationId/quoteId/原主体，重试保留这些值。prepare 返回首次决策，find 返回当前状态；已释放后的 prepare 重试返回原始 HELD 决策不代表仍持有金额，当前状态必须另查。
 
 成功预占只增加 held，不是曝光或消费。预算日取首次命令受理的 adDb 时间（Asia/Shanghai），金额/期限继承报价；跨日释放回到该预算日，不借用今天的账户。拒绝结论会保存，同命令补预算后也不会偷偷占用。要发起新的有意准备，必须从新的交付/报价操作开始，不能换 ID 复用旧报价。
 
@@ -96,3 +96,55 @@ HAVING a.held_amount <> COALESCE(SUM(r.amount) FILTER (WHERE r.state = 'HELD'), 
 ```
 
 ER-S03 恢复边界：停止进程不撤销已提交 held；恢复同版本服务后 worker 继续处理持久化 HELD。关闭签发/新增后保持回收，确认无 HELD 义务再决定是否停止整个能力。回退到没有回收功能的旧二进制不能充当预算补偿；保留 V001～V003，不删除账户、报价或预占。收费捕获及释放竞争由 ER-S05 接入，本片无 charged 修改。
+
+
+## 整次 sandbox 搜索交付与恢复
+
+engine 的 primary 数据库须另行显式应用 `recsys-rec-engine/src/main/resources/db/engine-delivery/V001__delivery_operation.sql`，同样传入该脚本 SHA256。连接目标应核对为 engine 的 `spring.datasource`；它有独立 `engine_delivery_schema_history`，不可将该迁移误套到 adDb，亦不可把 adDb 的 V001 与此 V001 混为同一版本序列。本轮只在 Testcontainers 验证，无共享库迁移。
+
+engine 启用 `recsys.ad.billing.sandbox-enabled=true` 后开放新 ADMIN API。grpc 模式显式设置 `recsys.ad.serving.mode=grpc`、`recsys.security.enabled=true`、`recsys.security.service-name=recsys-rec-engine`；ad owner 默认只信任 `recsys.ad.delivery.engine-caller=recsys-rec-engine`。无已校验内部身份，即使 nosec 也拒绝。in-process 模式在 engine 内装配 ad owner 和到期 worker；grpc 模式只有 ad-serving 装配新 owner。旧内部共享认证密钥的信任边界保留，未升级为服务独立签名密钥。
+
+在实际 owner 进程受控配置中提供：
+
+```yaml
+recsys:
+  ad:
+    delivery:
+      signing:
+        current-key-id: k1
+        keys:
+          k1: ${SANDBOX_DELIVERY_SIGNING_KEY_BASE64}
+```
+
+该环境值必须来自受控凭据，至少 32 字节密钥的标准 base64，无默认值，不在仓库/日志/终端历史写入真密钥。所有 owner 实例须有相同可验证 key 环。轮换先分发新旧 key，再切当前 key，旧 key 保留到原准备操作及资格恢复窗口关闭；查询 `ad_delivery_preparation` 的未完成行并核对输入所属 key，禁止通过删除历史记录来缩短窗口。
+
+创建并持久化一个 operationId 后，请求：
+
+```http
+PUT /api/sandbox/search-ad-deliveries/6528195b-e95a-473b-9221-75a0a77814b1
+Content-Type: application/json
+
+{"userId":"1","query":"手机","slots":2,"scene":"search"}
+```
+
+响应 `trafficClass=SANDBOX`，state 为 PREPARING/COMPLETE；每条保留最终 slot、childId、广告/创意 ID、标题和 preparation。QUALIFIED 才附资格 token；它仍不是曝光/消费。请求不接受终端价格，认证主体不使用模拟 userId。200 表示准备结果已齐（也可能预算不足或过期）；202 表示其他执行器正在处理；503 为未知，必须使用原 operationId 和完全相同请求重试。GET 同路径只读进度，不触发预占。
+
+engine 先保存整页候选、位置和稳定 childId，再调用 owner。未冻结时可重试纯候选查询，冻结后再也不重选、不补位；已拒绝条目占据原位置。先 GET 观察已保存进度，再用原 PUT 续办即可；进程崩溃遗留租约最多按数据库 30 秒期限等待可再次领取。每次租约递增 fence，旧执行器无法覆盖新进度。该期限不是 RTO 承诺，也不保证自动完成：本片同步推进，尚无后台 whole-operation 执行器。
+
+准备结果保存失败可能已经存在 quote/held；按原 childId 恢复，不创建新广告操作冒充补偿。候选超过五分钟不能首次冻结报价；已有报价恢复仍沿原五分钟到期时间。重试返回已过期的原 QUALIFIED 不代表可以继续收回执，S05 必须再次校验当前预占/资格/服务端期限。当前版本还没有收费回执接口，charged 不因准备变化。
+
+只读排查（分别连接 owner 的数据库，不做跨库 JOIN）：
+
+```sql
+-- engine primary：未完成操作和租约状态；不输出含证明的 plan_json。
+SELECT operation_id, state, fence, lease_until, created_at, updated_at
+FROM engine_ad_delivery WHERE state = 'PREPARING' ORDER BY updated_at LIMIT 100;
+
+-- adDb：准备检查点；原结果含敏感资格 token，日常诊断不 SELECT *。
+SELECT child_id, operation_id, slot, created_at, completed_at
+FROM ad_delivery_preparation WHERE result_json IS NULL ORDER BY created_at LIMIT 100;
+```
+
+engine 异常日志 `sandbox delivery incomplete` 仅含 operationId 与异常类型；owner RPC 日志仅含异常类型，不写证明、主体或 SQL 参数。积压告警结合上面待办年龄、数量与 S03 预占到期指标。持续永久错误暂停新增并人工核对配置/版本，不改金额或直接把状态标为 COMPLETE。保留期限待业务确认，当前不自动清理操作、资格或幂等记录；需监控表增长。
+
+回退保留 engine V001 和 ad V001～V004，停止新入口流量并维持 ad 到期回收；已发生的 held 不随二进制回退撤销。恢复同版本可用原 ID 续办。没有验证生产容量、整进程 kill 演练、浏览器采集或 RTO/RPO；后续 S05～S07 和 S25 继续补齐。

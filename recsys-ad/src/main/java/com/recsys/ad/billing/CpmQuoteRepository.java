@@ -38,6 +38,13 @@ public class CpmQuoteRepository {
 
     /** 仅服务端已选 CPM 候选可调用；quoteId 和 delivery/slot 任一重用都必须保持原语义。 */
     public FrozenCpmQuote freeze(UUID quoteId, UUID deliveryId, long advertiserId, long adId, int slot, CpmPrice price) {
+        return freezeBefore(quoteId, deliveryId, advertiserId, adId, slot, price, Instant.parse("9999-01-01T00:00:00Z"))
+                .orElseThrow(() -> new IllegalStateException("报价签发期限已过"));
+    }
+
+    /** 候选有效期只限制首次创建；已有同一报价仍返回原快照，不续期。 */
+    public Optional<FrozenCpmQuote> freezeBefore(UUID quoteId, UUID deliveryId, long advertiserId, long adId,
+                                                int slot, CpmPrice price, Instant deadline) {
         // 复用领域约束校验标识，实际签发/到期时间全部由下面数据库时钟生成。
         new FrozenCpmQuote(quoteId, deliveryId, advertiserId, adId, slot, price,
                 Instant.EPOCH, Instant.EPOCH.plusSeconds(FrozenCpmQuote.TTL_SECONDS));
@@ -48,14 +55,16 @@ public class CpmQuoteRepository {
                     currency, price_unit, pricing_version, amount, threshold, bill_factor, increment_amount,
                     floor_amount, cap_amount, payload_hash, issued_at, expires_at)
                 SELECT 'SANDBOX', ?, ?, ?, ?, ?, 'CNY', 'PER_IMPRESSION', 'CPM_GSP_CNY6_V1', ?, ?, ?, ?, ?, ?, ?,
-                    instant, instant + interval '5 minutes' FROM issued
+                    instant, instant + interval '5 minutes' FROM issued WHERE instant < ?
                 ON CONFLICT DO NOTHING
                 """, quoteId, deliveryId, advertiserId, adId, slot, price.amount(), price.threshold().toPlainString(),
-                price.billFactor().toPlainString(), price.increment(), price.floor(), price.cap(), hash);
+                price.billFactor().toPlainString(), price.increment(), price.floor(), price.cap(), hash, java.sql.Timestamp.from(deadline));
         var stored = jdbc.query("SELECT payload_hash FROM ad_cpm_quote WHERE traffic_class = 'SANDBOX' AND quote_id = ?",
                 (rs, row) -> rs.getString(1), quoteId);
+        if (stored.isEmpty() && !jdbc.queryForObject("SELECT clock_timestamp() < ?", Boolean.class,
+                java.sql.Timestamp.from(deadline))) return Optional.empty();
         if (stored.size() != 1 || !hash.equals(stored.getFirst())) throw new FrozenCpmQuote.Conflict();
-        return find(quoteId).orElseThrow(() -> new IllegalStateException("已保存报价不可查询"));
+        return Optional.of(find(quoteId).orElseThrow(() -> new IllegalStateException("已保存报价不可查询")));
     }
 
     /** 仅供 owner 内部用例；公开端点须先校验交付主体，不暴露无鉴权按 UUID 查询。 */

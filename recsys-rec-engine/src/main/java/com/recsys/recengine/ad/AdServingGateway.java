@@ -1,5 +1,12 @@
 package com.recsys.recengine.ad;
 
+import com.recsys.common.ad.delivery.SandboxDelivery.Candidate;
+import com.recsys.common.ad.delivery.SandboxDelivery.Query;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepared;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepare;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import java.time.Instant;
@@ -15,6 +22,17 @@ import java.time.Instant;
  * @see GrpcAdServingGateway grpc:调 recsys-ad-serving 的 gRPC(广告在线服务独立进程)
  */
 public interface AdServingGateway {
+
+    /** 新路径纯候选，异常不得经旧空广告降级。 */
+    List<Candidate> sandboxCandidates(
+            Query query);
+
+    /** 原 childId 准备，不能使用旧响应即收费路径。 */
+    Prepared prepareSandbox(
+            Prepare request);
+
+    /** 已提交原结果查询；空仅代表当前未观察到。 */
+    Optional<Prepared> findSandboxPreparation(UUID id, String subject);
 
     /** 搜索广告:召回→竞价→GSP→曝光埋点,返回竞得赞助广告。 */
     SearchAdsResponse searchAds(long userId, StructuredQuery sq, int slots,

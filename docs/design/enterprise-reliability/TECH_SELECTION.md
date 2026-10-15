@@ -26,3 +26,9 @@ ER-S02 冻结：复用现有 Spring JDBC 持久化风格（SQL 集中 Repository
 ER-S03：到期预占本身就是持久化待办，采用 Spring 单线程定时唤醒 + 每笔 PG `FOR UPDATE SKIP LOCKED` 短事务，不新增 MQ/分布式调度框架或独立租约。多实例靠同库行锁和状态条件竞争，一笔失败回滚后可续办。扫描轮次、超时、错误退避有界；隔离调度线程避免阻塞其他任务。新增预占 admission 开关可停止新占用，同时保留查询、释放和到期 worker；不能通过关掉整个 sandbox 丢弃在途回收职责。
 
 时间边界核对：扫描使用 statement_timestamp 固定本次 SQL 的截止时间，获取账户锁后用 clock_timestamp 判断是否已到期，避免事务开始时间在锁等待后陈旧（[PG 16 当前日期/时间](https://www.postgresql.org/docs/16/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT)）。应用服务器默认时区不参与预算日判定。
+
+ER-S04：整次交付选用 engine primary PG 的不可变计划 + 有效租约/fence 条件更新，单条 SQL 原子保存检查点，不新增队列/执行器。操作开始先固定请求/分桶/底价，准备在事务外，拒绝在外层数据库事务中执行整个编排。ad owner 用独立表保存准备输入和原结果；报价、预占、资格为可恢复多步提交，不假装一个跨库事务。故障可产生暂时未使用的 held，由既有到期 worker 释放。
+
+候选证明与资格采用现有 JDK HmacSHA256 + Jackson，无新增依赖。版本、用途和 keyId 一起签名，使用独立受控密钥环，防止把候选证明当回执资格。相较让 engine 传价格直接预占，这使价格依据只由 ad owner 生成；相较候选阶段创建数据库报价，则保留候选查询无持久化副作用。代价是 key 轮换须保留所有未完成操作需要的验证 key，候选有独立五分钟受理期限。资格最终期限由真实 PG 报价签发时间决定。
+
+S04 搜索入口最多 10 位，最终去重/截断后持久化计划；feed 接入及频控仍属于 S10。已有 recall/rank/audience 的内部降级保留，不能因此宣称终端可信、反作弊或定向强一致已经完成。新代码不沿用旧响应即扣费/空响应 fallback。RPC 与同进程共用域 DTO/owner；grpc engine 不装配本地新账务和回收器，但历史 ad 模块已有连接池不在本片重构。

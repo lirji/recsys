@@ -1,0 +1,46 @@
+syntax = "proto3";
+package recsys.delivery.v1;
+option java_multiple_files = true;
+option java_package = "com.recsys.proto.delivery.v1";
+option java_outer_classname = "DeliveryProto";
+import "ad_serving.proto";
+import "google/protobuf/timestamp.proto";
+
+// sandbox 专用边界，要求可信 engine 身份；所有写请求用原 child_id 恢复。
+service SandboxDeliveryService {
+  rpc Candidates(CandidateQuery) returns (CandidateReply);
+  rpc Prepare(PrepareDelivery) returns (PreparedDelivery);
+  rpc GetPreparation(GetPreparationRequest) returns (PreparedDelivery);
+}
+message CandidateQuery {
+  string operation_id = 1;
+  string subject = 2;
+  int64 user_id = 3;
+  recsys.ad.v1.StructuredQuery query = 4;
+  int32 slots = 5;
+  string scene = 6;
+  string bucket = 7;
+  double reserve = 8;
+}
+message DeliveryCandidate {
+  string child_id = 1;
+  recsys.ad.v1.SponsoredAd ad = 2;
+  string offer_token = 3;
+}
+message CandidateReply { repeated DeliveryCandidate candidates = 1; }
+message PrepareDelivery {
+  string operation_id = 1;
+  string subject = 2;
+  int64 user_id = 3;
+  string child_id = 4;
+  int32 slot = 5;
+  string offer_token = 6;
+}
+message GetPreparationRequest { string child_id = 1; string subject = 2; }
+message PreparedDelivery {
+  string child_id = 1;
+  string status = 2;
+  string amount = 3; // CNY 六位字符串，空只用于未签发报价的过期拒绝。
+  string qualification_token = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}

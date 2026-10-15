@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import javax.sql.DataSource;
 
 /** 默认关闭的新账务装配；不注册全局事务管理器，避免让原主库自动配置退避。 */
+@org.springframework.context.annotation.Conditional(SandboxOwnerCondition.class)
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "recsys.ad.billing.sandbox-enabled", havingValue = "true")
 public class BudgetConfiguration {

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** 报价沿用同一 sandbox 开关和 adDb owner；缺 V002 时不能启用新账务版本。 */
+@org.springframework.context.annotation.Conditional(SandboxOwnerCondition.class)
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "recsys.ad.billing.sandbox-enabled", havingValue = "true")
 public class CpmQuoteConfiguration {

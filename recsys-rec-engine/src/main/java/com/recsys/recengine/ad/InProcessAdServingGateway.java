@@ -1,5 +1,15 @@
 package com.recsys.recengine.ad;
 
+import com.recsys.common.ad.delivery.SandboxDelivery.Candidate;
+import com.recsys.common.ad.delivery.SandboxDelivery.Query;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepared;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepare;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import com.recsys.ad.billing.SandboxPreparationService;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.recsys.ad.AdPipeline;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
@@ -22,6 +32,26 @@ public class InProcessAdServingGateway implements AdServingGateway {
 
     public InProcessAdServingGateway(AdPipeline pipeline) {
         this.pipeline = pipeline;
+    }
+
+    @Autowired
+    private ObjectProvider<SandboxPreparationService> sandbox;
+
+    /** 仅启用新 owner 时可用，未启用不回落到旧扣费管线。 */
+    private SandboxPreparationService sandbox() {
+        var service = sandbox == null ? null : sandbox.getIfAvailable();
+        if (service == null) throw new IllegalStateException("sandbox 交付未启用");
+        return service;
+    }
+    @Override
+    public List<Candidate> sandboxCandidates(
+            Query query) { return sandbox().candidates(query); }
+    @Override
+    public Prepared prepareSandbox(
+            Prepare request) { return sandbox().prepare(request); }
+    @Override
+    public Optional<Prepared> findSandboxPreparation(UUID id, String subject) {
+        return sandbox().find(id, subject);
     }
 
     @Override

@@ -72,3 +72,21 @@ BiddingService 的新方法在计算 GSP 价格前建立精确边界：旧目录
 新增 V003 的 reservation 表、唯一键/FK、状态约束、期限扫描部分索引与中文注释。沿用 C02 的显式 adDb 事务和版本校验；V001/V002 不改。查询是恢复证据，找不到不代表在途事务未执行。预占只调整 held，不写 charged、Redis 或旧 ad_event，不把预占当曝光/消费。
 
 验收：真实 PG 余额只够一份的并发只成功一次；同 ID 并发/不同 ID 同 quote；调额和预占竞争不越额；拒绝结果稳定；数据库失败整体回滚；跨日义务仍归原预占日；提前回收不生效；双 worker 与主动释放竞争、重复回收、进程重建恢复不重复减 held。运行说明须包含暂停签发后继续回收的恢复边界。
+
+## C04：sandbox 整次交付与准备（ER-S04）
+
+本片先落搜索广告纵向入口，供 ER-S07 UI 使用；feed 最终混排调用同一准备能力，由 ER-S10 接入。旧入口保持兼容。新候选入口独立执行召回/相关性/定向/排序/CPM GSP/DCO，只读候选，不调用旧预算扣减、曝光日志、GD 交付计数或 uplift assignment；不可用须传播失败，不伪造成功空列表。正常无候选可完成为空。
+
+HTTP 仅在 sandbox 开关打开时装配：已认证 ADMIN 使用 `PUT /api/sandbox/search-ad-deliveries/{operationId}`，body `{userId, query, slots, scene}`（userId 为正整数字符串；query 1～500 字符，slots 1～10，scene 1～100 字符）。subject 从认证上下文取，SANDBOX 来源服务端固定。GET 同路径读取已持久化进度；PUT 原 ID 原负载恢复执行。相同 ID 不同请求 409；不同主体 403；未找到 404 仅说明当前未观察到。COMPLETE=200，正在被其他执行器领取的 PREPARING=202；依赖/提交未知=503，保留同 ID 查询/重试。结果含不可变请求、最终 slot、候选展示快照及每项准备状态；拒绝条目保留原位置，不自动补位。
+
+engine primary DB 独立拥有整次 operation，adDb 拥有报价、预占和准备结果，不跨库事务。先保存请求与首次实验桶/底价，再领取 30 秒有界租约（DB 时钟、递增 fence）；候选查询在事务外，完成最终去重/截断后，必须以仍有效 fence 原子保存整页计划及稳定 childId，才可调用 ad prepare。租约过期执行器不得保存旧计划或覆盖进度；已保存计划永不再查询候选。逐项保存结果并续租，网络调用不持有 DB 锁；重建进程按原计划和 ID 续办。GET 不产生副作用。单次最多 10 项、同步推进，不新建后台执行器；未完成操作由原 ID PUT 恢复。
+
+候选证明由 ad owner 以专用 HMAC-SHA256 密钥签发，版本/用途分离；包含 operationId、认证 subject、模拟 userId、offerId、创意展示快照、精确 CpmPrice、实验桶及五分钟候选受理期限。engine 只转发已冻结证明，终端无候选/价格输入接口。prepare 校验签名、用途、主体、父操作和最终 slot；childId 等于 offerId，同一候选不得重复放入另一位置/操作。候选受理期限是技术防陈旧窗口，资格/预占期限仍严格取报价签发后的五分钟，不因恢复刷新。
+
+ad owner 持久化 preparation 输入摘要（同 childId 变 slot/证明/主体冲突）后，按可恢复步骤冻结报价→预占→保存不可变准备结果。每一步提交后可独立重试；没有跨步骤原子性承诺。报价只有在候选期限内才能首次创建，已有报价恢复不续期；首次受理已过期则保存 OFFER_EXPIRED。预占与结果之间失败仍由原 childId 恢复，未回执占用由已有到期 worker 回收。准备结果为 QUALIFIED、INSUFFICIENT_BUDGET、QUOTE_EXPIRED、ACCOUNT_MISSING 或 OFFER_EXPIRED。QUALIFIED 保存签名资格，绑定父/子操作、subject/user、广告/创意、最终 slot、报价/预占 ID、CNY 精确金额、SANDBOX、可见政策版本（50% 连续 1000ms，hidden 重置）、签发/到期。重试查询返回原 token 和期限；已过期原结果不代表仍可收费，ER-S05 必须再查持久化资格、预占状态和服务端时间。
+
+新增 delivery.v1 gRPC：Candidates、Prepare、GetPreparation，仅已验证的独立 engine 内部身份可调用，即使 nosec 仍拒绝无身份。两种 serving mode 使用相同领域 DTO；新方法不套旧空响应 fallback/吞错重试。grpc 模式 engine 不装配本地新账务 owner/回收 worker；ad-serving 和 in-process engine 装配 owner。此条件不重构旧广告模块连接池。
+
+密钥只来自受控配置，当前 keyId 与至少 32 字节 base64 key 必填，无默认秘密；可同时配置旧验证 key，轮换时所有实例一致，旧 key 至少保留到未完成准备及资格恢复窗口结束，删除前查待办。token 不进日志、指标或 HTTP 候选输入，大小有界；数据库与备份按敏感配置权限管理。不在此片自动清理幂等/操作/资格记录，业务保留期限尚待确认，运维需监控增长。
+
+迁移：ad owner V004 preparation（不改 V001～V003）；engine 独立 `db/engine-delivery/V001__delivery_operation.sql` 和 SHA 历史。默认关闭、显式迁移、缺表/错版本拒绝启用。验收覆盖纯候选无收费副作用、签名篡改/用途/主体、真实 PG 部分失败恢复/预算不重复/过期、不变整页计划、租约 fencing、双模式 DTO/RPC 权限与失败传播。没有部署或真实收费切换授权。

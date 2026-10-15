@@ -1,5 +1,16 @@
 package com.recsys.recengine.ad;
 
+import com.recsys.common.ad.delivery.SandboxDelivery.Candidate;
+import com.recsys.common.ad.delivery.SandboxDelivery.Query;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepared;
+import com.recsys.common.ad.delivery.SandboxDelivery.Prepare;
+import java.util.Optional;
+import java.util.UUID;
+import com.recsys.proto.DeliveryProtoMapper;
+import com.recsys.proto.delivery.v1.SandboxDeliveryServiceGrpc;
+import com.recsys.proto.delivery.v1.GetPreparationRequest;
+import io.grpc.StatusRuntimeException;
+import io.grpc.Status;
 import com.recsys.common.ad.SearchAdsResponse;
 import com.recsys.common.query.StructuredQuery;
 import com.recsys.proto.AdProtoMapper;
@@ -37,6 +48,32 @@ public class GrpcAdServingGateway implements AdServingGateway {
 
     @GrpcClient("ad-serving")
     private AdServingServiceGrpc.AdServingServiceBlockingStub stub;
+
+    @GrpcClient("ad-serving")
+    private SandboxDeliveryServiceGrpc.SandboxDeliveryServiceBlockingStub deliveryStub;
+
+    /** 新契约独立于旧 Retry/fallback：不可达必须保留未知状态。 */
+    @Override
+    public List<Candidate> sandboxCandidates(
+            Query query) {
+        return deliveryStub.candidates(DeliveryProtoMapper.toProto(query)).getCandidatesList().stream()
+                .map(DeliveryProtoMapper::fromProto).toList();
+    }
+    @Override
+    public Prepared prepareSandbox(
+            Prepare request) {
+        return DeliveryProtoMapper.fromProto(deliveryStub.prepare(DeliveryProtoMapper.toProto(request)));
+    }
+    @Override
+    public Optional<Prepared> findSandboxPreparation(UUID id, String subject) {
+        try {
+            return Optional.of(DeliveryProtoMapper.fromProto(deliveryStub.getPreparation(
+                    GetPreparationRequest.newBuilder().setChildId(id.toString()).setSubject(subject).build())));
+        } catch (StatusRuntimeException ex) {
+            if (ex.getStatus().getCode() == Status.Code.NOT_FOUND) return Optional.empty();
+            throw ex;
+        }
+    }
 
     private static String nz(String s) {
         return s == null ? "" : s;
