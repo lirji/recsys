@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-`IN_PROGRESS`。整体计划已批准；MP00～MP05全部已交付，MP05b=4f928ebe。MP06a DONE/PASS，28项行为/自然回执测试通过；准备交付后继续MP06b。
+`IN_PROGRESS`。整体计划已批准；MP00～MP05全部已交付，MP05b=4f928ebe。MP06a已交付63ae139b；MP06b DONE/PASS，30项测试及自然/混排各5项浏览器通过，准备交付后继续MP06c。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。
 - 新任务恢复入口：[PLAN.md](PLAN.md)。
 
 ## 已完成
+
+- MP06b自然回执事务迁移完成，见MP06B_RESULT。
 
 - MP06a行为事实/归因迁移完成，见MP06A_RESULT。
 
@@ -50,7 +52,7 @@
 
 ## 已修改文件
 
-MP01～MP03已交付。当前MP06a：behavior依赖、BehaviorService/BehaviorWrite/Mapper/XML/配置与测试、本目录证据。根恢复文档只追加入口，旧交接保留。
+MP01～MP03已交付。当前MP06b：自然回执Mapper/XML、Repository/配置、UUID类型处理及测试、本目录证据。根恢复文档只追加入口，旧交接保留。
 
 ## 保护内容
 
@@ -69,8 +71,8 @@ MP01～MP03已交付。当前MP06a：behavior依赖、BehaviorService/BehaviorWr
 
 ## 下一步
 
-1. MP05b已交付4f928ebe，MP06a已完成，准备Git交付。
-2. 继续MP06b～MP15，全部SQL完成后处理统一错误码。
+1. MP06a已交付63ae139b，MP06b已完成，准备Git交付。
+2. 继续MP06c～MP15，全部SQL完成后处理统一错误码。
 3. 依次推进全部工作包，每批更新本文件和 SQL 核销证据，不等待重复“继续”。
 
 ## 恢复 Prompt
@@ -110,3 +112,7 @@ DONE/PASS，见MP05B_RESULT；最终44项通过。下一片MP06a BehaviorService
 ## MP06a检查点
 
 DONE/PASS，见MP06A_RESULT。继续MP06b NaturalReceiptRepository/Configuration：15项真实PG测试刚通过旧实现，可作为基线（MP06a-after.log）；schema验证SELECT也进入Mapper，SET LOCAL与clock_timestamp要保持同一事务连接、锁后新时间。UUID需要明确TypeHandler；原资源V001摘要不可变。更新NaturalReceiptPostgresTest的匿名故障Repository及NaturalExposureBrowserAcceptanceTest构造入口，后者还被FeedExposureBrowserAcceptanceTest复用；最终需显式跑自然/混排浏览器验收。
+
+## MP06b检查点
+
+DONE/PASS，见MP06B_RESULT；30项后端与自然/混排共10项真实浏览器验收通过。MP06c控制台UserProfileService有6组查询及逐项失败降级，ReportService有2组查询及JSON/CSV回退；应替换为可选具名Mapper，保留无数据库时空画像/CSV和NULL字段、毫秒时间语义。content已传递引入MP与共享主源配置，console需显式声明直接依赖及精确扫描；新增真实PG测试先保护旧实现。

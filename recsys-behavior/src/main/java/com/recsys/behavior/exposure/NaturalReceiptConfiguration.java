@@ -8,7 +8,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
+import javax.sql.DataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import java.util.Map;
 
@@ -26,8 +28,8 @@ public class NaturalReceiptConfiguration {
     }
 
     /** 复用 behavior 自有 primary 数据源，不读取广告 owner 的表。 */
-    @Bean public NaturalReceiptRepository naturalReceiptRepository(JdbcTemplate jdbc, ObjectMapper json) {
-        var repository = new NaturalReceiptRepository(jdbc, json); repository.verifySchema(); return repository;
+    @Bean public NaturalReceiptRepository naturalReceiptRepository(NaturalReceiptMapper mapper, @Qualifier("dataSource") DataSource dataSource, ObjectMapper json) {
+        var repository = new NaturalReceiptRepository(mapper, dataSource, json); repository.verifySchema(); return repository;
     }
     /** 验证端不配置 currentKeyId，无法误用该 bean 签发新的资格。 */
     @Bean public NaturalReceiptService naturalReceiptService(NaturalReceiptRepository repository, Properties props) {

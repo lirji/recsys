@@ -1,6 +1,9 @@
 package com.recsys.behavior.exposure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper;
+import com.recsys.persistence.spring.SpringSqlSessions;
+import org.mybatis.spring.SqlSessionTemplate;
 import com.recsys.common.exposure.*;
 import com.recsys.common.exposure.NaturalReceipt.*;
 import org.junit.jupiter.api.*;
@@ -31,13 +34,15 @@ class NaturalReceiptPostgresTest {
     static DriverManagerDataSource ds;
     static JdbcTemplate jdbc;
     static NaturalReceiptRepository repository;
+    static NaturalReceiptMapper mapper;
     @BeforeAll static void migrate() throws Exception {
         ds = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()); jdbc = new JdbcTemplate(ds);
         try (var c = ds.getConnection(); var s = c.createStatement(); var in = new ClassPathResource(NaturalReceiptRepository.MIGRATION).getInputStream()) {
             s.execute("SET recsys.migration_sha256 = '" + NaturalReceiptRepository.migrationSha256() + "'");
             s.execute(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
-        repository = new NaturalReceiptRepository(jdbc, JSON); repository.verifySchema();
+        mapper = new SqlSessionTemplate(SpringSqlSessions.create(ds, "classpath*:mapper/behavior/primary/**/*.xml")).getMapper(NaturalReceiptMapper.class);
+        repository = new NaturalReceiptRepository(mapper, ds, JSON); repository.verifySchema();
     }
     NaturalReceiptService service(NaturalReceiptRepository r) {
         return new NaturalReceiptService(r, TOKENS, POLICY, new DataSourceTransactionManager(ds), true);
@@ -88,7 +93,7 @@ class NaturalReceiptPostgresTest {
         var q = qualification(60000); var c = command(q);
         List<Result> results = concurrent(Collections.nCopies(8, c));
         assertTrue(results.stream().allMatch(results.getFirst()::equals)); assertEquals(Status.ACCEPTED, results.getFirst().status());
-        assertOneFact(q); assertEquals(results.getFirst(), service(new NaturalReceiptRepository(jdbc, JSON)).find(c.receiptId(), "admin").orElseThrow());
+        assertOneFact(q); assertEquals(results.getFirst(), service(new NaturalReceiptRepository(mapper, ds, JSON)).find(c.receiptId(), "admin").orElseThrow());
         var payload = JSON.readTree(jdbc.queryForObject("SELECT payload_json FROM natural_impression_outbox WHERE event_id=?", String.class, q.qualificationId()));
         assertEquals(Long.toString(Long.MAX_VALUE), payload.get("userId").asText());
         assertEquals(q.bucket(), payload.get("bucket").asText()); assertEquals(q.contentHash(), payload.get("contentHash").asText());
@@ -142,7 +147,7 @@ class NaturalReceiptPostgresTest {
         var q = qualification(800); var c = command(q);
         service(repository).accept(new Command(UUID.randomUUID(), "admin", c.qualificationToken(), 0, 0, false));
         var attempting = new CountDownLatch(1);
-        var guarded = new NaturalReceiptRepository(jdbc, JSON) {
+        var guarded = new NaturalReceiptRepository(mapper, ds, JSON) {
             @Override public void lockQualification(NaturalQualification value) { attempting.countDown(); super.lockQualification(value); }
         };
         try (var conn = ds.getConnection(); var pool = Executors.newSingleThreadExecutor()) {
@@ -160,7 +165,7 @@ class NaturalReceiptPostgresTest {
     @ParameterizedTest @ValueSource(strings={"claim","fact","outbox","result"})
     void everyWriteFailureRollsBackReceiptGuardFactAndOutbox(String stage) {
         var q = qualification(60000); var c = command(q);
-        var failing = new NaturalReceiptRepository(jdbc, JSON) {
+        var failing = new NaturalReceiptRepository(mapper, ds, JSON) {
             @Override public boolean claim(Command value, UUID id) { boolean b=super.claim(value,id); if(stage.equals("claim")) throw new IllegalStateException("test failure"); return b; }
             @Override public void appendFact(NaturalQualification value, UUID id, Instant now) { super.appendFact(value,id,now); if(stage.equals("fact")) throw new IllegalStateException("test failure"); }
             @Override public void appendOutbox(Event e) { super.appendOutbox(e); if(stage.equals("outbox")) throw new IllegalStateException("test failure"); }
@@ -209,5 +214,37 @@ class NaturalReceiptPostgresTest {
             assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM pg_attribute WHERE attrelid=?::regclass AND attnum>0 AND NOT attisdropped AND col_description(attrelid,attnum) IS NULL",Integer.class,table));
         }
         assertEquals(NaturalReceiptRepository.migrationSha256(),jdbc.queryForObject("SELECT script_sha256 FROM natural_exposure_schema_history WHERE version=1",String.class));
+    }
+    @Test void timeAndLocalLimitsUseTheExistingTransactionConnection() {
+        assertSame(ds, repository.dataSource());
+        new TransactionTemplate(new DataSourceTransactionManager(ds)).executeWithoutResult(tx -> {
+            repository.boundTransaction();
+            assertEquals("4s", jdbc.queryForObject("SHOW lock_timeout", String.class));
+            assertEquals("5s", jdbc.queryForObject("SHOW statement_timeout", String.class));
+            var before = repository.databaseNow();
+            assertTrue(repository.databaseNow().isAfter(before), "数据库语句时钟不能从会话缓存读取");
+        });
+    }
+
+    @Test void enabledConfigurationUsesTheSameOwnerDataSource() {
+        try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("test", Map.of(
+                    "recsys.natural.receipts-enabled", "true", "recsys.natural.policy.version", NaturalQualification.TEXT_POLICY_V1.version(),
+                    "recsys.natural.policy.min-ratio-bps", "5000", "recsys.natural.policy.min-duration-ms", "1000",
+                    "recsys.natural.policy.ttl-ms", "300000", "recsys.natural.keys.test", KEY)));
+            context.getBeanFactory().registerSingleton("dataSource", ds);
+            context.getBeanFactory().registerSingleton("objectMapper", JSON);
+            context.register(com.recsys.behavior.persistence.config.BehaviorPersistenceConfiguration.class, NaturalReceiptConfiguration.class);
+            context.refresh();
+            assertSame(ds, context.getBean(NaturalReceiptRepository.class).dataSource());
+            var template = qualification(60000);
+            var policy = NaturalQualification.TEXT_POLICY_V1;
+            var q = new NaturalQualification(template.operationId(), template.qualificationId(), template.subject(),
+                    template.userId(), template.itemId(), template.slot(), template.kind(), template.trafficClass(),
+                    template.scene(), template.bucket(), template.contentHash(), policy,
+                    template.expiresAt().minusMillis(policy.ttlMs()), template.expiresAt());
+            assertEquals(Status.ACCEPTED, context.getBean(NaturalReceiptService.class).accept(command(q)).status());
+            assertOneFact(q);
+        }
     }
 }

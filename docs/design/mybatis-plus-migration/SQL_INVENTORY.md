@@ -1,6 +1,6 @@
 # SQL / JDBC 初筛清单
 
-基线：`e7838776a0b09904a0d4702589639534901d27ee`；2026-10-15。状态：全部生产迁移未开始。
+基线：`e7838776a0b09904a0d4702589639534901d27ee`；2026-10-15。状态：按下方文件级核销清单持续更新。
 
 范围：`rg --files` 可见的生产 Java 和独立 SQL 资源，排除 target/node_modules。匹配 JDBC 使用或 SQL 关键字。注释、嵌套 SELECT、重复字符串也计数；这不是独立 SQL 条数或完成率。逐条语义映射将在相应工作包实施前补充。
 
@@ -96,8 +96,8 @@
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
 | [com/recsys/behavior/BehaviorService.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/BehaviorService.java) | 15 | 2 | DONE MP06a |
-| [com/recsys/behavior/exposure/NaturalReceiptConfiguration.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptConfiguration.java) | 11 | 0 | TODO |
-| [com/recsys/behavior/exposure/NaturalReceiptRepository.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptRepository.java) | 9 | 14 | TODO |
+| [com/recsys/behavior/exposure/NaturalReceiptConfiguration.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptConfiguration.java) | 11 | 0 | DONE MP06b |
+| [com/recsys/behavior/exposure/NaturalReceiptRepository.java](../../../recsys-behavior/src/main/java/com/recsys/behavior/exposure/NaturalReceiptRepository.java) | 9 | 14 | DONE MP06b |
 
 ### recsys-console
 
@@ -289,3 +289,5 @@
 每个 SQL 方法在迁移前记录：来源类/方法 → 新 Mapper statement ID → 数据源 → 参数/空值/主键策略 → 结果/排序/limit → 事务/锁/超时/缓存 → 错误/影响行数 → 对应真实数据库测试 → 验证 revision。
 
 机械关键词扫描只能发现遗漏；最终还需调用链、Mapper 实际注册/资源打包和真实业务测试共同证明覆盖。
+
+MP06b：NaturalReceiptRepository/Configuration → `behavior.persistence.mapper.primary.NaturalReceiptMapper` + `mapper/behavior/primary/NaturalReceiptMapper.xml`；共享UUID handler；证据见MP06B_RESULT。

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper">
+    <resultMap id="guard" type="com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper$Guard">
+        <constructor><arg column="subject_key" javaType="string"/><arg column="context_hash" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="receipt" type="com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper$StoredReceipt">
+        <constructor><arg column="qualification_id" javaType="java.util.UUID"/><arg column="subject_key" javaType="string"/>
+            <arg column="payload_hash" javaType="string"/><arg column="status" javaType="string"/>
+            <arg column="event_id" javaType="java.util.UUID"/><arg column="canonical_receipt_id" javaType="java.util.UUID"/>
+            <arg column="accepted_at" javaType="java.time.OffsetDateTime"/><arg column="decided_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <resultMap id="fact" type="com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper$AcceptedFact">
+        <constructor><arg column="receipt_id" javaType="java.util.UUID"/><arg column="accepted_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM natural_exposure_schema_history WHERE version=1</select>
+    <!-- 固定LIMIT 0是启动schema探针，无业务结果对象，也不拼接表名。 -->
+    <select id="verifyGuard" resultType="map">SELECT qualification_id,context_hash FROM natural_qualification_guard LIMIT 0</select>
+    <select id="verifyReceipt" resultType="map">SELECT receipt_id,status FROM natural_impression_receipt LIMIT 0</select>
+    <select id="verifyFact" resultType="map">SELECT qualification_id,receipt_id FROM natural_impression_fact LIMIT 0</select>
+    <select id="verifyOutbox" resultType="map">SELECT event_id,payload_json FROM natural_impression_outbox LIMIT 0</select>
+    <select id="databaseNow" resultType="java.time.OffsetDateTime">SELECT clock_timestamp()</select>
+    <update id="boundLocks">SET LOCAL lock_timeout = '4s'</update>
+    <update id="boundStatements">SET LOCAL statement_timeout = '5s'</update>
+    <insert id="claim">
+        INSERT INTO natural_impression_receipt(receipt_id,qualification_id,subject_key,payload_hash,
+            visible_duration_ms,min_visible_ratio_bps,page_visible)
+        VALUES(#{receiptId},#{qualificationId},#{subject},#{payloadHash},#{visibleDurationMs},#{minVisibleRatioBps},#{pageVisible})
+        ON CONFLICT DO NOTHING
+    </insert>
+    <insert id="insertGuard">
+        INSERT INTO natural_qualification_guard(qualification_id,subject_key,context_hash,context_json)
+        VALUES(#{qualificationId},#{subject},#{hash},#{contextJson}) ON CONFLICT DO NOTHING
+    </insert>
+    <select id="lockGuard" resultMap="guard">
+        SELECT subject_key,context_hash FROM natural_qualification_guard WHERE qualification_id=#{qualificationId} FOR UPDATE
+    </select>
+    <select id="receipts" resultMap="receipt">
+        SELECT qualification_id,subject_key,payload_hash,status,event_id,canonical_receipt_id,accepted_at,decided_at
+        FROM natural_impression_receipt WHERE receipt_id=#{receiptId}
+    </select>
+    <select id="accepted" resultMap="fact">
+        SELECT receipt_id,accepted_at FROM natural_impression_fact WHERE qualification_id=#{qualificationId}
+    </select>
+    <insert id="appendFact">
+        INSERT INTO natural_impression_fact(qualification_id,receipt_id,traffic_class,accepted_at)
+        VALUES(#{qualificationId},#{receiptId},'SANDBOX',#{acceptedAt})
+    </insert>
+    <insert id="appendOutbox">
+        INSERT INTO natural_impression_outbox(event_id,event_type,schema_version,destination,partition_key,payload_json)
+        VALUES(#{eventId},#{eventType},#{schemaVersion},#{destination},#{partitionKey},#{payloadJson})
+    </insert>
+    <update id="complete">
+        UPDATE natural_impression_receipt SET status=#{status},event_id=#{eventId},canonical_receipt_id=#{canonicalReceiptId},
+            accepted_at=#{acceptedAt},decided_at=#{decidedAt} WHERE receipt_id=#{receiptId} AND status='PENDING'
+    </update>
+</mapper>

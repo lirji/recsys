@@ -1,6 +1,9 @@
 package com.recsys.behavior.exposure;
 
 import com.fasterxml.jackson.databind.*;
+import com.recsys.behavior.persistence.mapper.primary.NaturalReceiptMapper;
+import com.recsys.persistence.spring.SpringSqlSessions;
+import org.mybatis.spring.SqlSessionTemplate;
 import com.recsys.recengine.exposure.*;
 import com.recsys.common.dto.*;
 import com.recsys.common.exposure.*;
@@ -144,7 +147,9 @@ class NaturalExposureBrowserAcceptanceTest {
             };
             tokens=new NaturalQualificationToken("browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
             var operations=new NaturalDeliveryRepository(engine,JSON);operations.verifySchema();
-            var receipts=new NaturalReceiptRepository(behavior,JSON);receipts.verifySchema();
+            // 会话模板每次调用关闭会话，工厂不拥有连接池；事务仍绑定原behaviorDs。
+            var receiptMapper=new SqlSessionTemplate(SpringSqlSessions.create(behaviorDs,"classpath*:mapper/behavior/primary/**/*.xml")).getMapper(NaturalReceiptMapper.class);
+            var receipts=new NaturalReceiptRepository(receiptMapper,behaviorDs,JSON);receipts.verifySchema();
             delivery=new NaturalDeliveryService(operations,recommender,content,tokens,NaturalQualification.TEXT_POLICY_V1,true);
             receipt=new NaturalReceiptService(receipts,tokens,NaturalQualification.TEXT_POLICY_V1,new DataSourceTransactionManager(behaviorDs),true);
         }

@@ -19,6 +19,7 @@ public final class MybatisSettings {
         configuration.setArgNameBasedConstructorAutoMapping(true);
         configuration.setJdbcTypeForNull(JdbcType.NULL);
         configuration.setCallSettersOnNulls(true);
+        configuration.getTypeHandlerRegistry().register(java.util.UUID.class, com.recsys.persistence.typehandler.UuidTypeHandler.class);
         return configuration;
     }
 }
