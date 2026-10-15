@@ -46,6 +46,11 @@ jobs:
           python3 scripts/test_persistence_boundaries.py
           python3 scripts/check_persistence_boundaries.py
 
+      - name: Shared error contract and generated code consistency
+        run: |
+          python3 scripts/test_error_codes.py
+          python3 scripts/generate_error_codes.py --check
+
       # 覆盖率报告存档,便于人工查看趋势(不阻断)。
       - name: Upload coverage reports
         if: always()

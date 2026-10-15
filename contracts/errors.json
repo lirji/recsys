@@ -1,0 +1,496 @@
+{
+  "version": 1,
+  "description": "公开错误码与安全文案的唯一编辑入口；httpStatus为0表示无HTTP状态。既有code保留兼容别名。",
+  "errors": [
+    {
+      "name": "BAD_REQUEST",
+      "code": "BAD_REQUEST",
+      "httpStatus": 400,
+      "message": "请求参数不合法，请检查后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "VALIDATION_FAILED",
+      "code": "VALIDATION_FAILED",
+      "httpStatus": 400,
+      "message": "请求参数校验失败",
+      "httpDefault": false
+    },
+    {
+      "name": "UNAUTHORIZED",
+      "code": "UNAUTHORIZED",
+      "httpStatus": 401,
+      "message": "请先登录后再操作",
+      "httpDefault": true
+    },
+    {
+      "name": "UNAUTHENTICATED",
+      "code": "UNAUTHENTICATED",
+      "httpStatus": 401,
+      "message": "需要有效身份",
+      "httpDefault": false
+    },
+    {
+      "name": "FORBIDDEN",
+      "code": "FORBIDDEN",
+      "httpStatus": 403,
+      "message": "无权访问该资源",
+      "httpDefault": true
+    },
+    {
+      "name": "NOT_FOUND",
+      "code": "NOT_FOUND",
+      "httpStatus": 404,
+      "message": "请求的资源不存在",
+      "httpDefault": true
+    },
+    {
+      "name": "METHOD_NOT_ALLOWED",
+      "code": "METHOD_NOT_ALLOWED",
+      "httpStatus": 405,
+      "message": "请求方法不支持",
+      "httpDefault": true
+    },
+    {
+      "name": "CONFLICT",
+      "code": "CONFLICT",
+      "httpStatus": 409,
+      "message": "请求与当前状态冲突，请刷新后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "UNSUPPORTED_MEDIA_TYPE",
+      "code": "UNSUPPORTED_MEDIA_TYPE",
+      "httpStatus": 415,
+      "message": "请求内容格式不支持",
+      "httpDefault": true
+    },
+    {
+      "name": "UNPROCESSABLE_ENTITY",
+      "code": "UNPROCESSABLE_ENTITY",
+      "httpStatus": 422,
+      "message": "请求内容无法处理，请检查业务条件",
+      "httpDefault": true
+    },
+    {
+      "name": "TOO_MANY_REQUESTS",
+      "code": "TOO_MANY_REQUESTS",
+      "httpStatus": 429,
+      "message": "请求过于频繁，请稍后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "INTERNAL_SERVER_ERROR",
+      "code": "INTERNAL_SERVER_ERROR",
+      "httpStatus": 500,
+      "message": "服务器内部错误",
+      "httpDefault": true
+    },
+    {
+      "name": "INTERNAL_ERROR",
+      "code": "INTERNAL_ERROR",
+      "httpStatus": 500,
+      "message": "服务器内部错误",
+      "httpDefault": false
+    },
+    {
+      "name": "BAD_GATEWAY",
+      "code": "BAD_GATEWAY",
+      "httpStatus": 502,
+      "message": "上游服务暂时不可用，请稍后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "SERVICE_UNAVAILABLE",
+      "code": "SERVICE_UNAVAILABLE",
+      "httpStatus": 503,
+      "message": "服务暂时不可用，请稍后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "GATEWAY_TIMEOUT",
+      "code": "GATEWAY_TIMEOUT",
+      "httpStatus": 504,
+      "message": "请求处理超时，请查询原操作结果",
+      "httpDefault": true
+    },
+    {
+      "name": "NETWORK_ERROR",
+      "code": "NETWORK_ERROR",
+      "httpStatus": 0,
+      "message": "网络连接失败，请检查网络并确认操作结果",
+      "httpDefault": false
+    },
+    {
+      "name": "REQUEST_TIMEOUT",
+      "code": "REQUEST_TIMEOUT",
+      "httpStatus": 408,
+      "message": "请求超时，请查询操作结果后再决定是否重试",
+      "httpDefault": true
+    },
+    {
+      "name": "REQUEST_CANCELLED",
+      "code": "REQUEST_CANCELLED",
+      "httpStatus": 0,
+      "message": "请求已取消",
+      "httpDefault": false
+    },
+    {
+      "name": "UNKNOWN_ERROR",
+      "code": "UNKNOWN_ERROR",
+      "httpStatus": 0,
+      "message": "操作未完成，请稍后重试或联系管理员",
+      "httpDefault": false
+    },
+    {
+      "name": "NOT_ACCEPTABLE",
+      "code": "NOT_ACCEPTABLE",
+      "httpStatus": 406,
+      "message": "请求的响应格式不支持",
+      "httpDefault": true
+    },
+    {
+      "name": "PAYLOAD_TOO_LARGE",
+      "code": "PAYLOAD_TOO_LARGE",
+      "httpStatus": 413,
+      "message": "请求内容过大，请缩小后重试",
+      "httpDefault": true
+    },
+    {
+      "name": "CONVERSION_400",
+      "code": "CONVERSION_400",
+      "httpStatus": 400,
+      "message": "转化请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_401",
+      "code": "CONVERSION_401",
+      "httpStatus": 401,
+      "message": "转化请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_403",
+      "code": "CONVERSION_403",
+      "httpStatus": 403,
+      "message": "转化请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_404",
+      "code": "CONVERSION_404",
+      "httpStatus": 404,
+      "message": "转化请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_409",
+      "code": "CONVERSION_409",
+      "httpStatus": 409,
+      "message": "转化请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_503",
+      "code": "CONVERSION_503",
+      "httpStatus": 503,
+      "message": "转化结果未知，请保留原业务ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_400",
+      "code": "NATURAL_RECEIPT_400",
+      "httpStatus": 400,
+      "message": "自然回执未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_401",
+      "code": "NATURAL_RECEIPT_401",
+      "httpStatus": 401,
+      "message": "自然回执未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_403",
+      "code": "NATURAL_RECEIPT_403",
+      "httpStatus": 403,
+      "message": "自然回执未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_404",
+      "code": "NATURAL_RECEIPT_404",
+      "httpStatus": 404,
+      "message": "自然回执未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_409",
+      "code": "NATURAL_RECEIPT_409",
+      "httpStatus": 409,
+      "message": "自然回执未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_RECEIPT_503",
+      "code": "NATURAL_RECEIPT_503",
+      "httpStatus": 503,
+      "message": "自然回执结果未知，请保留原 receiptId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_400",
+      "code": "CLICK_RECEIPT_400",
+      "httpStatus": 400,
+      "message": "点击请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_401",
+      "code": "CLICK_RECEIPT_401",
+      "httpStatus": 401,
+      "message": "点击请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_403",
+      "code": "CLICK_RECEIPT_403",
+      "httpStatus": 403,
+      "message": "点击请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_404",
+      "code": "CLICK_RECEIPT_404",
+      "httpStatus": 404,
+      "message": "点击请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_409",
+      "code": "CLICK_RECEIPT_409",
+      "httpStatus": 409,
+      "message": "点击请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CLICK_RECEIPT_503",
+      "code": "CLICK_RECEIPT_503",
+      "httpStatus": 503,
+      "message": "点击结果未知，请按原ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_400",
+      "code": "CONVERSION_RECEIPT_400",
+      "httpStatus": 400,
+      "message": "CPA请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_401",
+      "code": "CONVERSION_RECEIPT_401",
+      "httpStatus": 401,
+      "message": "CPA请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_403",
+      "code": "CONVERSION_RECEIPT_403",
+      "httpStatus": 403,
+      "message": "CPA请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_404",
+      "code": "CONVERSION_RECEIPT_404",
+      "httpStatus": 404,
+      "message": "CPA请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_409",
+      "code": "CONVERSION_RECEIPT_409",
+      "httpStatus": 409,
+      "message": "CPA请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "CONVERSION_RECEIPT_503",
+      "code": "CONVERSION_RECEIPT_503",
+      "httpStatus": 503,
+      "message": "CPA结果未知，请按原ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_400",
+      "code": "RECEIPT_400",
+      "httpStatus": 400,
+      "message": "回执请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_401",
+      "code": "RECEIPT_401",
+      "httpStatus": 401,
+      "message": "回执请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_403",
+      "code": "RECEIPT_403",
+      "httpStatus": 403,
+      "message": "回执请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_404",
+      "code": "RECEIPT_404",
+      "httpStatus": 404,
+      "message": "回执请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_409",
+      "code": "RECEIPT_409",
+      "httpStatus": 409,
+      "message": "回执请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "RECEIPT_503",
+      "code": "RECEIPT_503",
+      "httpStatus": 503,
+      "message": "账务结果未知，请按原 receiptId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_400",
+      "code": "DELIVERY_400",
+      "httpStatus": 400,
+      "message": "交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_401",
+      "code": "DELIVERY_401",
+      "httpStatus": 401,
+      "message": "交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_403",
+      "code": "DELIVERY_403",
+      "httpStatus": 403,
+      "message": "交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_404",
+      "code": "DELIVERY_404",
+      "httpStatus": 404,
+      "message": "交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_409",
+      "code": "DELIVERY_409",
+      "httpStatus": 409,
+      "message": "交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_503",
+      "code": "DELIVERY_503",
+      "httpStatus": 503,
+      "message": "交付结果未知，请保留原 operationId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_400",
+      "code": "NATURAL_DELIVERY_400",
+      "httpStatus": 400,
+      "message": "自然交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_401",
+      "code": "NATURAL_DELIVERY_401",
+      "httpStatus": 401,
+      "message": "自然交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_403",
+      "code": "NATURAL_DELIVERY_403",
+      "httpStatus": 403,
+      "message": "自然交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_404",
+      "code": "NATURAL_DELIVERY_404",
+      "httpStatus": 404,
+      "message": "自然交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_409",
+      "code": "NATURAL_DELIVERY_409",
+      "httpStatus": 409,
+      "message": "自然交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "NATURAL_DELIVERY_503",
+      "code": "NATURAL_DELIVERY_503",
+      "httpStatus": 503,
+      "message": "自然交付结果未知，请保留原 operationId 查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_400",
+      "code": "FEED_DELIVERY_400",
+      "httpStatus": 400,
+      "message": "混排交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_401",
+      "code": "FEED_DELIVERY_401",
+      "httpStatus": 401,
+      "message": "混排交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_403",
+      "code": "FEED_DELIVERY_403",
+      "httpStatus": 403,
+      "message": "混排交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_404",
+      "code": "FEED_DELIVERY_404",
+      "httpStatus": 404,
+      "message": "混排交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_409",
+      "code": "FEED_DELIVERY_409",
+      "httpStatus": 409,
+      "message": "混排交付请求未通过校验或当前不可访问",
+      "httpDefault": false
+    },
+    {
+      "name": "FEED_DELIVERY_503",
+      "code": "FEED_DELIVERY_503",
+      "httpStatus": 503,
+      "message": "混排交付结果未知，请保留原 operationId 查询或重试",
+      "httpDefault": false
+    }
+  ]
+}

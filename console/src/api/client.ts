@@ -6,6 +6,10 @@ import { AUTH_MODE } from '../config/auth';
 import { purgeOidcSession, resolveToken, silentRenew } from '../auth/oidc';
 
 import { exposureAuthScope, exposureEpoch } from '../exposure/identity';
+import { formatError } from './errors';
+import { errorCodes } from './generated/errorCodes';
+
+export { toApiError, type ApiErrorInfo } from './errors';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -39,7 +43,7 @@ http.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
     const status = error.response?.status;
-    if (status === 401) {
+    if (status === errorCodes.UNAUTHORIZED.httpStatus) {
       if (AUTH_MODE === 'oidc') {
         // oidc:先单飞静默续期(refresh_token)重试一次;仍失败才清会话跳登录。
         const original = error.config as
@@ -64,31 +68,10 @@ http.interceptors.response.use(
         clearAuth();
         redirectToLogin();
       }
-    } else if (status === 403) {
+    } else if (status === errorCodes.FORBIDDEN.httpStatus) {
       // 403 = 已登录但角色权限不足(切到低权限身份打受限页)。给全局友好提示;固定 key 去重(并发多请求只显示一条)。
-      notifyError('当前身份无权访问该接口(需更高角色)', 'rbac-403');
+      notifyError(formatError('FORBIDDEN'), 'rbac-403');
     }
     return Promise.reject(error);
   },
 );
-
-export interface ApiErrorInfo {
-  status?: number;
-  message: string;
-  url?: string;
-}
-
-export function toApiError(e: unknown): ApiErrorInfo {
-  if (e instanceof AxiosError) {
-    const status = e.response?.status;
-    const data = e.response?.data as unknown;
-    let message = e.message;
-    if (typeof data === 'string' && data) message = data;
-    else if (data && typeof data === 'object') {
-      const rec = data as Record<string, unknown>;
-      message = (rec.message as string) ?? (rec.error as string) ?? JSON.stringify(data);
-    }
-    return { status, message, url: e.config?.url };
-  }
-  return { message: e instanceof Error ? e.message : String(e) };
-}

@@ -19,6 +19,11 @@
     </description>
 
     <dependencies>
+        <!-- 仅共享稳定错误契约；common不依赖Web，响应式网关仍不会被引入MVC。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-common</artifactId>
+        </dependency>
         <!-- 作为「web 服务技术 starter」,这些依赖对下游 web 服务传递可见(纯库/离线作业不依赖本模块,不被污染)。
              刻意<b>不引 spring-webmvc</b>:平台类只用 spring-web(经 security 传递)+ servlet-api 即可编译,
              这样连响应式的网关也能安全依赖本模块(不会把 DispatcherServlet 带进 Spring Cloud Gateway 而启动失败)。
