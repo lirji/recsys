@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.query.persistence.mapper.LexemeMapper">
+    <resultMap id="alias" type="com.recsys.query.persistence.model.LexemeAlias">
+        <constructor><arg column="raw" javaType="string"/><arg column="lexeme" javaType="string"/></constructor>
+    </resultMap>
+    <select id="canonicalize" resultMap="alias">
+        SELECT raw, lexemes[1] AS lexeme FROM (
+            SELECT raw, tsvector_to_array(to_tsvector('english', raw)) AS lexemes
+            FROM unnest(#{terms,typeHandler=com.recsys.persistence.typehandler.TextListTypeHandler}::text[]) AS t(raw)
+        ) x WHERE cardinality(lexemes) = 1
+    </select>
+</mapper>

@@ -5,7 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.query.persistence.mapper.LexemeMapper;
+import com.recsys.query.persistence.model.LexemeAlias;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -33,7 +34,7 @@ public class IdfWeighter {
     private static final double NEUTRAL = 1.0;
 
     private final ObjectProvider<StringRedisTemplate> redisProvider;
-    private final ObjectProvider<JdbcTemplate> jdbcProvider;
+    private final ObjectProvider<LexemeMapper> mapperProvider;
     private final QueryProperties props;
 
     private volatile Map<String, Double> rawIdf = Map.of();
@@ -48,10 +49,10 @@ public class IdfWeighter {
             });
 
     public IdfWeighter(ObjectProvider<StringRedisTemplate> redisProvider,
-                       ObjectProvider<JdbcTemplate> jdbcProvider,
+                       ObjectProvider<LexemeMapper> mapperProvider,
                        QueryProperties props) {
         this.redisProvider = redisProvider;
-        this.jdbcProvider = jdbcProvider;
+        this.mapperProvider = mapperProvider;
         this.props = props;
     }
 
@@ -140,22 +141,12 @@ public class IdfWeighter {
         if (rawTerms.isEmpty()) {
             return;
         }
-        JdbcTemplate jdbc = jdbcProvider.getIfAvailable();
-        if (jdbc == null) {
+        LexemeMapper mapper = mapperProvider.getIfAvailable();
+        if (mapper == null) {
             return;
         }
         try {
-            List<LexemeAlias> aliases = jdbc.query("""
-                    SELECT raw, lexemes[1] AS lexeme
-                    FROM (
-                        SELECT raw, tsvector_to_array(to_tsvector('english', raw)) AS lexemes
-                        FROM unnest(?::text[]) AS t(raw)
-                    ) x
-                    WHERE cardinality(lexemes) = 1
-                    """,
-                    ps -> ps.setArray(1, ps.getConnection().createArrayOf(
-                            "text", rawTerms.toArray(String[]::new))),
-                    (rs, n) -> new LexemeAlias(rs.getString("raw"), rs.getString("lexeme")));
+            List<LexemeAlias> aliases = mapper.canonicalize(rawTerms);
             Map<String, String> mapped = new HashMap<>();
             aliases.forEach(a -> mapped.put(a.raw(), a.lexeme()));
             // 查询成功但没有 lexeme 的 token 是 PG stopword；负缓存避免重复查库。
@@ -174,6 +165,4 @@ public class IdfWeighter {
         return cached == null || cached.isEmpty() ? null : cached;
     }
 
-    record LexemeAlias(String raw, String lexeme) {
-    }
 }

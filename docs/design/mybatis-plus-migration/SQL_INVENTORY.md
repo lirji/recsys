@@ -169,7 +169,7 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/query/IdfWeighter.java](../../../recsys-query/src/main/java/com/recsys/query/IdfWeighter.java) | 8 | 2 | TODO |
+| [com/recsys/query/IdfWeighter.java](../../../recsys-query/src/main/java/com/recsys/query/IdfWeighter.java) | 8 | 2 | MP03a DONE：LexemeMapper.xml；见MP03A_RESULT |
 
 ### recsys-rank
 
