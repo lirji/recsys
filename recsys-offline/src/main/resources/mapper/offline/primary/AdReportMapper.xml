@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdReportMapper">
+    <resultMap id="position" type="com.recsys.offline.persistence.mapper.primary.AdReportMapper$Position">
+        <constructor>
+            <arg name="position" column="position" javaType="_int"/>
+            <arg name="impressions" column="impressions" javaType="_long"/>
+            <arg name="clicks" column="clicks" javaType="_long"/>
+            <arg name="conversions" column="conversions" javaType="_long"/>
+            <arg name="revenue" column="revenue" javaType="_double"/>
+            <arg name="relevance" column="avg_relevance" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <resultMap id="bucket" type="com.recsys.offline.persistence.mapper.primary.AdReportMapper$Bucket">
+        <constructor>
+            <arg name="bucket" column="bucket" javaType="java.lang.String"/>
+            <arg name="impressions" column="impressions" javaType="_long"/>
+            <arg name="clicks" column="clicks" javaType="_long"/>
+            <arg name="conversions" column="conversions" javaType="_long"/>
+            <arg name="revenue" column="revenue" javaType="_double"/>
+        </constructor>
+    </resultMap>
+    <sql id="sourceTable"><choose><when test="source.name() == 'AD_EVENT_LOG'">ad_event_log</when><otherwise>ad_event</otherwise></choose></sql>
+    <sql id="timeFilter"><if test="since != null">AND i.ts &gt;= #{since}::timestamp</if></sql>
+    <sql id="exposures">
+        FROM <include refid="sourceTable"/> i
+        LEFT JOIN (SELECT DISTINCT request_id,ad_id FROM <include refid="sourceTable"/> WHERE event_type='CLICK') clk
+            ON clk.request_id=i.request_id AND clk.ad_id=i.ad_id
+        LEFT JOIN (SELECT DISTINCT request_id,ad_id FROM <include refid="sourceTable"/> WHERE event_type='CONVERSION') cvt
+            ON cvt.request_id=i.request_id AND cvt.ad_id=i.ad_id
+        WHERE i.event_type='IMPRESSION' <include refid="timeFilter"/>
+    </sql>
+    <sql id="totals">
+        COUNT(*) AS impressions,COUNT(clk.ad_id) AS clicks,COUNT(cvt.ad_id) AS conversions,
+        COALESCE(SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END),0) AS revenue
+    </sql>
+    <select id="scanPositions" resultMap="position" useCache="false">
+        SELECT COALESCE(i.position,0) AS position,<include refid="totals"/>,COALESCE(AVG(i.relevance),0) AS avg_relevance
+        <include refid="exposures"/>
+        <!-- 必须按原列分组/排序，投影NULL到0不改变NULLS LAST及真实0分组。 -->
+        GROUP BY i.position ORDER BY i.position
+    </select>
+    <select id="scanBuckets" resultMap="bucket" useCache="false">
+        SELECT COALESCE(i.ad_bucket,'(none)') AS bucket,<include refid="totals"/>
+        <include refid="exposures"/> GROUP BY COALESCE(i.ad_bucket,'(none)') ORDER BY bucket
+    </select>
+    <select id="countInvalidClicks" resultType="java.lang.Long" useCache="false">
+        SELECT COUNT(*) FROM <include refid="sourceTable"/> i WHERE i.event_type='INVALID_CLICK' <include refid="timeFilter"/>
+    </select>
+</mapper>

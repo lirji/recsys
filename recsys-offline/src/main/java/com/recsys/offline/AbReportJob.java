@@ -3,8 +3,8 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import com.recsys.offline.persistence.mapper.primary.AbReportMapper;
+import com.recsys.offline.persistence.model.BehaviorSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -55,10 +55,11 @@ public class AbReportJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(AbReportJob.class);
     private static final String OUT_DIR = "eval";
 
-    private final JdbcTemplate jdbc;
+    private final AbReportMapper mapper;
 
-    public AbReportJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 原统计和CUPED算法留在作业，主源Mapper只返回明确的原始分组。 */
+    public AbReportJob(AbReportMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
@@ -68,7 +69,7 @@ public class AbReportJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        String bt = BehaviorQuery.table(args);   // #2:行为读来源表(默认 user_behavior)
+        BehaviorSource source = BehaviorQuery.source(args);
         String since = stringArg(args, "since", null);
         long minImpressions = intArg(args, "min-impressions", 1);
         String baselineArg = stringArg(args, "baseline", null);
@@ -89,41 +90,20 @@ public class AbReportJob implements OfflineJob {
         }
         double z = AbStats.inverseNormalCdf(1.0 - alpha / 2.0);  // 双侧置信/检验的临界 z
 
-        // 时间过滤(可选);bucket 为空的行归为 '(none)'
-        StringBuilder where = new StringBuilder("WHERE bucket IS NOT NULL");
-        List<Object> params = new ArrayList<>();
-        if (since != null) {
-            where.append(" AND ts >= ?::timestamp");
-            params.add(since);
-        }
-        if (until != null) {
-            where.append(" AND ts < ?::timestamp");
-            params.add(until);
-        }
-        if (scene != null) {
-            where.append(" AND scene = ?");
-            params.add(scene);
-        }
-
-        String sql = "SELECT COALESCE(bucket, '(none)') AS bucket, " +
-                "  COUNT(*) FILTER (WHERE action='IMPRESSION') AS impressions, " +
-                "  COUNT(*) FILTER (WHERE action='CLICK') AS clicks, " +
-                "  COUNT(DISTINCT user_id) AS users " +
-                "FROM " + bt + " " + where +
-                " GROUP BY bucket ORDER BY impressions DESC";
-
+        // 原查询排除NULL桶；所有action仍参与独立用户计数。
         List<Row> rows = new ArrayList<>();
-        jdbc.query(sql, params.toArray(), rs -> {
+        mapper.scanBuckets(source, since, until, scene, context -> {
+            var input = context.getResultObject();
             Row r = new Row();
-            r.bucket = rs.getString("bucket");
-            r.impressions = rs.getLong("impressions");
-            r.clicks = rs.getLong("clicks");
-            r.users = rs.getLong("users");
+            r.bucket = input.bucket();
+            r.impressions = input.impressions();
+            r.clicks = input.clicks();
+            r.users = input.users();
             rows.add(r);
         });
 
         CupedReport cuped = cupedPreDays > 0
-                ? buildCupedReport(bt, since, until, scene, cupedPreDays)
+                ? buildCupedReport(source, since, until, scene, cupedPreDays)
                 : CupedReport.disabled();
         if (cuped.enabled) {
             // 开启 CUPED 时 raw/adjusted 必须使用同一首曝光 ITT 人群，避免一行内混用 as-treated 与 ITT。
@@ -215,51 +195,19 @@ public class AbReportJob implements OfflineJob {
     }
 
     /** 从严格不重叠的 pre/post 窗口组装 user 级 CUPED 输入。 */
-    private CupedReport buildCupedReport(String table, String since, String until, String scene,
+    private CupedReport buildCupedReport(BehaviorSource source, String since, String until, String scene,
                                          int preDays) {
-        StringBuilder postWhere = new StringBuilder(
-                "WHERE bucket IS NOT NULL AND ts >= ?::timestamp");
-        List<Object> postParams = new ArrayList<>();
-        postParams.add(since);
-        if (until != null) {
-            postWhere.append(" AND ts < ?::timestamp");
-            postParams.add(until);
-        }
-        if (scene != null) {
-            postWhere.append(" AND scene = ?");
-            postParams.add(scene);
-        }
-        String postSql = "SELECT user_id,bucket," +
-                " COUNT(*) FILTER (WHERE action='IMPRESSION') AS impressions," +
-                " COUNT(*) FILTER (WHERE action='CLICK') AS clicks," +
-                " MIN(ts) FILTER (WHERE action='IMPRESSION') AS first_impression" +
-                " FROM " + table + " " + postWhere + " GROUP BY user_id,bucket" +
-                " HAVING COUNT(*) FILTER (WHERE action='IMPRESSION') > 0";
         List<UserBucketPeriod> post = new ArrayList<>();
-        jdbc.query(postSql, postParams.toArray(), (RowCallbackHandler) rs -> post.add(new UserBucketPeriod(
-                rs.getLong("user_id"), rs.getString("bucket"),
-                rs.getLong("impressions"), rs.getLong("clicks"),
-                rs.getTimestamp("first_impression").getTime())));
-
-        StringBuilder preWhere = new StringBuilder(
-                "WHERE ts >= ?::timestamp - (? * interval '1 day') AND ts < ?::timestamp");
-        List<Object> preParams = new ArrayList<>();
-        preParams.add(since);
-        preParams.add(preDays);
-        preParams.add(since);
-        if (scene != null) {
-            preWhere.append(" AND scene = ?");
-            preParams.add(scene);
-        }
-        String preSql = "SELECT user_id," +
-                " COUNT(*) FILTER (WHERE action='IMPRESSION') AS impressions," +
-                " COUNT(*) FILTER (WHERE action='CLICK') AS clicks" +
-                " FROM " + table + " " + preWhere + " GROUP BY user_id" +
-                " HAVING COUNT(*) FILTER (WHERE action='IMPRESSION') > 0";
+        mapper.scanPostPeriod(source, since, until, scene, context -> {
+            var input = context.getResultObject();
+            // JDBC Timestamp保留原时区转换及毫秒截断，不能用SQL epoch改变同毫秒ITT裁决。
+            post.add(new UserBucketPeriod(input.userId(), input.bucket(), input.impressions(), input.clicks(),
+                    input.firstImpression().getTime()));
+        });
         Map<Long, PeriodTotals> pre = new HashMap<>();
-        jdbc.query(preSql, preParams.toArray(), (RowCallbackHandler) rs -> {
-            pre.put(rs.getLong("user_id"),
-                    new PeriodTotals(rs.getLong("impressions"), rs.getLong("clicks")));
+        mapper.scanPrePeriod(source, since, scene, preDays, context -> {
+            var input = context.getResultObject();
+            pre.put(input.userId(), new PeriodTotals(input.impressions(), input.clicks()));
         });
 
         // 随机化单位是 user。跨桶属于 treatment 污染；按首次曝光桶做 intention-to-treat，

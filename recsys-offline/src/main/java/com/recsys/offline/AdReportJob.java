@@ -3,7 +3,8 @@ package com.recsys.offline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.recsys.offline.persistence.mapper.primary.AdReportMapper;
+import com.recsys.offline.persistence.model.AdEventSource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedWriter;
@@ -35,11 +36,11 @@ public class AdReportJob implements OfflineJob {
     private static final Logger log = LoggerFactory.getLogger(AdReportJob.class);
     private static final String OUT_DIR = "eval";
 
-    private final JdbcTemplate jdbc;
-    private String aet = "ad_event";   // #3:ad_event 读来源表(默认 ad_event)
+    private final AdReportMapper mapper;
 
-    public AdReportJob(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    /** 报表仅依赖主源的具名统计查询，CSV及晚查询失败边界由作业控制。 */
+    public AdReportJob(AdReportMapper mapper) {
+        this.mapper = mapper;
     }
 
     @Override
@@ -49,36 +50,18 @@ public class AdReportJob implements OfflineJob {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        aet = AdEventQuery.table(args);
+        AdEventSource source = AdEventQuery.source(args);
         String since = stringArg(args, "since", null);
-        String timeFilter = since != null ? " AND i.ts >= ?::timestamp" : "";
-
-        // 按位次聚合:曝光/点击/转化/收入/相关性。点击与曝光按 (request_id, ad_id) 关联。
-        String sql =
-                "SELECT i.position, " +
-                "  COUNT(*) AS impressions, " +
-                "  COUNT(clk.ad_id) AS clicks, " +
-                "  COUNT(cvt.ad_id) AS conversions, " +
-                "  SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END) AS revenue, " +
-                "  AVG(i.relevance) AS avg_relevance " +
-                "FROM " + aet + " i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') clk " +
-                "  ON clk.request_id = i.request_id AND clk.ad_id = i.ad_id " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CONVERSION') cvt " +
-                "  ON cvt.request_id = i.request_id AND cvt.ad_id = i.ad_id " +
-                "WHERE i.event_type = 'IMPRESSION'" + timeFilter +
-                " GROUP BY i.position ORDER BY i.position";
-
         List<Row> rows = new ArrayList<>();
-        Object[] params = since != null ? new Object[]{since} : new Object[]{};
-        jdbc.query(sql, params, rs -> {
+        mapper.scanPositions(source, since, context -> {
+            var input = context.getResultObject();
             Row r = new Row();
-            r.position = rs.getInt("position");
-            r.impressions = rs.getLong("impressions");
-            r.clicks = rs.getLong("clicks");
-            r.conversions = rs.getLong("conversions");
-            r.revenue = rs.getDouble("revenue");
-            r.relevance = rs.getDouble("avg_relevance");
+            r.position = input.position();
+            r.impressions = input.impressions();
+            r.clicks = input.clicks();
+            r.conversions = input.conversions();
+            r.revenue = input.revenue();
+            r.relevance = input.relevance();
             rows.add(r);
         });
 
@@ -100,7 +83,7 @@ public class AdReportJob implements OfflineJob {
         Path outFile = Path.of(OUT_DIR, "ad-report-" + ts + ".csv");
         Files.createDirectories(outFile.getParent());
 
-        long invalidClicks = countInvalidClicks(timeFilter, params);
+        long invalidClicks = countInvalidClicks(source, since);
         log.info(String.format("---- 广告变现报表(曝光 %d,点击 %d,转化 %d,收入 %.2f 元,eCPM %.2f,CTR %.4f;"
                         + "反作弊拦截无效点击 %d)----",
                 total.impressions, total.clicks, total.conversions, total.revenue,
@@ -124,32 +107,23 @@ public class AdReportJob implements OfflineJob {
             w.newLine();
 
             // 广告分层 A/B:按 ad_bucket 聚合(对比各变体的 CTR/收入/eCPM)
-            reportByBucket(timeFilter, params, w);
+            reportByBucket(source, since, w);
         }
         log.info("ad-report 完成,报表已写入 {}", outFile.toAbsolutePath());
     }
 
     /** 按 ad_bucket(广告分层 A/B 变体)聚合,日志打印 + 追加到 CSV(position 列写 bucket:&lt;name&gt;)。 */
-    private void reportByBucket(String timeFilter, Object[] params, BufferedWriter w) throws java.io.IOException {
-        String sql =
-                "SELECT COALESCE(i.ad_bucket,'(none)') AS bucket, " +
-                "  COUNT(*) AS impressions, COUNT(clk.ad_id) AS clicks, COUNT(cvt.ad_id) AS conversions, " +
-                "  SUM(CASE WHEN clk.ad_id IS NOT NULL THEN i.charged_price ELSE 0 END) AS revenue " +
-                "FROM " + aet + " i " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CLICK') clk " +
-                "  ON clk.request_id = i.request_id AND clk.ad_id = i.ad_id " +
-                "LEFT JOIN (SELECT DISTINCT request_id, ad_id FROM " + aet + " WHERE event_type='CONVERSION') cvt " +
-                "  ON cvt.request_id = i.request_id AND cvt.ad_id = i.ad_id " +
-                "WHERE i.event_type = 'IMPRESSION'" + timeFilter +
-                " GROUP BY COALESCE(i.ad_bucket,'(none)') ORDER BY bucket";
+    private void reportByBucket(AdEventSource source, String since, BufferedWriter w) throws java.io.IOException {
         List<String[]> buckets = new ArrayList<>();
-        jdbc.query(sql, params, rs -> {
+        // 仍在位次和ALL行写出后查询，保持原晚失败可见的部分报表。
+        mapper.scanBuckets(source, since, context -> {
+            var input = context.getResultObject();
             Row r = new Row();
-            r.impressions = rs.getLong("impressions");
-            r.clicks = rs.getLong("clicks");
-            r.conversions = rs.getLong("conversions");
-            r.revenue = rs.getDouble("revenue");
-            buckets.add(new String[]{rs.getString("bucket"),
+            r.impressions = input.impressions();
+            r.clicks = input.clicks();
+            r.conversions = input.conversions();
+            r.revenue = input.revenue();
+            buckets.add(new String[]{input.bucket(),
                     String.format("%d,%d,%d,%.4f,%.6f,%.6f,%.4f",
                             r.impressions, r.clicks, r.conversions, r.revenue, ctr(r), cvr(r), ecpm(r))});
         });
@@ -175,11 +149,9 @@ public class AdReportJob implements OfflineJob {
     }
 
     /** 反作弊拦截的无效点击数(event_type=INVALID_CLICK),供报表展示风控效果。 */
-    private long countInvalidClicks(String timeFilter, Object[] params) {
+    private long countInvalidClicks(AdEventSource source, String since) {
         try {
-            Long n = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM " + aet + " i WHERE i.event_type='INVALID_CLICK'" + timeFilter,
-                    Long.class, params);
+            Long n = mapper.countInvalidClicks(source, since);
             return n == null ? 0 : n;
         } catch (Exception e) {
             return 0;

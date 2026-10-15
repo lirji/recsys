@@ -484,3 +484,7 @@ DONE/PASS，见MP13B6_RESULT。旧6项两次实跑、新专项7项、全离线98
 ## MP13f3最终验证
 
 见MP13F3_RESULT。旧11、新关联12、枚举逻辑完整离线252/43类及全仓24 reactor测试编译通过；随后仅私有枚举更名AttributionKind，最终受影响12/全仓编译/hygiene再次通过。9源最终指纹50c09a07f05846541bca8ae6abe9c0d67bc291b50e9b7a8ec89257912203c388，完整回归前后指纹关系在RESULT明确记录。四SQL进入归因/质量Mapper/XML，原NULL排序、去重差异、窗口/身份精度旧边界、五份完整CSV及部分失败保持；显式归因类型保留原0/1/2码。大ID舍入与吞发布错误后完成日志列为后续治理。47ae6e02 CI38772834762五门禁全部SUCCESS；f2=2970a636与本片正常相邻交付后继续f4广告/AB报表六SQL。
+
+## MP13f4最终验证
+
+见MP13F4_RESULT。旧10、新关联11、完整离线262/44类及全仓24 reactor测试编译/hygiene通过。9源指纹116b51573a09d0b50c6d7a027103b49acc22910df616fe01a27ae15154c95299。广告/AB六查询进入主源Mapper/XML；六份完整CSV与旧一致，原NULL分组/排序、不同事件时间窗口、晚bucket部分输出、CUPED pre/post/ITT和Timestamp毫秒语义保持。0a4481f9 CI38776191398四专项成功/build在途。本片先本地提交，继续MP13f5 oCPC四条主源/分片查询，之后相邻正常交付。

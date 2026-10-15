@@ -120,10 +120,10 @@
 
 | 来源文件 | 首次命中行 | SQL 模式命中 | 核销状态 |
 |---|---:|---:|---|
-| [com/recsys/offline/AbReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AbReportJob.java) | 6 | 3 | TODO |
+| [com/recsys/offline/AbReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AbReportJob.java) | 6 | 3 | MP13f4：三查询→primary AbReportMapper/XML；时间/scene绑定、原始用户分组、Timestamp毫秒ITT保持，见MP13F4_RESULT |
 | [com/recsys/offline/AdCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdCalibrateJob.java) | 8 | 2 | DONE MP13f1：主源AdCalibrationMapper/XML；见MP13F1_RESULT |
 | [com/recsys/offline/AdExploreStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdExploreStatsJob.java) | 8 | 3 | DONE MP13f1：主源AdExplorationMapper/XML；见MP13F1_RESULT |
-| [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | TODO |
+| [com/recsys/offline/AdReportJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AdReportJob.java) | 6 | 7 | MP13f4：三查询→primary AdReportMapper/XML；曝光窗口、全量去重关联、晚bucket查询保持，见MP13F4_RESULT |
 | [com/recsys/offline/AttributionJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/AttributionJob.java) | 6 | 1 | DONE MP13f3：主源AdAttributionMapper/XML；见MP13F3_RESULT |
 | [com/recsys/offline/BackfillEmbeddingJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BackfillEmbeddingJob.java) | 11 | 3 | DONE MP13c1：derived向量写入；见MP13C1_RESULT |
 | [com/recsys/offline/BanditStatsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/BanditStatsJob.java) | 15 | 1 | DONE MP13a2/d3：正反馈与曝光均Mapper；见MP13D3_RESULT |
