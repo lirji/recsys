@@ -29,6 +29,11 @@ public class BudgetConfiguration {
     public BudgetAccountService budgetAccountService(BudgetRepository repository,
             @Qualifier("adDbDataSource") DataSource dataSource,
             @Value("${recsys.ad.billing.transaction-timeout-seconds:5}") int timeoutSeconds) {
+        return new BudgetAccountService(repository, transactions(dataSource, timeoutSeconds));
+    }
+
+    /** 账务用例统一复用同源短事务设置，不把事务管理器注册成全局默认值。 */
+    static TransactionTemplate transactions(DataSource dataSource, int timeoutSeconds) {
         if (timeoutSeconds < 1 || timeoutSeconds > 30) {
             throw new IllegalArgumentException("预算事务超时须在 1～30 秒之间");
         }
@@ -36,6 +41,6 @@ public class BudgetConfiguration {
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         transactions.setTimeout(timeoutSeconds);
-        return new BudgetAccountService(repository, transactions);
+        return transactions;
     }
 }

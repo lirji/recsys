@@ -1,6 +1,6 @@
 # sandbox 预算命令运行说明
 
-范围为 [CONTRACTS C02](CONTRACTS.md#c02sandbox-预算命令er-s02)。这是新预算账户入口，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。只有后续预占、资格、回执与账本切片验收后，才形成曝光资金闭环。
+范围为 [CONTRACTS C02/C02A/C03](CONTRACTS.md)。这是 sandbox 预算、报价与内部预占能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。交付资格、回执与账本切片验收后，才形成曝光资金闭环。
 
 ## 隔离库迁移
 
@@ -16,7 +16,7 @@ psql -X --set ON_ERROR_STOP=on \
   --command 'SELECT version, description, script_sha256, installed_at FROM ad_billing_schema_history ORDER BY version;'
 ```
 
-迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的 V001。ER-S02A 增加 V002：按上面相同命令，将 billing_migration 改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql` 并重新计算摘要，在 V001 之后执行。当前新版本启用时同时校验 V001 和 V002，缺失/漂移拒绝启动；旧应用仍只要求 V001，扩展迁移支持版本共存，不自动迁移。
+迁移在一个事务中创建带中文注释的表和约束，版本记录包含脚本摘要。重复执行因版本唯一键冲突退出并回滚；不可改写已经执行的版本。ER-S02A 增加 V002、ER-S03 增加 V003：按上面相同命令，将 billing_migration 依次改为 `recsys-ad/src/main/resources/db/ad-billing/V002__cpm_quote.sql`、`recsys-ad/src/main/resources/db/ad-billing/V003__budget_reservation.sql`，逐个重新计算摘要并执行。当前新版本启用时分别校验 V001/V002/V003，缺失/漂移拒绝启动；旧应用仍只要求自身版本，扩展迁移支持版本共存，不自动迁移。
 
 ## 启用范围与身份
 
@@ -65,4 +65,34 @@ ER-S02A 的 `auctionSandboxCpm` 仅产生标准 GSP/CPM 候选与精确计价依
 
 冻结数据位于 `ad_cpm_quote`，quoteId 和 delivery/slot 均唯一，服务器数据库时钟签发并在 5 分钟到期。重试只读原行，不重新计算出价/模型、不刷新期限；同 ID 改定价依据或同交付位置换 ID 冲突。已过期报价仍可查询，后续预占接口必须基于服务端时间拒绝过期报价。展示字段 double 不可用于收费，后续预占与结算只引用服务端持久化 quoteId 的精确金额。
 
-代码回退保留 V002 和报价，不能删表释放业务义务；当前报价尚未连接预占/扣费。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
+代码回退保留 V002 和报价，不能删表释放业务义务；报价已连接内部预占，公开交付与回执扣费尚未接通。报价历史不自动清理，后续归档须兼顾账务追溯与幂等。新路径槽位 1～100 是有界输入校验，不是吞吐容量承诺。
+
+## 预占、释放与到期回收
+
+ER-S03 提供 owner 内部 `ReservationService.prepare/find/release`；跨进程可信准备入口将在 ER-S04 接入，终端没有提交价格/预算日/广告主的预占接口。调用方先持久化 reservationId/quoteId/原主体，重试保留这些值。prepare 返回首次决策，find 返回当前状态；已释放后的 prepare 重试返回原始 HELD 决策不代表仍持有金额，当前状态必须另查。
+
+成功预占只增加 held，不是曝光或消费。预算日取首次命令受理的 adDb 时间（Asia/Shanghai），金额/期限继承报价；跨日释放回到该预算日，不借用今天的账户。拒绝结论会保存，同命令补预算后也不会偷偷占用。要发起新的有意准备，必须从新的交付/报价操作开始，不能换 ID 复用旧报价。
+
+服务开启 sandbox 后使用独立单线程 fixed-delay worker：默认 `recsys.ad.billing.expiry-interval-ms=1000`（100～60000），`recsys.ad.billing.expiry-batch-size=100`（1～100）。一笔一事务，`FOR UPDATE SKIP LOCKED` 支持多实例竞争；扫描 HELD 到期索引，无待办结束本轮。异常停止本轮并指数退避加抖动，最长 60 秒；下次从数据库续办，没有内存队列作为权威。
+
+暂停新增预占：设置 `recsys.ad.billing.reservation-admission-enabled=false` 并受控重启相关实例。它仍允许已存在命令恢复、查询、主动释放和 worker 回收。不要关闭整个 sandbox 或停掉所有进程后宣称回收仍在运行；多实例暂停需要逐实例核验及在途请求排空，当前开关不是瞬时全局 fence。
+
+指标 `ad.billing.reservation.expired` 仅在释放提交后增加，`ad.billing.reservation.expiry.failures` 记录失败轮次；不使用广告主或 UUID 作为高基数标签。告警应关联 `sandbox reservation expiry failed` 日志、异常中的 reservationId 和数据库状态。数据库不可用时先恢复连接；账户/预占金额不一致时暂停新增、按标识核查，不直接改 held 或终态“修平”。永久不变量失败会保留该行并停止本轮，需要人工处置；本片不自动跳过或丢弃资金义务。
+
+可在已核准的隔离 adDb 只读检查待办与占用一致性：
+
+```sql
+SELECT count(*) AS overdue, min(expires_at) AS oldest_expiry
+FROM ad_budget_reservation WHERE state = 'HELD' AND expires_at <= clock_timestamp();
+
+SELECT a.advertiser_id, a.budget_date, a.held_amount,
+       COALESCE(SUM(r.amount) FILTER (WHERE r.state = 'HELD'), 0) AS reservation_held
+FROM ad_budget_account a
+LEFT JOIN ad_budget_reservation r ON r.traffic_class = a.traffic_class
+  AND r.advertiser_id = a.advertiser_id AND r.budget_date = a.budget_date
+WHERE a.traffic_class = 'SANDBOX'
+GROUP BY a.advertiser_id, a.budget_date, a.held_amount
+HAVING a.held_amount <> COALESCE(SUM(r.amount) FILTER (WHERE r.state = 'HELD'), 0);
+```
+
+ER-S03 恢复边界：停止进程不撤销已提交 held；恢复同版本服务后 worker 继续处理持久化 HELD。关闭签发/新增后保持回收，确认无 HELD 义务再决定是否停止整个能力。回退到没有回收功能的旧二进制不能充当预算补偿；保留 V001～V003，不删除账户、报价或预占。收费捕获及释放竞争由 ER-S05 接入，本片无 charged 修改。

@@ -23,6 +23,9 @@ public class CpmQuoteRepository {
         this.jdbc = jdbc;
     }
 
+    /** 预占用例必须从同一 owner 数据源读取报价，不能拼接另一个库的事务。 */
+    public javax.sql.DataSource dataSource() { return jdbc.getDataSource(); }
+
     /** 新版本能力启用前核对 V002；V001 仍由预算装配独立校验。 */
     public void verifySchema() {
         String installed = jdbc.queryForObject(

@@ -54,3 +54,21 @@ BiddingService 的新方法在计算 GSP 价格前建立精确边界：旧目录
 新增 V002 版本迁移，不改已交付 V001；仍默认关闭且仅显式迁移隔离 adDb。本片提供领域/持久化与 protobuf 快照往返，不开放客户端提交价格的接口；ER-S04 才把整次交付与可信 RPC 编排接通，ER-S03 仅凭服务端已保存 quoteId 预占。金额、来源和到期时间不得由终端指定。
 
 验收：半微元、精确除法、上限/下限、极值与非有限输入；旧默认 auction 回归；新路径过滤非 CPM、拒绝未支持算法；真实 PG 同 quote 重试与并发、变负载/换 ID 冲突、重建后原金额/期限不变；protobuf 精确字段往返。不得用只有 NUMERIC 列而收费仍是旧 double 的方式完成本片。
+
+## C03：sandbox CPM 预占与释放（ER-S03）
+
+本片为广告 owner 内部用例与到期回收，不开放终端提交价格/广告主/预算日的接口；可信跨进程准备协议由 ER-S04 接入。请求由调用方持久化生成 reservationId（UUID）、quoteId、原交付主体 subjectKey。reservationId 为预占幂等键，quoteId 亦唯一，一份报价最多一笔预占；同 ID 改 quote/主体或同 quote 换 reservationId 均冲突。主体最长 200 字符，必须非空。命令非法/报价不存在不产生预占；已有预占重试返回首次 prepare 结论，查询另取当前状态。
+
+账户、金额、到期时间取服务端冻结报价；预算日由预占命令首次进入 adDb 的数据库时间按 Asia/Shanghai 确定，跨日不挪动。账户须已由预算管理命令建立，不自动创建额度。首次 prepare 结论持久化为 HELD、INSUFFICIENT_BUDGET、QUOTE_EXPIRED 或 ACCOUNT_MISSING；即使之后补预算/跨日/状态变化，原结论不变。HELD 的当前状态独立为 HELD/RELEASED/EXPIRED，CAPTURED 留到 ER-S05 引入。
+
+同一 adDb 事务内：领取预占唯一键 → 锁账户 → 再检查数据库当前时间严格早于报价到期 → 条件增加 held、递增账户版本 → 保存首次结论与金额/业务日/期限。可用额不够则拒绝并持久化结论；数据库约束最终保证 charged+held<=limit。结果只在事务提交后返回，服务重建可查询并同 ID 恢复。锁等待期间报价到期不能继续占用。
+
+主动释放仅针对 HELD，记录服务端原因 DELIVERY_ABORTED；到期释放记 EXPIRED，由数据库当前时间判定，到期边界为 now>=expiresAt。释放事务先锁预占行再锁账户，held 减去冻结金额、账户版本+1，与预占终态/原因/时间一起提交；重复释放返回同终态，不重复减 held。到期后的主动释放也归 EXPIRED。当前拒绝记录不释放金额。
+
+到期 worker 复用进程调度能力，缺省随 sandbox 开关启用；扫描间隔默认 1 秒、单轮最多 100 笔，均为受限技术配置，不作恢复时限承诺。每笔独立短事务，按 expiresAt/reservationId 选一条 HELD 到期记录 FOR UPDATE SKIP LOCKED，再按相同预占→账户锁序释放；并发执行器不重复，进程失败回滚后下一轮续办，不需要跨库租约。不得整批持有多个广告主账户锁，不做无界扫描或无界重试。
+
+`recsys.ad.billing.reservation-admission-enabled=false` 停止新预占但保留查询/释放/到期 worker；开关通过受控重启生效，不宣称多实例瞬时 fence。worker 故障按有上限的指数退避加抖动，下一轮重新查询持久化待办，不吞错伪造已回收；永久数据不变量失败记录告警线索，停止本轮并保留行，不自动篡改金额。
+
+新增 V003 的 reservation 表、唯一键/FK、状态约束、期限扫描部分索引与中文注释。沿用 C02 的显式 adDb 事务和版本校验；V001/V002 不改。查询是恢复证据，找不到不代表在途事务未执行。预占只调整 held，不写 charged、Redis 或旧 ad_event，不把预占当曝光/消费。
+
+验收：真实 PG 余额只够一份的并发只成功一次；同 ID 并发/不同 ID 同 quote；调额和预占竞争不越额；拒绝结果稳定；数据库失败整体回滚；跨日义务仍归原预占日；提前回收不生效；双 worker 与主动释放竞争、重复回收、进程重建恢复不重复减 held。运行说明须包含暂停签发后继续回收的恢复边界。

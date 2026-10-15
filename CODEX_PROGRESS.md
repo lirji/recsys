@@ -10,12 +10,14 @@
 - 评估与计划、五类前端只读角色分析、独立草案审查已落盘；文档提交 `9bcb18e5`、`10ecfb01`、`eca38650` 已在 main，无需重做总体规划。
 - ER-S01 DONE，提交 `9cad79fc` 已合并推送 main：修正旧预算分/元，未知不伪零，报价按自身单位展示。21 项后端、9 项前端、2 项浏览器测试通过，截图已查看；见 ER-S01_RESULT。
 - ER-S02 DONE，提交 `f05eb60b` 已合并推送 main：账户/幂等命令、NUMERIC 约束、明确 adDb 事务、版本迁移与 SHA 校验、billing.v1 RPC、ADMIN HTTP API 已完成。最终 43 项钱链路测试通过（新增 29，真实 PG 11），旧权限/预算展示 21 项额外回归通过；见 ER-S02_RESULT。默认关闭，不修改旧收费链路。
-- ER-S02A DONE，分支 `feat/exact-billing-quote` 正在 Git 交付：BiddingService 新 CPM/GSP 精确边界、V002 报价持久化、proto 快照完成；57 项钱链路通过（新增 14，真实 PG 5），旧竞价回归通过，见 ER-S02A_RESULT。
+- ER-S02A DONE，提交 `56259727` 已合并推送 main：BiddingService 新 CPM/GSP 精确边界、V002 报价持久化、proto 快照完成；57 项钱链路通过（新增 14，真实 PG 5），旧竞价额外 17 项回归通过，见 ER-S02A_RESULT。
+- ER-S03 DONE，当前分支 `feat/sandbox-budget-reservation` 正在 Git 交付：预占/查询/释放、固定原预算日、有界到期 worker、V003 和完整恢复说明。74 项钱链路通过（本片真实 PG 12 + worker 5），最终窄回归 17 项通过；见 ER-S03_RESULT。
+- 已核验 S01/S02/S02A 的 GitHub Actions 均成功；S02A run `38659158459`、S02 run `38658267901`、S01 run `38655809696`。
 - 迁移说明、配置、查询未知结果与回退方式写入 SANDBOX_BUDGET_RUNBOOK；只操作过临时 Testcontainers PG，没有迁移共享数据库。
 
 ## 已修改文件
 
-ER-S02A 当前范围：BiddingService 新入口；ad-common CpmPrice/FrozenCpmQuote；ad 的 CpmQuoteRepository/Configuration、V002 及测试；BudgetRepository 复用迁移摘要函数；billing.proto 与 CpmQuoteProtoMapper；C02A、状态、runbook、ER-S02A_RESULT 和本进度。V001 未改写。此前 ER-S02 范围已交付：
+ER-S03 当前范围：ad-common Reservation；ad 的 ReservationRepository/Service/Configuration/ExpiryJob、V003、两个测试；BudgetConfiguration 复用事务工厂、CpmQuoteRepository 公开同源校验；C03、TECH_SELECTION、状态、runbook、ER-S03_RESULT 和本进度。V001/V002 未改写。此前 ER-S02 范围已交付：
 
 - `recsys-ad-common/src/{main,test}/java/com/recsys/common/ad/billing/`：金额/账户/命令/结果契约与校验。
 - `recsys-ad/src/{main,test}/java/com/recsys/ad/billing/`、`recsys-ad/pom.xml`：Repository、用例、专属事务装配及真实 PG 测试。
@@ -27,8 +29,8 @@ ER-S02A 当前范围：BiddingService 新入口；ad-common CpmPrice/FrozenCpmQu
 
 ## 未完成
 
-- ER-S02A 正常提交/合并/推送后记录实际 SHA，继续 ER-S03 预占；当前产品代码已通过验收，不重复实施 S01/S02/S02A。
-- ER-D0/CPM 的预占、交付、资格、回执和事件契约逐片冻结；ER-S03～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
+- ER-S03 已验证，待完成正常 Git 提交/合并/推送并记录实际 SHA；然后继续 ER-S04，不重复实施 S01/S02/S02A/S03。
+- ER-D0/CPM 的交付、资格、回执和事件契约逐片冻结；ER-S04～ER-S25 尚未完成。依赖及验收以 IMPLEMENTATION_SLICES / PLAN 为准。
 - 优先形成 ER-S02～ER-S07 的最小 sandbox 曝光资金闭环，再推进自然行为、CPC/CPA、可靠事件、恢复和效果门禁。
 - CPA 归因/迟到窗口、正式来源与期初账务、容量和恢复目标仍待确定；不阻碍无关切片，不重复询问已确定 CPM 政策。
 
@@ -42,8 +44,8 @@ ER-S02A 当前范围：BiddingService 新入口；ad-common CpmPrice/FrozenCpmQu
 
 ## 下一步建议
 
-1. 核实本片 Git 交付实际状态，完成必要的正常提交/合并/推送；只显式暂存本片路径，不夹带用户文件或截图。
-2. 冻结 C03：只引用服务端 quoteId 的预占/查询/释放/过期回收；固定报价与预算日、账户行锁、合法状态转换和并发对账测试。
+1. 核实 S03 Git 交付状态，仅显式暂存本片路径，正常提交/合并/推送，不夹带用户文件或截图。
+2. 冻结并实现 C04：纯候选（无旧曝光/扣费）、engine 持久化整次操作和最终位置、稳定子操作、可信跨进程准备与同进程模式一致；丢响应重试必须恢复原条目，不能重选。
 3. 依次推进预占、整个交付操作的持久化恢复、回执、账本/Outbox 与前端验收；逐片验证和记录，不要求用户再输入继续。
 
 ## 恢复 Prompt

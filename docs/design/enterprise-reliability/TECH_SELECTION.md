@@ -22,3 +22,7 @@ PG 行锁可以串行化相关账户/预占更新，但要求正确锁序和事�
 ER-S02 冻结：复用现有 Spring JDBC 持久化风格（SQL 集中 Repository），专属 TransactionTemplate 绑定同一 adDb DataSource，不引入第二套 Mapper 框架。迁移采用独立 owner 的事务化版本 SQL 与 schema history，显式执行并记录 checksum，启动仅校验；避免新增 Flyway 后误触默认主数据源自动迁移。测试复用项目已选 Testcontainers PostgreSQL 依赖/BOM 和 `postgres:16-alpine`，新关键测试不允许无 Docker 静默跳过。
 
 机制核对：PostgreSQL 唯一键与 ON CONFLICT 处理并发领取（[PG 16 INSERT](https://www.postgresql.org/docs/16/sql-insert.html)）；Spring JDBC 事务必须使用绑定的数据源连接（[Spring JDBC connections](https://docs.spring.io/spring-framework/reference/data-access/jdbc/connections.html)）。这些机制仍需本片真实数据库故障测试证明。
+
+ER-S03：到期预占本身就是持久化待办，采用 Spring 单线程定时唤醒 + 每笔 PG `FOR UPDATE SKIP LOCKED` 短事务，不新增 MQ/分布式调度框架或独立租约。多实例靠同库行锁和状态条件竞争，一笔失败回滚后可续办。扫描轮次、超时、错误退避有界；隔离调度线程避免阻塞其他任务。新增预占 admission 开关可停止新占用，同时保留查询、释放和到期 worker；不能通过关掉整个 sandbox 丢弃在途回收职责。
+
+时间边界核对：扫描使用 statement_timestamp 固定本次 SQL 的截止时间，获取账户锁后用 clock_timestamp 判断是否已到期，避免事务开始时间在锁等待后陈旧（[PG 16 当前日期/时间](https://www.postgresql.org/docs/16/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT)）。应用服务器默认时区不参与预算日判定。
