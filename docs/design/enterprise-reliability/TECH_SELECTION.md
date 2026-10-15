@@ -36,3 +36,9 @@ S04 搜索入口最多 10 位，最终去重/截断后持久化计划；feed 接
 ER-S05：回执接受采用同 adDb `TransactionTemplate`，依次领取回执键、锁预占和原预算日账户；不持锁调用 RPC/MQ。捕获、唯一 ledger、Outbox 和首次回执结果一起提交，账本用唯一 qualification_id 与禁止改删触发器保护。事件使用原 ledgerId 去重和关联，不能用账户最大版本过滤金额事实。Outbox 本片只落持久化待发记录，S06 才实现 broker 确认、重试/隔离与投影。
 
 回执能力和暂停新接受分开：`receipts-enabled` 缺省 false，部署扩展 schema/新 owner 后才能启用；`receipt-admission-enabled=false` 暂停新命令但保留查询及同 ID 原结果恢复。资格签发时间与服务端接受时间约束声明时长，不使用客户端 wall-clock 作为到期权威；可见观测仍不是真人或终端完整性证明。gateway 两种 route profile 增加 sandbox namespace 并限定 ADMIN，不变更基础设施和用户已有运行文件。
+
+ER-S06：复用宿主已有 Spring Kafka 3.1.4 / Kafka client 3.6.2（Spring Boot 3.2.5 BOM）；ad 库显式声明 spring-kafka 以使用同一连接/安全配置绑定，未升级版本。发送/消费使用专用客户端，不改变旧日志或目录消费者的确认策略。继承受控 spring.kafka 连接/TLS/SASL 属性，覆盖 acks、幂等、重试/截止、手动位点和有界 poll 参数。消费与 PG 无 XA，采用“同库 Inbox+投影提交 → offset 提交”，不把 Kafka 幂等 producer 等同端到端 exactly-once。未知版本停止消费、保留位点，暂不引入第二个隔离队列。
+
+官方机制核对：[Kafka 3.7 producer 配置](https://kafka.apache.org/37/configuration/producer-configs/) 要求幂等与 acks/retries/in-flight 相容；[consumer 配置](https://kafka.apache.org/37/configuration/consumer-configs/) 区分自动提交、poll 与组存活。版本共存实际由 Kafka 3.6.2 客户端连接 Apache 3.7.1 临时 broker 测试证明，不声称覆盖所有 broker 版本。Spring Kafka/Kafka 均沿用已在项目中的 Apache-2.0 依赖；不借本片升级全仓库，现有 CI 依赖扫描仍是报告模式，不声明消除了历史依赖漏洞。
+
+公共组件事实：dev-infra/compose.yaml 的 recsys-kafka 使用 apache/kafka:3.7.1，宿主端口默认 59092；测试复用相同镜像版本，以已有 Testcontainers GenericContainer 启动隔离 KRaft broker，临时唯一 topic/group 和 PG schema，无新测试依赖或 Compose 服务。单节点仅证明本片协议恢复，不证明副本容灾/RPO。topic 先显式创建、不 compact；保留期限待业务决定，sandbox 暂不自动过期并监控空间。

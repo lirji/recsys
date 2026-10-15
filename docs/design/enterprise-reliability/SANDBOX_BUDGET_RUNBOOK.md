@@ -1,6 +1,6 @@
 # sandbox 预算命令运行说明
 
-范围为 [CONTRACTS C02/C02A/C03/C04/C05](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。资格和回执捕获已接通；可靠投递与浏览器采集分别由 S06/S07 补齐后，才形成端到端曝光资金闭环。
+范围为 [CONTRACTS C02/C02A/C03/C04/C05/C06](CONTRACTS.md)。这是 sandbox 预算、报价、预占与可恢复搜索交付能力，不是充值、真实收费切换或生产部署。默认关闭，旧预算/收费链路不读取本表。资格和回执捕获已接通；S06 已接可靠投递；S07 补齐浏览器采集后才形成端到端曝光资金闭环。
 
 ## 隔离库迁移
 
@@ -198,3 +198,68 @@ WHERE (r.state='CAPTURED')<>(l.ledger_id IS NOT NULL);
 ```
 
 发现不一致时暂停新增并按 receiptId/qualificationId/ledgerId 核查。服务遇到“账本已存在但预占非 CAPTURED”等不变量破坏会拒绝新回执，不替损坏数据返回成功。owner 日志 `sandbox receipt dependency failure`、engine 日志 `sandbox receipt result unknown` 只记合法格式 receiptId 与异常类型，不输出证明或内部 SQL。永久错误需人工排查，不能通过删除幂等行或把状态直接改为成功解决。
+
+## S06：可靠投递与逐账本投影
+
+先按既有显式迁移流程应用 ad V006（db/ad-billing/V006__billing_event_delivery.sql，新的 SHA256）；保留 V001～V005。它只扩展投递元数据和本 owner 的只读投影，不回填历史假账；已有 Outbox 默认 READY，有 published_at 的兼容为 PUBLISHED。启动核对 V001～V006；旧 S05 捕获写入仍可使用新表默认值。Outbox payload、账本、投影事实和人工重放审计禁止直接改删。
+
+在 owner（ad-serving 或 in-process engine）通过受控外部配置启用：
+
+~~~properties
+recsys.ad.billing.sandbox-enabled=true
+recsys.ad.billing.events.relay-enabled=true
+recsys.ad.billing.events.projection-enabled=true
+recsys.ad.billing.events.topic=ad-impression-captured-v1
+recsys.ad.billing.events.group=recsys-sandbox-billing-projection-v1
+~~~
+
+两个 events 开关默认 false，互不依赖 receipts-enabled；暂停新签发/预占/回执后仍可续发与投影。grpc engine 不启动本地 worker。沿用 spring.kafka.bootstrap-servers 和受控 spring.kafka.properties / producer / consumer 安全属性；宿主连接 dev_infra 的 recsys profile 时沿既有地址，不在应用中硬编码端口或秘密。producer 强制 acks=all、幂等、最多三次客户端重试、5 秒 delivery timeout、2 秒 max block；数据库领取最多 20 次、租约 30 秒，失败指数退避加抖动最多 60 秒。单轮最多十条，DB 故障停止该轮并退避五秒。Kafka 的单次重试和持久化领取总次数分别有界。
+
+Topic 必须显式预建并限定 producer/consumer ACL；不允许非账务 writer 发布。topic/group 按环境隔离；开始写入后不要随意更换 topic/group 或将同一组指向另一个数据库。如下命令模板只面向已经确认的 sandbox，应用不自动执行：
+
+~~~sh
+kafka-topics.sh --bootstrap-server "$SANDBOX_KAFKA_BOOTSTRAP" --create \
+  --topic "$SANDBOX_BILLING_TOPIC" --partitions 2 --replication-factor 1 \
+  --config cleanup.policy=delete --config retention.ms=-1 --config retention.bytes=-1
+~~~
+
+这个单副本参数仅适用本地 sandbox，不能用于承诺生产高可用。无 compact 是因为 key 为广告主+预算日，compact 会丢掉独立资金事件。暂不自动过期只用于首版验收，需监控磁盘；正式保留期、复制/ISR 和灾备目标仍待批准。事件/Outbox/Inbox 保留策略变更须覆盖重放窗口，不能随意清空。测试使用同版 Apache Kafka 3.7.1 临时容器和唯一 topic；没有执行上述共享实例命令。
+
+发送状态：READY → SENDING → PUBLISHED；broker 失败回 READY，耗尽变 DEAD。SENDING 的 available_at 是租约到期；旧 fence 或过期执行器不能标记。ACK 后标记失败会重复发送，属于正常恢复；PUBLISHED 只表示 broker 确认，不代表投影已完成。broker 故障不会回退已提交资金。保留支持 V006 的版本继续处理，不通过删除待发事件或回滚账本“恢复”。
+
+消费：每条事实先在 PG 原子写 Inbox/日汇总，返回后提交该条 offset+1。重复不累加，账户版本较小的另一条事实仍累加。单条最多三次处理，错版本/格式直接停止，其他失败耗尽后停止；不能跳过坏消息。指标 ad.billing.projection.running=0 或 failures 增长应排查受控日志中的 topic/partition/offset，再修复服务/兼容 schema/来源权限并重启消费者。原记录留在 broker，已提交投影靠 Inbox 防重；不要通过“reset 到 latest”掩盖缺口。对已知同 eventId 改负载冲突，应调查来源，不能篡改 Inbox 让冲突通过。
+
+关键监控：ad.billing.outbox.pending/dead/oldest.seconds（30 秒采样）、published/failed/stale/worker.failures/exhausted，以及 ad.billing.projection.running/applied/duplicate/failures。指标不以业务 ID 打标签；日志仅关联 eventId 或 topic/partition/offset。DEAD>0、消费者停止、积压持续增长都需处理；阈值是本地运行告警线索，不是已测容量/RTO 承诺。查询比单一进程健康更能说明恢复情况：
+
+~~~sql
+SELECT delivery_state,count(*),min(created_at),min(available_at),max(attempts)
+FROM ad_billing_outbox GROUP BY delivery_state;
+
+SELECT a.advertiser_id,a.budget_date,a.charged_amount AS authoritative,
+       p.charged_amount AS projected,p.impression_count
+FROM ad_budget_account a LEFT JOIN ad_billing_projection_daily p
+  ON p.advertiser_id=a.advertiser_id AND p.budget_date=a.budget_date
+WHERE a.traffic_class='SANDBOX'
+ORDER BY a.budget_date,a.advertiser_id;
+
+SELECT o.event_id,o.delivery_state,o.attempts,o.last_error
+FROM ad_billing_outbox o LEFT JOIN ad_billing_projection_fact f ON f.event_id=o.event_id
+WHERE f.event_id IS NULL ORDER BY o.created_at,o.event_id LIMIT 100;
+~~~
+
+第三条在异步投递途中出现记录是预期现象；不得因为瞬时差额修改资金。修复依赖后 DEAD 只按原 eventId/负载重放，并同事务记录操作人/原因。以下模板与 Repository 的受控重放语义一致，psql 变量须由管理员显式提供，未在共享库执行：
+
+~~~sql
+WITH locked AS (
+  SELECT event_id,attempts FROM ad_billing_outbox
+  WHERE event_id=:'event_id'::uuid AND delivery_state='DEAD' FOR UPDATE
+), changed AS (
+  UPDATE ad_billing_outbox o SET delivery_state='READY',attempts=0,fence=fence+1,
+    available_at=clock_timestamp(),last_error=NULL
+  FROM locked l WHERE o.event_id=l.event_id RETURNING o.event_id,l.attempts
+)
+INSERT INTO ad_billing_outbox_replay(replay_id,event_id,actor,reason,previous_attempts)
+SELECT :'replay_id'::uuid,event_id,:'actor',:'reason',attempts FROM changed;
+~~~
+
+位点重放可停消费者、核对隔离 topic/group 后从 earliest 重放，Inbox 不应被删除；重新构建另一套投影应先设计新的投影命名空间/切换，不能把新 consumer group 当作已经重建成功。本片验证已有投影重复读取后不重记；未做生产级备份还原、整个宿主 kill 或副本故障演练。

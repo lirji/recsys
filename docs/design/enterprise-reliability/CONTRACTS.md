@@ -108,3 +108,17 @@ ledger 为不可变业务事实，唯一 reservation/原 receipt；记录原预�
 ad V005 扩展 CAPTURED 状态与约束并新增 receipt、ledger、Outbox；不改 V001～V004。滚动启用先完成扩展迁移及全部 owner 二进制升级，再打开 receipts-enabled；旧二进制不能读取 CAPTURED，启用后不可直接回退到只认识 S03 状态的版本。回退停止新接受，保留新版查询、回收及后续 Outbox 处理，数据历史不得删除。engine 无新表。gateway 的发现/静态路由均补 `/api/sandbox/**` 到 engine，并明确 ADMIN 边界，作为两个 sandbox API 的最小运行接入；不改用户已有 Docker/启停文件。
 
 验收：真实 PG 同 ID/不同 ID 同资格并发只一账一事件；重复/改负载/错主体/错签名/未达政策/到期；账务写入、ledger、Outbox、结果任一步故障整体回滚；捕获与主动/到期释放竞争；锁等待跨过到期仍拒绝；跨日只动原账户；重建可查原 receipt/ledger/待发事件。RPC/HTTP 权限、精度、错误/未知结果和两模式一致，真实 broker 与浏览器由 S06/S07 证明。
+
+## C06：账本 Outbox 与幂等消费投影（ER-S06）
+
+沿 C05 不可变 AdImpressionCapturedV1；只由账务 owner 发送，逻辑 topic 为 ad-impression-captured-v1，分区键 advertiserId:budgetDate。不承诺跨分区或多 relay 实例的全局顺序。消费以 eventId=ledgerId 去重，每个独立账本事实都累加，不以 accountVersion 做丢弃水位。同 eventId 改已知业务字段、同 qualification/receipt 换 eventId 均拒绝；v1 允许新增未知字段，未知 schemaVersion 拒绝且不提交该位点。
+
+ad V006 扩展 Outbox 的 READY/SENDING/PUBLISHED/DEAD 状态、尝试次数、数据库可领取时间、递增 fence、受限错误分类和重放审计。领取一行使用 SKIP LOCKED 短 SQL 原子更新并提交，30 秒租约；事务外等待 Kafka acks=all 确认，成功后按 fence 且租约未过期标记 PUBLISHED。发送/标记之间崩溃允许重复；超时未知不得当成功。单次客户端发送有截止，记录最多 20 次领取（崩溃也计次），指数退避加抖动至 60 秒，耗尽进入 DEAD 保留原负载。人工重放须原 eventId、原 payload，持久化 actor/reason/旧尝试次数；不改历史资金。状态标记失败后由租约续办，旧执行器不能覆盖新 fence。
+
+投影位于广告 owner adDb 的独立只读模型：逐事件 Inbox/明细与 advertiser+budgetDate 日汇总在同一短事务提交，不读写账户/权威账本，不设跨服务 FK。消费手动提交每条 offset+1，只在事务成功后；DB 成功 ACK 失败后原位点重放，由 Inbox 保证不重复累加。投影明细为不可变事实，可重建，不是收费权威。broker ACL 必须限制来源，不把来自 topic 的任意 payload 当签名计费指令。
+
+复用宿主已使用的 Kafka 客户端/BOM，不新增中间件或全局调度。owner 专用有界单线程 relay，单轮最多 10 条；投影消费者单线程、max.poll.records=10、禁止 auto commit/auto create。单条处理最多 3 次，每次退避；永久错误/重试耗尽停止该消费者并告警，保留未提交位点，禁止跳过坏事件或吞错 ACK。修复后重启恢复；不宣称可绕过毒消息继续消费。停机停止领取、wakeup 消费、有限等待，未提交由持久化租约/位点恢复。
+
+配置独立默认关闭：recsys.ad.billing.events.relay-enabled、projection-enabled；须 sandbox-enabled，且为 owner。不依赖 receipts-enabled，以便停新增后继续待发处理；仍须 V001～V006 验证。连接复用 spring.kafka 的受控连接/安全属性，资金相关客户端参数由专用工厂强制固定。topic/group 可显式设置用于环境隔离，默认 topic 为上述逻辑名，group 为 recsys-sandbox-billing-projection-v1。开关受控重启生效，无动态原子切换承诺。Topic 显式预建，禁止 compact（分区键不是 eventId），开发单副本不能推断生产 RPO；保留期尚未确认，首次 sandbox topic 使用 retention.ms=-1/retention.bytes=-1 并监控增长，不自动删除 Outbox/Inbox。
+
+验收：真实 PG/Kafka 的同库提交后未发送、broker ACK 后未标记、投影提交后未提交位点三种故障窗口恢复；重复/乱序/不同账户版本均逐事实正确；两执行器领取/过期 fencing/重试上限/审计重放；不可变投影、坏 schema/改负载不 ACK；断连恢复；默认关闭与两宿主 owner 边界。只在临时容器/唯一 topic 故障注入，不停止共享 dev_infra 或迁移共享库。CI 钱链路门禁涵盖这些测试及 RPC/HTTP/gateway。
