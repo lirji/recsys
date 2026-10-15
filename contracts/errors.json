@@ -618,5 +618,47 @@
       "message": "恢复响应改变了原广告准备结论",
       "httpDefault": false
     }
+  ],
+  "families": [
+    {
+      "name": "DELIVERY",
+      "prefix": "DELIVERY",
+      "fallback": "DELIVERY_400"
+    },
+    {
+      "name": "RECEIPT",
+      "prefix": "RECEIPT",
+      "fallback": "RECEIPT_400"
+    },
+    {
+      "name": "CLICK_RECEIPT",
+      "prefix": "CLICK_RECEIPT",
+      "fallback": "CLICK_RECEIPT_400"
+    },
+    {
+      "name": "CONVERSION_RECEIPT",
+      "prefix": "CONVERSION_RECEIPT",
+      "fallback": "CONVERSION_RECEIPT_400"
+    },
+    {
+      "name": "NATURAL_DELIVERY",
+      "prefix": "NATURAL_DELIVERY",
+      "fallback": "NATURAL_DELIVERY_400"
+    },
+    {
+      "name": "NATURAL_RECEIPT",
+      "prefix": "NATURAL_RECEIPT",
+      "fallback": "NATURAL_RECEIPT_400"
+    },
+    {
+      "name": "FEED_DELIVERY",
+      "prefix": "FEED_DELIVERY",
+      "fallback": "FEED_DELIVERY_400"
+    },
+    {
+      "name": "CONVERSION",
+      "prefix": "CONVERSION",
+      "fallback": "CONVERSION_400"
+    }
   ]
 }

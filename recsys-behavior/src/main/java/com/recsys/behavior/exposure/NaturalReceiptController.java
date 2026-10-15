@@ -3,6 +3,7 @@ package com.recsys.behavior.exposure;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.exposure.NaturalReceipt;
 import com.recsys.common.exposure.NaturalReceipt.*;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -66,8 +67,6 @@ public class NaturalReceiptController {
             LOG.warn("natural exposure result unknown operationOrReceiptId={} failureType={}",
                     id.matches("[0-9a-fA-F-]{36}") ? id : "invalid", ex.getClass().getSimpleName());
         }
-        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of("NATURAL_RECEIPT_" + status,
-                status == HttpStatus.SERVICE_UNAVAILABLE.value() ? "自然回执结果未知，请保留原 receiptId 查询或重试" : "自然回执未通过校验或当前不可访问",
-                request.getRequestURI(), null));
+        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of(ErrorFamily.NATURAL_RECEIPT, status, request.getRequestURI(), null));
     }
 }

@@ -47,6 +47,31 @@ class ErrorCodeContractTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             generator.validate([])
 
+    def test_families_reject_ambiguous_prefixes_and_inconsistent_statuses(self):
+        mutations = [
+            lambda c: c.update(families=None),
+            lambda c: c["families"].append(None),
+            lambda c: c["families"].append(copy.deepcopy(c["families"][0])),
+            lambda c: c["families"][0].update(prefix="bad<script>"),
+            lambda c: c["families"][0].update(prefix="A" * 61),
+            lambda c: c["families"][1].update(prefix=c["families"][0]["prefix"]),
+            lambda c: c["families"][0].update(fallback="UNKNOWN"),
+            lambda c: c["families"][0].update(fallback=[]),
+            lambda c: c["families"][0].update(fallback="BAD_REQUEST"),
+            lambda c: next(e for e in c["errors"] if e["code"] == "DELIVERY_503").update(httpStatus=500),
+        ]
+        for mutate in mutations:
+            candidate = copy.deepcopy(self.catalog)
+            mutate(candidate)
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                generator.validate(candidate)
+
+    def test_family_metadata_does_not_change_flattened_client_contract(self):
+        old = copy.deepcopy(self.catalog)
+        old.pop("families")
+        self.assertEqual(generator.outputs(old)[generator.TYPESCRIPT], generator.outputs(self.catalog)[generator.TYPESCRIPT])
+        self.assertEqual(generator.outputs(old)[generator.JAVA], generator.outputs(self.catalog)[generator.JAVA])
+
     def test_check_fails_on_missing_or_modified_outputs_and_never_overwrites_them(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -59,7 +84,7 @@ class ErrorCodeContractTest(unittest.TestCase):
                     self.assertEqual(0, generator.main())
                 with patch("sys.argv", ["generate", "--check"]):
                     self.assertEqual(0, generator.main())
-                    for relative in (generator.JAVA, generator.TYPESCRIPT):
+                    for relative in (generator.JAVA, generator.JAVA_FAMILY, generator.TYPESCRIPT):
                         path = root / relative
                         original = path.read_text()
                         path.write_text("stale")

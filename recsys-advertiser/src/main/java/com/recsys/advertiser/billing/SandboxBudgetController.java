@@ -6,6 +6,7 @@ import com.recsys.common.ad.billing.BudgetAccount;
 import com.recsys.common.ad.billing.BudgetCommand;
 import com.recsys.common.ad.billing.BudgetCommandResult;
 import com.recsys.common.ad.billing.CnyAmount;
+import com.recsys.common.error.ErrorCode;
 import com.recsys.platform.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -87,7 +88,7 @@ public class SandboxBudgetController {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> invalidJson(HttpServletRequest request) {
         return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
-                .body(ApiError.of("BAD_REQUEST", "预算命令 JSON 格式非法", request.getRequestURI(), null));
+                .body(ApiError.of(ErrorCode.BAD_REQUEST, request.getRequestURI(), null));
     }
 
     /** JsonNode 仅用于输入类型检查，禁止金额数字转文本、版本小数截断等宽松强制转换。 */

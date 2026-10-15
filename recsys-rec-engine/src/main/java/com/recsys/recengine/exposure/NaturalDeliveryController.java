@@ -2,6 +2,7 @@ package com.recsys.recengine.exposure;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.exposure.*;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import com.recsys.recengine.exposure.NaturalDelivery.*;
 import jakarta.servlet.http.HttpServletRequest;
@@ -62,7 +63,6 @@ public class NaturalDeliveryController {
             LOG.warn("natural exposure result unknown operationOrReceiptId={} failureType={}",
                     id.matches("[0-9a-fA-F-]{36}") ? id : "invalid", ex.getClass().getSimpleName());
         }
-        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of("NATURAL_DELIVERY_"+status,
-                status==HttpStatus.SERVICE_UNAVAILABLE.value()?"自然交付结果未知，请保留原 operationId 查询或重试":"自然交付请求未通过校验或当前不可访问",request.getRequestURI(),null));
+        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of(ErrorFamily.NATURAL_DELIVERY, status, request.getRequestURI(), null));
     }
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.advertiser.authz.AdvertiserAuthz;
 import com.recsys.common.ad.billing.*;
 import com.recsys.common.ad.billing.ConversionSettlement.*;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -51,7 +52,7 @@ public class SandboxConversionController {
     public ResponseEntity<ApiError> failure(Exception ex,HttpServletRequest request) {
         HttpStatusCode status=ex instanceof ResponseStatusException r?r.getStatusCode():ex instanceof ConversionSettlement.Conflict?HttpStatus.CONFLICT
                 :ex instanceof IllegalArgumentException || ex instanceof java.time.DateTimeException || ex instanceof org.springframework.http.converter.HttpMessageNotReadableException?HttpStatus.BAD_REQUEST:HttpStatus.SERVICE_UNAVAILABLE;
-        return ResponseEntity.status(status).body(ApiError.of("CONVERSION_"+status.value(),status.equals(HttpStatus.SERVICE_UNAVAILABLE)?"转化结果未知，请保留原业务ID查询或重试":"转化请求未通过校验或当前不可访问",request.getRequestURI(),null));
+        return ResponseEntity.status(status).body(ApiError.of(ErrorFamily.CONVERSION, status.value(), request.getRequestURI(), null));
     }
     private static View view(OutcomeResult r) {
         var o=r.outcome();var s=r.settlement();var p=s.prepared();

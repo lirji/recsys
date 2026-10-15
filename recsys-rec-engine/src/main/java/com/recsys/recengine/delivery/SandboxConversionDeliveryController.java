@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.ad.billing.BudgetCommand;
 import com.recsys.common.ad.billing.Reservation;
 import com.recsys.common.ad.delivery.SandboxDelivery;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -48,11 +49,10 @@ public class SandboxConversionDeliveryController {
     /** 局部错误映射不将未知执行结果伪造成拒绝；不泄漏 token 或 SQL。 */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> failure(Exception ex, HttpServletRequest request) {
-        int status = ex instanceof SandboxDelivery.Conflict ? 409 : ex instanceof Reservation.AccessDenied || ex instanceof SandboxDelivery.InvalidProof ? 403
-                : ex instanceof IllegalArgumentException || ex instanceof org.springframework.http.converter.HttpMessageNotReadableException ? 400
-                : ex instanceof ResponseStatusException r ? r.getStatusCode().value() : 503;
-        return ResponseEntity.status(status).body(ApiError.of("DELIVERY_" + status,
-                status == HttpStatus.SERVICE_UNAVAILABLE.value() ? "交付结果未知，请保留原 operationId 查询或重试" : "交付请求未通过校验或当前不可访问", request.getRequestURI(), null));
+        int status = ex instanceof SandboxDelivery.Conflict ? HttpStatus.CONFLICT.value() : ex instanceof Reservation.AccessDenied || ex instanceof SandboxDelivery.InvalidProof ? HttpStatus.FORBIDDEN.value()
+                : ex instanceof IllegalArgumentException || ex instanceof org.springframework.http.converter.HttpMessageNotReadableException ? HttpStatus.BAD_REQUEST.value()
+                : ex instanceof ResponseStatusException r ? r.getStatusCode().value() : HttpStatus.SERVICE_UNAVAILABLE.value();
+        return ResponseEntity.status(status).body(ApiError.of(ErrorFamily.DELIVERY, status, request.getRequestURI(), null));
     }
     private static View view(DeliveryOperation operation) {
         var r = operation.request();

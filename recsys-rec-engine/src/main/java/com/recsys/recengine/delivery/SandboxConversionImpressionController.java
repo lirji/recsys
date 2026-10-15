@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.ad.billing.*;
 import com.recsys.common.ad.billing.ConversionSettlement.*;
 import com.recsys.common.ad.delivery.SandboxDelivery;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import com.recsys.recengine.ad.AdServingGateway;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,8 +66,7 @@ public class SandboxConversionImpressionController {
                 :ex instanceof SandboxDelivery.InvalidProof || ex instanceof Reservation.AccessDenied?HttpStatus.FORBIDDEN
                 :ex instanceof IllegalArgumentException || ex instanceof org.springframework.http.converter.HttpMessageNotReadableException?HttpStatus.BAD_REQUEST
                 :ex instanceof ResponseStatusException r?r.getStatusCode():HttpStatus.SERVICE_UNAVAILABLE;
-        return ResponseEntity.status(status).body(ApiError.of("CONVERSION_RECEIPT_"+status.value(),status.equals(HttpStatus.SERVICE_UNAVAILABLE)
-                ?"CPA结果未知，请按原ID查询或重试":"CPA请求未通过校验或当前不可访问",request.getRequestURI(),null));
+        return ResponseEntity.status(status).body(ApiError.of(ErrorFamily.CONVERSION_RECEIPT, status.value(), request.getRequestURI(), null));
     }
     private static ReceiptView view(VisibleResult result) { return new ReceiptView(result.receipt(),view(result.settlement())); }
     private static SettlementView view(Snapshot s) {

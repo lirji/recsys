@@ -71,7 +71,8 @@ class SandboxBudgetControllerTest {
                     .andExpect(status().isBadRequest());
         }
         mvc.perform(put(route).principal(admin).contentType(MediaType.APPLICATION_JSON).content("{"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(com.recsys.common.error.ErrorCode.BAD_REQUEST.message()));
         verifyNoInteractions(client);
     }
 

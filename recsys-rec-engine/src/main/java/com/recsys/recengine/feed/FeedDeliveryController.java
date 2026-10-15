@@ -2,6 +2,7 @@ package com.recsys.recengine.feed;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.exposure.*;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import com.recsys.recengine.feed.FeedDelivery.*;
 import jakarta.servlet.http.HttpServletRequest;
@@ -62,7 +63,6 @@ public class FeedDeliveryController {
             LOG.warn("feed exposure result unknown operationOrReceiptId={} failureType={}",
                     id.matches("[0-9a-fA-F-]{36}") ? id : "invalid", ex.getClass().getSimpleName());
         }
-        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of("FEED_DELIVERY_"+status,
-                status==HttpStatus.SERVICE_UNAVAILABLE.value()?"混排交付结果未知，请保留原 operationId 查询或重试":"混排交付请求未通过校验或当前不可访问",request.getRequestURI(),null));
+        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(ApiError.of(ErrorFamily.FEED_DELIVERY, status, request.getRequestURI(), null));
     }
 }

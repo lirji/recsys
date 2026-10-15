@@ -8,6 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = "recsys-common/src/main/java/com/recsys/common/error/ErrorCode.java"
+JAVA_FAMILY = "recsys-common/src/main/java/com/recsys/common/error/ErrorFamily.java"
 TYPESCRIPT = "console/src/api/generated/errorCodes.ts"
 # HTTP错误状态的协议范围；0只表示CLI/客户端不存在HTTP响应。
 NO_HTTP_STATUS = 0
@@ -41,6 +42,30 @@ def validate(catalog):
             if status == NO_HTTP_STATUS or status in defaults:
                 raise ValueError(f"HTTP默认错误码重复或没有状态: {status}")
             defaults.add(status)
+    families = catalog.get("families", [])
+    if not isinstance(families, list):
+        raise ValueError("families须为数组")
+    family_names, prefixes = set(), set()
+    by_name = {e["name"]: e for e in catalog["errors"]}
+    for family in families:
+        if not isinstance(family, dict):
+            raise ValueError("码族须为对象")
+        for key, seen in [("name", family_names), ("prefix", prefixes)]:
+            value = family.get(key)
+            # 为稳定代码中的下划线和三位HTTP状态预留长度。
+            if not isinstance(value, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,59}", value) or value in seen:
+                raise ValueError(f"重复或非法码族{key}: {value}")
+            seen.add(value)
+        fallback_name = family.get("fallback")
+        fallback = by_name.get(fallback_name) if isinstance(fallback_name, str) else None
+        prefix = family["prefix"] + "_"
+        if fallback is None or fallback["httpStatus"] == NO_HTTP_STATUS or fallback["code"] != prefix + str(fallback["httpStatus"]):
+            raise ValueError("码族fallback须引用本族已登记HTTP错误")
+        for entry in catalog["errors"]:
+            suffix = entry["code"].removeprefix(prefix)
+            if entry["code"].startswith(prefix) and suffix.isdigit():
+                if entry["httpStatus"] == NO_HTTP_STATUS or suffix != str(entry["httpStatus"]):
+                    raise ValueError("码族状态后缀须与条目HTTP状态一致")
     return catalog["errors"]
 
 
@@ -105,7 +130,39 @@ public enum ErrorCode {
     ts += "export const defaultHttpErrorCodes: Readonly<Record<number, KnownErrorCode>> = {\n"
     ts += "".join(f"  {e['httpStatus']}: {ts_string(e['code'])},\n" for e in entries if e["httpDefault"])
     ts += "};\n"
-    return {JAVA: java, TYPESCRIPT: ts}
+    families = ",\n".join(f"    {f['name']}({quoted(f['prefix'])}, ErrorCode.{f['fallback']})" for f in catalog.get("families", []))
+    family_java = '''package com.recsys.common.error;
+
+/** 由contracts/errors.json生成；保留既有码族，状态分类由所属业务边界决定。 */
+public enum ErrorFamily {
+''' + families + ''';
+
+    private static final int MIN_HTTP_ERROR_STATUS = 400;
+    private static final int MAX_HTTP_ERROR_STATUS = 599;
+    private final String prefix;
+    private final ErrorCode fallback;
+
+    ErrorFamily(String prefix, ErrorCode fallback) {
+        this.prefix = prefix;
+        this.fallback = fallback;
+    }
+
+    /** 未单独登记的错误状态也保留原码族，不能静默改成通用500。 */
+    public String code(int status) {
+        if (status < MIN_HTTP_ERROR_STATUS || status > MAX_HTTP_ERROR_STATUS) {
+            throw new IllegalArgumentException("错误码族仅支持HTTP错误状态");
+        }
+        return prefix + "_" + status;
+    }
+
+    /** 只取目录固定文案；503原ID恢复提示与其他状态的安全回退均不依赖异常详情。 */
+    public String message(int status) {
+        ErrorCode registered = ErrorCode.fromCode(code(status));
+        return (registered == null ? fallback : registered).message();
+    }
+}
+'''
+    return {JAVA: java, JAVA_FAMILY: family_java, TYPESCRIPT: ts}
 
 
 def main():

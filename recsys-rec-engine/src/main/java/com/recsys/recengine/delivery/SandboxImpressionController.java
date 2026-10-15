@@ -3,6 +3,7 @@ package com.recsys.recengine.delivery;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.recsys.common.ad.billing.*;
 import com.recsys.common.ad.delivery.SandboxDelivery;
+import com.recsys.common.error.ErrorFamily;
 import com.recsys.platform.web.ApiError;
 import com.recsys.recengine.ad.AdServingGateway;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,8 +56,7 @@ public class SandboxImpressionController {
             LOG.warn("sandbox receipt result unknown receiptId={} failureType={}",
                     id.matches("[0-9a-fA-F-]{36}") ? id : "invalid", ex.getClass().getSimpleName());
         }
-        return ResponseEntity.status(status).body(ApiError.of("RECEIPT_"+status.value(), status.equals(HttpStatus.SERVICE_UNAVAILABLE)
-                ? "账务结果未知，请按原 receiptId 查询或重试" : "回执请求未通过校验或当前不可访问", request.getRequestURI(), null));
+        return ResponseEntity.status(status).body(ApiError.of(ErrorFamily.RECEIPT, status.value(), request.getRequestURI(), null));
     }
     public record Input(String qualificationToken, JsonNode visibleDurationMs, JsonNode minVisibleRatioBps, JsonNode pageVisible) {}
 }
