@@ -57,7 +57,7 @@ recsys-<业务>/
 | engine / ad 的普通读取 | `dataSource` / `jdbcTemplate` | 默认源只注册其拥有的 Mapper；引入多个 SqlSessionFactory 后不能依赖 Boot 单源默认行为 |
 | 广告目录分片 | `adShardingDataSource` / `adShardingJdbc`；advertiser 主源 | 独立 factory/template 与 Mapper 包；保留路由键、广播规则、ShardingSphere 生成 ID |
 | 资金、广告事件、服务目录 | `adDbDataSource` / `adDbJdbc` | 同一个原 DataSource 与本地事务管理器；保留资源身份检查，不新建同 URL 的连接池替代 |
-| 派生向量 | `derivedDbDataSource` / `derivedJdbc` | 保留 hnsw 会话初始化和原来源；advertiser 的派生factory直接复用 derivedJdbc.getDataSource()，不新增DataSource bean，以保留Boot主源创建语义 |
+| 派生向量 | `derivedDbDataSource` / advertiser 非Bean派生源 | 保留 hnsw 会话初始化和原来源；advertiser 在 AdvertiserDataSourceConfig 内直接构建 derivedSqlSessionFactory，派生 DataSource 保持非Bean、无池，保留 Boot 主源创建语义（MP13f7） |
 | offline | 默认、分片、adDb、derived 四路 | 作业参数选择只读来源不改变 owner；既有跨 owner 历史访问记录为遗留边界，本次不扩大 |
 | behavior / content-service / user-service / console | 宿主现有普通或可选 DataSource | 不让跨模块 Mapper 扫描误强制开启数据库；可选 DB/能力关闭模式保留 |
 | Flink | CategoryEnricher.open 中独立连接 | 非 Boot factory；在 operator open 创建、使用、关闭会话，不序列化运行时 session，不开启 Spring 容器 |

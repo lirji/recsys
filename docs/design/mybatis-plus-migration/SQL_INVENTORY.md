@@ -149,7 +149,7 @@
 | [com/recsys/offline/LookalikeJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/LookalikeJob.java) | 9 | 4 | DONE MP13c7：派生四查询/Redis人群回归；见MP13C7_RESULT |
 | [com/recsys/offline/MultimodalBackfillJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/MultimodalBackfillJob.java) | 8 | 3 | DONE MP13c2：derived仅UPDATE融合；见MP13C2_RESULT |
 | [com/recsys/offline/OcpcCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/OcpcCalibrateJob.java) | 8 | 4 | MP13f5：分片OcpcTargetMapper两读取+主源OcpcFeedbackMapper两读取；bigint数组、普通JOIN重复数、延迟权重与Redis部分发布保持，见MP13F5_RESULT |
-| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | PARTIAL MP13a1/b5：四源工厂/Mapper扫描及真实种子路由完成，旧JdbcTemplate待其余作业退出 |
+| [com/recsys/offline/OfflineAdShardingConfig.java](../../../recsys-offline/src/main/java/com/recsys/offline/OfflineAdShardingConfig.java) | 10 | 0 | DONE MP13a1/b5/f7：四源工厂/Mapper扫描及真实种子路由完成，全部旧JdbcTemplate Bean已移除；见MP13F7_RESULT |
 | [com/recsys/offline/PublishReportsJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/PublishReportsJob.java) | 10 | 2 | DONE MP13f2：主源ReportPublicationMapper/XML及8字段注释；见MP13F2_RESULT |
 | [com/recsys/offline/QualityScoreJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/QualityScoreJob.java) | 8 | 3 | DONE MP13f3：主源AdQualityMapper/XML；见MP13F3_RESULT |
 | [com/recsys/offline/RecCalibrateJob.java](../../../recsys-offline/src/main/java/com/recsys/offline/RecCalibrateJob.java) | 13 | 1 | DONE MP13e3：共享EvaluationInputMapper/XML；见MP13E3_RESULT |
@@ -228,7 +228,7 @@
 
 ## 追加关联路径
 
-- `recsys-offline/.../ItemQuery.java`：MP13b5已复用CatalogTable封闭枚举，SeedAds走source；其余旧作业table白名单入口待后续退出，最终核销所有调用方。
+- `recsys-offline/.../ItemQuery.java`：MP13b5已复用CatalogTable封闭枚举，SeedAds走source；MP13f7已移除所有旧table字符串入口，全部调用方使用来源枚举。
 - 各 `src/test`、`src/main/resources/application*.yml`、sharding 配置、应用启动类、pom、Testcontainers fixtures 与浏览器宿主：按 Mapper 注册/构造参数变化定位，不能只机械改上表。
 - schema/摘要校验 SELECT 属于生产查询，也迁移到明确 Mapper；连接初始化语句和 DDL 脚本 runner 属于有说明的例外。
 

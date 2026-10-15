@@ -7,26 +7,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 
 import javax.sql.DataSource;
 
 /**
- * 读侧分库分表数据源装配(rec-engine 通过扫描 {@code recsys-ad} 生效;其它未依赖本模块的 app 不受影响)。
- *
- * <p><b>双数据源</b>:
- * <ul>
- *   <li><b>主</b>({@code @Primary} {@code dataSource}/{@code jdbcTemplate}):普通 Postgres(spring.datasource),
- *       承载召回 / 排序 / embedding / pgvector ANN / ad_event 等绝大多数 SQL —— 行为完全不变,
- *       pgvector 的 {@code <=>} 等不进 ShardingSphere 解析路径。</li>
- *   <li><b>次</b>({@code adShardingDataSource}/{@code adShardingJdbc}):ShardingSphere-JDBC,
- *       仅供 {@link AdRepository}/{@link PacingService}/{@link CreativeSelector} 读分片广告表
- *       (advertiser/ad/bidword/ad_creative),按分片键路由到 ds_0/ds_1。</li>
- * </ul>
- *
- * <p>定义了自有 DataSource 会让 Spring Boot 的 DataSource/JdbcTemplate 自动配置退避,故主、次都在此显式声明;
- * 主标 {@code @Primary} 让无 {@code @Qualifier} 的注入仍拿到普通库(其余模块零改动)。
+ * 宿主四路数据源的所有权与连接设置集中于此，Mapper工厂复用实际DataSource对象。
+ * 主源承载普通目录/行为读取；逻辑分片承载广告目录；adDb承载广告自有数据；derived承载派生向量。
+ * 显式主DataSource标记Primary，保持现有无Qualifier注入与事务管理器的资源选择。
+ * 所有业务SQL已迁入各自Mapper/XML，无需保留过渡JdbcTemplate Bean。
  */
 @Configuration
 public class AdShardingConfig {
@@ -53,12 +42,6 @@ public class AdShardingConfig {
         return props.initializeDataSourceBuilder().type(HikariDataSource.class).build();
     }
 
-    @Bean
-    @Primary
-    public JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
-    }
-
     /** ShardingSphere 逻辑数据源(driver 自管 ds_0/ds_1 内部连接池,这里用无池 driver 包一层即可)。 */
     @Bean(name = "adShardingDataSource")
     public DataSource adShardingDataSource() throws Exception {
@@ -69,11 +52,6 @@ public class AdShardingConfig {
         // placeholder-type=environment:sharding.yaml 的 $${PG_HOST::}/$${PG_PORT::} 从环境变量解析(5.5 默认 none 不替换)
         ds.setUrl("jdbc:shardingsphere:classpath:sharding.yaml?placeholder-type=environment");
         return ds;
-    }
-
-    @Bean(name = "adShardingJdbc")
-    public JdbcTemplate adShardingJdbc(@Qualifier("adShardingDataSource") DataSource ds) {
-        return new JdbcTemplate(ds);
     }
 
     /**
@@ -96,11 +74,6 @@ public class AdShardingConfig {
         ds.setConnectionInitSql(annInitSql());   // ad_embedding pgvector ANN 检索宽度 + 服务端 statement_timeout
         ds.setMaximumPoolSize(Integer.parseInt(env("AD_DB_POOL_MAX", "10")));
         return ds;
-    }
-
-    @Bean(name = "adDbJdbc")
-    public JdbcTemplate adDbJdbc(@Qualifier("adDbDataSource") DataSource ds) {
-        return new JdbcTemplate(ds);
     }
 
     /**
@@ -140,11 +113,6 @@ public class AdShardingConfig {
      */
     private String annInitSql() {
         return "SET hnsw.ef_search = 200; SET statement_timeout = " + env("PG_ANN_STATEMENT_TIMEOUT_MS", "2000");
-    }
-
-    @Bean(name = "derivedJdbc")
-    public JdbcTemplate derivedJdbc(@Qualifier("derivedDbDataSource") DataSource ds) {
-        return new JdbcTemplate(ds);
     }
 
     private String env(String k, String def) {

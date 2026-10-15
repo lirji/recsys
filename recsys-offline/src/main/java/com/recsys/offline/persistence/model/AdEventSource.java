@@ -6,7 +6,7 @@ public enum AdEventSource {
 
     private final String code;
     AdEventSource(String code) { this.code = code; }
-    /** 为尚未迁移的作业保留既有白名单表名入口，新Mapper只接收枚举。 */
+    /** 来源的稳定CLI编码；Mapper接收枚举并由固定XML分支选择表。 */
     public String code() { return code; }
     /** 未知来源沿用原CLI错误提示，不能由输入拼接动态表名。 */
     public static AdEventSource fromCode(String code) {

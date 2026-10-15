@@ -26,15 +26,7 @@ final class BehaviorQuery {
                 : null;
     }
 
-    /**
-     * 解析 {@code --behavior-table}(#2):行为读的来源表。默认 {@code user_behavior}(直读行为上下文,回滚落点);
-     * {@code behavior_log} = 读 offline 自有读仓(DB-per-service)。仅白名单值,防表名注入。
-     */
-    static String table(ApplicationArguments args) {
-        return source(args).code();
-    }
-
-    /** 新Mapper只接受封闭来源，旧表名入口随其余作业逐个迁移退出。 */
+    /** 只解析封闭来源枚举，业务调用方不再取得可拼接的表名。 */
     static BehaviorSource source(ApplicationArguments args) {
         String t = args.containsOption("behavior-table")
                 ? args.getOptionValues("behavior-table").get(0) : "user_behavior";

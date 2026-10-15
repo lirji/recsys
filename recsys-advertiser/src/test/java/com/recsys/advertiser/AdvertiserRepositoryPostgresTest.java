@@ -1,5 +1,7 @@
 package com.recsys.advertiser;
 
+import com.recsys.persistence.spring.SpringSqlSessions;
+
 import com.zaxxer.hikari.HikariDataSource;
 import com.recsys.advertiser.persistence.config.AdvertiserPersistenceConfiguration;
 import com.recsys.advertiser.persistence.mapper.primary.AdvertiserMapper;
@@ -66,7 +68,7 @@ class AdvertiserRepositoryPostgresTest {
                 yaml.substring(yaml.indexOf("\nrules:") + 1).getBytes(StandardCharsets.UTF_8));
         context = new AnnotationConfigApplicationContext();
         context.getBeanFactory().registerSingleton("dataSource", sharded);
-        context.getBeanFactory().registerSingleton("derivedJdbc", derived);
+        context.getBeanFactory().registerSingleton("derivedSqlSessionFactory", SpringSqlSessions.create(derived.getDataSource(), "classpath*:mapper/*/derived/**/*.xml"));
         context.register(AdvertiserPersistenceConfiguration.class);
         context.refresh();
         var mapper = context.getBean(AdvertiserMapper.class);
@@ -221,7 +223,10 @@ class AdvertiserRepositoryPostgresTest {
                 .run(c -> {
                     assertThat(c).hasNotFailed().hasSingleBean(DataSource.class);
                     assertThat(c.getBean("sqlSessionFactory", SqlSessionFactory.class).getConfiguration().getEnvironment().getDataSource()).isSameAs(c.getBean(DataSource.class));
-                    assertThat(c.getBean("derivedSqlSessionFactory", SqlSessionFactory.class).getConfiguration().getEnvironment().getDataSource()).isSameAs(c.getBean("derivedJdbc", JdbcTemplate.class).getDataSource());
+                    var derivedSource = c.getBean("derivedSqlSessionFactory", SqlSessionFactory.class).getConfiguration().getEnvironment().getDataSource();
+                    assertThat(derivedSource).isInstanceOf(DriverManagerDataSource.class).isNotSameAs(c.getBean(DataSource.class));
+                    assertThat(c).doesNotHaveBean("derivedJdbc");
+                    assertThat(c.getBeansOfType(SqlSessionFactory.class)).hasSize(2);
                 });
     }
 

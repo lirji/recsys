@@ -67,10 +67,10 @@ class PositiveFeedbackPostgresTest {
 
     @Test void parserKeepsDefaultsAndRejectsUntrustedSourcesBeforeQueries() {
         var defaults=new DefaultApplicationArguments();
-        assertEquals("user_behavior",BehaviorQuery.table(defaults));assertNull(BehaviorQuery.maxTs(defaults));
+        assertEquals(BehaviorSource.USER_BEHAVIOR,BehaviorQuery.source(defaults));assertNull(BehaviorQuery.maxTs(defaults));
         var replica=new DefaultApplicationArguments("--behavior-table=behavior_log","--max-ts=100");
-        assertEquals("behavior_log",BehaviorQuery.table(replica));assertEquals(100L,BehaviorQuery.maxTs(replica));
-        assertThrows(IllegalArgumentException.class,()->BehaviorQuery.table(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
+        assertEquals(BehaviorSource.BEHAVIOR_LOG,BehaviorQuery.source(replica));assertEquals(100L,BehaviorQuery.maxTs(replica));
+        assertThrows(IllegalArgumentException.class,()->BehaviorQuery.source(new DefaultApplicationArguments("--behavior-table=user_behavior;DROP TABLE behavior_log")));
     }
 
     @Test void failedRowConsumerClosesConnectionAndNextScanStillWorks() {

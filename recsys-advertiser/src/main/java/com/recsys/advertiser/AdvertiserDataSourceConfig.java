@@ -2,38 +2,27 @@ package com.recsys.advertiser;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.apache.ibatis.session.SqlSessionFactory;
+import com.recsys.persistence.spring.SpringSqlSessions;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-import javax.sql.DataSource;
-
 /**
- * advertiser 数据源装配(#3 rec-serving 派生向量库)。advertiser 自身的 {@code spring.datasource} 是
- * ShardingSphere(广告分片目录);另需读 rec-serving 的 {@code item_embedding}(灌 ad_embedding / 目录事件带向量)。
- *
- * <p>做法:主 {@code @Primary jdbcTemplate} 仍包 Spring 自动装配的 ShardingSphere DataSource(不声明 DataSource
- * bean → 不触发 DataSourceAutoConfiguration 退避);另加 {@code derivedJdbc}(普通 PG,env {@code DERIVED_PG_DB}
- * 未设 → {@code PG_DB} → recsys,默认与主库同库、行为不变;设则读 rec-serving 派生库)。DataSource 在 @Bean 方法内
- * new(非 bean),故不干扰 ShardingSphere 主源自动装配。
+ * advertiser主源由Boot按spring.datasource创建ShardingSphere，派生向量读源沿原环境配置单独构造。
+ * 派生DataSource保持非Bean、无池生命周期，直接交给MyBatis工厂，不新增DataSource Bean触发Boot退避。
+ * 主分片与派生Mapper仍绑定不同会话工厂，删除迁移期间的JdbcTemplate包装不改变资源归属。
  */
 @Configuration
 public class AdvertiserDataSourceConfig {
 
+    /** 原派生源仍由宿主构造，Boot只看到主DataSource Bean并继续正常自动装配。 */
     @Bean
-    @Primary
-    public JdbcTemplate jdbcTemplate(DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
-    }
-
-    @Bean(name = "derivedJdbc")
-    public JdbcTemplate derivedJdbc() {
+    public SqlSessionFactory derivedSqlSessionFactory() throws Exception {
         String db = env("DERIVED_PG_DB", env("PG_DB", "recsys"));
         DriverManagerDataSource ds = new DriverManagerDataSource(
                 "jdbc:postgresql://" + env("PG_HOST", "localhost") + ":" + env("PG_PORT", "5432") + "/" + db,
                 env("PG_USER", "recsys"), env("PG_PASSWORD", "recsys"));
         ds.setDriverClassName("org.postgresql.Driver");
-        return new JdbcTemplate(ds);
+        return SpringSqlSessions.create(ds, "classpath*:mapper/*/derived/**/*.xml");
     }
 
     private static String env(String k, String def) {

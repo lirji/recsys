@@ -6,7 +6,7 @@ public enum BehaviorSource {
 
     private final String code;
     BehaviorSource(String code) { this.code=code; }
-    /** 迁移期间兼容尚未退出的白名单来源参数，不用于新Mapper拼SQL。 */
+    /** 来源的稳定CLI编码；Mapper接收枚举并由固定XML分支选择表。 */
     public String code() { return code; }
     /** 保持旧CLI未知来源的拒绝提示与默认值处理分工。 */
     public static BehaviorSource fromCode(String code) {
