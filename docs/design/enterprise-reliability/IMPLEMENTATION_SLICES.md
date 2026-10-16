@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合6ebaf7da完成ER-S15C2；恢复请求2728fdeb明确批准仅behavior CI超时12→20分钟。83项/14类完整PASS，A/B/C原S15必要验收已齐，父S15 DONE/PASS。前置C1 CI38958960102精确d05d23c0已8/8成功。Git和新CI实际状态单列于`.dev/codex-flow-reliability/round-6ebaf7da/{delivery,ci-snapshot}.json`，新CI未终态不宣称全绿；S22～25暂停。
+2026-10-17 回合301afed4进入ER-D0/C16正式设计；S15A/B/C本地必要验收和正常Git交付已核实完成，83项与精确源码指纹复用。当前S15 CI38964531069精确686454dc已7门禁成功、build仍运行，记录于`.dev/codex-flow-reliability/round-301afed4/preceding-ci-before-commit.json`；不宣称CI全绿。按最新授权可继续本地设计，本轮只本地独立设计提交、不merge/push，S22～25暂停。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -59,7 +59,10 @@
 | ER-S15C | ER-D0/C15C | 原F14适用消费者；C1旧Seen及C2新版均必需 | C1/C2全部适用C01～C18 PASS，最终完整行为83项；见ER-S15C2_RESULT | no | DONE |
 | ER-S15C1 | ER-D0/C15C | 旧Seen完整恢复闭环；engine-seen V001/Mapper/手动ACK/持久预算/隔离/命令与起点 | 适用16项PASS；最终engine33项、未变门禁44复用；[结果](ER-S15C1_RESULT.md) | no | DONE |
 | ER-S15C2 | ER-S15C1 | 独立LIVE/HISTORY产品listener、历史Seen与父片回归 | C01～C18全部PASS；最终83项/14类，B2真实history→产品Seen→Redis→Replica；见ER-S15C2_RESULT | no | DONE |
-| ER-S16 | ER-S06 | 原 F15 目录分片本库原子 Outbox、多分片暂停续办；正式契约待冻结 | 真实目录分片/Kafka；公共库不能冒充同库事务 | no | TODO |
+| ER-D0/C16 | ER-S06、用户本轮授权 | C16_DESIGN；实际分片/命令/事件/暂停/兼容及S17必要接口 | D16-01～09同Agent分离只读PASS；结果ER-D0-C16_RESULT；仅本地设计提交 | no | DONE |
+| ER-S16 | ER-S06、ER-D0/C16 | 原F15；A单广告可靠闭环、B广告主/多分片暂停均必需 | C16-01～20全部尚未运行，不以设计PASS代实现；公共库不冒充同库 | no | IN_PROGRESS |
+| ER-S16A | ER-S06、ER-D0/C16 | 单广告真实写口/本库Outbox/恢复/原事件Kafka闭环；含准入与基线 | C16-01～12/16～20适用项全部尚未运行；下一实施片 | no | READY |
+| ER-S16B | ER-S16A | 真实广告主暂停/恢复及跨owner显式批次，可查部分结果/续办 | C16-13～15及父片全适用验收；完成后评估关闭父S16 | no | TODO |
 | ER-S17 | ER-S16 | 原 F16 版本化目录投影/Inbox/墓碑/Redis 可靠刷新；正式契约待冻结 | PG/Kafka/Redis 重复、乱序、提交窗口与防复活 | no | TODO |
 | ER-S18 | ER-S06 | 原 F17 日志补洞、持久检查点/并发领取；正式契约待冻结 | 真实 PG 低 ID 晚提交、重复扫描/恢复，不能以 MAX(id) 代表提交顺序 | no | TODO |
 | ER-S19 | ER-S15 | 原 F18 Flink checkpoint、事件时间/迟到、Redis 幂等窗口投影；正式契约待冻结 | 真实重启/重放、旧窗口清理/特征对账；Kafka/Redis/隔离 checkpoint | no | TODO |
@@ -143,3 +146,10 @@
 - [x] 分离审查/文档/保护/前置CI终态/本地逻辑提交；正常ff/push与新CI精确状态见delivery.json/ci-snapshot.json。
 
 本回合最终完整门禁83项/14类PASS，详见full-behavior-result.json，22项被测源码冻结。恢复核对11保护/37旧迁移fixture/历史正文与83项XML一致；前置C1 CI8/8成功。请求2728fdeb已明确批准behavior CI超时12→20分钟；仅此单行，YAML/语义逐项比对及diff PASS，不重复产品测试。C2独立提交a2ca663c保留，CI修正/文档另作逻辑提交；Git/新CI实际动作以本回合delivery.json/ci-snapshot.json为准。
+
+## 当前回合301afed4：ER-D0/C16正式设计
+
+- 保留原PLAN F15/ER-S16及ER-S06依赖，不扩大到S17实现/部署/S22～25。父只读索引已逐项核对实际源码；primary是ShardingSphere，业务与子资源按不同键分库。
+- 正式稿[C16_DESIGN](C16_DESIGN.md)冻结单物理库事务/本库事实、持久排他命令、完整快照/版本、暂停fanout/批次、起点与默认关闭；两条串行纵向片A/B分别闭合业务结果。同Agent分离只读D16-01～09全部PASS，ER-S16A READY；产品验收全部UNVERIFIED。
+- 原目录分支`feat/er-s16-catalog-outbox`，基线686454dc；不新worktree。本轮只独立本地设计提交，下回合复用此分支实施S16A，通过必要验证后按持续授权正常ff/push；推送前须核对前置源码CI终态，不取消有效证据。
+- 恢复/审查/提交证据：`.dev/codex-flow-reliability/round-301afed4/`；设计结果见[ER-D0-C16_RESULT](ER-D0-C16_RESULT.md)。11保护、37旧迁移/fixture、CODEX_PROGRESS历史正文和原用户改动保留；无需重跑源码未变的S15验收。

@@ -1,12 +1,14 @@
-# 当前任务：ER-S15C2 / S15交付收尾
+# 当前任务：ER-D0/C16 广告目录物理分片可靠事件设计
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约/结果：同目录`C15_DESIGN.md`、`ER-S15C2_RESULT.md`、`ER-S15_RESULT.md`。恢复与交付事实：`.dev/codex-flow-reliability/round-6ebaf7da/{handoff.json,delivery.json,ci-snapshot.json}`。本次恢复请求2728fdeb-0114-4968-bc8e-9ce2189902df，沿原目录/原feat/er-s15c-seen-recovery交付，不新worktree。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约/结果/运行边界：同目录`C16_DESIGN.md`、`ER-D0-C16_RESULT.md`、`CATALOG_EVENTS_RUNBOOK.md`。恢复证据：`.dev/codex-flow-reliability/round-301afed4/{handoff,delivery,independent-design-review,design-file-checks,preceding-ci-before-commit}.json`；当前请求301afed4-8c0b-43c7-98b4-9c686ff63bbf。
 
-S15A/B/C原必要实施及验收全部PASS，父S15 DONE；C2完整83项/14类、零失败错误跳过、13分05秒。22项源码与a2ca663c提交blob核对一致，83项有效结果复用，不重复运行。11保护、37项旧迁移/fixture及下方历史正文保持。C1未知recordId回归确认已有NOT_FOUND，无产品整改。前置C1 CI38958960102精确d05d23c0已8/8成功并于本轮在线复核。
+C16设计门禁D16-01～09同Agent分离只读PASS，ER-D0/C16 DONE，ER-S16A READY、B TODO、父S16 IN_PROGRESS。正式冻结实际物理分片本库Outbox、持久排他命令/本地fence、完整版本事件、暂停清单与多主批次、默认profile兼容、初始化/恢复及S17必要边界；全部C16-01～20产品验收尚未运行，不宣称实现或上线。
 
-用户已明确批准仅behavior-reliability-gate超时12→20分钟；仅该行及必要交付说明独立提交，不改写a2ca663c。YAML与结构逐项比较PASS，产品租约/断言和其他job不变。正常ff/push和新CI精确SHA/run/status以delivery.json/ci-snapshot.json为准：没有实际证据不得重推或声称远程全绿。无本地运行中产品/测试操作，远程CI若运行中先查询，不取消。交付后返回父协调者；下一回合C16正式设计，之后S16～21；S22～25暂停。
+原目录分支`feat/er-s16-catalog-outbox`，基线/main/origin-main=686454dc132da7831dfdc197cb6fdfa9e6348db0；唯一worktree及原用户改动保留。本轮仅9个设计/进度文档的独立本地设计提交，实际SHA见delivery.json；不merge/push纯设计。下一回合复用此分支实施S16A，保留设计与实现独立逻辑提交，必要验证通过后正常ff/push。S16原依赖ER-S06保持，之后S17～21，S22～25暂停。
 
-原用户改动、.dev/target、旧迁移及fixture保留；不部署/共享启用/共享数据访问/共享容器重启，不stash/reset/clean/强推或递归codex-flow。初始化耗尽保持FAILED/owner，无自动解占用；Redis全历史重建、生产容量/RTO/RPO未知；完整已实现能力与测试替身边界见结果文件。
+S15A/B/C必要本地验收及正常Git交付核对完成；83项/14类零失败错误跳过、22源码指纹和原交付blob一致，复用不重跑。11保护、37旧迁移/fixture、1373产品/测试/构建/脚本文件、59份旧SQL和下方历史后缀核对保持。当前S15 CI38964531069精确686454dc已7门禁成功，build仍运行；本地设计获准继续，下一main推送前须核对其终态，真实失败先处理，不取消有效证据。前置C1精确d05d23c0的CI38958960102已8/8成功。
+
+无本地运行中产品/测试/Git操作；提交/文件检查结果以本轮delivery/handoff为准。采用backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs及task-git-delivery；architecture-standards适用章节已核对。保留11保护、已发布迁移/fixture、.dev/target和全部历史正文；不部署、不访问共享业务数据、不启用共享开关、不重启共享容器、不stash/reset/clean/强推、不递归codex-flow。
 
 ---
 

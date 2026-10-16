@@ -279,3 +279,11 @@ C15C正式增量（89a217e3冻结；282d2b60实现C1，6ebaf7da实现C2）：以
 C1补充协议：engine自有seen_stream_control在外部Kafka位点副作用前持久排他。不同初始化command不能互相接管；同ID并发只读观测不改变先持久化的原清单。同组ENROLL仅改已冻结新增分区，逐项保护旧位点；所有PAUSED、耗尽或活动恢复义务处理完才允许整流resume/start放行。审计/租约/结果及失败保留规则详见C15_DESIGN C-S补充，不把同ID幂等或最终唯一键当跨命令隔离。
 
 C2未新增schema或修改C1 V001；behavior既有engine test-support依赖承载B2→真实HISTORY→Redis→Replica全链路，engine不反向依赖behavior。所有开关仍false；初始化耗尽保持FAILED及占有，不自动翻转终态或清空owner。
+
+## C16：目录物理分片可靠事件（设计冻结，尚未实现）
+
+原F15/ER-S16的正式协议见[C16_DESIGN](C16_DESIGN.md)。advertiser/ad按advertiser_id、children按ad_id分库；可靠写每个事务只命中一个物理shard，与本库不可变片段Outbox原子。owner持久占有命令跨进程保留，已提交片段组合后才生成完整ad事件；不保证整个跨库用例原子。所有真实CRUD/审核/状态/删除及offline直写准入均有映射。
+
+对外`ad-catalog-v1`/`VersionedAdCatalogEvent`使用sourceId、adId、持久aggregateVersion与原始字节；paused/rejected为PRESENT+false，只有明确删除为AD_DELETED。embedding不可达/缺失为UNKNOWN，不冒充权威删除。旧topic/wire保持，S17消费与Redis可靠刷新仍未实现；C16仅冻结其版本/Inbox/墓碑/UNKNOWN及起点契约。
+
+稳定命令、物理step、有限领取/lease/fence、初始化跨command占有、暂停清单/低ID边界、恢复审计和HTTP未知结果均以正式稿为准。原API成功体保持；可选稳定命令头、受权限保护的状态查询不代表旧客户端自动具备丢响应幂等。开户先持久预留原Snowflake身份，后台不能换actor。默认全关，已有ACTIVE库不得仅关应用开关就回旧写路；运行边界见[目录手册](CATALOG_EVENTS_RUNBOOK.md)。

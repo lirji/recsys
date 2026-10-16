@@ -103,3 +103,11 @@ C1最终验证采用增量证据：完整behavior-reliability先运行73项（en
 同一完整命令仍为`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`。C1公共机制因三流参数化重新执行，新增VersionedSeenKafkaRedisTest真实双流、Bean装配/开关/作用域、Redis暂停、独立JVM与重平衡；BehaviorHistorySeenIntegrationTest沿既有behavior→engine测试依赖，验证原B2捕获/发布→真实HISTORY→Redis→Replica。未知recordId现有PG回归固定NOT_FOUND；不重做设计或旧资金/午夜/自然fixture。
 
 完整C01～C18映射、失败根因、源指纹和本地/CI事实见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)与`.dev/codex-flow-reliability/round-6ebaf7da/`。进程断点/consumer提交代理只证明相应真实副作用后窗口，不宣称真实网络丢包、ACL拒绝、生产吞吐或全量历史恢复。
+
+## C16 设计与真实物理分片验收
+
+[C16_DESIGN §11](C16_DESIGN.md#11-真实验收矩阵当前全部-unverified)定义C16-01～20。当前全为UNVERIFIED；本轮仅D16-01～09分离只读设计审查。两个独占PG实例使用实际ShardingSphere规则，刻意使advertiserId/adId模数不同；真实Controller/Mapper/PG事务/原事件Kafka及独立JVM退出，不能用同schema、Mock或sink替代。
+
+必须证明业务/本库Outbox同txid，另一库停止时已提交步骤/原字节可查，有限预算和本地fence跨进程生效；冻结快照与多页暂停/低ID创建竞争、不同初始化命令副作用前排他均需反例。S16只生产，S17版本化Inbox/墓碑/Redis消费效果继续单独验收；注入、真实停机、端点变化与未测网络故障分别记录。
+
+S15有效83项/14类、22源码指纹和原提交blob已在round-301afed4复核，11保护/37旧迁移及fixture保持；本轮无产品变化不重跑。前置S15精确686454dc CI独立跟踪，不以本地设计通过代替其终态。
