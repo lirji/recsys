@@ -155,7 +155,10 @@ class ConversionOnlinePostgresTest {
         var mvc=advertiser();var event=UUID.randomUUID();var body=body(p.qualificationToken(),occurred(p.childId()));
         mvc.perform(put(path(event)).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
         mvc.perform(put(path(event)).principal(login("viewer","USER")).contentType("application/json").content(body)).andExpect(status().isForbidden());
-        mvc.perform(put(path(event)).principal(actor).contentType("application/json").content(body.replace("Z\"","123Z\""))).andExpect(status().isBadRequest());
+        // 原时间可能恰为毫秒精度，拼接数字会变成合法微秒；固定纳秒余数保证真正违反契约。
+        var nanos = occurred(p.childId()).truncatedTo(java.time.temporal.ChronoUnit.MICROS).plusNanos(1);
+        assertNotEquals(0, nanos.getNano() % 1000);
+        mvc.perform(put(path(event)).principal(actor).contentType("application/json").content(body(p.qualificationToken(),nanos))).andExpect(status().isBadRequest());
         mvc.perform(put(path(event)).principal(actor).contentType("application/json").content(body.replace("Z\"","+00:00\""))).andExpect(status().isBadRequest());
         mvc.perform(put(path(event)).principal(actor).contentType("application/json").content(body("wrong-proof",occurred(p.childId())))).andExpect(status().isForbidden());
         mvc.perform(put("/api/advertiser/1/sandbox-conversions/"+event).principal(actor).contentType("application/json").content(body)).andExpect(status().isForbidden());
