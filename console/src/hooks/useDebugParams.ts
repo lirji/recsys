@@ -1,3 +1,4 @@
+import { formatError } from '../api/errors';
 import { useEffect, useState } from 'react';
 import { App } from 'antd';
 import { useGlobalUser } from './useGlobalUser';
@@ -34,7 +35,7 @@ export function useDebugParams<T extends Record<string, string | number>>(defaul
       await navigator.clipboard.writeText(window.location.href);
       message.success('已复制分享链接(含当前参数)');
     } catch {
-      message.error('复制失败');
+      message.error(formatError('CLIPBOARD_UNAVAILABLE'));
     }
   };
 

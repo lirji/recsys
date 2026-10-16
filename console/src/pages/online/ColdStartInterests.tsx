@@ -1,3 +1,4 @@
+import { showApiError } from '../../api/errors';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Select, Space } from 'antd';
@@ -11,9 +12,24 @@ import { ResultRowsSkeleton } from '../../components/Skeletons';
 import { ACCENTS } from '../../theme/tokens';
 
 const COMMON = [
-  'Action', 'Comedy', 'Drama', 'Thriller', 'Romance', 'Sci-Fi', 'Horror',
-  'Animation', 'Documentary', 'Adventure', 'Crime', 'Fantasy', 'Mystery',
-  'Children', 'War', 'Musical', 'Western', 'Film-Noir',
+  'Action',
+  'Comedy',
+  'Drama',
+  'Thriller',
+  'Romance',
+  'Sci-Fi',
+  'Horror',
+  'Animation',
+  'Documentary',
+  'Adventure',
+  'Crime',
+  'Fantasy',
+  'Mystery',
+  'Children',
+  'War',
+  'Musical',
+  'Western',
+  'Film-Noir',
 ];
 
 export default function ColdStartInterests() {
@@ -37,7 +53,7 @@ export default function ColdStartInterests() {
       message.success('已保存兴趣类目');
       await queryClient.invalidateQueries({ queryKey: queryKeys.interests(userId) });
     },
-    onError: (e) => message.error(toApiError(e).message),
+    onError: (e) => showApiError(e, message.error),
   });
 
   return (

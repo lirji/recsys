@@ -1,8 +1,13 @@
+import { showApiError } from '../../api/errors';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Table } from 'antd';
-import { createCreative, deleteCreative, listCreatives, updateCreative } from '../../api/advertiser';
-import { toApiError } from '../../api/client';
+import {
+  createCreative,
+  deleteCreative,
+  listCreatives,
+  updateCreative,
+} from '../../api/advertiser';
 import type { CreativeUpsert, CreativeView } from '../../api/types';
 import { StatusTag } from './statusTags';
 
@@ -36,7 +41,7 @@ export default function CreativePanel({ adId }: { adId: number }) {
       setOpen(false);
       query.refetch();
     } catch (e) {
-      message.error(toApiError(e).message);
+      showApiError(e, message.error);
     } finally {
       setSaving(false);
     }
@@ -48,7 +53,7 @@ export default function CreativePanel({ adId }: { adId: number }) {
       message.success('已删除');
       query.refetch();
     } catch (e) {
-      message.error(toApiError(e).message);
+      showApiError(e, message.error);
     }
   };
 
@@ -72,7 +77,12 @@ export default function CreativePanel({ adId }: { adId: number }) {
           { title: 'id', dataIndex: 'creativeId', width: 70 },
           { title: '标题', dataIndex: 'title' },
           { title: '落地页', dataIndex: 'landingUrl', ellipsis: true },
-          { title: '状态', dataIndex: 'status', width: 130, render: (s: string) => <StatusTag status={s} /> },
+          {
+            title: '状态',
+            dataIndex: 'status',
+            width: 130,
+            render: (s: string) => <StatusTag status={s} />,
+          },
           {
             title: '操作',
             key: 'act',
@@ -88,7 +98,14 @@ export default function CreativePanel({ adId }: { adId: number }) {
           },
         ]}
       />
-      <Modal title={editing ? '编辑创意' : '新增创意'} open={open} onOk={submit} confirmLoading={saving} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal
+        title={editing ? '编辑创意' : '新增创意'}
+        open={open}
+        onOk={submit}
+        confirmLoading={saving}
+        onCancel={() => setOpen(false)}
+        destroyOnClose
+      >
         <Form form={form} layout="vertical">
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />

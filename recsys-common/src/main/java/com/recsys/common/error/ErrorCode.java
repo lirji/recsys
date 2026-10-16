@@ -242,7 +242,22 @@ public enum ErrorCode {
     JOB_FTRL_NO_INPUT("JOB_FTRL_NO_INPUT", "FTRL 训练物品为空或正样本少于100条，原模型保持不变；请补齐训练输入", 0),
     JOB_FTRL_MODEL_FALLBACK("JOB_FTRL_MODEL_FALLBACK", "增量 FTRL 状态缺失或无效，本次从零训练；请核对输入窗口与模型状态", 0),
     JOB_FTRL_MODEL_INVALID("JOB_FTRL_MODEL_INVALID", "FTRL 训练状态或权重包含无效数值，未发布新模型；请检查训练参数与状态", 0),
-    JOB_FTRL_FAILED("JOB_FTRL_FAILED", "FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试", 0);
+    JOB_FTRL_FAILED("JOB_FTRL_FAILED", "FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试", 0),
+    UI_RENDER_FAILED("UI_RENDER_FAILED", "页面渲染失败，请重试或切换到其他页面", 0),
+    CLIPBOARD_UNAVAILABLE("CLIPBOARD_UNAVAILABLE", "复制失败，请检查剪贴板权限或手动选择内容复制", 0),
+    SEARCH_QUERY_REQUIRED("SEARCH_QUERY_REQUIRED", "请输入搜索词后重试", 0),
+    OIDC_TENANT_REQUIRED("OIDC_TENANT_REQUIRED", "请输入租户", 0),
+    OIDC_CONFIGURATION_INVALID("OIDC_CONFIGURATION_INVALID", "OIDC 租户或 clientId 配置不完整或不一致，请联系管理员", 0),
+    OIDC_TENANT_NOT_ALLOWED("OIDC_TENANT_NOT_ALLOWED", "当前租户尚未开放，请使用系统配置的租户", 0),
+    OIDC_TOKEN_INVALID("OIDC_TOKEN_INVALID", "登录凭证无法解析，请重新登录", 0),
+    AUTH_MODE_UNSUPPORTED("AUTH_MODE_UNSUPPORTED", "当前认证模式不支持 legacy 登录，请使用统一登录", 0),
+    OIDC_STATE_INVALID("OIDC_STATE_INVALID", "登录会话不匹配，链接可能已过期或被重放，请重新登录", 0),
+    OIDC_CODE_INVALID("OIDC_CODE_INVALID", "授权码已失效或已使用，请重新登录", 0),
+    OIDC_LOGIN_FAILED("OIDC_LOGIN_FAILED", "统一登录未完成，请重新登录或检查认证服务", 0),
+    DELIVERY_RESPONSE_MISMATCH("DELIVERY_RESPONSE_MISMATCH", "交付响应与原请求身份不匹配，请保留原 operationId 查询", 0),
+    DELIVERY_STORAGE_UNAVAILABLE("DELIVERY_STORAGE_UNAVAILABLE", "交付无法写入会话存储，请保留原 operationId；刷新后无法自动恢复", 0),
+    EXPERIMENT_STORE_UNAVAILABLE("EXPERIMENT_STORE_UNAVAILABLE", "实验配置存储不可用，本次未执行写入，请检查存储配置后重试", 0),
+    EXPERIMENT_WRITE_UNCONFIRMED("EXPERIMENT_WRITE_UNCONFIRMED", "实验配置写入结果未能确认，可能已有部分配置生效，请刷新并核对实际配置", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;

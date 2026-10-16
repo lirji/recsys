@@ -1,6 +1,20 @@
+import { showApiError } from '../../api/errors';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Progress, Select, Space, Table } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Progress,
+  Select,
+  Space,
+  Table,
+} from 'antd';
 import { Link } from 'react-router-dom';
 import { createAdvertiser, listAdvertisers } from '../../api/advertiser';
 import { queryKeys } from '../../api/queryKeys';
@@ -25,7 +39,7 @@ export default function AdvertiserList() {
       form.resetFields();
       await queryClient.invalidateQueries({ queryKey: queryKeys.advertisers() });
     },
-    onError: (e) => message.error(toApiError(e).message),
+    onError: (e) => showApiError(e, message.error),
   });
 
   const submit = async () => {
@@ -40,17 +54,32 @@ export default function AdvertiserList() {
       width: 90,
       render: (id: number) => <Link to={`/advertiser/${id}`}>{id}</Link>,
     },
-    { title: '名称', dataIndex: 'name', render: (n: string, r: AdvertiserView) => <Link to={`/advertiser/${r.advertiserId}`}>{n}</Link> },
-    { title: '状态', dataIndex: 'status', width: 100, render: (s: string) => <StatusTag status={s} /> },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      render: (n: string, r: AdvertiserView) => (
+        <Link to={`/advertiser/${r.advertiserId}`}>{n}</Link>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      render: (s: string) => <StatusTag status={s} />,
+    },
     { title: '日预算', dataIndex: 'dailyBudget', width: 110, render: (v: number) => v?.toFixed(2) },
     {
       title: '今日消费 / 剩余（计数估计·元）',
       key: 'budget',
       width: 220,
       render: (_: unknown, r: AdvertiserView) => {
-        const known = r.spentToday != null && Number.isFinite(r.spentToday)
-          && r.remainingBudget != null && Number.isFinite(r.remainingBudget);
-        const pct = known && r.dailyBudget > 0 ? Math.min(100, (r.spentToday! / r.dailyBudget) * 100) : 0;
+        const known =
+          r.spentToday != null &&
+          Number.isFinite(r.spentToday) &&
+          r.remainingBudget != null &&
+          Number.isFinite(r.remainingBudget);
+        const pct =
+          known && r.dailyBudget > 0 ? Math.min(100, (r.spentToday! / r.dailyBudget) * 100) : 0;
         return (
           <Space direction="vertical" size={0} style={{ width: 200 }}>
             {known ? <Progress percent={Math.round(pct)} size="small" /> : null}
@@ -76,45 +105,61 @@ export default function AdvertiserList() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-    <PageHeader
-      title="广告主"
-      accent={ACCENTS.ad}
-      description="广告主账户、日预算与投放入口。"
-      extra={
-        <Button type="primary" onClick={() => setOpen(true)}>
-          新建广告主
-        </Button>
-      }
-    />
-    <Card>
-      {query.isError ? (
-        <Alert type="error" showIcon message={toApiError(query.error).message} />
-      ) : (
-        <Table
-          rowKey="advertiserId"
-          size="small"
-          loading={query.isLoading}
-          columns={columns}
-          dataSource={query.data ?? []}
-          pagination={false}
-          scroll={{ x: 800 }}
-        />
-      )}
+      <PageHeader
+        title="广告主"
+        accent={ACCENTS.ad}
+        description="广告主账户、日预算与投放入口。"
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            新建广告主
+          </Button>
+        }
+      />
+      <Card>
+        {query.isError ? (
+          <Alert type="error" showIcon message={toApiError(query.error).message} />
+        ) : (
+          <Table
+            rowKey="advertiserId"
+            size="small"
+            loading={query.isLoading}
+            columns={columns}
+            dataSource={query.data ?? []}
+            pagination={false}
+            scroll={{ x: 800 }}
+          />
+        )}
 
-      <Modal title="新建广告主" open={open} onOk={submit} confirmLoading={createMut.isPending} onCancel={() => setOpen(false)} destroyOnClose>
-        <Form form={form} layout="vertical" initialValues={{ status: 'active', dailyBudget: 1000 }}>
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '必填' }]}>
-            <Input placeholder="广告主名称" />
-          </Form.Item>
-          <Form.Item name="dailyBudget" label="日预算">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="status" label="状态">
-            <Select options={[{ value: 'active', label: 'active' }, { value: 'paused', label: 'paused' }]} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Card>
+        <Modal
+          title="新建广告主"
+          open={open}
+          onOk={submit}
+          confirmLoading={createMut.isPending}
+          onCancel={() => setOpen(false)}
+          destroyOnClose
+        >
+          <Form
+            form={form}
+            layout="vertical"
+            initialValues={{ status: 'active', dailyBudget: 1000 }}
+          >
+            <Form.Item name="name" label="名称" rules={[{ required: true, message: '必填' }]}>
+              <Input placeholder="广告主名称" />
+            </Form.Item>
+            <Form.Item name="dailyBudget" label="日预算">
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="status" label="状态">
+              <Select
+                options={[
+                  { value: 'active', label: 'active' },
+                  { value: 'paused', label: 'paused' },
+                ]}
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </Card>
     </Space>
   );
 }

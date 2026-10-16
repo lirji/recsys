@@ -59,3 +59,5 @@ EC06d DONE/PASS（本地）：oCPC缺失/损坏/依赖故障区分，缺λ安全
 EC06e DONE/PASS（本地）：多模态部分更新/unsupported/非法向量/影响行数如实报告；原融合/limit/事务保持。233目录，33后端/4类、57FE、24compile/守卫/hygiene通过；已提取常量PROGRESS_INTERVAL的advisory判误报。见EC06E_DESIGN/RESULT。D已ff/push7a492716；父EC06剩Bandit/FTRL和EC07/08继续。
 
 EC06f及父EC06 DONE/PASS（本地）：Bandit/FTRL安全读取/回退/发布与有限模型校验，正常完整模型保持；原9Job全部验收。241目录；58专项/8类、完整offline及依赖497/84类0失败错误1原CI探针skip（真实集成执行）、全前端182、24compile/守卫/hygiene通过。见EC06F_RESULT与EC06_RESULT，7源指纹119733371340214816b71ad9a79f0398fd7fb1c7f2decfde32b4f9cf731a73ed。E已ff/pushaaa3b01a；EC07/08及最终SHA CI五门继续。
+
+EC07b+c及父EC07 DONE/PASS（本地）：256目录/8族，剩余前端错误、实验200拒绝与坏ACK、真实50/50默认修复、认证/取消、9浏览器失败恢复与截图、接口CLI文档和CI守卫完成。202前端/31文件、最终13认证、6真实Redis后端、24compile/build、Python10+6、606Java90XML45SQL全部过，见EC07B_RESULT/EC07C_RESULT/EC07_RESULT。43源指纹a5faabcfc8af49487446c499faf081ebf7df79a5be80dd69bd0901f815cda849；手工hygiene无阻断，Javaformatter/独立静态分析未配置，原runner本轮不可发现如实记录。基线a434bafa CI38822642306五门SUCCESS；EC08全仓verify正在运行，其余最终门禁继续，整体IN_PROGRESS。

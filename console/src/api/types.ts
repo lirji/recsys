@@ -151,6 +151,7 @@ export interface ExperimentSnapshot {
 }
 export interface ExperimentWriteResult {
   ok: boolean;
+  code?: string;
   reason?: string;
   field?: string;
   value?: string;
@@ -242,12 +243,7 @@ export interface AdReportRow {
 
 // ===== 离线报表(recsys-web 的 /api/console/report)=====
 export type ReportCategory =
-  | 'eval'
-  | 'ab-report'
-  | 'ad-report'
-  | 'data-quality'
-  | 'ad-quality'
-  | 'other';
+  'eval' | 'ab-report' | 'ad-report' | 'data-quality' | 'ad-quality' | 'other';
 export interface ReportFileInfo {
   category: ReportCategory;
   fileName: string;
@@ -371,7 +367,8 @@ export interface UserRealtime {
   recCached: boolean | null;
   seenCount: number | null;
 }
-export type UserProfileSection = 'profile' | 'embedding' | 'actions' | 'categories' | 'buckets' | 'recent' | 'realtime';
+export type UserProfileSection =
+  'profile' | 'embedding' | 'actions' | 'categories' | 'buckets' | 'recent' | 'realtime';
 
 export interface UserProfileView {
   userId: number;

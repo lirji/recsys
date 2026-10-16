@@ -1,5 +1,7 @@
 package com.recsys.recengine.experiment;
 
+import com.recsys.common.error.ErrorCode;
+
 import com.recsys.common.constant.RedisKeys;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -45,6 +47,7 @@ public class ExperimentAdminController {
         this.props = props;
     }
 
+    /** 读取实际覆盖配置，供写入结果不确定时核对。 */
     @GetMapping
     public Map<String, Object> current() {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -73,48 +76,57 @@ public class ExperimentAdminController {
         return out;
     }
 
+    /** 全局开关沿用Redis覆盖层，不改变静态默认配置。 */
     @PostMapping("/enabled")
     public Map<String, Object> setGlobalEnabled(@RequestParam boolean value) {
         return set("enabled", String.valueOf(value));
     }
 
+    /** 层开关保持原字段与权限边界。 */
     @PostMapping("/{layer}/enabled")
     public Map<String, Object> setLayerEnabled(@PathVariable String layer, @RequestParam boolean value) {
         return set(layer + ".enabled", String.valueOf(value));
     }
 
+    /** 保留负权重归零规则，写入失败须允许调用者核对真实结果。 */
     @PostMapping("/{layer}/{variant}/weight")
     public Map<String, Object> setVariantWeight(@PathVariable String layer, @PathVariable String variant,
                                                 @RequestParam int value) {
         return set(layer + "." + variant + ".weight", String.valueOf(Math.max(0, value)));
     }
 
+    /** 清除覆盖仅在Redis确认后失效本地快照，异常不声称已清除。 */
     @DeleteMapping("/override")
     public Map<String, Object> clear() {
         StringRedisTemplate redis = redisProvider.getIfAvailable();
         if (redis == null) {
-            return Map.of("ok", false, "reason", "redis unavailable");
+            return rejected(ErrorCode.EXPERIMENT_STORE_UNAVAILABLE);
         }
         try {
             redis.delete(RedisKeys.EXP_OVERRIDE);
             override.invalidate();
             return Map.of("ok", true, "cleared", true);
         } catch (Exception e) {
-            return Map.of("ok", false, "reason", e.getMessage());
+            return rejected(ErrorCode.EXPERIMENT_WRITE_UNCONFIRMED);
         }
+    }
+
+    /** 保留旧200/ok:false协议与reason字段，公开内容只来自目录，不透传Redis异常。 */
+    private Map<String, Object> rejected(ErrorCode code) {
+        return Map.of("ok", false, "code", code.code(), "reason", code.message());
     }
 
     private Map<String, Object> set(String field, String value) {
         StringRedisTemplate redis = redisProvider.getIfAvailable();
         if (redis == null) {
-            return Map.of("ok", false, "reason", "redis unavailable");
+            return rejected(ErrorCode.EXPERIMENT_STORE_UNAVAILABLE);
         }
         try {
             redis.opsForHash().put(RedisKeys.EXP_OVERRIDE, field, value);
             override.invalidate();   // 秒级生效,不等 30s 刷新
             return Map.of("ok", true, "field", field, "value", value);
         } catch (Exception e) {
-            return Map.of("ok", false, "reason", e.getMessage());
+            return rejected(ErrorCode.EXPERIMENT_WRITE_UNCONFIRMED);
         }
     }
 }

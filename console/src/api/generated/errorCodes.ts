@@ -969,6 +969,66 @@ export const errorCodes = {
     message: 'FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试',
     httpStatus: 0,
   },
+  UI_RENDER_FAILED: {
+    message: '页面渲染失败，请重试或切换到其他页面',
+    httpStatus: 0,
+  },
+  CLIPBOARD_UNAVAILABLE: {
+    message: '复制失败，请检查剪贴板权限或手动选择内容复制',
+    httpStatus: 0,
+  },
+  SEARCH_QUERY_REQUIRED: {
+    message: '请输入搜索词后重试',
+    httpStatus: 0,
+  },
+  OIDC_TENANT_REQUIRED: {
+    message: '请输入租户',
+    httpStatus: 0,
+  },
+  OIDC_CONFIGURATION_INVALID: {
+    message: 'OIDC 租户或 clientId 配置不完整或不一致，请联系管理员',
+    httpStatus: 0,
+  },
+  OIDC_TENANT_NOT_ALLOWED: {
+    message: '当前租户尚未开放，请使用系统配置的租户',
+    httpStatus: 0,
+  },
+  OIDC_TOKEN_INVALID: {
+    message: '登录凭证无法解析，请重新登录',
+    httpStatus: 0,
+  },
+  AUTH_MODE_UNSUPPORTED: {
+    message: '当前认证模式不支持 legacy 登录，请使用统一登录',
+    httpStatus: 0,
+  },
+  OIDC_STATE_INVALID: {
+    message: '登录会话不匹配，链接可能已过期或被重放，请重新登录',
+    httpStatus: 0,
+  },
+  OIDC_CODE_INVALID: {
+    message: '授权码已失效或已使用，请重新登录',
+    httpStatus: 0,
+  },
+  OIDC_LOGIN_FAILED: {
+    message: '统一登录未完成，请重新登录或检查认证服务',
+    httpStatus: 0,
+  },
+  DELIVERY_RESPONSE_MISMATCH: {
+    message: '交付响应与原请求身份不匹配，请保留原 operationId 查询',
+    httpStatus: 0,
+  },
+  DELIVERY_STORAGE_UNAVAILABLE: {
+    message: '交付无法写入会话存储，请保留原 operationId；刷新后无法自动恢复',
+    httpStatus: 0,
+  },
+  EXPERIMENT_STORE_UNAVAILABLE: {
+    message: '实验配置存储不可用，本次未执行写入，请检查存储配置后重试',
+    httpStatus: 0,
+  },
+  EXPERIMENT_WRITE_UNCONFIRMED: {
+    message: '实验配置写入结果未能确认，可能已有部分配置生效，请刷新并核对实际配置',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

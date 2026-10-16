@@ -1,3 +1,4 @@
+import { ClientError, formatError } from '../../api/errors';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -72,7 +73,7 @@ function SandboxPage() {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(value));
     } catch {
-      setError('当前交付无法写入会话存储，请保留操作 ID；刷新后无法自动恢复。');
+      setError(formatError('DELIVERY_STORAGE_UNAVAILABLE'));
     }
   };
   const execute = async (value: Intent, queryOnly = false) => {
@@ -99,7 +100,7 @@ function SandboxPage() {
         result.userId !== value.input.userId ||
         result.trafficClass !== 'SANDBOX'
       )
-        throw new Error('交付响应身份不匹配');
+        throw new ClientError('DELIVERY_RESPONSE_MISMATCH');
       setDelivery(result);
       if (result.state === DeliveryState.COMPLETE)
         history.push(value.input, result, Math.round(performance.now() - start));

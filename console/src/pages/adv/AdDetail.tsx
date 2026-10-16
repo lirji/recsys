@@ -1,3 +1,4 @@
+import { showApiError } from '../../api/errors';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -68,7 +69,7 @@ export default function AdDetail() {
       message.success(ok);
       query.refetch();
     } catch (e) {
-      message.error(toApiError(e).message);
+      showApiError(e, message.error);
     }
   };
 
@@ -79,13 +80,18 @@ export default function AdDetail() {
   };
 
   if (query.isLoading) return <ResultRowsSkeleton rows={5} />;
-  if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
+  if (query.isError)
+    return <Alert type="error" showIcon message={toApiError(query.error).message} />;
   const ad: AdView = query.data!;
   const paused = (ad.status ?? '').toLowerCase() === 'paused';
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <PageHeader title={`广告 #${ad.adId}`} accent={ACCENTS.ad} description={ad.title || '广告详情 / 审核 / 创意 / 竞价词'} />
+      <PageHeader
+        title={`广告 #${ad.adId}`}
+        accent={ACCENTS.ad}
+        description={ad.title || '广告详情 / 审核 / 创意 / 竞价词'}
+      />
       <Card
         title={`广告 #${ad.adId}`}
         style={{ borderLeft: `3px solid ${ACCENTS.recall}` }}
@@ -94,7 +100,12 @@ export default function AdDetail() {
             <Button onClick={() => setEditOpen(true)}>编辑</Button>
             <Popconfirm
               title="删除该广告?"
-              onConfirm={() => act(() => deleteAd(id).then(() => navigate(`/advertiser/${ad.advertiserId}/ads`)), '已删除')}
+              onConfirm={() =>
+                act(
+                  () => deleteAd(id).then(() => navigate(`/advertiser/${ad.advertiserId}/ads`)),
+                  '已删除',
+                )
+              }
             >
               <Button danger>删除</Button>
             </Popconfirm>
@@ -114,14 +125,20 @@ export default function AdDetail() {
           <Descriptions.Item label="目标 CPA">{ad.targetCpa ?? '—'}</Descriptions.Item>
           <Descriptions.Item label="定向人群">{ad.audienceId ?? '不定向'}</Descriptions.Item>
           <Descriptions.Item label="质量度">{ad.qualityScore?.toFixed(3)}</Descriptions.Item>
-          <Descriptions.Item label="向量">{ad.hasEmbedding ? <Tag color="green">有</Tag> : <Tag>无</Tag>}</Descriptions.Item>
+          <Descriptions.Item label="向量">
+            {ad.hasEmbedding ? <Tag color="green">有</Tag> : <Tag>无</Tag>}
+          </Descriptions.Item>
           <Descriptions.Item label="落地页" span={2}>
             {ad.landingUrl || '—'}
           </Descriptions.Item>
         </Descriptions>
       </Card>
 
-      <CollapsibleCard title="生命周期 / 审核" icon={<SafetyCertificateOutlined />} accent={ACCENTS.rank}>
+      <CollapsibleCard
+        title="生命周期 / 审核"
+        icon={<SafetyCertificateOutlined />}
+        accent={ACCENTS.rank}
+      >
         <Steps
           size="small"
           style={{ marginBottom: 16 }}
@@ -142,7 +159,11 @@ export default function AdDetail() {
             驳回
           </Button>
           {paused ? (
-            <Button type="primary" ghost onClick={() => act(() => setAdStatus(id, 'active'), '已上线')}>
+            <Button
+              type="primary"
+              ghost
+              onClick={() => act(() => setAdStatus(id, 'active'), '已上线')}
+            >
               上线
             </Button>
           ) : (
@@ -184,10 +205,17 @@ export default function AdDetail() {
       <Modal
         title="驳回广告"
         open={rejectOpen}
-        onOk={() => act(() => reviewAd(id, 'reject', reason), '已驳回').then(() => setRejectOpen(false))}
+        onOk={() =>
+          act(() => reviewAd(id, 'reject', reason), '已驳回').then(() => setRejectOpen(false))
+        }
         onCancel={() => setRejectOpen(false)}
       >
-        <Input.TextArea rows={3} placeholder="驳回原因(可选)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <Input.TextArea
+          rows={3}
+          placeholder="驳回原因(可选)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
       </Modal>
     </Space>
   );

@@ -23,6 +23,7 @@ import {
   userFromCasdoorToken,
 } from '../auth/oidc';
 import { redirectToLogin } from '../api/nav';
+import { ClientError } from '../api/errors';
 import { exposureAuthScope, revokeExposureSession } from '../exposure/identity';
 
 // 全局身份态:当前登录用户 + 登录 / 切换 / 退出。改动后失效全部 react-query 缓存,让当前页用新身份重取。
@@ -117,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 登录页调用(legacy):登录 → 回显身份 → 失效缓存(用新 token 重取)。
   const signIn = useCallback(
     async (username: string, password: string) => {
-      if (AUTH_MODE !== 'legacy') throw new Error('signIn 仅 legacy 模式可用,oidc 请用 signInOidc');
+      if (AUTH_MODE !== 'legacy') throw new ClientError('AUTH_MODE_UNSUPPORTED');
       await login(username, password);
       setUser(getCurrentUser());
       await queryClient.invalidateQueries();
@@ -139,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!derived) {
       // 坏 token 不建会话(幽灵登录防护):清掉库里刚写入的会话再报错。
       await purgeOidcSession();
-      throw new Error('登录凭证无法解析(access_token 缺少用户信息)');
+      throw new ClientError('OIDC_TOKEN_INVALID');
     }
     setUser(derived);
     await queryClient.invalidateQueries();

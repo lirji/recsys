@@ -10,11 +10,42 @@ import unittest
 from unittest.mock import patch
 
 import generate_error_codes as generator
+import check_public_errors as public_errors
 
 
 class ErrorCodeContractTest(unittest.TestCase):
     def setUp(self):
         self.catalog = json.loads((generator.ROOT / "contracts/errors.json").read_text())
+
+    def test_public_error_guard_rejects_original_leaks(self):
+        cases = [
+            ("pages/Any.tsx", "<Alert message={error.message} />"),
+            ("pages/Any.tsx", "<div>{error?.stack}</div>"),
+            ("pages/Any.tsx", "message.error('failed: ' + e.message);"),
+            ("components/experiment/AbSignificancePanel.tsx", "String(error)"),
+            ("pages/CallbackPage.tsx", "return msg || '登录失败';"),
+            ("pages/online/ExperimentConsole.tsx", "message.warning(r.reason);"),
+            ("experiment/ExperimentAdminController.java", 'return Map.of("reason", e.getMessage());'),
+        ]
+        for path, source in cases:
+            with self.subTest(path=path, source=source):
+                self.assertTrue(public_errors.violations(path, source))
+
+    def test_public_error_guard_keeps_safe_selectors_diagnostics_and_business_reason(self):
+        cases = [
+            ("pages/Any.tsx", "<Alert message={toApiError(error).message} />"),
+            ("pages/Any.tsx", "<div>{item.reason}</div>"),
+            ("pages/Any.tsx", "console.error(error.message);"),
+            ("pages/CallbackPage.tsx", "const msg = e.message; return formatError('OIDC_LOGIN_FAILED');"),
+            ("components/ErrorBoundary.tsx", "console.error(error, info.componentStack);"),
+            ("experiment/ExperimentAdminController.java", 'return Map.of("reason", code.message());'),
+        ]
+        for path, source in cases:
+            with self.subTest(path=path, source=source):
+                self.assertEqual([], public_errors.violations(path, source))
+
+    def test_production_public_error_boundaries_have_no_known_leaks(self):
+        self.assertEqual([], public_errors.check())
 
     def test_catalog_contains_all_existing_unknown_result_recovery_messages(self):
         entries = {e["code"]: e for e in generator.validate(self.catalog)}

@@ -1,3 +1,4 @@
+import { showApiError } from '../api/errors';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   App,
@@ -45,7 +46,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalUser } from '../hooks/useGlobalUser';
 import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS, getCurrentUser, type Role } from '../api/auth';
-import { toApiError } from '../api/client';
 import { NAV_DESTINATIONS, showsDebugContext } from '../api/nav';
 import { canAccess } from '../api/access';
 import { DEMO_USER_META, ROLE_META } from '../auth/roleMeta';
@@ -165,7 +165,7 @@ function IdentitySwitcher() {
       const u = getCurrentUser();
       message.success(`已切换为 ${u?.username ?? username} · ${(u?.roles ?? []).join(' / ')}`);
     } catch (e) {
-      message.error(`切换失败:${toApiError(e).message}`);
+      showApiError(e, (text) => message.error(`切换失败:${text}`));
     }
   };
 
@@ -201,58 +201,63 @@ function IdentitySwitcher() {
           {showDemoSwitch ? '切换调试身份 · 演示 RBAC' : `统一身份 · ${user?.username ?? ''}`}
         </Typography.Text>
       </div>
-      {showDemoSwitch && DEMO_USERS.map((uname) => {
-        const um = DEMO_USER_META[uname];
-        const rm = ROLE_META[um.role];
-        const active = user?.username === uname;
-        return (
-          <div
-            key={uname}
-            role="button"
-            tabIndex={0}
-            aria-label={`切换为 ${uname}(${rm.label})`}
-            onClick={() => handleSwitch(uname)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleSwitch(uname);
-              }
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = rowBg(active, true);
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = rowBg(active, false);
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '8px 10px',
-              borderRadius: 8,
-              cursor: switching ? 'not-allowed' : 'pointer',
-              background: rowBg(active, false),
-              transition: 'background 0.15s',
-            }}
-          >
-            <Avatar size="small" style={{ background: rm.avatarBg, flex: '0 0 auto' }} icon={rm.icon} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Space size={6} align="center">
-                <Typography.Text strong>{uname}</Typography.Text>
-                <Tag color={rm.tagColor} style={{ marginInlineEnd: 0 }}>
-                  {rm.label}
-                </Tag>
-              </Space>
-              <div>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {um.desc}
-                </Typography.Text>
+      {showDemoSwitch &&
+        DEMO_USERS.map((uname) => {
+          const um = DEMO_USER_META[uname];
+          const rm = ROLE_META[um.role];
+          const active = user?.username === uname;
+          return (
+            <div
+              key={uname}
+              role="button"
+              tabIndex={0}
+              aria-label={`切换为 ${uname}(${rm.label})`}
+              onClick={() => handleSwitch(uname)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleSwitch(uname);
+                }
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = rowBg(active, true);
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = rowBg(active, false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                borderRadius: 8,
+                cursor: switching ? 'not-allowed' : 'pointer',
+                background: rowBg(active, false),
+                transition: 'background 0.15s',
+              }}
+            >
+              <Avatar
+                size="small"
+                style={{ background: rm.avatarBg, flex: '0 0 auto' }}
+                icon={rm.icon}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Space size={6} align="center">
+                  <Typography.Text strong>{uname}</Typography.Text>
+                  <Tag color={rm.tagColor} style={{ marginInlineEnd: 0 }}>
+                    {rm.label}
+                  </Tag>
+                </Space>
+                <div>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {um.desc}
+                  </Typography.Text>
+                </div>
               </div>
+              {active && <CheckOutlined style={{ color: BRAND, flex: '0 0 auto' }} />}
             </div>
-            {active && <CheckOutlined style={{ color: BRAND, flex: '0 0 auto' }} />}
-          </div>
-        );
-      })}
+          );
+        })}
       {showDemoSwitch && <Divider style={{ margin: '6px 4px' }} />}
       <div
         role="button"
@@ -333,7 +338,11 @@ function IdentitySwitcher() {
         {switching ? (
           <Spin size="small" />
         ) : (
-          <Avatar size="small" style={{ background: meta.avatarBg, flex: '0 0 auto' }} icon={meta.icon} />
+          <Avatar
+            size="small"
+            style={{ background: meta.avatarBg, flex: '0 0 auto' }}
+            icon={meta.icon}
+          />
         )}
         {!compact && (
           <Typography.Text strong style={{ maxWidth: 100 }} ellipsis>
@@ -391,10 +400,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       location.pathname === '/search-ads') ||
       (import.meta.env.VITE_NATURAL_EXPOSURE_SANDBOX_ENABLED === 'true' &&
         ['/recommend', '/search'].includes(location.pathname)) ||
-      (import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' && location.pathname === '/feed')) &&
+      (import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' &&
+        location.pathname === '/feed')) &&
     !screens.md;
   // 混排结果绑定页面内的原请求，顶栏可编辑 userId 不参与该请求，避免形成两个输入来源。
-  const sandboxFeed = import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' && location.pathname === '/feed';
+  const sandboxFeed =
+    import.meta.env.VITE_FEED_EXPOSURE_SANDBOX_ENABLED === 'true' && location.pathname === '/feed';
   const debugContext = showsDebugContext(location.pathname) && !sandboxNarrow && !sandboxFeed;
 
   return (
@@ -491,7 +502,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <>
                 <Space size={6}>
                   <Typography.Text type="secondary">userId</Typography.Text>
-                  <InputNumber min={1} value={userId} onChange={(v) => v && setUserId(v)} style={{ width: 110 }} />
+                  <InputNumber
+                    min={1}
+                    value={userId}
+                    onChange={(v) => v && setUserId(v)}
+                    style={{ width: 110 }}
+                  />
                 </Space>
                 <Space size={6}>
                   <Typography.Text type="secondary">场景</Typography.Text>

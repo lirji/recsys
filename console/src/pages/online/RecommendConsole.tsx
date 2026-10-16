@@ -1,3 +1,4 @@
+import { formatError, showApiError } from '../../api/errors';
 import SandboxNaturalConsole from './SandboxNaturalConsole';
 import { NaturalKind } from '../../api/naturalExposure';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -32,7 +33,8 @@ type RecParams = {
   q: string;
 };
 
-const label = (p: RecParams) => `u${p.userId} · size ${p.size} · ${p.scene}${p.q ? ` · q="${p.q}"` : ''}`;
+const label = (p: RecParams) =>
+  `u${p.userId} · size ${p.size} · ${p.scene}${p.q ? ` · q="${p.q}"` : ''}`;
 
 function LegacyRecommendConsole() {
   const { userId, scene, setUserId, setScene } = useGlobalUser();
@@ -58,7 +60,7 @@ function LegacyRecommendConsole() {
       await navigator.clipboard.writeText(window.location.href);
       message.success('已复制分享链接(含当前参数)');
     } catch {
-      message.error('复制失败');
+      message.error(formatError('CLIPBOARD_UNAVAILABLE'));
     }
   };
 
@@ -78,7 +80,11 @@ function LegacyRecommendConsole() {
   }, [query.isFetching]);
   useEffect(() => {
     if (query.isSuccess && query.data) {
-      history.push(applied, query.data, Math.max(0, Math.round(performance.now() - fetchStart.current)));
+      history.push(
+        applied,
+        query.data,
+        Math.max(0, Math.round(performance.now() - fetchStart.current)),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.dataUpdatedAt]);
@@ -109,10 +115,12 @@ function LegacyRecommendConsole() {
     try {
       const deliveredUserId = query.data?.userId ?? userId;
       const deliveredScene = query.data?.scene ?? scene;
-      await reportBehavior(makeEvent(deliveredUserId, item.itemId, action, deliveredScene, 1.0, item.exposureId));
+      await reportBehavior(
+        makeEvent(deliveredUserId, item.itemId, action, deliveredScene, 1.0, item.exposureId),
+      );
       message.success(`已上报 ${action} · item ${item.itemId}`);
     } catch (e) {
-      message.error('上报失败: ' + toApiError(e).message);
+      showApiError(e, (text) => message.error('上报失败: ' + text));
     }
   };
 
@@ -228,7 +236,13 @@ function LegacyRecommendConsole() {
         )}
       />
 
-      <Modal title="A/B 结果对比" open={compareOpen} onCancel={() => setCompareOpen(false)} footer={null} width={880}>
+      <Modal
+        title="A/B 结果对比"
+        open={compareOpen}
+        onCancel={() => setCompareOpen(false)}
+        footer={null}
+        width={880}
+      >
         {selectedEntries.length === 2 ? (
           <ResultDiff<RecommendItem>
             aLabel={label(selectedEntries[1].params)}

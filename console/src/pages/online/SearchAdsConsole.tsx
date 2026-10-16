@@ -1,7 +1,21 @@
+import { formatError, showApiError } from '../../api/errors';
 import SandboxSearchAdsConsole from './SandboxSearchAdsConsole';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Input, InputNumber, Modal, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Input,
+  InputNumber,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { getSearchAds, postAdClick, postAdConversion, postAdOutcome } from '../../api/ads';
 import { queryKeys } from '../../api/queryKeys';
@@ -11,7 +25,12 @@ import { useRequestHistory, type HistoryEntry } from '../../hooks/useRequestHist
 import { useUrlParams } from '../../hooks/useUrlParams';
 import type { SponsoredAd, SearchAdsResponse } from '../../api/types';
 import { channelColor } from '../../components/explain/channelColors';
-import { DollarOutlined, HistoryOutlined, ShareAltOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import {
+  DollarOutlined,
+  HistoryOutlined,
+  ShareAltOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import FunnelBand from '../../components/funnel/FunnelBand';
 import { ChartSkeleton } from '../../components/Skeletons';
 import EmptyState from '../../components/EmptyState';
@@ -63,7 +82,7 @@ function LegacySearchAdsConsole() {
       await navigator.clipboard.writeText(window.location.href);
       message.success('已复制分享链接(含当前参数)');
     } catch {
-      message.error('复制失败');
+      message.error(formatError('CLIPBOARD_UNAVAILABLE'));
     }
   };
 
@@ -83,7 +102,11 @@ function LegacySearchAdsConsole() {
   }, [query.isFetching]);
   useEffect(() => {
     if (query.isSuccess && query.data) {
-      history.push(applied, query.data, Math.max(0, Math.round(performance.now() - fetchStart.current)));
+      history.push(
+        applied,
+        query.data,
+        Math.max(0, Math.round(performance.now() - fetchStart.current)),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.dataUpdatedAt]);
@@ -96,7 +119,7 @@ function LegacySearchAdsConsole() {
 
   const run = () => {
     if (!q.trim()) {
-      message.warning('请输入 query');
+      message.warning(formatError('SEARCH_QUERY_REQUIRED'));
       return;
     }
     setApplied({ userId, scene, q, slots });
@@ -117,7 +140,7 @@ function LegacySearchAdsConsole() {
       await postAdClick({ requestId, adId, userId });
       message.success(`点击已回传 · ad ${adId}(CPC 计费归因走 requestId)`);
     } catch (e) {
-      message.error('点击回传失败: ' + toApiError(e).message);
+      showApiError(e, (text) => message.error('点击回传失败: ' + text));
     }
   };
   const convert = async (adId: number) => {
@@ -125,16 +148,22 @@ function LegacySearchAdsConsole() {
       await postAdConversion({ requestId, adId, userId });
       message.success(`转化已回传 · ad ${adId}`);
     } catch (e) {
-      message.error('转化回传失败: ' + toApiError(e).message);
+      showApiError(e, (text) => message.error('转化回传失败: ' + text));
     }
   };
   const outcome = async (ad: SponsoredAd) => {
     try {
       const eventId = `${requestId}:${ad.adId}:outcome:${Date.now()}`;
-      await postAdOutcome({ eventId, advertiserId: ad.advertiserId, userId, objective: 'purchase', value: 1 });
+      await postAdOutcome({
+        eventId,
+        advertiserId: ad.advertiserId,
+        userId,
+        objective: 'purchase',
+        value: 1,
+      });
       message.success(`独立 outcome 已回传 · ad ${ad.adId}`);
     } catch (e) {
-      message.error('outcome 回传失败: ' + toApiError(e).message);
+      showApiError(e, (text) => message.error('outcome 回传失败: ' + text));
     }
   };
 
@@ -173,7 +202,11 @@ function LegacySearchAdsConsole() {
       render: (c: string) => <Tag color={channelColor(c)}>{c}</Tag>,
     },
     {
-      title: <Tooltip title="eCPM 是排序分；计价单价是竞价报价，实际消费需查询账本">排序分 / 计价单价</Tooltip>,
+      title: (
+        <Tooltip title="eCPM 是排序分；计价单价是竞价报价，实际消费需查询账本">
+          排序分 / 计价单价
+        </Tooltip>
+      ),
       key: 'money',
       width: 130,
       render: (_, r) => (
@@ -183,7 +216,10 @@ function LegacySearchAdsConsole() {
             <Typography.Text strong style={{ color: BRAND }} className="mono">
               {fmt(r.chargedPrice)}
             </Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}> {adPriceUnit(r.bidType)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {' '}
+              {adPriceUnit(r.bidType)}
+            </Typography.Text>
           </div>
         </div>
       ),
@@ -231,7 +267,12 @@ function LegacySearchAdsConsole() {
       <Card size="small" bordered={false}>
         <Space wrap>
           <DebugField label="查询词">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} onPressEnter={run} />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: 240 }}
+              onPressEnter={run}
+            />
           </DebugField>
           <DebugField label="广告位数">
             <InputNumber min={1} max={10} value={slots} onChange={(v) => v && setSlots(v)} />
@@ -244,7 +285,11 @@ function LegacySearchAdsConsole() {
 
       <Card
         title={`赞助广告 (${ads.length})`}
-        extra={query.data ? <TracePanel traceId={query.data.traceId} requestId={requestId} raw={query.data} /> : null}
+        extra={
+          query.data ? (
+            <TracePanel traceId={query.data.traceId} requestId={requestId} raw={query.data} />
+          ) : null
+        }
       >
         {query.isError ? (
           <Alert type="error" message={toApiError(query.error).message} showIcon />
@@ -282,12 +327,22 @@ function LegacySearchAdsConsole() {
 
       {ads.length > 0 ? (
         <>
-          <CollapsibleCard title="竞价报价 · 按各广告计费单位" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
+          <CollapsibleCard
+            title="竞价报价 · 按各广告计费单位"
+            icon={<ThunderboltOutlined />}
+            accent={ACCENTS.ad}
+            defaultOpen={false}
+          >
             <Suspense fallback={<ChartSkeleton height={340} />}>
               <AdBiddingChart ads={ads} />
             </Suspense>
           </CollapsibleCard>
-          <CollapsibleCard title="竞价链路逐步重放" icon={<ThunderboltOutlined />} accent={ACCENTS.ad} defaultOpen={false}>
+          <CollapsibleCard
+            title="竞价链路逐步重放"
+            icon={<ThunderboltOutlined />}
+            accent={ACCENTS.ad}
+            defaultOpen={false}
+          >
             <BiddingReplay ads={ads} />
           </CollapsibleCard>
         </>
@@ -312,7 +367,13 @@ function LegacySearchAdsConsole() {
         )}
       />
 
-      <Modal title="A/B 竞价对比" open={compareOpen} onCancel={() => setCompareOpen(false)} footer={null} width={920}>
+      <Modal
+        title="A/B 竞价对比"
+        open={compareOpen}
+        onCancel={() => setCompareOpen(false)}
+        footer={null}
+        width={920}
+      >
         {selectedEntries.length === 2 ? (
           <ResultDiff<SponsoredAd>
             aLabel={adLabel(selectedEntries[1].params)}

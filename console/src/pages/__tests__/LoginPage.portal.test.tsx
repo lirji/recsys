@@ -26,6 +26,7 @@ vi.mock('../../config/auth', () => ({
 }));
 
 import LoginPage from '../LoginPage';
+import { formatError } from '../../api/errors';
 
 beforeEach(() => {
   mocks.signInOidc.mockReset().mockResolvedValue(undefined);
@@ -88,7 +89,9 @@ describe('LoginPage portal auto-login', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /使用统一身份登录/ }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('当前推荐系统只开放租户 recsys');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      formatError('OIDC_TENANT_NOT_ALLOWED'),
+    );
     expect(mocks.signInOidc).not.toHaveBeenCalled();
   });
 
@@ -112,7 +115,12 @@ describe('LoginPage portal auto-login', () => {
     render(
       <AntdApp>
         <MemoryRouter
-          initialEntries={[{ pathname: '/login', state: { from: { pathname: '//evil.com', search: '', hash: '' } } }]}
+          initialEntries={[
+            {
+              pathname: '/login',
+              state: { from: { pathname: '//evil.com', search: '', hash: '' } },
+            },
+          ]}
         >
           <LoginPage />
         </MemoryRouter>

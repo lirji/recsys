@@ -1,3 +1,4 @@
+import { formatError } from '../../api/errors';
 import { App, Button, Space, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 
@@ -10,7 +11,7 @@ export default function CliCommandCard({ job, note }: { job: string; note?: stri
       await navigator.clipboard.writeText(cmd);
       message.success('已复制命令');
     } catch {
-      message.warning('复制失败,请手动选择');
+      message.warning(formatError('CLIPBOARD_UNAVAILABLE'));
     }
   };
   return (

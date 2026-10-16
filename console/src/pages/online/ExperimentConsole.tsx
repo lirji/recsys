@@ -1,6 +1,20 @@
+import { showApiError } from '../../api/errors';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Alert, Button, Card, Divider, InputNumber, Popconfirm, Space, Switch, Tag, Tooltip, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Divider,
+  InputNumber,
+  Popconfirm,
+  Space,
+  Switch,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import {
   clearOverride,
   getExperiment,
@@ -42,46 +56,53 @@ export default function ExperimentConsole() {
     setWeights(next);
   }, [snap]);
 
+  // 首次快照已到但effect尚未同步编辑态时，仍使用真实权重，不能临时把整层保存成0。
+  const currentWeight = (layer: string, variant: string) =>
+    weights[`${layer}/${variant}`] ?? snap?.staticLayers[layer]?.variants[variant] ?? 0;
+
   const applyWrite = async (fn: () => Promise<ExperimentWriteResult>, ok: string) => {
     const r = await fn();
-    if (r && r.ok === false) {
-      message.warning(`未生效: ${r.reason ?? ''}`);
-    } else {
-      message.success(ok);
-    }
+    message.success(ok);
     await queryClient.invalidateQueries({ queryKey: queryKeys.experiment() });
     return r;
   };
 
+  const onWriteError = async (error: unknown) => {
+    showApiError(error, message.error);
+    // 写入可能已生效或仅部分成功，失败后也读取实际配置；取消时不显示错误通知。
+    await queryClient.invalidateQueries({ queryKey: queryKeys.experiment() });
+  };
+
   const globalMut = useMutation({
-    mutationFn: (v: boolean) => applyWrite(() => setGlobalEnabled(v), `全局实验 ${v ? '开启' : '关闭'}`),
-    onError: (e) => message.error(toApiError(e).message),
+    mutationFn: (v: boolean) =>
+      applyWrite(() => setGlobalEnabled(v), `全局实验 ${v ? '开启' : '关闭'}`),
+    onError: onWriteError,
   });
   const layerMut = useMutation({
     mutationFn: ({ layer, value }: { layer: string; value: boolean }) =>
       applyWrite(() => setLayerEnabled(layer, value), `层 ${layer} ${value ? '开启' : '关闭'}`),
-    onError: (e) => message.error(toApiError(e).message),
+    onError: onWriteError,
   });
   const saveLayerMut = useMutation({
     mutationFn: async ({ layer, variants }: { layer: string; variants: string[] }) => {
       for (const variant of variants) {
-        const r = await setVariantWeight(layer, variant, weights[`${layer}/${variant}`] ?? 0);
-        if (r && r.ok === false) throw new Error(r.reason ?? '未生效');
+        await setVariantWeight(layer, variant, currentWeight(layer, variant));
       }
     },
     onSuccess: async (_, { layer }) => {
       message.success(`已保存 ${layer} 层权重`);
       await queryClient.invalidateQueries({ queryKey: queryKeys.experiment() });
     },
-    onError: (e) => message.error(toApiError(e).message),
+    onError: onWriteError,
   });
   const clearMut = useMutation({
     mutationFn: () => applyWrite(clearOverride, '已清空 override'),
-    onError: (e) => message.error(toApiError(e).message),
+    onError: onWriteError,
   });
 
   if (query.isLoading) return <ResultRowsSkeleton rows={4} />;
-  if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
+  if (query.isError)
+    return <Alert type="error" showIcon message={toApiError(query.error).message} />;
   if (!snap) return null;
 
   const globalOn = snap.enabled ?? snap.staticEnabled;
@@ -101,8 +122,13 @@ export default function ExperimentConsole() {
             loading={globalMut.isPending}
             onChange={(v) => globalMut.mutate(v)}
           />
-          <Typography.Text type="secondary">写 Redis 覆盖层,点保存后对后续请求生效。</Typography.Text>
-          <Popconfirm title="清空所有 Redis 覆盖,回落到 yml 静态配置?" onConfirm={() => clearMut.mutate()}>
+          <Typography.Text type="secondary">
+            写 Redis 覆盖层,点保存后对后续请求生效。
+          </Typography.Text>
+          <Popconfirm
+            title="清空所有 Redis 覆盖,回落到 yml 静态配置?"
+            onConfirm={() => clearMut.mutate()}
+          >
             <Button danger loading={clearMut.isPending}>
               清除 override
             </Button>
@@ -129,7 +155,12 @@ export default function ExperimentConsole() {
                   <Tag>{layer}</Tag>
                   {layer === 'ad' ? <Tag color="gold">广告专用分桶</Tag> : null}
                 </Space>
-                <Space align="center" wrap size={10} style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <Space
+                  align="center"
+                  wrap
+                  size={10}
+                  style={{ flex: 1, justifyContent: 'flex-end' }}
+                >
                   {variants.map((variant) => {
                     const key = `${layer}/${variant}`;
                     const st = abRows.length ? variantOnlineStat(abRows, layer, variant) : null;
@@ -142,13 +173,21 @@ export default function ExperimentConsole() {
                           min={0}
                           max={100}
                           size="small"
-                          value={weights[key] ?? 0}
+                          value={currentWeight(layer, variant)}
                           onChange={(v) => setWeights((w) => ({ ...w, [key]: v ?? 0 }))}
                         />
                         {st ? (
-                          <Typography.Text type="secondary" className="mono" style={{ fontSize: 12 }}>
+                          <Typography.Text
+                            type="secondary"
+                            className="mono"
+                            style={{ fontSize: 12 }}
+                          >
                             {(st.ctr * 100).toFixed(2)}%
-                            {st.anySignificant ? <Tag color="green" style={{ marginInlineStart: 4 }}>显著</Tag> : null}
+                            {st.anySignificant ? (
+                              <Tag color="green" style={{ marginInlineStart: 4 }}>
+                                显著
+                              </Tag>
+                            ) : null}
                           </Typography.Text>
                         ) : null}
                       </Space>

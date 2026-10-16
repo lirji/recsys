@@ -1,3 +1,4 @@
+import { formatError } from '../../api/errors';
 import { useMemo, useState, type ReactNode } from 'react';
 import { App, Button, Collapse, Input, Space, Typography } from 'antd';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -47,7 +48,7 @@ export default function TracePanel({
       await navigator.clipboard.writeText(text);
       message.success(ok);
     } catch {
-      message.error('复制失败(浏览器不支持或无剪贴板权限)');
+      message.error(formatError('CLIPBOARD_UNAVAILABLE'));
     }
   };
 

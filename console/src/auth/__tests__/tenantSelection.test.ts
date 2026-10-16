@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateTenantSelection } from '../tenantSelection';
+import { formatError } from '../../api/errors';
 
 describe('Recsys OIDC 租户选择', () => {
   const clientId = 'ragshared0client00000001-org-recsys';
@@ -11,18 +12,21 @@ describe('Recsys OIDC 租户选择', () => {
     });
     expect(validateTenantSelection('acme', 'recsys', clientId)).toEqual({
       ok: false,
-      message: '当前推荐系统只开放租户 recsys',
+      code: 'OIDC_TENANT_NOT_ALLOWED',
+      message: formatError('OIDC_TENANT_NOT_ALLOWED'),
     });
   });
 
   it('空输入与空 organization 都 fail-closed', () => {
     expect(validateTenantSelection('', 'recsys', clientId)).toEqual({
       ok: false,
-      message: '请输入租户',
+      code: 'OIDC_TENANT_REQUIRED',
+      message: formatError('OIDC_TENANT_REQUIRED'),
     });
     expect(validateTenantSelection('recsys', '', clientId)).toEqual({
       ok: false,
-      message: 'OIDC 租户配置为空，请联系管理员',
+      code: 'OIDC_CONFIGURATION_INVALID',
+      message: formatError('OIDC_CONFIGURATION_INVALID'),
     });
   });
 
@@ -31,7 +35,8 @@ describe('Recsys OIDC 租户选择', () => {
       validateTenantSelection('recsys', 'recsys', 'ragshared0client00000001-org-acme'),
     ).toEqual({
       ok: false,
-      message: 'OIDC clientId 与租户配置不一致，请联系管理员',
+      code: 'OIDC_CONFIGURATION_INVALID',
+      message: formatError('OIDC_CONFIGURATION_INVALID'),
     });
   });
 });

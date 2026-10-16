@@ -1,8 +1,20 @@
+import { showApiError } from '../../api/errors';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
+import {
+  App,
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+} from 'antd';
 import { createBidword, deleteBidword, listBidwords, updateBidword } from '../../api/advertiser';
-import { toApiError } from '../../api/client';
 import type { BidwordUpsert, BidwordView } from '../../api/types';
 
 export default function BidwordPanel({ adId }: { adId: number }) {
@@ -21,7 +33,12 @@ export default function BidwordPanel({ adId }: { adId: number }) {
   };
   const openEdit = (b: BidwordView) => {
     setEditing(b);
-    form.setFieldsValue({ keyword: b.keyword, matchType: b.matchType, bid: b.bid, bidMode: b.bidMode });
+    form.setFieldsValue({
+      keyword: b.keyword,
+      matchType: b.matchType,
+      bid: b.bid,
+      bidMode: b.bidMode,
+    });
     setOpen(true);
   };
 
@@ -35,7 +52,7 @@ export default function BidwordPanel({ adId }: { adId: number }) {
       setOpen(false);
       query.refetch();
     } catch (e) {
-      message.error(toApiError(e).message);
+      showApiError(e, message.error);
     } finally {
       setSaving(false);
     }
@@ -47,7 +64,7 @@ export default function BidwordPanel({ adId }: { adId: number }) {
       message.success('已删除');
       query.refetch();
     } catch (e) {
-      message.error(toApiError(e).message);
+      showApiError(e, message.error);
     }
   };
 
@@ -70,7 +87,12 @@ export default function BidwordPanel({ adId }: { adId: number }) {
         columns={[
           { title: 'id', dataIndex: 'id', width: 70 },
           { title: '关键词', dataIndex: 'keyword' },
-          { title: '匹配', dataIndex: 'matchType', width: 100, render: (m: string) => <Tag>{m}</Tag> },
+          {
+            title: '匹配',
+            dataIndex: 'matchType',
+            width: 100,
+            render: (m: string) => <Tag>{m}</Tag>,
+          },
           { title: '出价', dataIndex: 'bid', width: 90, render: (v: number) => v?.toFixed(3) },
           { title: '模式', dataIndex: 'bidMode', width: 90, render: (m: string) => <Tag>{m}</Tag> },
           {
@@ -88,7 +110,14 @@ export default function BidwordPanel({ adId }: { adId: number }) {
           },
         ]}
       />
-      <Modal title={editing ? '编辑竞价词' : '新增竞价词'} open={open} onOk={submit} confirmLoading={saving} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal
+        title={editing ? '编辑竞价词' : '新增竞价词'}
+        open={open}
+        onOk={submit}
+        confirmLoading={saving}
+        onCancel={() => setOpen(false)}
+        destroyOnClose
+      >
         <Form form={form} layout="vertical">
           <Form.Item name="keyword" label="关键词" rules={[{ required: true }]}>
             <Input />

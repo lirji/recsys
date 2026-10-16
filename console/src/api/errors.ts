@@ -132,3 +132,9 @@ export function toApiError(error: unknown): ApiErrorInfo {
     url,
   };
 }
+
+/** 主动取消不是操作失败，通知型调用点统一跳过取消消息。 */
+export function showApiError(error: unknown, display: (message: string) => unknown): void {
+  const info = toApiError(error);
+  if (!info.cancelled) display(info.message);
+}

@@ -14,7 +14,8 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { DEMO_USERS } from '../api/auth';
-import { toApiError } from '../api/client';
+import { HttpStatusCode } from 'axios';
+import { toApiError, showApiError, formatError } from '../api/errors';
 import { DEMO_USER_META, ROLE_META } from '../auth/roleMeta';
 import { AUTH_MODE, CASDOOR } from '../config/auth';
 import { resolvePortalLaunch, sanitizeInternalPath } from '../auth/portalLaunch';
@@ -307,7 +308,7 @@ export default function LoginPage() {
       await signInOidc(from);
     } catch (e) {
       setRedirecting(false);
-      message.error(`无法跳转统一登录:${toApiError(e).message}(请确认 Casdoor 可达)`);
+      showApiError(e, (text) => message.error(`无法跳转统一登录:${text}(请确认 Casdoor 可达)`));
     }
   };
 
@@ -319,7 +320,7 @@ export default function LoginPage() {
     setRedirecting(true);
     void signInOidc(portalLaunch.returnTo).catch((e: unknown) => {
       setRedirecting(false);
-      message.error(`无法跳转统一登录:${toApiError(e).message}(请确认 Casdoor 可达)`);
+      showApiError(e, (text) => message.error(`无法跳转统一登录:${text}(请确认 Casdoor 可达)`));
     });
   }, [message, portalLaunch, signInOidc]);
 
@@ -330,11 +331,12 @@ export default function LoginPage() {
       navigate(from, { replace: true });
     } catch (e) {
       const info = toApiError(e);
-      message.error(
-        info.status === 401 || info.status === 403
-          ? '用户名或密码错误'
-          : `登录失败:${info.message}`,
-      );
+      if (!info.cancelled)
+        message.error(
+          info.status === HttpStatusCode.Unauthorized || info.status === HttpStatusCode.Forbidden
+            ? formatError('AUTH_INVALID_CREDENTIALS')
+            : info.message,
+        );
       throw e; // 让调用方 finally 复位 loading
     }
   };

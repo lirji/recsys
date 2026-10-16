@@ -178,3 +178,14 @@ describe('统一安全错误展示', () => {
     },
   );
 });
+
+it('通知入口跳过主动取消，普通失败保留安全目录码', async () => {
+  const { showApiError } = await import('../errors');
+  const displayed: string[] = [];
+  const display = (text: string) => displayed.push(text);
+  showApiError(new CanceledError('private cancel'), display);
+  showApiError(new DOMException('private abort', 'AbortError'), display);
+  expect(displayed).toEqual([]);
+  showApiError(new ClientError('CLIPBOARD_UNAVAILABLE'), display);
+  expect(displayed).toEqual([formatError('CLIPBOARD_UNAVAILABLE')]);
+});

@@ -4,6 +4,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => ({
   mode: 'oidc' as string,
   getUser: vi.fn(),
+  signinSilent: vi.fn(),
 }));
 
 vi.mock('../../config/auth', () => ({
@@ -16,11 +17,18 @@ vi.mock('../../config/auth', () => ({
 vi.mock('oidc-client-ts', () => ({
   UserManager: class {
     getUser = mocks.getUser;
+    signinSilent = mocks.signinSilent;
   },
   WebStorageStateStore: class {},
 }));
 
-import { decodeJwtPayload, resolveToken, sanitizeReturnTo, userFromCasdoorToken } from '../oidc';
+import {
+  decodeJwtPayload,
+  resolveToken,
+  sanitizeReturnTo,
+  silentRenew,
+  userFromCasdoorToken,
+} from '../oidc';
 
 /** 造未签名 JWT(payload base64url;网关才验签,前端只解 payload)。 */
 function fakeJwt(payload: Record<string, unknown>): string {
@@ -110,5 +118,28 @@ describe('resolveToken(模式分派,R1:oidc 绝不读 legacy localStorage)', () 
     mocks.mode = 'legacy';
     localStorage.setItem('recsys_token', 'legacy-token');
     expect(await resolveToken()).toBe('legacy-token');
+  });
+});
+
+describe('401续期单飞', () => {
+  it('并发请求共享一次续期，失败后新的请求可以再续期', async () => {
+    mocks.mode = 'oidc';
+    mocks.signinSilent.mockReset();
+    let reject!: (reason: Error) => void;
+    mocks.signinSilent.mockImplementationOnce(
+      () =>
+        new Promise((_, no) => {
+          reject = no;
+        }),
+    );
+    const first = silentRenew();
+    const second = silentRenew();
+    const failed = Promise.allSettled([first, second]);
+    await vi.waitFor(() => expect(mocks.signinSilent).toHaveBeenCalledTimes(1));
+    reject(new Error('private renewal failure'));
+    expect((await failed).map((result) => result.status)).toEqual(['rejected', 'rejected']);
+    mocks.signinSilent.mockResolvedValueOnce({ access_token: 'renewed' });
+    await expect(silentRenew()).resolves.toEqual({ access_token: 'renewed' });
+    expect(mocks.signinSilent).toHaveBeenCalledTimes(2);
   });
 });

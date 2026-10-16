@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Result, Spin, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { ClientError, formatError, toApiError } from '../api/errors';
 
 // Casdoor OIDC 回调页(仅 oidc 模式经 /callback 到达;App.tsx 在守卫之前特判渲染,防 RequireAuth 弹回死循环)。
 //
@@ -19,10 +20,11 @@ function runCallbackOnce(key: string, exchange: () => Promise<string>): Promise<
 
 /** 回调错误人话化:state/code 类错误多为"链接过期或被重放",给统一可行动文案。 */
 function humanize(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/state/i.test(msg)) return '登录会话不匹配(链接过期或页面被重放),请重新登录';
-  if (/code|grant/i.test(msg)) return '授权码已失效(可能已使用过),请重新登录';
-  return `登录失败:${msg}`;
+  if (e instanceof ClientError) return toApiError(e).message;
+  const msg = e instanceof Error ? e.message : ''; // 仅作为固定目录选择器，不作为展示内容。
+  if (/state/i.test(msg)) return formatError('OIDC_STATE_INVALID');
+  if (/code|grant/i.test(msg)) return formatError('OIDC_CODE_INVALID');
+  return formatError('OIDC_LOGIN_FAILED');
 }
 
 export default function CallbackPage() {

@@ -1694,6 +1694,111 @@
       "httpStatus": 0,
       "message": "FTRL 作业未完成，权重和续训状态可能仅部分更新；请核对两个发布结果后重试",
       "httpDefault": false
+    },
+    {
+      "name": "UI_RENDER_FAILED",
+      "code": "UI_RENDER_FAILED",
+      "httpStatus": 0,
+      "message": "页面渲染失败，请重试或切换到其他页面",
+      "httpDefault": false
+    },
+    {
+      "name": "CLIPBOARD_UNAVAILABLE",
+      "code": "CLIPBOARD_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "复制失败，请检查剪贴板权限或手动选择内容复制",
+      "httpDefault": false
+    },
+    {
+      "name": "SEARCH_QUERY_REQUIRED",
+      "code": "SEARCH_QUERY_REQUIRED",
+      "httpStatus": 0,
+      "message": "请输入搜索词后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_TENANT_REQUIRED",
+      "code": "OIDC_TENANT_REQUIRED",
+      "httpStatus": 0,
+      "message": "请输入租户",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_CONFIGURATION_INVALID",
+      "code": "OIDC_CONFIGURATION_INVALID",
+      "httpStatus": 0,
+      "message": "OIDC 租户或 clientId 配置不完整或不一致，请联系管理员",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_TENANT_NOT_ALLOWED",
+      "code": "OIDC_TENANT_NOT_ALLOWED",
+      "httpStatus": 0,
+      "message": "当前租户尚未开放，请使用系统配置的租户",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_TOKEN_INVALID",
+      "code": "OIDC_TOKEN_INVALID",
+      "httpStatus": 0,
+      "message": "登录凭证无法解析，请重新登录",
+      "httpDefault": false
+    },
+    {
+      "name": "AUTH_MODE_UNSUPPORTED",
+      "code": "AUTH_MODE_UNSUPPORTED",
+      "httpStatus": 0,
+      "message": "当前认证模式不支持 legacy 登录，请使用统一登录",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_STATE_INVALID",
+      "code": "OIDC_STATE_INVALID",
+      "httpStatus": 0,
+      "message": "登录会话不匹配，链接可能已过期或被重放，请重新登录",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_CODE_INVALID",
+      "code": "OIDC_CODE_INVALID",
+      "httpStatus": 0,
+      "message": "授权码已失效或已使用，请重新登录",
+      "httpDefault": false
+    },
+    {
+      "name": "OIDC_LOGIN_FAILED",
+      "code": "OIDC_LOGIN_FAILED",
+      "httpStatus": 0,
+      "message": "统一登录未完成，请重新登录或检查认证服务",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_RESPONSE_MISMATCH",
+      "code": "DELIVERY_RESPONSE_MISMATCH",
+      "httpStatus": 0,
+      "message": "交付响应与原请求身份不匹配，请保留原 operationId 查询",
+      "httpDefault": false
+    },
+    {
+      "name": "DELIVERY_STORAGE_UNAVAILABLE",
+      "code": "DELIVERY_STORAGE_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "交付无法写入会话存储，请保留原 operationId；刷新后无法自动恢复",
+      "httpDefault": false
+    },
+    {
+      "name": "EXPERIMENT_STORE_UNAVAILABLE",
+      "code": "EXPERIMENT_STORE_UNAVAILABLE",
+      "httpStatus": 0,
+      "message": "实验配置存储不可用，本次未执行写入，请检查存储配置后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "EXPERIMENT_WRITE_UNCONFIRMED",
+      "code": "EXPERIMENT_WRITE_UNCONFIRMED",
+      "httpStatus": 0,
+      "message": "实验配置写入结果未能确认，可能已有部分配置生效，请刷新并核对实际配置",
+      "httpDefault": false
     }
   ],
   "families": [

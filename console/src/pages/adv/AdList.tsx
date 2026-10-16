@@ -1,3 +1,4 @@
+import { showApiError } from '../../api/errors';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tag } from 'antd';
@@ -17,7 +18,10 @@ export default function AdList() {
   const advertiserId = Number(advId);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: queryKeys.ads(advertiserId), queryFn: () => listAds(advertiserId) });
+  const query = useQuery({
+    queryKey: queryKeys.ads(advertiserId),
+    queryFn: () => listAds(advertiserId),
+  });
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<AdUpsert>();
   const createMut = useMutation({
@@ -28,7 +32,7 @@ export default function AdList() {
       form.resetFields();
       await queryClient.invalidateQueries({ queryKey: queryKeys.ads(advertiserId) });
     },
-    onError: (e) => message.error(toApiError(e).message),
+    onError: (e) => showApiError(e, message.error),
   });
 
   const submit = async () => {
@@ -37,10 +41,31 @@ export default function AdList() {
   };
 
   const columns = [
-    { title: 'adId', dataIndex: 'adId', width: 160, render: (id: number) => <Link to={`/advertiser/ad/${id}`}>{formatId(id)}</Link> },
-    { title: '标题', dataIndex: 'title', render: (t: string, r: AdView) => <Link to={`/advertiser/ad/${r.adId}`}>{t || `#${r.itemId}`}</Link> },
-    { title: '状态', dataIndex: 'status', width: 100, render: (s: string) => <StatusTag status={s} /> },
-    { title: '计费', dataIndex: 'optimizationType', width: 90, render: (o: string) => <Tag>{o}</Tag> },
+    {
+      title: 'adId',
+      dataIndex: 'adId',
+      width: 160,
+      render: (id: number) => <Link to={`/advertiser/ad/${id}`}>{formatId(id)}</Link>,
+    },
+    {
+      title: '标题',
+      dataIndex: 'title',
+      render: (t: string, r: AdView) => (
+        <Link to={`/advertiser/ad/${r.adId}`}>{t || `#${r.itemId}`}</Link>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      render: (s: string) => <StatusTag status={s} />,
+    },
+    {
+      title: '计费',
+      dataIndex: 'optimizationType',
+      width: 90,
+      render: (o: string) => <Tag>{o}</Tag>,
+    },
     ...(query.data?.some((a) => a.audienceId)
       ? [
           {
@@ -52,8 +77,18 @@ export default function AdList() {
         ]
       : []),
     { title: '质量度', dataIndex: 'qualityScore', width: 90, render: (v: number) => v?.toFixed(3) },
-    { title: '向量', dataIndex: 'hasEmbedding', width: 70, render: (b: boolean) => (b ? <Tag color="green">有</Tag> : <Tag>无</Tag>) },
-    { title: '词/创意', key: 'cnt', width: 90, render: (_: unknown, r: AdView) => `${r.bidwords?.length ?? 0} / ${r.creatives?.length ?? 0}` },
+    {
+      title: '向量',
+      dataIndex: 'hasEmbedding',
+      width: 70,
+      render: (b: boolean) => (b ? <Tag color="green">有</Tag> : <Tag>无</Tag>),
+    },
+    {
+      title: '词/创意',
+      key: 'cnt',
+      width: 90,
+      render: (_: unknown, r: AdView) => `${r.bidwords?.length ?? 0} / ${r.creatives?.length ?? 0}`,
+    },
   ];
 
   return (
@@ -68,24 +103,39 @@ export default function AdList() {
         }
       />
       <Card>
-      {query.isError ? (
-        <Alert type="error" showIcon message={toApiError(query.error).message} />
-      ) : (
-        <Table<AdView>
-          rowKey="adId"
-          size="small"
-          loading={query.isLoading}
-          columns={columns}
-          dataSource={query.data ?? []}
-          pagination={false}
-          scroll={{ x: 880 }}
-        />
-      )}
+        {query.isError ? (
+          <Alert type="error" showIcon message={toApiError(query.error).message} />
+        ) : (
+          <Table<AdView>
+            rowKey="adId"
+            size="small"
+            loading={query.isLoading}
+            columns={columns}
+            dataSource={query.data ?? []}
+            pagination={false}
+            scroll={{ x: 880 }}
+          />
+        )}
       </Card>
 
-      <Modal title="新建广告" open={open} onOk={submit} confirmLoading={createMut.isPending} onCancel={() => setOpen(false)} destroyOnClose>
-        <Form form={form} layout="vertical" initialValues={{ optimizationType: 'CPC', status: 'active', qualityScore: 1.0 }}>
-          <Form.Item name="itemId" label="关联 itemId(创意/向量来源)" rules={[{ required: true, message: '必填' }]}>
+      <Modal
+        title="新建广告"
+        open={open}
+        onOk={submit}
+        confirmLoading={createMut.isPending}
+        onCancel={() => setOpen(false)}
+        destroyOnClose
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ optimizationType: 'CPC', status: 'active', qualityScore: 1.0 }}
+        >
+          <Form.Item
+            name="itemId"
+            label="关联 itemId(创意/向量来源)"
+            rules={[{ required: true, message: '必填' }]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '必填' }]}>

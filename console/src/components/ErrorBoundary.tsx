@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button, Result } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
+import { formatError } from '../api/errors';
 
 interface Props {
   children: ReactNode;
@@ -49,27 +50,13 @@ export default class ErrorBoundary extends Component<Props, State> {
         <Result
           status="error"
           title="页面渲染出错了"
-          subTitle={
-            error.message ||
-            '渲染时发生未捕获的异常。可点「重试」重新加载本页,或从左侧导航切换到其他页面(会自动恢复)。'
-          }
+          subTitle={formatError('UI_RENDER_FAILED')}
           extra={
             <Button type="primary" icon={<ReloadOutlined />} onClick={this.handleReset}>
               重试
             </Button>
           }
-        >
-          {error.stack && (
-            <details open={import.meta.env.DEV} style={{ textAlign: 'left' }}>
-              <summary style={{ cursor: 'pointer', userSelect: 'none', color: '#8c8c8c', fontSize: 12 }}>
-                错误堆栈{import.meta.env.DEV ? '(开发环境)' : ''}
-              </summary>
-              <pre className="json-block" style={{ marginTop: 8, maxHeight: 320 }}>
-                {error.stack}
-              </pre>
-            </details>
-          )}
-        </Result>
+        />
       </div>
     );
   }

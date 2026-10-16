@@ -3,6 +3,7 @@ import CollapsibleCard from '../CollapsibleCard';
 import EErrorBar from '../charts/EErrorBar';
 import type { AbBucketRow, AbReportData } from './abReport';
 import { significantBuckets } from './abReport';
+import { toApiError } from '../../api/errors';
 
 // 在线 A/B 结果看板:把最新一份 ab-report 的逐桶 CTR + Wilson CI + 显著性同屏呈现。
 // 自身处理 加载/报错/暂无数据 三态,不崩页;放量控件在 ExperimentConsole 侧独立、任何态都可用。
@@ -28,7 +29,7 @@ export default function AbSignificancePanel({
   }
 
   if (isError) {
-    const msg = error instanceof Error ? error.message : String(error ?? '未知错误');
+    const msg = toApiError(error).message;
     return (
       <Card size="small" title={title}>
         <Alert
@@ -64,7 +65,9 @@ export default function AbSignificancePanel({
   // 有 CI 列则画须;否则退化为柱(low=high=ctr,须收拢不可见)。
   const low = rows.map((r) => (hasSig && Number.isFinite(r.ciLow) ? pct(r.ciLow) : pct(r.ctr)));
   const high = rows.map((r) => (hasSig && Number.isFinite(r.ciHigh) ? pct(r.ciHigh) : pct(r.ctr)));
-  const markers = rows.map((r) => (r.isBaseline ? '基线' : r.significant === true ? '★ 显著' : null));
+  const markers = rows.map((r) =>
+    r.isBaseline ? '基线' : r.significant === true ? '★ 显著' : null,
+  );
 
   const baseline = rows.find((r) => r.isBaseline);
   const sigRows = significantBuckets(rows);
@@ -114,7 +117,8 @@ export default function AbSignificancePanel({
                 <span>
                   有 {sigRows.length} 个桶与基线 CTR 差异显著(
                   {sigRows.map((r) => r.bucket).join('、')})。若其中存在与基线<b>同策略</b>的桶(AA
-                  测试),则分桶/埋点可能有偏,应先修分流再做正式 A/B;若确为不同策略,则这是真实的实验效果。
+                  测试),则分桶/埋点可能有偏,应先修分流再做正式
+                  A/B;若确为不同策略,则这是真实的实验效果。
                 </span>
               }
             />
@@ -147,8 +151,18 @@ export default function AbSignificancePanel({
                 </Space>
               ),
             },
-            { title: '曝光', dataIndex: 'impressions', align: 'right', render: (n: number) => (Number.isFinite(n) ? n : '-') },
-            { title: '点击', dataIndex: 'clicks', align: 'right', render: (n: number) => (Number.isFinite(n) ? n : '-') },
+            {
+              title: '曝光',
+              dataIndex: 'impressions',
+              align: 'right',
+              render: (n: number) => (Number.isFinite(n) ? n : '-'),
+            },
+            {
+              title: '点击',
+              dataIndex: 'clicks',
+              align: 'right',
+              render: (n: number) => (Number.isFinite(n) ? n : '-'),
+            },
             { title: 'CTR', dataIndex: 'ctr', align: 'right', render: (n: number) => pctStr(n) },
             {
               title: '95% CI',
@@ -168,7 +182,9 @@ export default function AbSignificancePanel({
               align: 'right',
               render: (n: number, r) =>
                 r.isBaseline || !Number.isFinite(n) ? (
-                  <Typography.Text type="secondary">{r.isBaseline ? '(基线)' : '-'}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {r.isBaseline ? '(基线)' : '-'}
+                  </Typography.Text>
                 ) : (
                   <span style={{ color: n >= 0 ? '#389e0d' : '#cf1322' }}>
                     {(n >= 0 ? '+' : '') + (n * 100).toFixed(2)}%
