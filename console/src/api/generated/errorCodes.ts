@@ -1033,6 +1033,10 @@ export const errorCodes = {
     message: '广告管理数据不完整或标识无法精确读取，请刷新或联系管理员',
     httpStatus: 0,
   },
+  SANDBOX_ACTION_RESPONSE_INVALID: {
+    message: '事件或结算响应与原请求不一致，请保留原标识查询',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -2,6 +2,7 @@
 
 // 构建期注入的认证配置(见 src/config/auth.ts,唯一消费出口)。
 interface ImportMetaEnv {
+  readonly VITE_SANDBOX_CLICK_ENABLED?: string;
   /** 最终混排 sandbox，默认关闭，须先启用对应 owner。 */
   readonly VITE_FEED_EXPOSURE_SANDBOX_ENABLED?: string;
   /** 自然图文 sandbox 显式启用，默认关闭。 */

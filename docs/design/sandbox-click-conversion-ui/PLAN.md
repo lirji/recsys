@@ -1,6 +1,6 @@
 # CPC／CPA 前端接入执行方案（ADV-UI-02）
 
-状态：PROPOSED / WAITING_FOR_FINAL_PLAN_APPROVAL。2026-10-16。用户已要求开发，但根 [AGENTS.md](../../../AGENTS.md) 要求五维规划、独立复审及最终方案批准后再改产品代码。本方案是本任务唯一执行顺序；业务/接口/组件/状态细节见 [FRONTEND_ARCHITECTURE](FRONTEND_ARCHITECTURE.md)，审查见 [REVIEW](REVIEW.md)。
+状态：APPROVED / IN_PROGRESS。2026-10-16。用户于本轮明确回复「可以修改」，最终方案已获批准；根 [AGENTS.md](../../../AGENTS.md) 要求五维规划、独立复审及最终方案批准后再改产品代码。本方案是本任务唯一执行顺序；业务/接口/组件/状态细节见 [FRONTEND_ARCHITECTURE](FRONTEND_ARCHITECTURE.md)，审查见 [REVIEW](REVIEW.md)。
 
 ## 范围与完成标准
 
@@ -36,6 +36,8 @@
 ## 按依赖执行的三个切片
 
 ### ADV-UI-02A：CPC/OCPC 纵向闭环
+
+状态：DONE / PASS，详见 [RESULT](RESULT.md)。
 
 依赖：最终方案批准，已有 C11；分支 `feat/sandbox-click-conversion-ui`，基线 `5649929b`。
 
@@ -123,4 +125,4 @@ python3 scripts/check_public_errors.py
 
 ## 批准记录
 
-尚未收到对本最终方案的批准。建议一次批准整个02A→02B→02C执行顺序后连续推进；不再按子任务请求“继续”。如果实际契约发生变更、需要新增资金操作或缺必要权限环境，再记录具体问题并请求所缺信息。
+用户于本轮明确回复「可以修改」，批准最终方案。按02A→02B→02C连续推进，不再按子任务请求“继续”。如果实际契约发生变更、需要新增资金操作或缺必要权限环境，再记录具体问题并请求所缺信息。

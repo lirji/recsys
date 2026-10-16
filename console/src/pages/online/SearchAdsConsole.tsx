@@ -1,5 +1,7 @@
 import { formatError, showApiError } from '../../api/errors';
 import SandboxSearchAdsConsole from './SandboxSearchAdsConsole';
+import SandboxActionAdsConsole from './SandboxActionAdsConsole';
+import { SANDBOX_CLICK_ENABLED } from '../../config/sandboxActions';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -11,6 +13,7 @@ import {
   InputNumber,
   Modal,
   Space,
+  Segmented,
   Table,
   Tag,
   Tooltip,
@@ -403,9 +406,31 @@ function LegacySearchAdsConsole() {
 }
 
 export default function SearchAdsConsole() {
-  return import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' ? (
-    <SandboxSearchAdsConsole />
-  ) : (
-    <LegacySearchAdsConsole />
+  const [mode, setMode] = useState('existing');
+  const existing =
+    import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true' ? (
+      <SandboxSearchAdsConsole />
+    ) : (
+      <LegacySearchAdsConsole />
+    );
+  if (!SANDBOX_CLICK_ENABLED) return existing;
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Segmented
+        value={mode}
+        onChange={setMode}
+        options={[
+          {
+            value: 'existing',
+            label:
+              import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true'
+                ? 'CPM Sandbox'
+                : '原搜索广告',
+          },
+          { value: 'click', label: 'CPC / OCPC Sandbox' },
+        ]}
+      />
+      {mode === 'click' ? <SandboxActionAdsConsole /> : existing}
+    </Space>
   );
 }

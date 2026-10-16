@@ -258,7 +258,8 @@ public enum ErrorCode {
     DELIVERY_STORAGE_UNAVAILABLE("DELIVERY_STORAGE_UNAVAILABLE", "交付无法写入会话存储，请保留原 operationId；刷新后无法自动恢复", 0),
     EXPERIMENT_STORE_UNAVAILABLE("EXPERIMENT_STORE_UNAVAILABLE", "实验配置存储不可用，本次未执行写入，请检查存储配置后重试", 0),
     EXPERIMENT_WRITE_UNCONFIRMED("EXPERIMENT_WRITE_UNCONFIRMED", "实验配置写入结果未能确认，可能已有部分配置生效，请刷新并核对实际配置", 0),
-    ADVERTISER_RESPONSE_INVALID("ADVERTISER_RESPONSE_INVALID", "广告管理数据不完整或标识无法精确读取，请刷新或联系管理员", 0);
+    ADVERTISER_RESPONSE_INVALID("ADVERTISER_RESPONSE_INVALID", "广告管理数据不完整或标识无法精确读取，请刷新或联系管理员", 0),
+    SANDBOX_ACTION_RESPONSE_INVALID("SANDBOX_ACTION_RESPONSE_INVALID", "事件或结算响应与原请求不一致，请保留原标识查询", 0);
 
     /** RPC专用码、CLI或客户端故障没有HTTP状态，不能将此值写入HTTP响应。 */
     public static final int NO_HTTP_STATUS = 0;
