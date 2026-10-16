@@ -124,7 +124,7 @@ jobs:
         run: python3 scripts/test-sandbox-exposure.py
       - name: Public error, data quality and advertiser browser recovery
         working-directory: console
-        run: npx playwright test e2e/public-errors.spec.ts e2e/data-quality-status.spec.ts e2e/advertiser-workflows.spec.ts --output=../recsys-rec-engine/target/public-error-browser-evidence
+        run: npx playwright test e2e/public-errors.spec.ts e2e/data-quality-status.spec.ts e2e/advertiser-workflows.spec.ts e2e/sandbox-actions-disabled.spec.ts --output=../recsys-rec-engine/target/public-error-browser-evidence
       - name: Isolated natural browser and PostgreSQL acceptance
         run: python3 scripts/test-natural-exposure.py
       - name: Isolated mixed feed browser and PostgreSQL acceptance
@@ -142,6 +142,43 @@ jobs:
             recsys-rec-engine/target/feed-browser-evidence/
             recsys-rec-engine/target/feed-browser-backend.log
             recsys-rec-engine/target/public-error-browser-evidence/
+          if-no-files-found: ignore
+
+  sandbox-actions-browser-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [in-process, grpc]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Install browser dependencies
+        working-directory: console
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Real CPC and CPA browser, PostgreSQL and RPC acceptance
+        env:
+          ACTIONS_MODE: ${{ matrix.mode }}
+        run: python3 scripts/test-click-conversion-ui.py
+      - name: Upload masked screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-actions-${{ matrix.mode }}
+          # 只发布显式遮挡证明的截图；自动失败上下文/请求轨迹不进入公开 artifact。
+          path: recsys-ad-serving/target/actions-evidence-${{ matrix.mode }}/**/*.png
           if-no-files-found: ignore
 
   # P3 供应链安全:Trivy 文件系统扫描——后端 Maven / 前端 npm 依赖漏洞(SCA)+ IaC/配置误配。

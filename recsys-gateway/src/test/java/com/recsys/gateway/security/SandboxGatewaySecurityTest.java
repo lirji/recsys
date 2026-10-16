@@ -23,18 +23,29 @@ class SandboxGatewaySecurityTest {
         var props=new AuthProperties(); props.setEnabled(true);
         var casdoor=new EdgeCasdoorProperties(); casdoor.setEnabled(false);
         var decoder=mock(ReactiveJwtDecoder.class);
-        for(String role:List.of("USER","ADMIN")) {
+        for(String role:List.of("USER","ADMIN","ADVERTISER")) {
             when(decoder.decode(role)).thenReturn(Mono.just(Jwt.withTokenValue(role).header("alg","HS256").subject("user")
                     .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).claim("roles",List.of(role)).build()));
         }
         var errors=new GatewaySecurityErrorHandler(new GatewayErrorResponses(new ObjectMapper()));
         var chain=new GatewaySecurityConfig().securityWebFilterChain(ServerHttpSecurity.http(),props,casdoor,decoder,errors);
         var client=WebTestClient.bindToWebHandler(exchange->exchange.getResponse().setComplete()).webFilter(new WebFilterChainProxy(chain)).build();
-        for(String path:List.of("/api/sandbox/search-ad-deliveries/id","/api/sandbox/ad-impressions/id","/api/sandbox/natural-deliveries/id","/api/sandbox/natural-impressions/id")) {
+        for(String path:List.of("/api/sandbox/search-ad-deliveries/id","/api/sandbox/ad-impressions/id","/api/sandbox/natural-deliveries/id","/api/sandbox/natural-impressions/id",
+                "/api/sandbox/click-ad-deliveries/id","/api/sandbox/click-receipts/id","/api/sandbox/click-settlements/id",
+                "/api/sandbox/conversion-ad-deliveries/id","/api/sandbox/conversion-impressions/id","/api/sandbox/conversion-settlements/id")) {
             client.get().uri(path).exchange().expectStatus().isUnauthorized();
             client.put().uri(path).headers(h->h.setBearerAuth("USER")).exchange().expectStatus().isForbidden();
+            client.get().uri(path).headers(h->h.setBearerAuth("ADVERTISER")).exchange().expectStatus().isForbidden();
             client.get().uri(path).headers(h->h.setBearerAuth("ADMIN")).exchange().expectStatus().isOk();
             client.put().uri(path).headers(h->h.setBearerAuth("ADMIN")).exchange().expectStatus().isOk();
+        }
+        // 网关只校验角色；广告主 edit/fullyConsistent 仍由业务控制器强制执行。
+        String eventPath="/api/advertiser/1/sandbox-conversions/id";
+        client.get().uri(eventPath).exchange().expectStatus().isUnauthorized();
+        for(String role:List.of("USER","ADMIN","ADVERTISER")) {
+            int expected=role.equals("USER")?403:200;
+            client.get().uri(eventPath).headers(h->h.setBearerAuth(role)).exchange().expectStatus().isEqualTo(expected);
+            client.put().uri(eventPath).headers(h->h.setBearerAuth(role)).exchange().expectStatus().isEqualTo(expected);
         }
     }
 }

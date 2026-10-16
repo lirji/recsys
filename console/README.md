@@ -107,6 +107,23 @@ docker compose -f docker/docker-compose.yml --profile console up -d --build   # 
 
 专项验收：`npm run build && npx playwright test e2e/advertiser-workflows.spec.ts`，所有写请求由测试隔离，不修改共享广告账户。详见 [ADV-UI-01](../docs/plans/advertiser-console-fixes/PLAN.md)。
 
+## CPC／CPA Sandbox
+
+`/search-ads` 保留原模式。构建时设置 `VITE_SANDBOX_CLICK_ENABLED=true` 增加 CPC/OCPC 双条件交付，设置 `VITE_SANDBOX_CONVERSION_ENABLED=true` 增加 CPA 交付和 `/advertiser/:id` 业务事件面板。两开关默认 `false`，修改运行容器的环境变量不会改变已构建页面，需重新构建镜像。
+
+```bash
+docker build --build-arg VITE_AUTH_MODE=legacy \
+  --build-arg VITE_SANDBOX_CLICK_ENABLED=true \
+  --build-arg VITE_SANDBOX_CONVERSION_ENABLED=true \
+  -t recsys/console:sandbox-actions ./console
+```
+
+上例从仓库根执行，认证模式须与网关一致。启用前按 [C11/C12 契约](../docs/design/enterprise-reliability/CONTRACTS.md) 装配后端；共享环境未就绪则保持默认关闭。展示交付/可见/结算要求 ADMIN，CPA 事件允许 ADMIN/ADVERTISER 角色进入，但每次 PUT/GET 仍须广告主 `edit/fullyConsistent`，旧管理权限或 disabled/shadow 模式不绕过此判权。
+
+回执首次决定与资格当前资金状态分开显示；原 WAITING 事件可以查询到后续实收，额外重复事件自身不收费。发生时间、事件 ID 和证明提交后冻结，丢响应先查询原 ID；不要以新事件替代重试。人工证明只短期保存，确认/拒绝/过期/身份撤销清除，历史与下载脱敏。恢复已有业务事件不需要重新粘贴证明。
+
+隔离验收：`python3 scripts/test-click-conversion-ui.py`（两种调用模式、真实 PostgreSQL/gRPC），真实授权脚本 `scripts/test-click-conversion-authz.py` 要求显式指定可信权限服务 jar、schema、本地 SpiceDB 镜像，不操作共享实例。详见 [交付证据](../docs/design/sandbox-click-conversion-ui/RESULT.md)。禁用时重新构建两开关为 false；镜像回退不撤销已经记账的业务效果，数据库无需回滚。
+
 ## 目录
 
 ```

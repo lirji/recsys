@@ -18,3 +18,9 @@
 - 新角色scope独立于ADMIN展示scope；原广告管理权限查询失败仍可显示CPA入口，业务接口自行严格判权；不以旧disabled/shadow权限快照决定成功。
 - API返回关联、六位金额、零元/未知、精简/完整结算、首次决定与最新实收分开校验。两模式各5浏览器、238前端测试、typecheck/build PASS，详见 RESULT。
 - 修正表单提交后焦点丢失造成Escape无法可靠关闭，以及加载图标影响查询按钮可访问名称的问题；错误后查询必须实际收到恢复200。
+
+## 02C 回归与运行准备
+
+完整资金链426项/74类、旧CPM4+自然5+Feed5、相邻页面与默认关闭16项浏览器均PASS；前端238单测、typecheck、默认与启用构建通过。独占真实SpiceDB验证已完成，两次最终脚本执行均验证owner/editor、跨主体、撤权和503，不修改共享关系。具体日志与版本见 RESULT。
+
+构建/运行边界：Dockerfile新增两个默认false的构建参数，排除真实.env和测试结果；只更新既有console服务，legacy认证/9095端口及同源gateway保持。新CI job按in-process/grpc矩阵独立运行，上传范围仅显式遮挡证明的PNG；无trace/HAR或自动错误快照上传。

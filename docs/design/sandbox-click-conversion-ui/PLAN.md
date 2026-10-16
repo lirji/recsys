@@ -60,6 +60,8 @@
 
 ### ADV-UI-02C：验收、文档与本机交付
 
+状态：VERIFYING；本地验收通过，Git/CI/Docker进行中，见 [RESULT](RESULT.md)。
+
 依赖：02A/B完成。不恢复企业计划其他切片。
 
 1. 前端全量单测/typecheck/build/相关lint/format，相关后端 money-chain 与 gateway 测试；新浏览器专项分别运行 in-process/gRPC。由于 identity 撤销key有变化，回归既有 CPM/自然/Feed 浏览器。
