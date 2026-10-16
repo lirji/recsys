@@ -1,14 +1,12 @@
-# 当前任务：企业可靠性 ER-S15B1
+# 当前任务：ER-CI-FIX-01 曝光浏览器预算种子跨日整改
 
-权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本片结果 `ER-S15B1_RESULT.md`，正式契约 `C15_DESIGN.md` / `CONTRACTS.md`，运行说明 `BEHAVIOR_EVENTS_RUNBOOK.md`。回合347abae9只完成B1；B1本地DONE/PASS，B2 READY，父S15B/S15保持IN_PROGRESS，S22～25暂停。后续由外层推进，不自行启动B2或codex-flow。
+权威实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本地验收 `ER-CI-FIX-01_RESULT.md`；证据 `.dev/codex-flow-reliability/round-99fbfaf6/`。本轮修复本地DONE/PASS：4个确定性PG边界、1个真实宿主对账、4个Chromium回归和静态检查通过。原单日种子负对照4/4明确缺次日账户；新种子按产品同一数据库时钟的上海当天/次日各建100元预算。产品、前端及账本断言不变。
 
-原目录任务分支 `feat/er-s15b1-behavior-event-delivery`，基线8b695c76bc343a082d64add4775f1f0729957bc4。本地25项新验收+16项旧回归PASS，静态边界/错误目录PASS；Hygiene无阻断但无统一formatter/独立Java静态分析。四种真实JVM退出、原payload与fixture单一效果均验证；实际Seen/Flink未验证。
+原目录任务分支 `fix/sandbox-exposure-budget-midnight`，基线13f79e89。Git动作与完整SHA以本轮 `delivery.json` 和实际Git核对；新提交CI以 `fix-ci.json` 核对，不套用旧成功。B1已核实提交/ff合并/push：`13f79e89b7cb02a6e498ccd6efac32c7ed71f6f8`；CI38933333366已completed/success，8作业全部成功，在新push前保存终态。其25项新验收+16项旧回归、23源码指纹有效，未重做B1。旧C15B CI仍保留原failure，未重跑。
 
-Git与CI准确状态/完整SHA：`.dev/codex-flow-reliability/round-347abae9/delivery.json`、`ci-snapshot.json`（交付前不得假定已存在或成功）；源码指纹、最终日志/报告、保护指纹与独立验证同目录。当前准备正常提交/合并/push；无本地测试会话继续运行，组件已随测试关闭。
+11保护指纹、旧CPA纳秒fixture和历史正文均不变；同Agent分离只读复审PASS，6个本轮独占测试容器已退出，无本地测试会话。保留用户改动、所有.dev/target和原部署入口，无新worktree或内容清理。用户明确授权本次曝光宿主及必要测试/文档修复和正常提交/ff合并/push；不改产品资金规则、共享账户或真实时钟，不部署。采用session-handoff、engineering-workflows有界测试pass、update-progress-docs、task-git-delivery和ci-cd-gate；架构规范已读业务建模、并发安全验证、持久化事务、分布式契约及发布治理。
 
-C15B设计CI38927688429已completed/failure：6门禁成功，浏览器ACCOUNT_MISSING，与fixture初始化和请求跨上海午夜相符；c15b-ci-finding.json有证据，未重跑/未改旧资金fixture。S15A源码CI成功不重复验证或挪用。11保护文件与前片17项实现/fixture指纹不变，CI仅新增B1门禁；历史部署入口保持。
-
-下一片B2必须处理前10缺失项的公平续办，C15C必须修复旧Seen吞Redis异常确认。仅Sandbox/独占验证，不部署/启用共享开关/读写共享数据；所有.dev/target材料不提交或清理。采用session-handoff/backend-implementation/implementation-validation/project-documentation/update-progress-docs/task-git-delivery/ci-cd-gate；规范章节详见本片结果与原历史。
+恢复时先核对本轮Git/新CI最终结论，再进入下一片S15B2；父S15B/S15及S15～S21仍未完成，S22～25暂停。本轮只交付这项必要整改并返回外层，不启动递归编排。
 
 ---
 

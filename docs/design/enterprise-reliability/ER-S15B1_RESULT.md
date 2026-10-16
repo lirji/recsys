@@ -51,3 +51,10 @@ C15B设计提交 CI38927688429 已确认 completed/failure：6门禁成功，浏
 11项 protected_sha256 全部一致；前片17项实现/测试/资金fixture指纹未变，唯一允许扩展的旧指纹文件为CI工作流，新加门禁未改原自然门禁。CODEX_PROGRESS 原历史和部署段落保留。没有额外worktree、部署、共享开关、共享数据访问或递归codex-flow。
 
 本地组件均由本次Testcontainers独占创建并随测试退出，未清理任何用户内容。Git交付后保存完整SHA和新CI状态；远程CI未终态时不得写“全绿”，后续推送应先核实避免取消证据。下一业务片为 ER-S15B2；B2/C和S16～21由外层推进，本回合返回。生产容量、复制容灾、实际历史覆盖和产品Seen/Flink效果均没有本片证据。
+
+
+## 2026-10-17 恢复核实
+
+ER-CI-FIX-01回合已核对B1提交 `13f79e89b7cb02a6e498ccd6efac32c7ed71f6f8` 在main/origin-main，23项源码指纹与原25新验收+16回归报告一致。[CI38933333366](https://github.com/lirji/recsys/actions/runs/38933333366) 已 **completed/success，8个job全部success**（含behavior-reliability、build、money、natural、安全及3个浏览器job），在后续main推送前保存终态，未取消/重跑。最终证据 `round-99fbfaf6/b1-ci.json`；不再沿用旧“运行中”快照。
+
+B1成功的非午夜浏览器运行不关闭旧跨日fixture缺陷；该缺陷另以 [ER-CI-FIX-01](ER-CI-FIX-01_RESULT.md) 的确定性PG负对照、修复和完整真实门禁完成本地验收。旧CPA纳秒fixture未修改；ER-S15B2仍为下一业务片。

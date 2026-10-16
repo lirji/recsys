@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合347abae9完成ER-S15B1本地实施/独立验收：25项B1+16项既有回归PASS，父S15B/S15仍IN_PROGRESS；B2 READY，C15C后续。Git/新CI见ER-S15B1_RESULT及本地round-347abae9/delivery.json/ci-snapshot.json。前置设计CI38927688429终态failure（6成功、浏览器ACCOUNT_MISSING，独立风险已记录），不套用旧CI成功。S22～25暂停；仅Sandbox，不部署、不改保护文件/自然实现/资金fixture。
+2026-10-17 回合99fbfaf6完成必要整改ER-CI-FIX-01本地PASS：曝光浏览器按数据库上海日期种子当天/次日预算，确定性PG4项、真实宿主1项、Chromium4项和静态检查全部通过；详见 [整改结果](ER-CI-FIX-01_RESULT.md)。B1已在13f79e89提交/ff合并/push，CI38933333366终态success（8/8）；旧C15B CI38927688429保留failure，不重跑。新修复Git/CI见本轮delivery.json/fix-ci.json及实际Git。父S15B/S15仍IN_PROGRESS，下一业务片B2 READY，C15C后续，S22～25暂停；仅Sandbox，不部署。11保护文件/自然实现/旧CPA纳秒fixture均不变。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -68,4 +68,19 @@
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。
 
 
-当前恢复入口：ER-S15B1本地DONE/PASS，Git及源码CI按ER-S15B1_RESULT和本地delivery/ci-snapshot核对；下一片ER-S15B2 READY。B2须公平续办显式清单、审计取消与消费topic guard，随后C15C/S15C。父S15B/S15仍IN_PROGRESS，S22～25暂停；本回合交付后返回外层，不启动第二片或codex-flow。
+当前恢复入口：ER-CI-FIX-01本地DONE/PASS，Git及新源码CI按整改结果和round-99fbfaf6/delivery.json/fix-ci.json核对；B1交付与8项源码CI均已成功；下一片ER-S15B2 READY。B2须公平续办显式清单、审计取消与消费topic guard，随后C15C/S15C。父S15B/S15仍IN_PROGRESS，S22～25暂停；本回合交付后返回外层，不启动第二片或codex-flow。
+
+## 当前有界整改 ER-CI-FIX-01（2026-10-17）
+
+本地状态 DONE/PASS；Git/新CI按delivery.json/fix-ci.json核对，不据本地结果预先声称远程成功。依赖B1基线13f79e89，先修复已确认的C15B CI38927688429曝光浏览器ACCOUNT_MISSING，再进入S15B2。用户明确授权测试宿主和必要测试工具/验收文档，正常独立fix提交、ff合并、push；不改变产品预算日/金额/账本规则，不操作共享数据或部署，不修改旧CPA纳秒fixture和11保护文件。
+
+- [x] 核对B1真实文件、25项新验收+16项回归、23源码指纹及Git已推送；11保护指纹一致。
+- [x] CI38933333366最终completed/success，headSha=13f79e89，8个job全部成功；在新push前记录终态。
+- [x] 曝光宿主使用产品同一数据库时钟，覆盖当天/次日隔离预算；保持100元、真实账本断言。
+- [x] 确定性午夜/月末/年末PG验证4项PASS；完整门禁5 JUnit+4 Chromium、静态检查及原有浏览器回归PASS。
+- [x] 同Agent分离只读复审、保护/源码指纹检查均PASS；6个独占容器退出，无本地测试会话。
+- Git交付/新CI：实际分支、提交、合并、push与运行结论以本轮delivery.json/fix-ci.json为事实记录；新推送不得冒用B1的CI成功。
+
+本轮证据`.dev/codex-flow-reliability/round-99fbfaf6/`；完成后下一片ER-S15B2，父片不变更为DONE。
+
+确定性负对照已完成：同一数据库种子入口仅建当天时，4例均明确缺次日账户（4失败、0错误/跳过，midnight-red.xml）；最终双日种子4/4 PASS，真实门禁5 JUnit+4 Chromium全部PASS；详见 [ER-CI-FIX-01_RESULT](ER-CI-FIX-01_RESULT.md)。

@@ -64,6 +64,17 @@ class SandboxExposureBrowserFixtureTest {
     static final ObjectMapper JSON=new ObjectMapper().findAndRegisterModules().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     static State state;
 
+    /** 与预占使用同一数据库接受时间口径；参数只供确定性边界验证，不替换产品时钟。 */
+    static void seedBudgets(BudgetAccountService budgets, Instant databaseNow) {
+        var day=databaseNow.atZone(ZoneId.of("Asia/Shanghai")).toLocalDate();
+        // 脚本启动上限180秒、浏览器240秒，宿主等待最多10分钟；覆盖次日以容纳启动跨午夜。
+        // 每天仍是独立100元账户，不移动原预算日、不累计额度，也不调整产品或数据库时钟。
+        for(var budgetDay:List.of(day,day.plusDays(1))) {
+            var result=budgets.setLimit(BudgetCommand.parse(1,UUID.randomUUID().toString(),budgetDay.toString(),"CNY","100",0,"fixture"));
+            assertEquals(BudgetCommandResult.Status.APPLIED,result.status(),"隔离浏览器预算种子必须成功");
+        }
+    }
+
     @Test void serveOwnedSandboxUntilBrowserFinishes() throws Exception {
         try(var pg=new PostgreSQLContainer<>("postgres:16-alpine");var kafka=new KafkaFixture()) {
             pg.start();kafka.start();state=new State(pg,kafka.bootstrap());
@@ -172,8 +183,8 @@ class SandboxExposureBrowserFixtureTest {
                         return new BiddingService.QuotedAd(item,new CpmPrice(rs.getBigDecimal("amount"),BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ONE));
                     },(int)invocation.getArgument(2)));
             var budgets=new BudgetAccountService(new BudgetRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml"))),BudgetConfiguration.transactions(adDs,5));
-            budgets.setLimit(BudgetCommand.parse(1,UUID.randomUUID().toString(),LocalDate.now(ZoneId.of("Asia/Shanghai")).toString(),"CNY","100",0,"fixture"));
             var quotes=new CpmQuoteRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var reservations=new ReservationRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")));var prepared=new PreparationRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON);
+            seedBudgets(budgets,reservations.databaseNow());
             var tokens=new DeliveryTokenCodec(JSON,"browser",Map.of("browser",Base64.getEncoder().encodeToString(key)));
             preparation=new SandboxPreparationService(pipeline,prepared,quotes,new ReservationService(reservations,quotes,BudgetConfiguration.transactions(adDs,5),true),tokens);
             receipt=new ImpressionReceiptService(new ImpressionReceiptRepository(new SqlSessionTemplate(SpringSqlSessions.create(ad.getDataSource(), "classpath*:mapper/ad/addb/**/*.xml")),JSON),prepared,reservations,quotes,tokens,BudgetConfiguration.transactions(adDs,5),true);

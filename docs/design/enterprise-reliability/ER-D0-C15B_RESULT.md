@@ -56,3 +56,6 @@
 ## 后续核对：设计提交CI终态
 
 347abae9回合只读核对：`8b695c76bc343a082d64add4775f1f0729957bc4` 的CI38927688429最终completed/failure，build、资金、自然、安全及两种action浏览器共6门禁成功；sandbox-exposure-browser-gate失败。4个浏览器断言的页面均有ACCOUNT_MISSING，后端断言未发生真实计费。fixture第175行只为初始化时Asia/Shanghai当天创建账户，日志显示初始化在15:59 UTC、请求始于16:00:05 UTC，与跨上海午夜缺次日账户的原因相符（推断，未执行跨日复现）。非c032ea12精度问题；按保护边界未修改旧资金fixture、未重跑。详见本地round-347abae9/c15b-ci-finding.json及归档日志。设计核验PASS不等于这轮CI全绿。
+
+
+2026-10-17 后续整改：用户明确放行曝光浏览器测试宿主（不属于11保护文件），ER-CI-FIX-01已用数据库时钟和当天/次日预算修复缺口；确定性PG负对照4失败、最终4通过，完整真实浏览器门禁通过。详见 [整改验收](ER-CI-FIX-01_RESULT.md)。上述旧CI仍记failure，未重跑或改写其结论；旧CPA纳秒fixture保持不变。

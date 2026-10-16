@@ -29,7 +29,8 @@ def main():
         log_path = ARTIFACTS / 'sandbox-browser-backend.log'
         with log_path.open('w') as log:
             backend = subprocess.Popen(['mvn', '-B', '-pl', 'recsys-rec-engine', '-am', 'test',
-                '-Dtest=SandboxExposureBrowserFixtureTest', '-Dsurefire.failIfNoSpecifiedTests=false',
+                '-Dtest=SandboxExposureBudgetSeedPostgresTest,SandboxExposureBrowserFixtureTest',
+                '-Dsurefire.failIfNoSpecifiedTests=false',
                 '-Drecsys.browser.fixture=true', '-Drecsys.browser.fixture-info=' + str(info)],
                 cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
