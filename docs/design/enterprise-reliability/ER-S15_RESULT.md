@@ -2,7 +2,7 @@
 
 ## 当前状态与范围
 
-父片 **ER-S15=IN_PROGRESS**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：C15A设计与S15A实现已交付；S15A本地108/16/462项及远程CI38923751782全部通过，详见[ER-S15A_RESULT](ER-S15A_RESULT.md)。回合347abae9完成S15B1原子接受/重复CLICK修复/两流发送与审计重放，本地25项新验收+16项回归PASS，见[ER-S15B1_RESULT](ER-S15B1_RESULT.md)。S15B2与实际行为消费者S15C尚未实现，父片保持IN_PROGRESS。
+父片 **ER-S15=IN_PROGRESS**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：C15A设计与S15A实现已交付；S15A本地108/16/462项及远程CI38923751782全部通过，详见[ER-S15A_RESULT](ER-S15A_RESULT.md)。回合347abae9完成S15B1原子接受/重复CLICK修复/两流发送与审计重放，本地25项新验收+16项回归PASS，见[ER-S15B1_RESULT](ER-S15B1_RESULT.md)。S15B2显式历史清单/审计取消/真实报告和旧入口兼容已本地验收，完整门禁43项+补充24项PASS，见[ER-S15B2_RESULT](ER-S15B2_RESULT.md)；父B完成，实际行为消费者S15C尚未实现，父S15保持IN_PROGRESS。
 
 用户持续授权 S15～S21 分轮正常提交/合并/push，每回合只完成一个最小纵向片或必要设计门禁。S22～S25 暂停。仅 Sandbox/独占组件验证；不部署、不启用共享资金、不重启共享基础设施。原目录任务分支，无额外 worktree；11 个保护文件及原 C15A 草案始终保留。
 
@@ -24,4 +24,4 @@ V002 与 Mapper/XML/仓储、严格自然事件 codec、默认关闭的独立 re
 
 C15B已基于旧BehaviorService、Mapper/DDL、混合writer、Seen/Flink源码补齐正式契约：源行稳定身份、同库原子写、CLICK冲突后原行修复、无键POST非幂等边界、独立历史恢复流和显式有界清单、开关迁移及消费兼容。设计门禁与Git记录见ER-D0-C15B_RESULT；未运行或冒充B01～B12产品验收。7fccd6fe远程CI成功终态已记录后才允许本轮推送，没有取消其源码CI；旧CPA时间问题不重复修改。
 
-本轮B1交付后返回外层，下一片 **ER-S15B2**：显式有界历史清单、公平逐项续办、审计取消与旧Seen/Flink topic guard及兼容验收。随后C15C→S15C；旧格式Seen吞Redis异常必须一并解决。B1 Git及新CI结果读取对应结果和证据，不能沿用前置设计CI失败或S15A成功充当新源码结论。
+B2回合8395c172完成显式有界历史清单、公平逐项续办、审计取消与旧Seen/Flink topic guard及兼容验收后返回外层。下一业务步骤 **ER-D0/C15C→S15C**；旧格式Seen吞Redis异常必须一并解决。B1 Git及新CI结果读取对应结果和证据，不能沿用前置设计CI失败或S15A成功充当新源码结论。

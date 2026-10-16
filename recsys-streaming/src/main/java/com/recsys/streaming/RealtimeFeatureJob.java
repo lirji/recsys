@@ -61,6 +61,8 @@ public class RealtimeFeatureJob {
         Map<String, String> a = parseArgs(args);
         String kafka = arg(a, "kafka", "KAFKA_SERVERS", "localhost:9092");
         String topic = arg(a, "topic", "BEHAVIOR_TOPIC", "behavior-events");
+        // 旧处理时间累加器不具备新事件去重与历史重建语义；必须在任何外部连接前拒绝误配。
+        com.recsys.common.behavior.LegacyBehaviorAccepted.requireLegacyTopic(topic);
         String redisHost = arg(a, "redis-host", "REDIS_HOST", "localhost");
         int redisPort = Integer.parseInt(arg(a, "redis-port", "REDIS_PORT", "6379"));
         String pgUrl = arg(a, "pg-url", "PG_URL", "jdbc:postgresql://localhost:5432/recsys");

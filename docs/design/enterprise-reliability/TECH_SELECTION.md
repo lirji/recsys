@@ -68,6 +68,6 @@ ER-D0/C15A（2026-10-16，设计门禁）：沿已选 PG/Kafka/Spring Kafka、�
 
 ER-D0/C15B：沿已存在PostgreSQL/MyBatis-Plus/Kafka/Jackson，不新增依赖/服务/CDC。候选取舍详见C15_DESIGN的DB15-01～05：源库namespace+源行ID优于请求内容hash；本库事务优于DB后best-effort；专用版本topic优于向旧JSON加字段或仅Kafka header承载身份；有界显式历史清单优于未经来源核验的全表重放。代价是保留live/history两流、明确消费者切换门禁；最多两专属发送线程/producer，其他有界参数沿C15A，不能占用公共队列或随意抽通用框架。
 
-稳定命令/逐项结果复用已选PG能力，不增加后台扫描器；低ID晚提交等待原清单项后续续办。旧Flink value-only入口不能安全处理重复历史，新版特征流保持关闭至S19。相关PG事务/Kafka外部效果语义已经官方文档核验（链接在C15_DESIGN）；版本不变，本设计不宣称新增组件兼容实测。S15B1/B2真实测试需按B01～B12后续执行。
+稳定命令/逐项结果复用已选PG能力，不增加后台扫描器；低ID晚提交等待原清单项后续续办。旧Flink value-only入口不能安全处理重复历史，新版特征流保持关闭至S19。相关PG事务/Kafka外部效果语义已经官方文档核验（链接在C15_DESIGN）；版本不变，本设计不宣称新增组件兼容实测。S15B1/B2隔离实测分别见ER-S15B1_RESULT和ER-S15B2_RESULT。B2选择PG持久visit_sequence/last_visit轮转，避免前10缺失项饿死后项；无需新依赖、CDC或自动扫描线程。
 
 B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shared Kernel，仅放LegacyBehaviorAccepted不可变契约；严格JSON codec放入已有依赖common与Jackson的recsys-platform/behavior，供behavior及后续Seen复用，owner元数据校验仍在behavior。保留既有Jackson版本，不新增第三方依赖或Maven依赖边；消息格式、身份与全部严格校验不变。首轮编译发现common无Jackson后采用此边界，不引入手写JSON解析器。

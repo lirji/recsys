@@ -254,17 +254,19 @@ C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显�
 
 C15A 的 wire 校验、状态转移、资源/配置、兼容回退及 A01～A10 验收均以 C15_DESIGN 为准；本 producer 对当前 v1 使用字段允许列表，未来扩展需先升级 codec。物理 topic 仅允许 natural-impression-accepted-v1 及其隔离后缀，不投旧 behavior-events。测试 PG Inbox/effect 仅证明测试下游；不代表产品自然消费已实现。
 
-父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B 的 wire/身份/开关迁移/历史恢复已在 C15_DESIGN 正式冻结；C15C 的消费确认/毒消息恢复仍待门禁，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。C15A 产品已按本契约实现并经隔离验证，见 ER-S15A_RESULT；运行开关默认关闭，无共享环境迁移或启用。C15B1已实现并本地验收；B2/C尚未实现，见ER-S15B1_RESULT。
+父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B 的 wire/身份/开关迁移/历史恢复已在 C15_DESIGN 正式冻结；C15C 的消费确认/毒消息恢复仍待门禁，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。C15A 产品已按本契约实现并经隔离验证，见 ER-S15A_RESULT；运行开关默认关闭，无共享环境迁移或启用。C15B1/B2已实现并本地验收，见ER-S15B1_RESULT/ER-S15B2_RESULT；C15C/S15C尚未实现。
 
 
 ### C15B：旧行为原子接受、稳定事件与显式历史恢复
 
-正式协议唯一详述于 [C15_DESIGN 的 C15B 节](C15_DESIGN.md)。设计已冻结，B1已实现/本地验收，B2后续：同 primary 短事务写 user_behavior 与不可变 Outbox，eventId=`sourceId:user_behavior:behaviorId`。原 CLICK partial unique 规则、归因/时间和无业务ID POST/batch语义保留；重复CLICK读取原行/原事件，缺Outbox时捕获LEGACY_ROW历史义务，不以重试请求新时间/桶重造在线事实。DB/提交失败不返回伪成功，错误沿已有统一码。
+正式协议唯一详述于 [C15_DESIGN 的 C15B 节](C15_DESIGN.md)。设计已冻结，B1/B2已实现并本地验收：同 primary 短事务写 user_behavior 与不可变 Outbox，eventId=`sourceId:user_behavior:behaviorId`。原 CLICK partial unique 规则、归因/时间和无业务ID POST/batch语义保留；重复CLICK读取原行/原事件，缺Outbox时捕获LEGACY_ROW历史义务，不以重试请求新时间/桶重造在线事实。DB/提交失败不返回伪成功，错误沿已有统一码。
 
 新envelope `LegacyBehaviorAcceptedV1` 在behavior-accepted-v1与behavior-history-recovery-v1隔离投递；origin=BEHAVIOR_POST/LEGACY_ROW，历史priorPublication=UNKNOWN且保留无时区原TIMESTAMP，不伪造trafficClass或可信自然曝光。sourceId持久，原payload与capture快照不可变，合法事件有限租约重试/fence/审计重放；非法源快照DEAD可观测，不静默省略。
 
 历史使用稳定commandId+最多100个显式源行ID、逐次最多10项短事务与持久结果。不可见低ID保留WAITING_SOURCE，继续后可捕获；缺失/漂移/隔离不是成功覆盖，不用MAX(id)作为提交水位。旧Flink/Seen入口保留旧格式并拒绝新topic误配；新版Seen实际效果归C15C，checkpoint/窗口去重归S19，历史不能混入实时累加。
 
-capture/live-relay/history-relay默认false；任一新功能与旧use-kafka/publish-events同时true均拒绝启动。旧兼容模式保持现状，不承诺可靠；新功能仅在隔离实例验证，无共享切换。S15B1/B2全部完成才可关闭父B；B1验收结果见ER-S15B1_RESULT，B2部分仍未执行；设计PASS不等于产品PASS。
+capture/live-relay/history-relay默认false；任一新功能与旧use-kafka/publish-events同时true均拒绝启动。旧兼容模式保持现状，不承诺可靠；新功能仅在隔离实例验证，无共享切换。S15B1/B2全部完成才可关闭父B；两片验收见ER-S15B1_RESULT/ER-S15B2_RESULT，B08～B12已覆盖显式历史、兼容和真实history流；C仍未完成。
 
 C15B父审查补充：B2公平续办不得让前10个WAITING_SOURCE永久阻断后续可见项；C15C须修复旧格式Seen入口Redis异常吞错确认，并用真实Kafka/Redis验证恢复。细则与验收见C15_DESIGN，B1不实现B2/C。
+
+B2实现使用同owner V002的持久visit_sequence/last_visit轮转，command→item→源行→Outbox逐项短事务；输入/终态/取消审计不可变。取消未处理项仍WAITING_SOURCE且单列，报告读取实际Outbox发送状态，CAPTURED不等于PUBLISHED。原迁移、原身份/快照与默认关闭保持，具体接口和回退见BEHAVIOR_EVENTS_RUNBOOK。

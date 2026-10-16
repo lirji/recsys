@@ -1,12 +1,14 @@
-# 当前任务：ER-CI-FIX-01 曝光浏览器预算种子跨日整改
+# 当前任务：ER-S15B2 显式历史恢复与消费入口兼容
 
-权威实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本地验收 `ER-CI-FIX-01_RESULT.md`；证据 `.dev/codex-flow-reliability/round-99fbfaf6/`。本轮修复本地DONE/PASS：4个确定性PG边界、1个真实宿主对账、4个Chromium回归和静态检查通过。原单日种子负对照4/4明确缺次日账户；新种子按产品同一数据库时钟的上海当天/次日各建100元预算。产品、前端及账本断言不变。
+权威实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约C15_DESIGN C15B；本片结果ER-S15B2_RESULT。证据`.dev/codex-flow-reliability/round-8395c172/`。原目录任务分支`feat/er-s15b2-behavior-history`，基线031a0443b73ca1fb260339301b850713c4a17ee2；完整交付SHA、ff合并/push及新源码CI以该目录delivery.json/ci-snapshot.json和实际Git为准。后续main推送前先核对新CI终态，未知不重跑。
 
-原目录任务分支 `fix/sandbox-exposure-budget-midnight`，基线13f79e89。Git动作与完整SHA以本轮 `delivery.json` 和实际Git核对；新提交CI以 `fix-ci.json` 核对，不套用旧成功。B1已核实提交/ff合并/push：`13f79e89b7cb02a6e498ccd6efac32c7ed71f6f8`；CI38933333366已completed/success，8作业全部成功，在新push前保存终态。其25项新验收+16项旧回归、23源码指纹有效，未重做B1。旧C15B CI仍保留原failure，未重跑。
+B2本地DONE/PASS，父B已具备B1/B2验收，父S15仍IN_PROGRESS。追加V002、显式最多100 IDs/advance最多10项、持久公平轮转、原事件同源事务捕获、审计取消/真实发送报告、旧Seen/Flink保留topic guard与原格式兼容。完整门禁43项（新18+B1受影响25）及补充回归24项全部零失败/错误/跳过，见test-summary.json/最终报告目录；同Agent分离只读验证PASS，hygiene仅formatter/独立Java静态分析配置限制。所有本地测试结束，本次容器均退出，详见runtime-final.json；11保护/原迁移/CPA/跨日fixture/本文件历史指纹均一致。
 
-11保护指纹、旧CPA纳秒fixture和历史正文均不变；同Agent分离只读复审PASS，6个本轮独占测试容器已退出，无本地测试会话。保留用户改动、所有.dev/target和原部署入口，无新worktree或内容清理。用户明确授权本次曝光宿主及必要测试/文档修复和正常提交/ff合并/push；不改产品资金规则、共享账户或真实时钟，不部署。采用session-handoff、engineering-workflows有界测试pass、update-progress-docs、task-git-delivery和ci-cd-gate；架构规范已读业务建模、并发安全验证、持久化事务、分布式契约及发布治理。
+B1已交付13f79e89；跨日修复031a0443及有效确定性边界/浏览器证据复用，前置CI38937727953已8门禁全部成功，未重跑旧失败。用户授权仅Sandbox独占实例及正常Git提交/ff合并/push；不部署、不启用共享开关或操作共享数据、不递归编排。禁止改已发布V001/自然V001/V002/旧历史SQL及旧CPA纳秒fixture；11保护文件和原历史正文保持，.dev/target不提交、不清理。
 
-恢复时先核对本轮Git/新CI最终结论，再进入下一片S15B2；父S15B/S15及S15～S21仍未完成，S22～25暂停。本轮只交付这项必要整改并返回外层，不启动递归编排。
+采用backend-implementation、implementation-validation、project-documentation、update-progress-docs、task-git-delivery、ci-cd-gate及恢复技能。规范业务建模、配置、持久化事务、分布式契约、并发安全、Kafka、中间件验证、容量数据演进和发布治理已核对；专题audit/jobs/db-runtime/messaging/outbox/retention/config。
+
+本回合只交付B2后返回外层。下一业务步骤ER-D0/C15C及真实旧/新Seen失败确认、Redis/offset恢复；不得只增加新listener而留下旧吞错。之后按原序S16～21；S22～25暂停，整体未完成。
 
 ---
 

@@ -30,7 +30,10 @@ public class SeenItemsConsumer {
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public SeenItemsConsumer(StringRedisTemplate redis) {
+    /** 即使listener关闭也拒绝错误路由；新版确认恢复在C15C使用独立配置入口。 */
+    public SeenItemsConsumer(StringRedisTemplate redis,
+            @org.springframework.beans.factory.annotation.Value("${recsys.behavior.topic:behavior-events}") String topic) {
+        com.recsys.common.behavior.LegacyBehaviorAccepted.requireLegacyTopic(topic);
         this.redis = redis;
     }
 

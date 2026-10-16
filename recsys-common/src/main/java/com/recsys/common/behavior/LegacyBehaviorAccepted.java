@@ -21,4 +21,13 @@ public record LegacyBehaviorAccepted(String eventType, int schemaVersion, String
     public String destination() { return origin == Origin.BEHAVIOR_POST ? LIVE_TOPIC : HISTORY_TOPIC; }
     /** 稳定源行身份不依赖进程、请求内容或当前策略。 */
     public static String identity(String sourceId, String behaviorId) { return sourceId + ":user_behavior:" + behaviorId; }
+    /** 旧value-only入口无法解释身份/来源，必须在连接Kafka前拒绝所有新版保留流及隔离后缀。 */
+    public static void requireLegacyTopic(String topic) {
+        if (topic == null || topic.isBlank()) throw new IllegalArgumentException("旧行为topic不能为空");
+        for (String reserved : java.util.List.of(LIVE_TOPIC, HISTORY_TOPIC, "natural-impression-accepted-v1")) {
+            if (topic.equals(reserved) || topic.startsWith(reserved + ".")) {
+                throw new IllegalArgumentException("旧行为入口不能消费版本化保留事件流");
+            }
+        }
+    }
 }

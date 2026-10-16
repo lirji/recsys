@@ -26,10 +26,11 @@ import java.util.Set;
  *
  * <p>反馈闭环的数据入口:在线埋点 → user_behavior 表(离线 ItemCF/热度/用户向量的输入)。
  *
- * <p>PostgreSQL 是行为写权威；开关 {@code recsys.behavior.use-kafka} 控制是否在首次入库后再投递事件:
+ * <p>PostgreSQL 是行为写权威；默认保留旧路径，可靠capture与旧best-effort发布互斥:
  * <ul>
- *   <li>false(默认):直接 INSERT user_behavior；{@code publish-events=true} 时额外发布读模型事件；</li>
- *   <li>true:先幂等 INSERT，再 best-effort 投递 Kafka。DB 成功、Kafka 失败时不重复回插。</li>
+ *   <li>capture默认false：先写user_behavior；use-kafka或publish-events开启时至多一次best-effort旧格式发布，不能保证送达。</li>
+ *   <li>capture=true：每条源行与不可变Outbox同事务提交；重复CLICK缺事件时按原行修复history义务，独立relay重试发送。</li>
+ *   <li>无业务键的重复POST仍可产生多个源行；batch逐条提交，不承诺整批幂等或原子性。</li>
  * </ul>
  *
  * <p>action 一律以大写({@link ActionType#name()})入库,与 I2iRecaller 的

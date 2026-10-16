@@ -50,6 +50,7 @@ public class BehaviorEventRepository {
     private final TransactionTemplate transactions;
     private final BehaviorMapper behavior;
     private final LegacyBehaviorCodec codec;
+    private final javax.sql.DataSource dataSource;
     /** 是否新业务行决定指标；重复修复也成功，但不能重复计业务。 */
     public enum Acceptance { INSERTED, DUPLICATE, COLLISION }
     /** 两个逻辑流独立排空，不接收任意目标。 */
@@ -71,6 +72,7 @@ public class BehaviorEventRepository {
             throw new IllegalArgumentException("行为发送事务与 Mapper 必须共用同一数据源");
         }
         mapper = sessions.getMapper(BehaviorEventMapper.class);
+        dataSource = manager.getDataSource();
         behavior = sessions.getMapper(BehaviorMapper.class);
         this.codec = Objects.requireNonNull(codec);
         transactions = new TransactionTemplate(manager);
@@ -123,6 +125,15 @@ public class BehaviorEventRepository {
             }
             return Acceptance.DUPLICATE;
         });
+    }
+
+    /** 历史清单复用原捕获实现；必须加入同源现有事务，不能另开事务提前提交Outbox。 */
+    void captureHistoryInTransaction(long id) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                || !org.springframework.transaction.support.TransactionSynchronizationManager.hasResource(dataSource)) {
+            throw new IllegalStateException("历史捕获必须处于同源事务");
+        }
+        capture(id, Origin.LEGACY_ROW, "HISTORY_COMMAND", null);
     }
 
     private void capture(long id, Origin origin, String reason, Long normalizedTs) {

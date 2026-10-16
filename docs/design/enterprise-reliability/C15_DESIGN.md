@@ -1,6 +1,6 @@
 # C15：behavior 已接受事件可靠发送
 
-2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B 正式契约已补齐，B1已实现并本地验收，B2尚未实现；C15C 只保留范围与必需验收。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
+2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B 正式契约已补齐，B1已实现并本地验收，B2实现与验收见ER-S15B2_RESULT；C15C 只保留范围与必需验收。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
 
 本文件为 [CONTRACTS C15](CONTRACTS.md#c15behavior-可靠事件的分阶段契约) 的规范性细节，状态唯一来源为 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。原 `C15A_DESIGN.md` 是受保护历史草案，未修改、不纳入交付。用户允许常规技术决定；不改变已批准自然政策、HTTP 语义、收费、正式样本或数据保留政策。
 
@@ -153,7 +153,7 @@ A 可先扩展迁移、保留旧 writer，完成 owner 升级和隔离验收后�
 
 ## C15B：旧行为可靠事件正式契约（ER-D0/C15B）
 
-本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；原设计门禁仅冻结设计；后续B1实现与验证见ER-S15B1_RESULT，B2尚未实现。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的消费确认/Redis 恢复仍须独立门禁。
+本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；原设计门禁仅冻结设计；后续B1实现与验证见ER-S15B1_RESULT，B2显式清单与兼容实现见ER-S15B2_RESULT。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的消费确认/Redis 恢复仍须独立门禁。
 
 ### 源事实、不变量与取舍
 
@@ -245,6 +245,9 @@ ACK 后 mark 失败不是发送失败的证明，允许原事件重发；Kafka �
 B2 追加 `db/behavior-events/V002__behavior_history_capture.sql`，持久 `behavior_history_command`（输入清单/摘要、actor/reason、创建/完成状态）和 `behavior_history_item`（commandId,behaviorId 唯一、状态、eventId/固定错误、审计时间）。输入和最终结果不可变。首次登记同 commandId 同内容返回原任务，不同内容冲突；缺失行也先持久请求，不能因“当时查不到”永久跳过。
 
 公平续办要求（父审查补充，B2必需）：WAITING_SOURCE 不得固定占据最小前10项。B2门禁必须冻结持久公平轮转或等价扫描规则，保证后续可见项获得处理机会；验收包含超过10项且前10项缺失、后项存在，后项必须先取得结果，缺失项后来提交后仍可续办。不得通过删除缺失项或误标完成满足公平性。
+
+B2实施细化（8395c172）：command保存单调`visit_sequence`，WAITING_SOURCE item保存`last_visit`；每次在command锁下按`last_visit,behaviorId`取最早待办并递增序号，同一advance最多10个不同ID。序号与结果同事务持久提交，回滚不前进；缺失项仍WAITING_SOURCE但排到未访问项之后，不依赖源ID提交顺序。最终item结果不重写，后续源漂移核查须新命令；报告同时列出固定结果和查询时Outbox状态（不重序列化payload）。取消保留未捕获项的WAITING_SOURCE，另列cancelledUnprocessed，不计入已覆盖；对已终态任务的取消审计返回ALREADY_TERMINAL，无重开/撤销。内部恢复仓储仅显式创建，创建时检查旧双开关关闭和V001/V002，不新增自动bean/线程/公网接口或第四开关。
+
 
 每次显式 `advanceHistory(commandId)` 最多处理10项，逐项短事务；先锁command确认OPEN，再SELECT待办 FOR UPDATE SKIP LOCKED，锁序 command→item→source row→Outbox，确保事件创建与 item结果同提交。持锁无网络，进程退出事务回滚，其他调用可续办；无需要长期持有的扫描cursor/内存队列。源行查询采用新的 READ_COMMITTED 语句；若原事件已存在而源行已删除，返回ALREADY_CAPTURED并保留原事件；没有原快照的不可见/缺失项保留 WAITING_SOURCE，不标 DONE、不推进不可逆水位；调用次数不自动清空它。查询/续办本身幂等，旧 `MAX(id)` 不能说明提交先后。
 

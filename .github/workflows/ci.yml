@@ -104,7 +104,7 @@ jobs:
             recsys-behavior/target/surefire-reports/**
           if-no-files-found: warn
 
-  # S15B1 旧行为原子接受/双流投递；关键真实组件测试不允许无Docker跳过。
+  # S15B1/B2 原子接受、历史清单恢复与旧消费兼容；真实组件测试不允许无Docker跳过。
   behavior-reliability-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -116,7 +116,7 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Behavior atomic capture and isolated recovery gate
-        run: mvn -B -e -pl recsys-behavior -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false
+        run: mvn -B -e -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false
       - name: Upload behavior event recovery evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,6 +125,8 @@ jobs:
           path: |
             recsys-behavior/target/behavior-event-evidence/**
             recsys-behavior/target/surefire-reports/**
+            recsys-rec-engine/target/surefire-reports/**
+            recsys-streaming/target/surefire-reports/**
           if-no-files-found: warn
 
   sandbox-exposure-browser-gate:

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper">
+    <sql id="commandColumns">command_id,source_id,manifest_json AS manifest,manifest_sha256,item_count,actor,reason,status,visit_sequence,created_at,completed_at</sql>
+    <sql id="itemColumns">i.behavior_id,i.status,i.event_id,i.error_code AS error,i.last_visit,i.checked_at,o.destination,o.status AS delivery_status</sql>
+    <sql id="cancelColumns">cancel_id,command_id,actor,reason,previous_status,result,cancelled_at</sql>
+    <select id="verifyCommands" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Command">
+        SELECT <include refid="commandColumns"/> FROM behavior_history_command LIMIT 0
+    </select>
+    <select id="verifyItems" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Item">
+        SELECT <include refid="itemColumns"/> FROM behavior_history_item i LEFT JOIN behavior_event_outbox o USING(event_id) LIMIT 0
+    </select>
+    <select id="verifyCancellations" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Cancellation">
+        SELECT <include refid="cancelColumns"/> FROM behavior_history_cancel LIMIT 0
+    </select>
+    <insert id="insertCommand" timeout="5">
+        INSERT INTO behavior_history_command(command_id,source_id,manifest_json,manifest_sha256,item_count,actor,reason)
+        VALUES(#{id},#{source},#{manifest},encode(sha256(convert_to(#{manifest},'UTF8')),'hex'),#{count},#{actor},#{reason})
+        ON CONFLICT(command_id) DO NOTHING
+    </insert>
+    <insert id="insertItems" timeout="5">
+        INSERT INTO behavior_history_item(command_id,behavior_id)
+        SELECT command_id,value::bigint FROM behavior_history_command,
+            jsonb_array_elements_text(manifest_json::jsonb) WHERE command_id=#{id}
+    </insert>
+    <select id="lockCommand" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Command" useCache="false" flushCache="true">
+        SELECT <include refid="commandColumns"/> FROM behavior_history_command WHERE command_id=#{id} FOR UPDATE
+    </select>
+    <select id="nextItem" resultType="long" useCache="false" flushCache="true">
+        SELECT behavior_id FROM behavior_history_item WHERE command_id=#{id} AND status='WAITING_SOURCE'
+        <if test="!visited.isEmpty()">AND behavior_id NOT IN <foreach collection="visited" item="v" open="(" close=")" separator=",">#{v}</foreach></if>
+        ORDER BY last_visit,behavior_id LIMIT 1 FOR UPDATE SKIP LOCKED
+    </select>
+    <update id="tick">UPDATE behavior_history_command SET visit_sequence=visit_sequence+1 WHERE command_id=#{id} AND status='OPEN'</update>
+    <select id="lockSource" resultType="long" useCache="false" flushCache="true">SELECT id FROM user_behavior WHERE id=#{id} FOR UPDATE</select>
+    <select id="existing" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Existing" useCache="false" flushCache="true">
+        SELECT o.event_id,o.last_error AS error,
+            (b.id IS NOT NULL AND o.source_snapshot_sha256&lt;&gt;encode(sha256(convert_to(behavior_source_snapshot(b),'UTF8')),'hex')) AS source_changed
+        FROM behavior_event_outbox o LEFT JOIN user_behavior b ON b.id=o.behavior_id
+        WHERE o.behavior_id=#{id} AND o.source_id=(SELECT source_id FROM behavior_event_source WHERE singleton) FOR UPDATE OF o
+    </select>
+    <update id="saveItem">
+        UPDATE behavior_history_item SET status=#{status},event_id=#{event},error_code=#{error},checked_at=clock_timestamp(),
+            last_visit=(SELECT visit_sequence FROM behavior_history_command WHERE command_id=#{command})
+        WHERE command_id=#{command} AND behavior_id=#{id} AND status='WAITING_SOURCE'
+    </update>
+    <update id="complete">
+        UPDATE behavior_history_command SET completed_at=clock_timestamp(),status=CASE WHEN EXISTS
+            (SELECT 1 FROM behavior_history_item WHERE command_id=#{id} AND status IN ('INVALID_SOURCE','SOURCE_CHANGED'))
+            THEN 'COMPLETED_WITH_ISSUES' ELSE 'COMPLETE' END
+        WHERE command_id=#{id} AND status='OPEN' AND NOT EXISTS
+            (SELECT 1 FROM behavior_history_item WHERE command_id=#{id} AND status='WAITING_SOURCE')
+    </update>
+    <select id="items" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Item" useCache="false" flushCache="true">
+        SELECT <include refid="itemColumns"/> FROM behavior_history_item i LEFT JOIN behavior_event_outbox o USING(event_id)
+        WHERE i.command_id=#{id} ORDER BY i.behavior_id LIMIT 100
+    </select>
+    <select id="cancellation" resultType="com.recsys.behavior.persistence.mapper.primary.BehaviorHistoryMapper$Cancellation" useCache="false" flushCache="true">
+        SELECT <include refid="cancelColumns"/> FROM behavior_history_cancel WHERE cancel_id=#{id}
+    </select>
+    <insert id="insertCancellation">
+        INSERT INTO behavior_history_cancel(cancel_id,command_id,actor,reason,previous_status,result)
+        VALUES(#{id},#{command},#{actor},#{reason},#{previous},#{result}) ON CONFLICT(cancel_id) DO NOTHING
+    </insert>
+    <update id="cancel">UPDATE behavior_history_command SET status='CANCELLED',completed_at=clock_timestamp() WHERE command_id=#{id} AND status='OPEN'</update>
+</mapper>
