@@ -63,4 +63,4 @@ ER-S14：复用advertiser现有gRPC client、owner C13只读快照及严格view/
 
 ER-D0/C15A（2026-10-16，设计门禁）：沿已选 PG/Kafka/Spring Kafka、现有 MyBatis-Plus primary Mapper 与显式 owner SQL/checksum；不新加运行依赖或部署组件。相对 HTTP 重试/同步双写，已有自然 Outbox 保留稳定身份与恢复进度；相对抽取通用框架，behavior 自有少量领域类避免依赖资金 owner。固定有界 producer、单线程 worker、租约/fence、有限重试和审计重放的参数见 C15_DESIGN。
 
-隔离测试复用 postgres:16-alpine、apache/kafka:3.7.1 与 S06 GenericContainer 方法；behavior 已有 Testcontainers junit-jupiter/postgresql 提供所需基础能力，预计无新增 Kafka 测试依赖。测试 fixture 仅验证下游幂等机制，不能代替 S15C 产品消费或 S19 Flink。禁止修改共享 dev_infra/部署；实际兼容性仍待 S15A 的真实 A01～A10 证明，本设计回合未跑组件测试。保留期未定，不增加清理或生产恢复承诺。
+隔离测试复用 postgres:16-alpine、apache/kafka:3.7.1 与 S06 GenericContainer 方法；behavior 已有 Testcontainers junit-jupiter/postgresql 提供所需基础能力，实际未新增 Kafka 测试依赖。测试 fixture 仅验证下游幂等机制，不能代替 S15C 产品消费或 S19 Flink。禁止修改共享 dev_infra/部署；设计回合未跑组件测试，后续 S15A 实施已通过真实 A01～A10；配置与兼容证据见 ER-S15A_RESULT。保留期未定，不增加清理或生产恢复承诺。

@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-16 codex-flow 分轮恢复：基线 main/origin/main=`1f77eb4d037844199c922cd2bf92ea230fc0a56f`，S01～S14 已交付；S14 CI 38866199212 / console-ci 38866199219 为上一轮成功证据。本轮分支 `docs/er-s15-natural-event-contract`，仅完成必要设计门禁 ER-D0/C15A，正式自然发送方案已通过 D01～D08 设计核验；未实现产品，S15A READY。范围仍为 S15～S21，S22～S25 暂停；仅 Sandbox/隔离验证，不启用共享资金、不部署或重启共享基础设施。11 项保护指纹见 `.dev/codex-flow-reliability/START_STATE.json`，原 C15A 草案不修改/不暂存。
+2026-10-16 codex-flow 分轮恢复：原基线 main/origin/main=`1f77eb4d037844199c922cd2bf92ea230fc0a56f`，S01～S14 已交付；设计门禁 C15A 已以 d978e568 合并推送。本回合 `eb5feb61-26b8-4a9c-aedf-e4ec6fbbf858` 完成 S15A 自然可靠发送及 A01～A10 本地验证，Git/CI 见 ER-S15A_RESULT 的交付记录；父 S15 IN_PROGRESS。范围仍为 S15～S21，S22～S25 暂停；仅 Sandbox/隔离验证，不启用共享资金、不部署或重启共享基础设施。11 项保护指纹见 `.dev/codex-flow-reliability/START_STATE.json`，原 C15A 草案不修改/不暂存。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -50,8 +50,8 @@
 | ER-S14 | ER-S13、C14五维规划/独立复审PASS | 原F13 Sandbox只读资金报表，详见C14_DESIGN | HTTP/PG/RPC13项、真实view-only授权、前端246项、双配置浏览器8项及截图；见ER-S14_RESULT | no | DONE |
 | ER-S15 | ER-S06、ER-S08 | 原 F14：自然 Outbox + 旧 BehaviorService + 适用行为消费者；A/B/C 全部必需 | DB 成功 broker 失败、重复/崩溃/恢复后的下游效果；PG/Kafka/适用 Redis，见 [ER-S15_RESULT](ER-S15_RESULT.md) | no | IN_PROGRESS |
 | ER-D0/C15A | ER-S06、ER-S08 | CONTRACTS C15 / C15_DESIGN；自然已接受事件发送的正式设计门禁 | 原源码/契约、范围覆盖、文件边界和 A01～A10 核验 PASS；仅设计，见 ER-S15_RESULT | no | DONE |
-| ER-S15A | ER-D0/C15A | behavior 自然 Outbox V002、Mapper、relay/worker/配置；不改旧行为 | C15_DESIGN A01～A10；真实隔离 PG/Kafka + 测试 Inbox/effect，不能代替产品消费者 | no | READY |
-| ER-D0/C15B | ER-S15A | 补旧事件身份、原子写、开关迁移/共存及历史覆盖契约；不发明旧无键请求去重政策 | 源码与本库迁移边界核验，详细协议待冻结 | no | TODO |
+| ER-S15A | ER-D0/C15A | behavior 自然 Outbox V002、Mapper、relay/worker/配置；不改旧行为 | A01～A10 PASS；自然108项/行为16项，真实PG/Kafka+进程退出；[验收](ER-S15A_RESULT.md)，fixture不代产品消费者 | no | DONE |
+| ER-D0/C15B | ER-S15A | 补旧事件身份、原子写、开关迁移/共存及历史覆盖契约；不发明旧无键请求去重政策 | 源码与本库迁移边界核验，详细协议待冻结 | no | READY |
 | ER-S15B | ER-D0/C15B | 原 F14 旧 BehaviorService/BehaviorMapper 与本库 Outbox/可靠发送 | PG/Kafka：业务提交+待发同成败；重复、历史覆盖、broker 故障和提交窗口恢复 | no | TODO |
 | ER-D0/C15C | ER-S15B | 补 SeenItemsConsumer 的失败确认、毒消息/重放和格式兼容契约 | 明确 Redis 远程效果与 Inbox（若采用）恢复边界 | no | TODO |
 | ER-S15C | ER-D0/C15C | 原 F14 适用行为消费者，首先为真实已看投影；不吞失败确认 | Kafka/Redis（若有 Inbox 则 PG）：断连、重复、重平衡、提交窗口及恢复集合/offset | no | TODO |
@@ -66,4 +66,4 @@
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。
 
 
-当前恢复入口：本轮 ER-D0/C15A 设计验证 PASS，Git 结果见 ER-S15_RESULT 引用的交付记录；本轮交付后返回外层，下一回合执行 ER-S15A；不同时进入 B/C，不另启 codex-flow。父 S15 只在 A/B/C 各自必需验收全 PASS 后 DONE。没有新增并行集合；原父片顺序不变。已冻结 C15A 无业务决策阻塞；B/C 和 S16～S21 的正式细节按原计划逐片补齐，不以 TODO 冒充 READY。S22～S25 虽保留历史编号，本轮不可执行。
+当前恢复入口：本回合 S15A 实现与本地验证 PASS，正常 Git 交付及远程 CI 见 ER-S15A_RESULT/本地 delivery.json；交付后返回外层，下一回合先核对 CI 再执行 ER-D0/C15B。父 S15 只在 A/B/C 必需验收全 PASS 后 DONE，不同时实现 B/C，不另启 codex-flow。没有新增并行集合；原父片顺序不变。C15B 设计门禁 READY，S15B 实现仍 TODO；其详细契约尚未冻结。S22～S25 保留原编号，本轮不可执行。

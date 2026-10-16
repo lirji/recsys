@@ -36,7 +36,7 @@ engine primary PG 保存整次交付、原请求/政策、最终文本/位置/�
 
 行为事务按 receipt 唯一键→qualification 锁排序，锁后取 clock_timestamp，5 秒事务/语句上限、4 秒锁等待上限。资格锁竞争跨过期限仍拒绝；事实、Outbox、原结果整体提交。提交时约束拒绝 PENDING 半成品及缺失 Outbox，复合 FK 绑定 canonical receipt/acceptedAt。事实、资格和终态不可 UPDATE/DELETE；不能通过改历史补偿。单条外部持久化失败/未知由原 ID 恢复，不访问 MQ/Redis。
 
-Outbox 本片仅持久化，没有发布器。`published_at` 保持空且当前版本禁止修改；S15 用新迁移与可靠发布协议演进，不能拿事件落表宣称已到 Kafka。S09 已接入 /recommend、/search 浏览器采集；S10 已实现 feed 最终位置与双回执，见 [混排运行说明](FEED_EXPOSURE_RUNBOOK.md)，构建开关均默认关闭。
+S08 的 V001 只持久化不可变 Outbox；S15A 通过追加 V002 和独立默认关闭 relay 推进发布，操作与恢复见下节。事件落表、broker ACK 和下游业务效果仍是不同状态。S09 已接入 /recommend、/search 浏览器采集；S10 已实现 feed 最终位置与双回执，见 [混排运行说明](FEED_EXPOSURE_RUNBOOK.md)，构建开关均默认关闭。
 
 ## 检查与保留
 
@@ -79,3 +79,37 @@ mvn -pl recsys-rec-engine,recsys-behavior,recsys-gateway -am test -Dgroups=natur
 本地验收：`python3 scripts/test-natural-exposure.py`，需要现有 Docker/JDK21/Node/console 依赖及 Playwright Chromium；自动临时 PG、两个 owner schema、数据库内容种子、测试登录适配器，宿主仅 loopback，结束核对事实/Outbox。不会修改共享库。证据在 `recsys-rec-engine/target/natural-browser-evidence` 与 `natural-browser-backend.log`；使用 behavior 测试宿主，test-scope 复用 engine，生产依赖不变。此宿主同 JVM、不代表跨进程故障、生产 gateway/OIDC 或 Kafka 已投递。详细结果见 [S09 验收](ER-S09_RESULT.md)。
 
 回退关闭前端开关并重建；已提交事实不能由关闭页面撤销。暂停新增应使用 owner admission 配置并保留查询/原决定恢复，不直接丢弃在途未知结果。
+
+
+## S15A 自然事件可靠发布与受控恢复
+
+正式约束见 [C15_DESIGN](C15_DESIGN.md)，验证与交付状态见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。只处理 behavior 本库已经接受的 SANDBOX 自然事件，不投旧 `behavior-events`，不写旧行为/正式训练或收费链路。该能力默认关闭，本轮只在独占测试容器运行，没有执行共享迁移或应用部署。
+
+在已明确授权的目标中，先核对 V001 和目标 owner，按前文 checksum/ON_ERROR_STOP 方法显式执行 `db/natural-exposure/V002__natural_event_delivery.sql`。V001 不得修改；V002 与触发器切换同事务，原六列 writer 仍兼容。异常 V1 published_at 非空会拒绝迁移，不能清空字段强行通过；须核查原记录来源。
+
+| 配置 | 值和含义 |
+|---|---|
+| `recsys.natural.events.relay-enabled` | 默认 false；显式 true 才创建 sender/worker，独立于 receipts-enabled/admission-enabled，不要求签名 key |
+| `recsys.natural.events.topic` | 默认 natural-impression-accepted-v1；只允许同名或 `.隔离后缀`，不热切换目标 |
+| `spring.kafka.*` | 复用受控 bootstrap/TLS/SASL；acks、幂等、有界重试和发送资源上限由专用 producer 固定 |
+
+事先显式预建自然 topic，禁 compact/自动建 topic；沿 sandbox 首版保留策略 retention.ms=-1、retention.bytes=-1 并监控空间。原 payload/key 发送，不因原资格已过五分钟、现行 key/政策更换而删掉已经接受的事实。单节点隔离测试不代表副本容灾/RPO。
+
+每次领取一条，30 秒 DB 租约、递增 fence，最多 20 次（崩溃也计次）。ACK 后仅有效租约可标 PUBLISHED；超时未知或 ACK 后崩溃允许原事件重发。每轮最多十次逐条发送及十条耗尽清算，单线程 fixed-delay；DB 失败退避 5 秒。积压每 30 秒采样，观测失败为 NaN/未知，不当作 0。
+
+以下只读 SQL 仅在目标 behavior 的受控连接执行，不输出票据、主体或整段 payload：
+
+```sql
+SELECT status,count(*),min(created_at),max(attempts)
+FROM natural_impression_outbox GROUP BY status;
+SELECT event_id,status,attempts,fence,available_at,last_error,published_at
+FROM natural_impression_outbox WHERE event_id = :event_id;
+SELECT replay_id,event_id,old_attempts,previous_fence,new_fence,replayed_at
+FROM natural_impression_outbox_replay WHERE event_id = :event_id ORDER BY replayed_at,replay_id;
+```
+
+监测 `natural.events.outbox.pending/dead/oldest_seconds/published/failed/stale/worker_failures`（Prometheus exporter 按其既有命名转换）。DEAD 表示仍有未履行义务：先核对版本/原事件/连接，修复依赖；由受信任内部工具调用 `NaturalOutboxRepository.replay(replayId,eventId,actor,reason)`。A 提供内部命令、没有公网恢复端点或运营 CLI。actor 必须来自可信边界；保存稳定 replayId，完全相同重试返回原审计，相同 ID 改内容报冲突。相同命令即使再次 DEAD 也不再重开；确需再次恢复使用新的审计命令。不能修改原 payload、改成新 eventId 或手工把状态置为 PUBLISHED。
+
+停止新增接受只关 admission；保留 relay 可继续排空。停 relay 先停领取/中断在途、有界关闭；未知发送行由租约接管。回退关闭 relay，保留 V002 与全部事实/事件/审计；不要撤销迁移或清队列。PUBLISHED 仅证明 broker 确认，不等于业务消费者应用；自然测试 Inbox/effect 仅作隔离验收，产品下游和旧行为分别按原计划继续。
+
+复现沿既有 natural-exposure 门禁命令。测试创建独占 PG/Kafka、唯一 schema/topic/group，真实暂停测试 broker，子 JVM 在提交后/ACK 后 halt；不暂停共享 dev_infra。进程退出日志在 `recsys-behavior/target/natural-event-evidence/`；Surefire 输出含原事件摘要、状态/fence、Kafka partition/offset 和测试效果数。CI 的自然门禁总是归档这些证据。数据保留/生产切换/容量参数仍需独立批准，不因本片交付自动启用。

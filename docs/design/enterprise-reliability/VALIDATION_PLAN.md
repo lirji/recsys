@@ -74,3 +74,5 @@
 原 V11 和 PLAN 的 DB 成功 broker 失败、重复请求与恢复后下游效果仍全部有效。正式细化见 [C15_DESIGN](C15_DESIGN.md)：S15A 对应 A01～A10，包括 V001→V002 兼容、合法原事件、PG 领取/fence/重放、真实独占 Kafka 故障、两处进程退出恢复及测试 PG Inbox/effect 的消费提交窗口。S15B 必须覆盖旧 BehaviorService 的源业务+Outbox 原子性/重复待发/历史覆盖；S15C 必须验证实际 SeenItemsConsumer 在 Redis 故障、重平衡及提交窗口后的集合和 offset。A 的测试 subscriber 不替代 C；Flink checkpoint/窗口对账仍属 S19。
 
 设计门禁 ER-D0/C15A 只做源证据核对、父片范围覆盖、契约/实施依赖一致性、保护指纹和交付路径检查；结果为 ER-S15_RESULT。设计 PASS 不记为 A01～A10 运行通过。后续组件测试记录实际执行/失败/跳过数量，独占资源身份和源/Outbox/Kafka/下游对应结果；不以 Mock 或跳过替代。
+
+S15A 实施回合的 A01～A10 本地结果见 ER-S15A_RESULT：自然门禁 108 项/19 类，零失败、错误、跳过，含新增 32 项/5 类。实际子 JVM halt 与同组消费位点重放证据保留；S15B/C 未验证，父片仍 IN_PROGRESS。远程 CI 独立绑定交付 SHA，不沿用基线结果。

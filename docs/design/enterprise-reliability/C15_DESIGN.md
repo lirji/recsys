@@ -1,6 +1,6 @@
 # C15：behavior 已接受事件可靠发送
 
-2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；本轮仅完成 `ER-D0/C15A` 必要设计门禁。**C15A 为正式实施契约；S15A 产品实现尚未开始。C15B/C 只冻结范围与必需验收，详细契约须在对应实现前补齐。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
+2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B/C 只冻结范围与必需验收，详细契约须在对应实现前补齐。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
 
 本文件为 [CONTRACTS C15](CONTRACTS.md#c15behavior-可靠事件的分阶段契约) 的规范性细节，状态唯一来源为 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。原 `C15A_DESIGN.md` 是受保护历史草案，未修改、不纳入交付。用户允许常规技术决定；不改变已批准自然政策、HTTP 语义、收费、正式样本或数据保留政策。
 
@@ -115,7 +115,7 @@ Mapper XML 集中全部 SQL；新 Mapper 绑定既有 behavior `sqlSessionTempla
 
 ## C15A：必需验收
 
-全部产品测试是后续 S15A 要执行的要求，**本设计回合未执行**。隔离 PG 使用既有 `postgres:16-alpine`，Kafka 复用 S06 `apache/kafka:3.7.1` GenericContainer，独占端口/topic/group/schema；不能 pause/stop 共享容器。依赖环境不可用或测试 skipped 不是 PASS。
+以下为 S15A 必需验收；设计回合没有执行，实施回合已完成本地验证，实际数量、边界和远程 CI 另见 ER-S15A_RESULT。隔离 PG 使用既有 `postgres:16-alpine`，Kafka 复用 S06 `apache/kafka:3.7.1` GenericContainer，独占端口/topic/group/schema；不能 pause/stop 共享容器。依赖环境不可用或测试 skipped 不是 PASS。
 
 | ID | 输入/故障 | 必须观察的结果 |
 |---|---|---|
@@ -149,4 +149,4 @@ A 可先扩展迁移、保留旧 writer，完成 owner 升级和隔离验收后�
 
 主要残余风险：DEAD 必须有人处置；无清理政策会增长；至少一次必然可能重复；测试 subscriber 不能证明未建的产品下游；B/C 历史覆盖和确认契约尚未冻结。这些记录不阻塞独立 S15A 实施，但全部阻止父片提前完成。无需要用户新业务决定的 A 阻塞。
 
-本门禁输出：正式 C15A、A01～A10 验收、文件边界和后续 B/C 必需项。设计核验见 [ER-S15_RESULT](ER-S15_RESULT.md)；下一具体操作是按 backend-implementation 实施 ER-S15A，从 V002 与同库持久化开始，在一个纵向片内完成真实 PG/Kafka 故障验证。当前回合按用户要求在设计交付后返回外层，不自行启动下一轮。
+本门禁输出：正式 C15A、A01～A10 验收、文件边界和后续 B/C 必需项。设计核验见 [ER-S15_RESULT](ER-S15_RESULT.md)，A 实现与真实 PG/Kafka 证据见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。下一具体操作为 C15B 旧行为契约门禁；每回合完成一片后返回外层，不自行启动下一轮。

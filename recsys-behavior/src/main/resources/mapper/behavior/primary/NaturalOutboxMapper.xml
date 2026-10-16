@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.behavior.persistence.mapper.primary.NaturalOutboxMapper">
+    <resultMap id="pending" type="com.recsys.behavior.persistence.mapper.primary.NaturalOutboxMapper$Pending">
+        <constructor><idArg column="event_id" javaType="java.util.UUID"/><arg column="event_type" javaType="string"/>
+            <arg column="schema_version" javaType="_int"/><arg column="destination" javaType="string"/>
+            <arg column="partition_key" javaType="string"/><arg column="payload_json" javaType="string"/>
+            <arg column="fence" javaType="_long"/><arg column="attempts" javaType="_int"/></constructor>
+    </resultMap>
+    <resultMap id="locked" type="com.recsys.behavior.persistence.mapper.primary.NaturalOutboxMapper$Locked">
+        <constructor><arg column="status" javaType="string"/><arg column="fence" javaType="_long"/><arg column="attempts" javaType="_int"/></constructor>
+    </resultMap>
+    <resultMap id="replay" type="com.recsys.behavior.persistence.mapper.primary.NaturalOutboxMapper$Replay">
+        <constructor><idArg column="replay_id" javaType="java.util.UUID"/><arg column="event_id" javaType="java.util.UUID"/>
+            <arg column="actor" javaType="string"/><arg column="reason" javaType="string"/><arg column="old_attempts" javaType="_int"/>
+            <arg column="previous_fence" javaType="_long"/><arg column="new_fence" javaType="_long"/>
+            <arg column="replayed_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <resultMap id="backlog" type="com.recsys.behavior.persistence.mapper.primary.NaturalOutboxMapper$Backlog">
+        <constructor><arg column="pending" javaType="_long"/><arg column="dead" javaType="_long"/><arg column="oldest_seconds" javaType="_double"/></constructor>
+    </resultMap>
+    <sql id="eventColumns">event_id,event_type,schema_version,destination,partition_key,payload_json,fence,attempts</sql>
+    <sql id="replayColumns">replay_id,event_id,actor,reason,old_attempts,previous_fence,new_fence,replayed_at</sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM natural_exposure_schema_history WHERE version=#{version}</select>
+    <select id="verifyOutbox" resultMap="pending" timeout="5">SELECT <include refid="eventColumns"/> FROM natural_impression_outbox WHERE status='READY' AND available_at IS NOT NULL AND last_error IS NULL LIMIT 0</select>
+    <select id="verifyReplay" resultMap="replay" timeout="5">SELECT <include refid="replayColumns"/> FROM natural_impression_outbox_replay LIMIT 0</select>
+    <update id="boundLocks">SET LOCAL lock_timeout = '4s'</update>
+    <update id="boundStatements">SET LOCAL statement_timeout = '5s'</update>
+    <select id="claim" resultMap="pending" timeout="5" affectData="true" flushCache="true" useCache="false">
+        WITH due AS (SELECT event_id FROM natural_impression_outbox
+            WHERE status IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts &lt; #{maxAttempts}
+            ORDER BY available_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED)
+        UPDATE natural_impression_outbox o SET status='SENDING',attempts=attempts+1,fence=fence+1,
+            available_at=clock_timestamp()+(#{leaseSeconds} * interval '1 second')
+        FROM due WHERE o.event_id=due.event_id RETURNING o.event_id,o.event_type,o.schema_version,
+            o.destination,o.partition_key,o.payload_json,o.fence,o.attempts
+    </select>
+    <update id="published" timeout="5">
+        UPDATE natural_impression_outbox SET status='PUBLISHED',published_at=clock_timestamp(),last_error=NULL
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <update id="failed" timeout="5">
+        UPDATE natural_impression_outbox SET status=CASE WHEN attempts &gt;= #{maxAttempts} OR #{error}='INVALID_EVENT' THEN 'DEAD' ELSE 'READY' END,
+            available_at=clock_timestamp()+(#{delayMs} * interval '1 millisecond'),last_error=#{error}
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <update id="exhaust" timeout="5">
+        WITH due AS (SELECT event_id FROM natural_impression_outbox
+            WHERE status IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts=#{maxAttempts}
+            ORDER BY available_at,event_id LIMIT #{limit} FOR UPDATE SKIP LOCKED)
+        UPDATE natural_impression_outbox o SET status='DEAD',last_error='ATTEMPTS_EXHAUSTED' FROM due WHERE o.event_id=due.event_id
+    </update>
+    <select id="replay" resultMap="replay" timeout="5" useCache="false">
+        SELECT <include refid="replayColumns"/> FROM natural_impression_outbox_replay WHERE replay_id=#{replayId}
+    </select>
+    <select id="lockEvent" resultMap="locked" timeout="5" useCache="false">
+        SELECT status,fence,attempts FROM natural_impression_outbox WHERE event_id=#{eventId} FOR UPDATE
+    </select>
+    <insert id="insertReplay" timeout="5">
+        INSERT INTO natural_impression_outbox_replay(replay_id,event_id,actor,reason,old_attempts,previous_fence,new_fence)
+        VALUES(#{replayId},#{eventId},#{actor},#{reason},#{attempts},#{fence},#{fence}+1)
+        ON CONFLICT(replay_id) DO NOTHING
+    </insert>
+    <update id="reopen" timeout="5">
+        UPDATE natural_impression_outbox SET status='READY',attempts=0,fence=fence+1,available_at=clock_timestamp(),last_error=NULL
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='DEAD'
+    </update>
+    <select id="backlog" resultMap="backlog" timeout="5" useCache="false">
+        SELECT count(*) FILTER (WHERE status IN ('READY','SENDING')) AS pending,
+            count(*) FILTER (WHERE status='DEAD') AS dead,
+            coalesce(extract(epoch FROM clock_timestamp()-min(created_at) FILTER (WHERE status IN ('READY','SENDING'))),0) AS oldest_seconds
+        FROM natural_impression_outbox WHERE status &lt;&gt; 'PUBLISHED'
+    </select>
+</mapper>

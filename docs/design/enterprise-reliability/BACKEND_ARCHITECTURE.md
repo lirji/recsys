@@ -125,8 +125,10 @@ ER-S12C2：CPA交付沿固定ChargeMode.CONVERSION，engine primary V005保存�
 ER-S13A按[C13设计](C13_DESIGN.md)增加ad owner内部只读对账能力。资金真值、事件传输、投影状态分离，同库一致快照不锁账户；offline后续仅契约驱动，不能成为第二资金写入口。持久任务/受控恢复仍由后续B/C正式契约承接，A不宣称父S13完成。
 
 
-## C15A 架构补充（2026-10-16，设计已冻结、未实现）
+## C15A 架构补充（2026-10-16，已实现并隔离验证）
 
 原 ER-S15/F14 不变，正式细节归 CONTRACTS/C15_DESIGN。behavior 保持自然事实/Outbox 唯一 owner，primary DataSource、MyBatis-Plus Mapper XML 和显式 V002 迁移；短事务领取和状态标记，网络发送在事务外。直接复用 S06 的有界机制，不新增服务/框架、不依赖 ad 实现、不跨库事务。自然 v1 是不可变事实，不额外发明聚合版本来过滤合法事件。
 
 默认关闭的自然 relay 与回执接受独立，停新增可继续履行已接受事件义务；DB 租约/fence 只保护状态回写，不消除 Kafka 重复。自然 topic 与旧行为/正式样本隔离，A 的测试订阅端不是产品投影。旧 BehaviorService 原子事件及 SeenItemsConsumer 的失败确认缺口分别由 S15B/C 补齐；父片完成条件保留，Flink 恢复由 S19 承接。此补充仅覆盖 C15A，不把本文件其余历史草案自动升级为批准设计。
+
+S15A 实际交付：V002、primary Mapper/XML、NaturalOutboxRepository、严格 codec、专属 producer 和有界 worker；原回执写入路径不变。真实组件与进程崩溃验证见 ER-S15A_RESULT；默认关闭，无部署或共享迁移。

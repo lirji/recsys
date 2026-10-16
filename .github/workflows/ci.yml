@@ -93,6 +93,16 @@ jobs:
           cache: maven
       - name: Natural qualification and atomic receipt gate
         run: mvn -B -e -pl recsys-rec-engine,recsys-behavior,recsys-gateway -am test -Dgroups=natural-exposure -Dsurefire.failIfNoSpecifiedTests=false
+      # S15A 保留真实进程退出窗口与原事件/offset 证据，失败也上传，不能只看进程健康。
+      - name: Upload natural event recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: natural-event-recovery-evidence
+          path: |
+            recsys-behavior/target/natural-event-evidence/**
+            recsys-behavior/target/surefire-reports/**
+          if-no-files-found: warn
 
   sandbox-exposure-browser-gate:
     runs-on: ubuntu-latest

@@ -1,12 +1,14 @@
-# 当前任务：2026-10-16 通过 codex-flow 继续企业可靠性 S15～S21
+# 当前任务：codex-flow 企业可靠性 ER-S15A
 
-权威实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。本回合 `ff6491f6-0576-4839-b2cd-026ce95da63c` 只完成首个必要设计门禁 `ER-D0/C15A`：补正式自然事件投递契约，保留旧 BehaviorService/消费者为父 S15 必需后续。设计核验 PASS，父 S15 仍 IN_PROGRESS；产品未实现/运行未验证；S22～S25 保持暂停。
+权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本回合 `eb5feb61-26b8-4a9c-aedf-e4ec6fbbf858` 仅完成自然可靠发送 S15A，结果 `docs/design/enterprise-reliability/ER-S15A_RESULT.md`，正式契约 C15_DESIGN。父 S15 仍 IN_PROGRESS；下一片为 ER-D0/C15B，S22～S25 暂停。
 
-恢复：先核对权威清单、`C15_DESIGN.md`、`ER-S15_RESULT.md`及真实 Git。原目录 `/Users/liruijun/personal/LLM/recsys`，本轮分支 `docs/er-s15-natural-event-contract`，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`；S01～S14 已交付。11 个保护文件指纹与 `.dev/codex-flow-reliability/START_STATE.json` 一致，不修改/暂存；本入口允许更新。仅 Sandbox/隔离验证，无共享基础设施变更、应用部署或共享资金启用。
+原目录 `/Users/liruijun/personal/LLM/recsys`，分支 `feat/er-s15a-natural-event-delivery`，基线 d978e568。A01～A10 本地 PASS：自然门禁108项、既有行为/错误契约16项，均零失败/错误/跳过。上轮设计CI38915759801的money-chain失败已定位为时间输入精度偶发测试问题，确定性修正后完整资金门禁通过，实际数量见结果。Hygiene无阻断，formatter不可用/无独立静态分析。
 
-本轮设计交付记录：`.dev/codex-flow-reliability/round-ff6491f6/delivery.json`（实际 SHA、合并/push 与 CI，恢复时核对 Git/远端）；核验：同目录 `design-validation.json`。下一回合执行 ER-S15A 的 V002/可靠投递与 A01～A10；本回合只完成设计门禁后返回外层，不开始产品实现。采用架构规范的业务建模、配置治理、持久化事务、分布式契约、并发安全验证、Kafka/中间件故障验证、容量数据演进、发布治理章节；契约/切片/进度/Git 分别遵循对应技能。不启动额外 codex-flow；外层恢复入口 `.dev/codex-flow-reliability/REQUEST.md` 和 `launch.py` 保留。当前无本轮测试或部署进程。
+本地验证已结束；正常提交/ff合并/push 的实际结果、最新 SHA 与CI必须读取 `.dev/codex-flow-reliability/round-eb5feb61/delivery.json`、`ci-snapshot.json`，不从旧历史推断。日志在同目录 natural-final.log、behavior-regression.log、money-final.log；测试已退出成功。18个源码/workflow指纹、保护终检、进程崩溃标记同目录。11个保护文件、V001与下方历史正文一致，所有 .dev/target/既有未跟踪材料保留。
 
-下方部署入口与历史交接原文保留；其中旧 S14 未交付、S13 暂停、旧分支/session 不代表当前状态。
+本轮无应用/部署后台进程；仅测试独占实例。仅 Sandbox，不启用共享资金、不执行部署或重启共享基础设施，不另启动 codex-flow。下一回合先核对 Git/CI，再冻结旧行为身份、原子写、历史覆盖及开关共存契约；不提前实施 S15B。
+
+规范：architecture-standards 的业务建模、并发安全、持久化事务、分布式契约、配置、Kafka/中间件、容量演进、发布治理；backend-implementation 的 Outbox/消息/任务/审计/韧性/配置/DB/观测/停机/保留。由 update-progress-docs 与 task-git-delivery 同步交付；下方仅历史，不续做旧任务。
 
 ---
 

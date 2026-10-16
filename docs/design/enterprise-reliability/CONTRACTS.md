@@ -254,4 +254,4 @@ C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显�
 
 C15A 的 wire 校验、状态转移、资源/配置、兼容回退及 A01～A10 验收均以 C15_DESIGN 为准；本 producer 对当前 v1 使用字段允许列表，未来扩展需先升级 codec。物理 topic 仅允许 natural-impression-accepted-v1 及其隔离后缀，不投旧 behavior-events。测试 PG Inbox/effect 仅证明测试下游；不代表产品自然消费已实现。
 
-父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B/C 的正式 wire/身份/开关迁移/毒消息恢复细节尚未冻结；其必需范围和验收已在 C15_DESIGN 保留，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。本轮仅设计，无产品实现或运行时启用。
+父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B/C 的正式 wire/身份/开关迁移/毒消息恢复细节尚未冻结；其必需范围和验收已在 C15_DESIGN 保留，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。C15A 产品已按本契约实现并经隔离验证，见 ER-S15A_RESULT；运行开关默认关闭，无共享环境迁移或启用。C15B/C 尚未实现。
