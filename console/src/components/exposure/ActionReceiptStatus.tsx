@@ -2,7 +2,7 @@ import { ActionKinds } from '../../api/sandboxActions';
 import { useSyncExternalStore } from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
 import { actionKey, actionQueue } from '../../exposure/actionReceiptQueue';
-import type { ActionKind } from '../../api/sandboxActions';
+import type { ActionKind, ActionMode } from '../../api/sandboxActions';
 
 const labels: Record<string, string> = {
   pending: '待发送',
@@ -22,12 +22,14 @@ const labels: Record<string, string> = {
 export default function ActionReceiptStatus({
   childId,
   kind,
+  mode = 'click',
 }: {
   childId: string;
   kind: ActionKind;
+  mode?: ActionMode;
 }) {
   const queue = actionQueue(),
-    key = actionKey(childId, kind);
+    key = actionKey(childId, kind, mode);
   useSyncExternalStore(queue.subscribe, queue.snapshot);
   const entry = queue.get(key);
   return (

@@ -2,6 +2,7 @@
 """启动独占测试宿主与浏览器，核对真实 PG/资金事务与双调用模式；不连接共享 dev_infra。"""
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -15,6 +16,19 @@ FINISH_TIMEOUT_SECONDS = 30
 SHUTDOWN_TIMEOUT_SECONDS = 15
 TERMINATE_TIMEOUT_SECONDS = 10
 ARTIFACTS = ROOT / 'recsys-ad-serving' / 'target'
+
+
+def redact(text):
+    """失败快照也可能携带表单值；发布日志/文本证据前清除真实证明与 JWT。"""
+    text = re.sub(r'v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[REDACTED_PROOF]', text)
+    return re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[REDACTED_JWT]', text)
+
+
+def sanitize_artifacts(mode, log_path):
+    evidence = ARTIFACTS / ('actions-evidence-' + mode)
+    for path in [log_path, *evidence.rglob('*')]:
+        if path.is_file() and path.suffix in ('.md', '.txt', '.log', '.json'):
+            path.write_text(redact(path.read_text()))
 
 
 def finish(info):
@@ -46,7 +60,9 @@ def main():
                     time.sleep(0.5)
                 env = dict(os.environ, ACTIONS_FIXTURE_INFO=str(info))
                 browser = subprocess.run(['npx', 'playwright', 'test', '--config', 'playwright.click-conversion.config.ts'],
-                    cwd=ROOT / 'console', env=env, timeout=BROWSER_TIMEOUT_SECONDS, check=False)
+                    cwd=ROOT / 'console', env=env, timeout=BROWSER_TIMEOUT_SECONDS, check=False,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                print(redact(browser.stdout))
                 finish(info)
                 code = backend.wait(timeout=FINISH_TIMEOUT_SECONDS)
                 if browser.returncode or code:
@@ -61,6 +77,8 @@ def main():
                         # 只终止本脚本创建的进程组，不按端口或进程名清理其他环境。
                         os.killpg(backend.pid, signal.SIGTERM)
                         backend.wait(timeout=TERMINATE_TIMEOUT_SECONDS)
+                log.flush()
+                sanitize_artifacts(os.environ['ACTIONS_MODE'], log_path)
 
 
 if __name__ == '__main__':

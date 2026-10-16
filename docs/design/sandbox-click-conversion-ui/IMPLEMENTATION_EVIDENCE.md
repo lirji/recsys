@@ -10,4 +10,11 @@
 - 视觉：实际查看桌面 1280×900 和 390px 长页截图，沿项目 AntD 蓝白主题；窄屏表格仅容器内横向滚动，长 ID 换行，页面整体宽度 390。证据位于 `recsys-ad-serving/target/actions-evidence-{grpc,in-process}/`（本机构建产物，不提交票据）。trace 关闭，不录 HAR/网络 body。
 - 首轮发现与修正：新模式未进入 AppLayout 的窄屏 Sandbox 条件，顶栏重复输入导致横向溢出；补最小开关 wiring，复测宽度通过。独占 in-process 宿主 Spring 注入覆盖手动 fixture provider，补真实 preparation/settlement Bean；不改产品后端。
 
-当前未完成：CPA（02B）、完整回归/真实授权/CI/Docker（02C）。本文件中的 fixture PASS 不代表共享 Docker 已启用新能力。
+当前未完成：最终回归/CI/Docker（02C），02B已完成。本文件中的 fixture PASS 不代表共享 Docker 已启用新能力。
+
+## 02B CPA
+
+- 新业务事件严格使用 `/api/advertiser/{advertiserId}/sandbox-conversions/{eventId}`，可见使用 conversion-impressions；不回退旧转换接口。统一队列保留原时间和证明，手工证明最多五分钟，未解码推断权限。
+- 新角色scope独立于ADMIN展示scope；原广告管理权限查询失败仍可显示CPA入口，业务接口自行严格判权；不以旧disabled/shadow权限快照决定成功。
+- API返回关联、六位金额、零元/未知、精简/完整结算、首次决定与最新实收分开校验。两模式各5浏览器、238前端测试、typecheck/build PASS，详见 RESULT。
+- 修正表单提交后焦点丢失造成Escape无法可靠关闭，以及加载图标影响查询按钮可访问名称的问题；错误后查询必须实际收到恢复200。

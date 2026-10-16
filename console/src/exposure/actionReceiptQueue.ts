@@ -3,6 +3,14 @@ import { HttpStatusCode } from 'axios';
 import axios from 'axios';
 import {
   actionReceipt,
+  conversionEvent,
+  parseConversionOutcome,
+  validLongId,
+  validOccurredAt,
+  ConversionStatus,
+  type ConversionInput,
+  type ConversionOutcome,
+  type ActionMode,
   actionSettlement,
   assertAction,
   parseActionResult,
@@ -25,25 +33,37 @@ export const ACTION_LIMITS = {
   attempts: 6,
   concurrent: 2,
 } as const;
+export const ConversionKind = 'CONVERSION' as const;
+type QueuedInput = ActionInput | ConversionInput;
 export type ActionPhase = 'pending' | 'sending' | 'unknown' | 'accepted' | 'rejected' | 'blocked';
 export interface ActionEntry {
   key: string;
   childId: string;
   id: string;
-  kind: ActionKind;
+  kind: ActionKind | typeof ConversionKind;
+  mode: ActionMode;
+  advertiserId?: string;
+  expectedQualificationId?: string;
+  occurredAt?: string;
   createdAt: number;
   expiresAt: number;
-  input: Readonly<ActionInput> | null;
+  input: Readonly<QueuedInput> | null;
   phase: ActionPhase;
   attempts: number;
   nextAt: number;
   result?: ActionResult;
+  outcome?: ConversionOutcome;
   error?: string;
 }
-export const actionKey = (childId: string, kind: ActionKind) => `click:${kind}:${childId}`;
+export const actionKey = (childId: string, kind: ActionKind, mode: ActionMode = 'click') =>
+  `${mode}:${kind}:${childId}`;
+export const outcomeKey = (advertiserId: string, eventId: string) =>
+  `conversion:event:${advertiserId}:${eventId}`;
+const settlementKey = (id: string, mode: ActionMode) => `${mode}:${id}`;
 export interface ActionTransport {
   receipt: typeof actionReceipt;
   settlement: typeof actionSettlement;
+  conversion?: typeof conversionEvent;
 }
 /** 新两条件协议独占有限预算；已接受只是事件终态，等待结算仍能原ID查询。 */
 export class ActionReceiptQueue {
@@ -72,8 +92,14 @@ export class ActionReceiptQueue {
   };
   snapshot = () => this.revision;
   get = (key: string) => this.entries.get(key);
-  settlement = (id: string) => this.settlements.get(id);
-  settlementError = (id: string) => this.settlementErrors.get(id);
+  settlement = (id: string, mode: ActionMode = 'click') =>
+    this.settlements.get(settlementKey(id, mode));
+  settlementError = (id: string, mode: ActionMode = 'click') =>
+    this.settlementErrors.get(settlementKey(id, mode));
+  outcomes = (advertiserId: string) =>
+    [...this.entries.values()].filter(
+      (e) => e.kind === ConversionKind && e.advertiserId === advertiserId,
+    );
   busy = (key: string) => this.requests.has(key);
   private active(owner: ExposureIdentity, controller?: AbortController) {
     return (
@@ -113,12 +139,34 @@ export class ActionReceiptQueue {
     this.kick();
   }
   /** 同资格不同kind分开；重挂载/连点命中原意图，不生成第二条回执。 */
-  enqueue(childId: string, expiresAt: string, input: ActionInput): ActionEntry | null {
+  enqueue(
+    childId: string,
+    expiresAt: string,
+    input: QueuedInput,
+    mode: ActionMode = 'click',
+    eventId?: string,
+    expectedQualificationId?: string,
+  ): ActionEntry | null {
     const owner = this.identity;
     if (!owner || !this.active(owner) || !UUID_PATTERN.test(childId)) return null;
-    const key = actionKey(childId, input.kind),
+    if (input.kind === ConversionKind && (!eventId || !UUID_PATTERN.test(eventId))) return null;
+    const key =
+        input.kind === ConversionKind
+          ? outcomeKey(input.advertiserId, eventId!)
+          : actionKey(childId, input.kind, mode),
       old = this.entries.get(key);
-    if (old) return old;
+    if (old) {
+      // 业务事件 ID 只能复用完全相同的在途意图；已清除证明的事件改走查询，不能伪装成新提交。
+      if (
+        input.kind === ConversionKind &&
+        (old.input?.kind !== ConversionKind ||
+          old.input.qualificationToken !== input.qualificationToken ||
+          old.occurredAt !== input.occurredAt ||
+          old.expectedQualificationId !== expectedQualificationId)
+      )
+        return null;
+      return old;
+    }
     this.prune();
     const expiry = Math.min(Date.parse(expiresAt), this.now() + 300000);
     if (
@@ -132,7 +180,11 @@ export class ActionReceiptQueue {
       key,
       childId,
       kind: input.kind,
-      id: crypto.randomUUID(),
+      mode,
+      advertiserId: input.kind === ConversionKind ? input.advertiserId : undefined,
+      occurredAt: input.kind === ConversionKind ? input.occurredAt : undefined,
+      expectedQualificationId,
+      id: eventId ?? crypto.randomUUID(),
       createdAt: this.now(),
       expiresAt: expiry,
       input: Object.freeze({ ...input }),
@@ -146,14 +198,61 @@ export class ActionReceiptQueue {
     this.kick();
     return entry;
   }
+  /** 手工证明只保存五分钟，不解码 token 来推断权威资格或授权。 */
+  submitConversion(
+    eventId: string,
+    input: ConversionInput,
+    qualificationId?: string,
+    expiresAt = new Date(this.now() + ACTION_POLICY.maxVisibleMs).toISOString(),
+  ) {
+    return this.enqueue(
+      qualificationId ?? eventId,
+      expiresAt,
+      input,
+      'conversion',
+      eventId,
+      qualificationId,
+    );
+  }
+  /** 已知业务标识可独立恢复；查询也计入同一容量与请求并发预算。 */
+  watchConversion(advertiserId: string, eventId: string) {
+    const owner = this.identity;
+    if (!owner || !this.active(owner) || !validLongId(advertiserId) || !UUID_PATTERN.test(eventId))
+      return null;
+    const key = outcomeKey(advertiserId, eventId);
+    this.prune();
+    if (!this.entries.has(key)) {
+      if (this.entries.size >= ACTION_LIMITS.entries) return null;
+      const entry: ActionEntry = {
+        key,
+        id: eventId,
+        childId: eventId,
+        kind: ConversionKind,
+        mode: 'conversion',
+        advertiserId,
+        createdAt: this.now(),
+        expiresAt: this.now(),
+        input: null,
+        phase: 'unknown',
+        attempts: 1,
+        nextAt: this.now(),
+      };
+      if (this.size([...this.entries.values(), entry]) > ACTION_LIMITS.bytes) return null;
+      this.entries.set(key, entry);
+      this.publish();
+    }
+    this.query(key);
+    return key;
+  }
   query(key: string) {
     const entry = this.entries.get(key);
     if (entry) void this.run(entry, true);
   }
   /** 查询当前资金事实与事件重试共享并发预算；不重复PUT已确认的条件。 */
-  async querySettlement(id: string) {
+  async querySettlement(id: string, mode: ActionMode = 'click') {
     const owner = this.identity,
-      key = `settlement:${id}`;
+      key = `settlement:${mode}:${id}`,
+      cacheKey = settlementKey(id, mode);
     if (
       !owner ||
       !this.active(owner) ||
@@ -166,16 +265,16 @@ export class ActionReceiptQueue {
     this.requests.set(key, controller);
     this.publish();
     try {
-      const result = await this.transport.settlement(id, owner, controller.signal);
+      const result = await this.transport.settlement(id, owner, controller.signal, mode);
       if (this.active(owner, controller)) {
-        this.remember(parseActionSettlement(result, id));
-        this.settlementErrors.delete(id);
+        this.remember(parseActionSettlement(result, id, mode), mode);
+        this.settlementErrors.delete(cacheKey);
       }
     } catch (e) {
       if (this.active(owner, controller)) {
         if (this.settlementErrors.size >= ACTION_LIMITS.entries)
           this.settlementErrors.delete(this.settlementErrors.keys().next().value!);
-        this.settlementErrors.set(id, toApiError(e).message);
+        this.settlementErrors.set(cacheKey, toApiError(e).message);
       }
     } finally {
       if (this.requests.get(key) === controller) this.requests.delete(key);
@@ -208,7 +307,11 @@ export class ActionReceiptQueue {
     return (
       e.attempts < ACTION_LIMITS.attempts &&
       !['blocked', 'rejected'].includes(e.phase) &&
-      (!e.result || e.result.settlement.state === ActionState.HELD)
+      (e.kind === ConversionKind
+        ? !e.outcome ||
+          (e.outcome.status === ConversionStatus.WAITING &&
+            e.outcome.settlement.state === ActionState.HELD)
+        : !e.result || e.result.settlement.state === ActionState.HELD)
     );
   }
   private scheduleExpiry(deadlines: number[] = []) {
@@ -219,11 +322,12 @@ export class ActionReceiptQueue {
     if (deadlines.length)
       this.timer = setTimeout(this.kick, Math.max(100, Math.min(...deadlines) - this.now()));
   }
-  private remember(s: ActionSettlement) {
-    const old = this.settlements.get(s.qualificationId);
+  private remember(s: ActionSettlement, mode: ActionMode) {
+    const key = settlementKey(s.qualificationId, mode),
+      old = this.settlements.get(key);
     if (!old && this.settlements.size >= ACTION_LIMITS.entries)
       this.settlements.delete(this.settlements.keys().next().value!);
-    if (!old || old.version <= s.version) this.settlements.set(s.qualificationId, s);
+    if (!old || old.version <= s.version) this.settlements.set(key, s);
   }
   private async run(entry: ActionEntry, queryOnly: boolean) {
     const owner = this.identity;
@@ -246,18 +350,32 @@ export class ActionReceiptQueue {
     this.entries.set(entry.key, current);
     this.publish();
     try {
-      let raw: ActionResult;
-      if (queryOnly || entry.attempts > 0 || !current.input || entry.result) {
-        try {
-          raw = await this.transport.receipt(
-            'get',
+      const send = (method: 'put' | 'get') => {
+        if (entry.kind === ConversionKind)
+          return (this.transport.conversion ?? conversionEvent)(
+            method,
+            entry.advertiserId!,
             entry.id,
-            entry.childId,
-            entry.kind,
-            null,
+            method === 'put' ? (current.input as ConversionInput) : null,
             owner,
             controller.signal,
+            entry.expectedQualificationId,
           );
+        return this.transport.receipt(
+          method,
+          entry.id,
+          entry.childId,
+          entry.kind,
+          method === 'put' ? (current.input as ActionInput) : null,
+          owner,
+          controller.signal,
+          entry.mode,
+        );
+      };
+      let raw: ActionResult | ConversionOutcome;
+      if (queryOnly || entry.attempts > 0 || !current.input || entry.result || entry.outcome) {
+        try {
+          raw = await send('get');
         } catch (error) {
           if (
             !this.active(owner, controller) ||
@@ -266,43 +384,47 @@ export class ActionReceiptQueue {
             error.response?.status !== HttpStatusCode.NotFound ||
             !current.input ||
             entry.result ||
+            entry.outcome ||
             this.now() >= entry.expiresAt
           )
             throw error;
-          raw = await this.transport.receipt(
-            'put',
-            entry.id,
-            entry.childId,
-            entry.kind,
-            current.input,
-            owner,
-            controller.signal,
-          );
+          raw = await send('put');
         }
-      } else
-        raw = await this.transport.receipt(
-          'put',
-          entry.id,
-          entry.childId,
-          entry.kind,
-          current.input,
-          owner,
-          controller.signal,
-        );
+      } else raw = await send('put');
       if (!this.active(owner, controller)) return;
-      const result = parseActionResult(raw, entry.id, entry.childId, entry.kind);
-      this.remember(result.settlement);
-      this.entries.set(entry.key, {
-        ...current,
-        input: null,
-        result,
-        phase: ['ACCEPTED_WAITING', 'ACCEPTED_CAPTURED', 'ALREADY_ACCEPTED'].includes(
-          result.receipt.status,
-        )
-          ? 'accepted'
-          : 'rejected',
-        nextAt: this.now() + this.backoff(current.attempts),
-      });
+      if (entry.kind === ConversionKind) {
+        const outcome = parseConversionOutcome(raw, entry.advertiserId!, entry.id, {
+          qualificationId: entry.expectedQualificationId,
+          occurredAt: entry.occurredAt,
+        });
+        this.entries.set(entry.key, {
+          ...current,
+          input: null,
+          outcome,
+          phase: [
+            ConversionStatus.WAITING,
+            ConversionStatus.CAPTURED,
+            ConversionStatus.DUPLICATE,
+          ].some((s) => s === outcome.status)
+            ? 'accepted'
+            : 'rejected',
+          nextAt: this.now() + this.backoff(current.attempts),
+        });
+      } else {
+        const result = parseActionResult(raw, entry.id, entry.childId, entry.kind, entry.mode);
+        this.remember(result.settlement, entry.mode);
+        this.entries.set(entry.key, {
+          ...current,
+          input: null,
+          result,
+          phase: ['ACCEPTED_WAITING', 'ACCEPTED_CAPTURED', 'ALREADY_ACCEPTED'].includes(
+            result.receipt.status,
+          )
+            ? 'accepted'
+            : 'rejected',
+          nextAt: this.now() + this.backoff(current.attempts),
+        });
+      }
     } catch (error) {
       if (!this.active(owner, controller)) return;
       const status = axios.isAxiosError(error) ? error.response?.status : undefined;
@@ -325,7 +447,15 @@ export class ActionReceiptQueue {
   private backoff(attempts: number) {
     return Math.min(30000, 1000 * 2 ** Math.min(attempts, 5));
   }
-  private validInput(input: ActionInput): boolean {
+  private validInput(input: QueuedInput): boolean {
+    if (input?.kind === ConversionKind)
+      return (
+        validLongId(input.advertiserId) &&
+        validOccurredAt(input.occurredAt) &&
+        typeof input.qualificationToken === 'string' &&
+        input.qualificationToken.length > 0 &&
+        input.qualificationToken.length <= ACTION_POLICY.tokenMax
+      );
     return (
       !!input &&
       typeof input.qualificationToken === 'string' &&
@@ -362,14 +492,22 @@ export class ActionReceiptQueue {
             'phase',
             'attempts',
             'nextAt',
+            'mode',
+            'advertiserId',
+            'occurredAt',
+            'expectedQualificationId',
           ].includes(k),
         ),
       );
       assertAction(
         UUID_PATTERN.test(e.id) &&
           UUID_PATTERN.test(e.childId) &&
-          ['VISIBLE', 'CLICK'].includes(e.kind) &&
-          e.key === actionKey(e.childId, e.kind),
+          ['VISIBLE', 'CLICK', ConversionKind].includes(e.kind) &&
+          ['click', 'conversion'].includes(e.mode) &&
+          e.key ===
+            (e.kind === ConversionKind
+              ? outcomeKey(e.advertiserId!, e.id)
+              : actionKey(e.childId, e.kind, e.mode)),
       );
       assertAction(
         Number.isFinite(e.createdAt) &&
@@ -385,6 +523,13 @@ export class ActionReceiptQueue {
       assertAction(
         ['pending', 'sending', 'unknown', 'accepted', 'rejected', 'blocked'].includes(e.phase),
       );
+      if (e.kind === ConversionKind)
+        assertAction(
+          validLongId(e.advertiserId) &&
+            (!e.occurredAt || validOccurredAt(e.occurredAt)) &&
+            (!e.expectedQualificationId || UUID_PATTERN.test(e.expectedQualificationId)) &&
+            e.mode === 'conversion',
+        );
       const input =
         e.input &&
         this.now() < e.expiresAt &&
@@ -402,10 +547,18 @@ export class ActionReceiptQueue {
                 'visibleDurationMs',
                 'minVisibleRatioBps',
                 'pageVisible',
+                'advertiserId',
+                'occurredAt',
               ].includes(k),
             ),
         );
+      if (input?.kind === ConversionKind)
+        assertAction(input.advertiserId === e.advertiserId && input.occurredAt === e.occurredAt);
       return {
+        mode: e.mode,
+        advertiserId: e.advertiserId,
+        occurredAt: e.occurredAt,
+        expectedQualificationId: e.expectedQualificationId,
         key: e.key,
         childId: e.childId,
         id: e.id,
@@ -423,11 +576,30 @@ export class ActionReceiptQueue {
   }
   private serialized(entries: ActionEntry[]) {
     return entries.map(
-      ({ key, childId, id, kind, createdAt, expiresAt, input, phase, attempts, nextAt }) => ({
+      ({
         key,
         childId,
         id,
         kind,
+        mode,
+        advertiserId,
+        occurredAt,
+        expectedQualificationId,
+        createdAt,
+        expiresAt,
+        input,
+        phase,
+        attempts,
+        nextAt,
+      }) => ({
+        key,
+        childId,
+        id,
+        kind,
+        mode,
+        advertiserId,
+        occurredAt,
+        expectedQualificationId,
         createdAt,
         expiresAt,
         input,
@@ -447,8 +619,8 @@ export class ActionReceiptQueue {
     for (const [key, e] of this.entries) {
       if (this.now() - e.createdAt >= ACTION_LIMITS.age) {
         this.entries.delete(key);
-        this.settlements.delete(e.childId);
-        this.settlementErrors.delete(e.childId);
+        this.settlements.delete(settlementKey(e.childId, e.mode));
+        this.settlementErrors.delete(settlementKey(e.childId, e.mode));
         changed = true;
       } else if (e.input && this.now() >= e.expiresAt) {
         this.entries.set(key, { ...e, input: null });

@@ -27,12 +27,12 @@ export const ACTION_POLICY = {
   minRatioBps: 5000,
   fullRatioBps: 10000,
 } as const;
-export type ActionMode = 'click';
+export type ActionMode = 'click' | 'conversion';
 export type ActionKind = 'VISIBLE' | 'CLICK';
 export interface ActionAdItem extends SandboxAdItem {
-  bidType: 'CPC' | 'OCPC';
-  priceUnit: 'PER_CLICK';
-  pricingVersion: 'CLICK_GSP_CNY6_V1';
+  bidType: 'CPC' | 'OCPC' | 'CPA';
+  priceUnit: 'PER_CLICK' | 'PER_CONVERSION';
+  pricingVersion: 'CLICK_GSP_CNY6_V1' | 'CPA_GSP_CNY6_V1';
 }
 export interface ActionDelivery extends SandboxDeliveryInput {
   operationId: string;
@@ -54,6 +54,7 @@ export interface ActionSettlement {
   progress:
     | 'WAITING_FOR_BOTH'
     | 'WAITING_FOR_VISIBLE'
+    | 'WAITING_FOR_CONVERSION'
     | 'WAITING_FOR_CLICK'
     | 'CAPTURED'
     | 'RELEASED'
@@ -66,6 +67,7 @@ export interface ActionSettlement {
   version: number;
   visibleReceiptId: string | null;
   clickReceiptId: string | null;
+  outcomeId?: string | null;
   issuedAt: string;
   expiresAt: string;
   preparedAt: string;
@@ -143,7 +145,11 @@ export function validDeliveryInput(v: SandboxDeliveryInput): boolean {
   );
 }
 /** 接口与会话恢复共用白名单，扩展字段不会把票据带进结果缓存。 */
-export function parseActionSettlement(raw: unknown, id: string): ActionSettlement {
+export function parseActionSettlement(
+  raw: unknown,
+  id: string,
+  mode: ActionMode = 'click',
+): ActionSettlement {
   const v = object(raw);
   const state = one(v.state, ['HELD', 'CAPTURED', 'RELEASED', 'EXPIRED', 'REJECTED']);
   const result: ActionSettlement = {
@@ -154,6 +160,7 @@ export function parseActionSettlement(raw: unknown, id: string): ActionSettlemen
       'WAITING_FOR_BOTH',
       'WAITING_FOR_VISIBLE',
       'WAITING_FOR_CLICK',
+      'WAITING_FOR_CONVERSION',
       'CAPTURED',
       'RELEASED',
       'EXPIRED',
@@ -165,13 +172,19 @@ export function parseActionSettlement(raw: unknown, id: string): ActionSettlemen
     ledgerId: nullable(v.ledgerId, uuid),
     version: int(v.version),
     visibleReceiptId: nullable(v.visibleReceiptId, uuid),
-    clickReceiptId: nullable(v.clickReceiptId, uuid),
+    clickReceiptId: mode === 'click' ? nullable(v.clickReceiptId, uuid) : null,
+    outcomeId: mode === 'conversion' ? nullable(v.outcomeId, uuid) : null,
     issuedAt: instant(v.issuedAt),
     expiresAt: instant(v.expiresAt),
     preparedAt: instant(v.preparedAt),
     closedAt: nullable(v.closedAt, instant),
     closeReason: nullable(v.closeReason, (x) =>
-      one(x, ['CLICK_CAPTURED', 'DELIVERY_ABORTED', 'FRAUD_REJECTED', 'EXPIRED']),
+      one(
+        x,
+        mode === 'click'
+          ? ['CLICK_CAPTURED', 'DELIVERY_ABORTED', 'FRAUD_REJECTED', 'EXPIRED']
+          : ['CONVERSION_CAPTURED', 'DELIVERY_ABORTED', 'EXPIRED'],
+      ),
     ),
   };
   assertAction(result.qualificationId === id && /^\d{4}-\d{2}-\d{2}$/.test(result.budgetDate));
@@ -183,23 +196,24 @@ export function parseActionSettlement(raw: unknown, id: string): ActionSettlemen
   assertAction(
     terminal === (result.closedAt !== null) && terminal === (result.closeReason !== null),
   );
+  const actionId = mode === 'click' ? result.clickReceiptId : result.outcomeId;
   if (state === ActionState.CAPTURED)
     assertAction(
-      result.visibleReceiptId &&
-        result.clickReceiptId &&
-        result.chargedAmount === result.quotedAmount,
+      result.visibleReceiptId && actionId && result.chargedAmount === result.quotedAmount,
     );
   const progress =
     state === ActionState.HELD
       ? result.visibleReceiptId
-        ? 'WAITING_FOR_CLICK'
-        : result.clickReceiptId
+        ? mode === 'click'
+          ? 'WAITING_FOR_CLICK'
+          : 'WAITING_FOR_CONVERSION'
+        : actionId
           ? 'WAITING_FOR_VISIBLE'
           : 'WAITING_FOR_BOTH'
       : state;
   assertAction(
     result.progress === progress &&
-      !(state === ActionState.HELD && result.visibleReceiptId && result.clickReceiptId),
+      !(state === ActionState.HELD && result.visibleReceiptId && actionId),
   );
   return result;
 }
@@ -208,13 +222,14 @@ export function parseActionResult(
   id: string,
   qualificationId: string,
   kind: ActionKind,
+  mode: ActionMode = 'click',
 ): ActionResult {
   const v = object(raw),
     r = object(v.receipt);
   const receipt: ActionReceipt = {
     receiptId: uuid(r.receiptId),
     qualificationId: uuid(r.qualificationId),
-    kind: one(r.kind, ['VISIBLE', 'CLICK']),
+    kind: mode === 'click' ? one(r.kind, ['VISIBLE', 'CLICK']) : ActionKinds.VISIBLE,
     status: one(r.status, [
       'ACCEPTED_WAITING',
       'ACCEPTED_CAPTURED',
@@ -242,12 +257,13 @@ export function parseActionResult(
       receipt.status === ReceiptStatus.ALREADY_ACCEPTED ||
       receipt.canonicalReceiptId === receipt.receiptId,
   );
-  return { receipt, settlement: parseActionSettlement(v.settlement, qualificationId) };
+  return { receipt, settlement: parseActionSettlement(v.settlement, qualificationId, mode) };
 }
 export function parseActionDelivery(
   raw: unknown,
   operationId: string,
   input: SandboxDeliveryInput,
+  mode: ActionMode = 'click',
 ): ActionDelivery {
   const v = object(raw);
   assertAction(
@@ -292,9 +308,12 @@ export function parseActionDelivery(
       advertiserId: a.advertiserId as string,
       creativeId: a.creativeId as string,
       title: str(a.title),
-      bidType: one(a.bidType, ['CPC', 'OCPC']),
-      priceUnit: one(a.priceUnit, ['PER_CLICK']),
-      pricingVersion: one(a.pricingVersion, ['CLICK_GSP_CNY6_V1']),
+      bidType: one(a.bidType, mode === 'click' ? ['CPC', 'OCPC'] : ['CPA']),
+      priceUnit: one(a.priceUnit, mode === 'click' ? ['PER_CLICK'] : ['PER_CONVERSION']),
+      pricingVersion: one(
+        a.pricingVersion,
+        mode === 'click' ? ['CLICK_GSP_CNY6_V1'] : ['CPA_GSP_CNY6_V1'],
+      ),
       preparation,
     };
   });
@@ -312,13 +331,14 @@ export async function actionDelivery(
   input: SandboxDeliveryInput,
   identity: ExposureIdentity,
   signal?: AbortSignal,
+  mode: ActionMode = 'click',
 ) {
   assertAction(UUID_PATTERN.test(id) && validDeliveryInput(input));
-  const url = '/api/sandbox/click-ad-deliveries/' + encodeURIComponent(id);
+  const url = `/api/sandbox/${mode}-ad-deliveries/` + encodeURIComponent(id);
   const options = exposureRequestOptions(identity, signal);
   const response =
     method === 'put' ? await http.put(url, input, options) : await http.get(url, options);
-  return parseActionDelivery(response.data, id, input);
+  return parseActionDelivery(response.data, id, input, mode);
 }
 export async function actionReceipt(
   method: 'put' | 'get',
@@ -328,24 +348,199 @@ export async function actionReceipt(
   input: ActionInput | null,
   identity: ExposureIdentity,
   signal?: AbortSignal,
+  mode: ActionMode = 'click',
 ) {
-  const url = '/api/sandbox/click-receipts/' + encodeURIComponent(id);
+  const url =
+    (mode === 'click' ? '/api/sandbox/click-receipts/' : '/api/sandbox/conversion-impressions/') +
+    encodeURIComponent(id);
   const options = {
     ...exposureRequestOptions(identity, signal),
     validateStatus: (s: number) => s === 200 || s === 422,
   };
   const response =
-    method === 'put' ? await http.put(url, input, options) : await http.get(url, options);
-  return parseActionResult(response.data, id, childId, kind);
+    method === 'put'
+      ? await http.put(
+          url,
+          mode === 'conversion' && input
+            ? {
+                qualificationToken: input.qualificationToken,
+                visibleDurationMs: input.visibleDurationMs,
+                minVisibleRatioBps: input.minVisibleRatioBps,
+                pageVisible: input.pageVisible,
+              }
+            : input,
+          options,
+        )
+      : await http.get(url, options);
+  return parseActionResult(response.data, id, childId, kind, mode);
 }
 export async function actionSettlement(
   id: string,
   identity: ExposureIdentity,
   signal?: AbortSignal,
+  mode: ActionMode = 'click',
 ) {
   const response = await http.get(
-    '/api/sandbox/click-settlements/' + encodeURIComponent(id),
+    `/api/sandbox/${mode}-settlements/` + encodeURIComponent(id),
     exposureRequestOptions(identity, signal),
   );
-  return parseActionSettlement(response.data, id);
+  return parseActionSettlement(response.data, id, mode);
+}
+
+export const ConversionStatus = {
+  WAITING: 'ACCEPTED_WAITING',
+  CAPTURED: 'ACCEPTED_CAPTURED',
+  DUPLICATE: 'DUPLICATE_QUALIFICATION',
+} as const;
+export interface ConversionInput {
+  kind: 'CONVERSION';
+  advertiserId: string;
+  qualificationToken: string;
+  occurredAt: string;
+}
+export interface ConversionOutcome {
+  outcomeId: string;
+  advertiserId: string;
+  eventId: string;
+  qualificationId: string;
+  status:
+    | 'ACCEPTED_WAITING'
+    | 'ACCEPTED_CAPTURED'
+    | 'DUPLICATE_QUALIFICATION'
+    | 'OUTSIDE_ATTRIBUTION'
+    | 'EXPIRED'
+    | 'NOT_HELD';
+  occurredAt: string;
+  receivedAt: string;
+  decidedAt: string;
+  canonicalOutcomeId: string | null;
+  chargedForThisOutcome: boolean;
+  chargedAmount: string | null;
+  settlement: Pick<
+    ActionSettlement,
+    'state' | 'progress' | 'budgetDate' | 'quotedAmount' | 'chargedAmount' | 'ledgerId' | 'closedAt'
+  >;
+}
+/** 微秒精度按字符串比较，不能经 Date 毫秒截断后误认成同一业务时间。 */
+const normalizedInstant = (s: string) => s.replace(/(\.\d*?)0+Z$/, '$1Z').replace('.Z', 'Z');
+export function validOccurredAt(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/.test(value) &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
+}
+export function parseConversionOutcome(
+  raw: unknown,
+  advertiserId: string,
+  eventId: string,
+  expected?: { qualificationId?: string; occurredAt?: string },
+): ConversionOutcome {
+  const v = object(raw),
+    s = object(v.settlement);
+  const settlement: ConversionOutcome['settlement'] = {
+    state: one(s.state, ['HELD', 'CAPTURED', 'RELEASED', 'EXPIRED', 'REJECTED']),
+    progress: one(s.progress, [
+      'WAITING_FOR_BOTH',
+      'WAITING_FOR_VISIBLE',
+      'WAITING_FOR_CONVERSION',
+      'CAPTURED',
+      'RELEASED',
+      'EXPIRED',
+      'REJECTED',
+    ]),
+    budgetDate: str(s.budgetDate, 10),
+    quotedAmount: amount(s.quotedAmount),
+    chargedAmount: nullable(s.chargedAmount, amount),
+    ledgerId: nullable(s.ledgerId, uuid),
+    closedAt: nullable(s.closedAt, instant),
+  };
+  const result: ConversionOutcome = {
+    outcomeId: uuid(v.outcomeId),
+    advertiserId: str(v.advertiserId, 19),
+    eventId: uuid(v.eventId),
+    qualificationId: uuid(v.qualificationId),
+    status: one(v.status, [
+      'ACCEPTED_WAITING',
+      'ACCEPTED_CAPTURED',
+      'DUPLICATE_QUALIFICATION',
+      'OUTSIDE_ATTRIBUTION',
+      'EXPIRED',
+      'NOT_HELD',
+    ]),
+    occurredAt: instant(v.occurredAt),
+    receivedAt: instant(v.receivedAt),
+    decidedAt: instant(v.decidedAt),
+    canonicalOutcomeId: nullable(v.canonicalOutcomeId, uuid),
+    chargedForThisOutcome: v.chargedForThisOutcome as boolean,
+    chargedAmount: nullable(v.chargedAmount, amount),
+    settlement,
+  };
+  assertAction(
+    result.advertiserId === advertiserId &&
+      validLongId(advertiserId) &&
+      result.eventId === eventId &&
+      typeof result.chargedForThisOutcome === 'boolean',
+  );
+  assertAction(!expected?.qualificationId || result.qualificationId === expected.qualificationId);
+  assertAction(
+    !expected?.occurredAt ||
+      normalizedInstant(result.occurredAt) === normalizedInstant(expected.occurredAt),
+  );
+  assertAction(/^\d{4}-\d{2}-\d{2}$/.test(settlement.budgetDate));
+  const captured = settlement.state === ActionState.CAPTURED;
+  assertAction((settlement.state !== ActionState.HELD) === (settlement.closedAt !== null));
+  assertAction(
+    captured === (settlement.ledgerId !== null) && captured === (settlement.chargedAmount !== null),
+  );
+  assertAction(!captured || settlement.chargedAmount === settlement.quotedAmount);
+  assertAction(result.chargedForThisOutcome === (result.chargedAmount !== null));
+  const canonical = [ConversionStatus.WAITING, ConversionStatus.CAPTURED].some(
+    (s) => s === result.status,
+  );
+  assertAction(!canonical || result.canonicalOutcomeId === result.outcomeId);
+  assertAction(result.chargedForThisOutcome === (captured && canonical));
+  assertAction(!result.chargedForThisOutcome || result.chargedAmount === settlement.chargedAmount);
+  assertAction(
+    result.status !== ConversionStatus.DUPLICATE ||
+      (!!result.canonicalOutcomeId && result.canonicalOutcomeId !== result.outcomeId),
+  );
+  assertAction(
+    settlement.state === ActionState.HELD
+      ? settlement.progress.startsWith('WAITING_FOR_')
+      : settlement.progress === settlement.state,
+  );
+  return result;
+}
+/** 每次 PUT/GET 均由服务端强制 edit/fullyConsistent，旧管理权限快照不参与此调用。 */
+export async function conversionEvent(
+  method: 'put' | 'get',
+  advertiserId: string,
+  eventId: string,
+  input: ConversionInput | null,
+  identity: ExposureIdentity,
+  signal?: AbortSignal,
+  qualificationId?: string,
+) {
+  assertAction(validLongId(advertiserId) && UUID_PATTERN.test(eventId));
+  if (method === 'put')
+    assertAction(input && input.advertiserId === advertiserId && validOccurredAt(input.occurredAt));
+  const url = `/api/advertiser/${encodeURIComponent(advertiserId)}/sandbox-conversions/${encodeURIComponent(eventId)}`;
+  const options = {
+    ...exposureRequestOptions(identity, signal),
+    validateStatus: (s: number) => s === 200 || s === 422,
+  };
+  const response =
+    method === 'put'
+      ? await http.put(
+          url,
+          { qualificationToken: input!.qualificationToken, occurredAt: input!.occurredAt },
+          options,
+        )
+      : await http.get(url, options);
+  return parseConversionOutcome(response.data, advertiserId, eventId, {
+    qualificationId,
+    occurredAt: input?.occurredAt,
+  });
 }

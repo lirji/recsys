@@ -17,6 +17,7 @@ export function revokeExposureSession() {
     for (const key of [
       'recsys.sandbox.delivery.v1',
       'recsys.sandbox.click.delivery.v1',
+      'recsys.sandbox.conversion.delivery.v1',
       'recsys.sandbox.actions.v1',
       'recsys.sandbox.feed.v1',
       'recsys.sandbox.receipts.v1',

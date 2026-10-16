@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-2026-10-16：02A CPC/OCPC DONE / PASS；02B CPA 待实施；02C 最终回归、真实授权、CI 与 Docker 待执行。当前不能宣称整个任务完成或共享环境已启用新能力。
+2026-10-16：02A CPC/OCPC DONE / PASS；02B CPA DONE / PASS；02C 最终回归、CI 与 Docker 执行中，真实授权已通过。当前不能宣称整个任务完成或共享环境已启用新能力。
 
 ## 02A 验证
 
@@ -24,4 +24,16 @@
 
 ## 待完成
 
-02B 与 02C 按批准顺序继续，严格授权、全量回归、最终 Git/CI/Docker 证据在执行后追加。
+02C 按批准顺序继续，全量回归、最终 Git/CI/Docker 证据在执行后追加。
+
+## 02B 验证
+
+CPA 搜索交付/可见/业务事件、广告主详情人工证明与原事件查询已接入真实 C12。精简业务结果与完整资格结算分别校验：历史 ACCEPTED_WAITING 可随后显示自身实收，DUPLICATE_QUALIFICATION 自身始终 false/null，即使资格已结算。原事件参数被冻结，已有 ID 不接受换证明或时间；确认后只查询。
+
+- TypeScript、生产构建 PASS；前端全量 37 文件 / 238 项测试 PASS。新增 CPA 五项测试覆盖微秒时间、错误响应关联、丢 ACK 刷新、原载荷、403/503、共享容量与同 ID 冲突。
+- in-process 与 gRPC 各五项新浏览器 PASS，真实隔离 PG/Mapper/事务/账本/Outbox 对账均退出 0；两个顺序、额外事件不收费、原内容409、ADVERTISER入口、撤权与依赖失败后恢复均有断言。日志 `/tmp/recsys-actions-narrow.log`、`/tmp/recsys-actions-grpc-final.log`。
+- 实际查看 1440px CPA 弹窗和广告主面板；390px 自适应断言通过。截图曾提前于布局完成，最终脚本已调整为先等宽度再截图，最终视觉证据在02C补齐。
+- 本机全仓 ESLint 0 error / 17 warning，16条原有，新增1条为独立角色context与hook同文件的 react-refresh 提示；不影响编译/运行。前端变更格式已检查。
+- 测试宿主由固定创建时 deadline 改为既有每次 RPC deadline 拦截器，避免长浏览器套件错误超时；生产后端未改。失败快照与stdout增加证明/JWT脱敏，trace/HAR关闭，CI仅上传显式遮挡证明的截图。
+
+上述浏览器内可控权限引擎验证守卫与恢复，不冒充真实授权。独立真实权限结果将在02C单列。

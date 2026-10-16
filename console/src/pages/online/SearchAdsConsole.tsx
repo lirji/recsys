@@ -1,7 +1,7 @@
 import { formatError, showApiError } from '../../api/errors';
 import SandboxSearchAdsConsole from './SandboxSearchAdsConsole';
 import SandboxActionAdsConsole from './SandboxActionAdsConsole';
-import { SANDBOX_CLICK_ENABLED } from '../../config/sandboxActions';
+import { SANDBOX_CLICK_ENABLED, SANDBOX_CONVERSION_ENABLED } from '../../config/sandboxActions';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -413,24 +413,31 @@ export default function SearchAdsConsole() {
     ) : (
       <LegacySearchAdsConsole />
     );
-  if (!SANDBOX_CLICK_ENABLED) return existing;
+  if (!SANDBOX_CLICK_ENABLED && !SANDBOX_CONVERSION_ENABLED) return existing;
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Segmented
-        value={mode}
-        onChange={setMode}
-        options={[
-          {
-            value: 'existing',
-            label:
-              import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true'
-                ? 'CPM Sandbox'
-                : '原搜索广告',
-          },
-          { value: 'click', label: 'CPC / OCPC Sandbox' },
-        ]}
-      />
-      {mode === 'click' ? <SandboxActionAdsConsole /> : existing}
+      <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            {
+              value: 'existing',
+              label:
+                import.meta.env.VITE_SANDBOX_EXPOSURE_ENABLED === 'true'
+                  ? 'CPM Sandbox'
+                  : '原搜索广告',
+            },
+            ...(SANDBOX_CLICK_ENABLED ? [{ value: 'click', label: 'CPC / OCPC Sandbox' }] : []),
+            ...(SANDBOX_CONVERSION_ENABLED ? [{ value: 'conversion', label: 'CPA Sandbox' }] : []),
+          ]}
+        />
+      </div>
+      {mode === 'click' || mode === 'conversion' ? (
+        <SandboxActionAdsConsole key={mode} mode={mode} />
+      ) : (
+        existing
+      )}
     </Space>
   );
 }

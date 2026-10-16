@@ -48,6 +48,8 @@
 
 ### ADV-UI-02B：CPA 交付与两角色业务事件
 
+状态：DONE / PASS，见 [RESULT](RESULT.md)。
+
 依赖：02A共享协议基础，已有 C12；同任务分支连续执行。
 
 1. 增加 CPA visible、业务转化与完整/精简 settlement 适配，严格区分自身费用与资格费用。

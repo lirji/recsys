@@ -16,13 +16,13 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: 'http://127.0.0.1:4186',
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: 1440, height: 900 },
     trace: 'off',
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
   ],
   webServer: {
@@ -32,6 +32,7 @@ export default defineConfig({
     env: {
       VITE_AUTH_MODE: 'legacy',
       VITE_SANDBOX_CLICK_ENABLED: 'true',
+      VITE_SANDBOX_CONVERSION_ENABLED: 'true',
       RECSYS_GATEWAY: info.url,
     },
   },

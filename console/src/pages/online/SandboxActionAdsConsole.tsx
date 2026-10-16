@@ -1,3 +1,6 @@
+import type { ActionMode } from '../../api/sandboxActions';
+import ConversionActorScope from '../../components/adv/ConversionActorScope';
+import SandboxConversionForm from '../../components/adv/SandboxConversionForm';
 import { DeliveryState, PreparationStatus } from '../../api/sandboxActions';
 import { HttpStatusCode } from 'axios';
 import { useEffect, useRef, useState } from 'react';
@@ -38,14 +41,16 @@ import { actionQueue } from '../../exposure/actionReceiptQueue';
 import { exposureEpoch, onExposureRevoked } from '../../exposure/identity';
 import { ACCENTS } from '../../theme/tokens';
 
-const KEY = 'recsys.sandbox.click.delivery.v1';
 interface Intent {
   operationId: string;
   input: SandboxDeliveryInput;
   scope: string;
   createdAt: number;
 }
-function ActionPage() {
+function ActionPage({ mode }: { mode: ActionMode }) {
+  const KEY = `recsys.sandbox.${mode}.delivery.v1`;
+  const conversion = mode === 'conversion';
+  const [conversionItem, setConversionItem] = useState<ActionAdItem | null>(null);
   const identity = useExposureScope(),
     global = useGlobalUser();
   const [form] = Form.useForm<SandboxDeliveryInput>();
@@ -63,7 +68,7 @@ function ActionPage() {
     intentRef = useRef(intent);
   ownerRef.current = identity;
   intentRef.current = intent;
-  const execute = async (value: Intent, mode: 'new' | 'recover' | 'query') => {
+  const execute = async (value: Intent, requestAction: 'new' | 'recover' | 'query') => {
     const owner = ownerRef.current;
     if (!owner || owner.scope !== value.scope || owner.epoch !== exposureEpoch()) return;
     request.current?.abort();
@@ -78,13 +83,14 @@ function ActionPage() {
     const start = performance.now();
     try {
       let result: ActionDelivery;
-      if (mode === 'new')
+      if (requestAction === 'new')
         result = await actionDelivery(
           'put',
           value.operationId,
           value.input,
           owner,
           controller.signal,
+          mode,
         );
       else {
         try {
@@ -94,10 +100,11 @@ function ActionPage() {
             value.input,
             owner,
             controller.signal,
+            mode,
           );
         } catch (e) {
           if (
-            mode !== 'recover' ||
+            requestAction !== 'recover' ||
             !active() ||
             !axios.isAxiosError(e) ||
             e.response?.status !== HttpStatusCode.NotFound
@@ -109,20 +116,22 @@ function ActionPage() {
             value.input,
             owner,
             controller.signal,
+            mode,
           );
         }
-        if (mode === 'recover' && result.state === DeliveryState.PREPARING && active())
+        if (requestAction === 'recover' && result.state === DeliveryState.PREPARING && active())
           result = await actionDelivery(
             'put',
             value.operationId,
             value.input,
             owner,
             controller.signal,
+            mode,
           );
       }
       if (!active()) return;
       setDelivery(result);
-      if (mode !== 'query') setLive(true);
+      if (requestAction !== 'query') setLive(true);
       if (result.state === DeliveryState.COMPLETE)
         history.push(value.input, result, Math.round(performance.now() - start));
     } catch (e) {
@@ -146,6 +155,7 @@ function ActionPage() {
       setError('');
       setHistoryOpen(false);
       setCompareOpen(false);
+      setConversionItem(null);
       history.clear();
     };
     clear();
@@ -221,20 +231,29 @@ function ActionPage() {
     live &&
     !historyOpen &&
     !compareOpen &&
+    !conversionItem &&
     delivery?.state === DeliveryState.COMPLETE;
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
-        title="CPC / OCPC · Sandbox"
+        title={conversion ? 'CPA · Sandbox' : 'CPC / OCPC · Sandbox'}
         accent={ACCENTS.ad}
-        description="有效可见与点击均被接受后，才可能结算；报价不是实收。"
+        description={
+          conversion
+            ? '有效可见与业务转化均被接受后，才可能结算；事件自身费用单独确认。'
+            : '有效可见与点击均被接受后，才可能结算；报价不是实收。'
+        }
         extra={<Button onClick={() => setHistoryOpen(true)}>请求历史</Button>}
       />
       <Alert
         type="info"
         showIcon
         message="仅测试账户 · 五分钟资格"
-        description="创意至少 50% 连续可见 1 秒；点击可先发生。结果由服务端确认，关闭页面不撤销已提交事件。"
+        description={
+          conversion
+            ? '创意至少 50% 连续可见 1 秒；业务转化可先发生。打开转化表单暂停可见计时，关闭后重新实际观测。'
+            : '创意至少 50% 连续可见 1 秒；点击可先发生。结果由服务端确认，关闭页面不撤销已提交事件。'
+        }
       />
       {!identity && (
         <Alert type="warning" showIcon message="等待管理员身份；当前无法提交新交付或回执" />
@@ -346,14 +365,21 @@ function ActionPage() {
         locale={{
           emptyText:
             delivery?.state === DeliveryState.COMPLETE
-              ? '本次没有可交付的 CPC / OCPC 广告'
+              ? `本次没有可交付的 ${conversion ? 'CPA' : 'CPC / OCPC'} 广告`
               : '主动新交付后查看原位置结果',
         }}
         columns={[
           {
             title: '位置 / 创意',
             width: 300,
-            render: (_, item) => <ActionAdCreative item={item} enabled={enabled} />,
+            render: (_, item) => (
+              <ActionAdCreative
+                item={item}
+                enabled={enabled}
+                mode={mode}
+                onConversion={() => setConversionItem(item)}
+              />
+            ),
           },
           {
             title: '准备 / 单次报价',
@@ -364,20 +390,26 @@ function ActionPage() {
                 <Typography.Text>{item.preparation?.status ?? '准备中'}</Typography.Text>
                 <Typography.Text>
                   {item.preparation?.status === PreparationStatus.QUALIFIED
-                    ? `¥${item.preparation.amount} / 次点击`
+                    ? `¥${item.preparation.amount} / ${conversion ? '次转化' : '次点击'}`
                     : '无可计费资格'}
                 </Typography.Text>
               </Space>
             ),
           },
           {
-            title: '可见与点击条件',
+            title: conversion ? '可见条件 / 业务事件' : '可见与点击条件',
             width: 340,
             render: (_, item) =>
               item.preparation?.status === PreparationStatus.QUALIFIED ? (
                 <Space align="start">
-                  <ActionReceiptStatus childId={item.childId} kind="VISIBLE" />
-                  <ActionReceiptStatus childId={item.childId} kind="CLICK" />
+                  <ActionReceiptStatus childId={item.childId} kind="VISIBLE" mode={mode} />
+                  {conversion ? (
+                    <Typography.Text type="secondary">
+                      通过创意下方按钮提交业务事件；仍须广告主 edit 权限。
+                    </Typography.Text>
+                  ) : (
+                    <ActionReceiptStatus childId={item.childId} kind="CLICK" />
+                  )}
                 </Space>
               ) : (
                 '—'
@@ -388,7 +420,7 @@ function ActionPage() {
             width: 280,
             render: (_, item) =>
               item.preparation?.status === PreparationStatus.QUALIFIED && identity ? (
-                <SettlementStatus childId={item.childId} />
+                <SettlementStatus childId={item.childId} mode={mode} />
               ) : (
                 '—'
               ),
@@ -396,6 +428,27 @@ function ActionPage() {
         ]}
       />
       {delivery && <TracePanel raw={delivery} />}
+      <Modal
+        title="记录 Sandbox 业务转化"
+        open={!!conversionItem}
+        onCancel={() => setConversionItem(null)}
+        footer={null}
+        width={640}
+        destroyOnClose
+      >
+        {conversionItem && (
+          <ConversionActorScope>
+            <SandboxConversionForm
+              target={{
+                advertiserId: conversionItem.advertiserId,
+                qualificationId: conversionItem.childId,
+                qualificationToken: conversionItem.preparation?.qualificationToken ?? undefined,
+                expiresAt: conversionItem.preparation?.expiresAt ?? undefined,
+              }}
+            />
+          </ConversionActorScope>
+        )}
+      </Modal>
       <HistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -434,10 +487,10 @@ function ActionPage() {
     </Space>
   );
 }
-export default function SandboxActionAdsConsole() {
+export default function SandboxActionAdsConsole({ mode = 'click' }: { mode?: ActionMode }) {
   return (
     <ExposureScope queue={actionQueue()}>
-      <ActionPage />
+      <ActionPage key={mode} mode={mode} />
     </ExposureScope>
   );
 }

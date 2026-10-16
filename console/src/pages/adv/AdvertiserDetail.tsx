@@ -1,3 +1,5 @@
+import { SANDBOX_CONVERSION_ENABLED } from '../../config/sandboxActions';
+import SandboxConversionPanel from '../../components/adv/SandboxConversionPanel';
 import { showApiError } from '../../api/errors';
 import { useAdvertiserPermissions } from '../../hooks/useAdvertiserPermissions';
 import PermissionNotice from '../../components/adv/PermissionNotice';
@@ -88,6 +90,7 @@ export default function AdvertiserDetail() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader title={`广告主 #${a.advertiserId}`} accent={ACCENTS.ad} description={a.name} />
       <PermissionNotice access={access} />
+      {SANDBOX_CONVERSION_ENABLED && <SandboxConversionPanel advertiserId={advertiserId} />}
       <Card
         title={`广告主 #${a.advertiserId}`}
         extra={

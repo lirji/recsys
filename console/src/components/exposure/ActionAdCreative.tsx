@@ -1,7 +1,7 @@
 import { ActionState, PreparationStatus } from '../../api/sandboxActions';
 import { useSyncExternalStore } from 'react';
 import { Button, Space, Typography } from 'antd';
-import type { ActionAdItem } from '../../api/sandboxActions';
+import type { ActionAdItem, ActionMode } from '../../api/sandboxActions';
 import { actionKey, actionQueue } from '../../exposure/actionReceiptQueue';
 import { useVisibleExposure } from '../../hooks/useVisibleExposure';
 import { useExposureScope } from './ExposureScope';
@@ -19,9 +19,13 @@ const phases: Record<string, string> = {
 export default function ActionAdCreative({
   item,
   enabled,
+  mode = 'click',
+  onConversion,
 }: {
   item: ActionAdItem;
   enabled: boolean;
+  mode?: ActionMode;
+  onConversion?: () => void;
 }) {
   const identity = useExposureScope(),
     queue = actionQueue(),
@@ -41,17 +45,22 @@ export default function ActionAdCreative({
         eligible &&
         p?.qualificationToken &&
         p.expiresAt &&
-        queue.enqueue(item.childId, p.expiresAt, {
-          kind: 'VISIBLE',
-          qualificationToken: p.qualificationToken,
-          visibleDurationMs: duration,
-          minVisibleRatioBps: ratio,
-          pageVisible: true,
-        })
+        queue.enqueue(
+          item.childId,
+          p.expiresAt,
+          {
+            kind: 'VISIBLE',
+            qualificationToken: p.qualificationToken,
+            visibleDurationMs: duration,
+            minVisibleRatioBps: ratio,
+            pageVisible: true,
+          },
+          mode,
+        )
       ),
   );
-  const clicked = queue.get(actionKey(item.childId, 'CLICK'));
-  const closed = queue.settlement(item.childId)?.state;
+  const clicked = queue.get(actionKey(item.childId, 'CLICK', mode));
+  const closed = queue.settlement(item.childId, mode)?.state;
   const expired = !p?.expiresAt || Date.now() >= Date.parse(p.expiresAt);
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
@@ -73,22 +82,28 @@ export default function ActionAdCreative({
       <Typography.Text type="secondary">
         {enabled ? phases[phase] : '只读结果，观测已暂停'}
       </Typography.Text>
-      <Button
-        disabled={!eligible || !!clicked || expired || (!!closed && closed !== ActionState.HELD)}
-        onClick={() =>
-          p?.qualificationToken &&
-          p.expiresAt &&
-          queue.enqueue(item.childId, p.expiresAt, {
-            kind: 'CLICK',
-            qualificationToken: p.qualificationToken,
-            visibleDurationMs: 0,
-            minVisibleRatioBps: 0,
-            pageVisible: false,
-          })
-        }
-      >
-        {clicked ? '点击已记录' : '模拟点击'}
-      </Button>
+      {mode === 'conversion' ? (
+        <Button disabled={!eligible || expired} onClick={onConversion}>
+          记录业务转化
+        </Button>
+      ) : (
+        <Button
+          disabled={!eligible || !!clicked || expired || (!!closed && closed !== ActionState.HELD)}
+          onClick={() =>
+            p?.qualificationToken &&
+            p.expiresAt &&
+            queue.enqueue(item.childId, p.expiresAt, {
+              kind: 'CLICK',
+              qualificationToken: p.qualificationToken,
+              visibleDurationMs: 0,
+              minVisibleRatioBps: 0,
+              pageVisible: false,
+            })
+          }
+        >
+          {clicked ? '点击已记录' : '模拟点击'}
+        </Button>
+      )}
     </Space>
   );
 }
