@@ -94,6 +94,23 @@ public class ReservationService {
         }));
     }
 
+    /** 仅恢复用例同库事务内调用；必须到期才释放，绝不借用主动release提前关闭。 */
+    com.recsys.common.ad.billing.BillingRecovery.Status expireForRecovery(
+            com.recsys.common.ad.billing.BillingReconciliation.Scope scope, UUID id) {
+        BillingRecoveryService.requireTransaction(dataSource());
+        var reservation = repository.find(id, true).orElse(null);
+        if (reservation == null || reservation.prepared().advertiserId() != scope.advertiserId()
+                || !reservation.prepared().budgetDate().equals(scope.budgetDate())) {
+            return com.recsys.common.ad.billing.BillingRecovery.Status.NOT_FOUND;
+        }
+        if (reservation.state() != Reservation.State.HELD) return com.recsys.common.ad.billing.BillingRecovery.Status.ALREADY_TERMINAL;
+        var account = repository.lockAccount(scope.advertiserId(), scope.budgetDate()).orElseThrow();
+        var now = repository.databaseNow();
+        if (now.isBefore(reservation.prepared().expiresAt())) return com.recsys.common.ad.billing.BillingRecovery.Status.NOT_ELIGIBLE;
+        repository.close(reservation, account, now);
+        return com.recsys.common.ad.billing.BillingRecovery.Status.EXPIRED;
+    }
+
     private Reservation closeHeld(Reservation reservation) {
         if (reservation.state() != Reservation.State.HELD) return reservation;
         var prepared = reservation.prepared();

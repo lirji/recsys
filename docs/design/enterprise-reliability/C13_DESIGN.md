@@ -47,9 +47,21 @@ Scope={advertiserId正long,budgetDate严格ISO日期}，trafficClass固定SANDBO
 
 验收：真实PG持久化重建服务、同ID重复/冲突、并发创建/领取、广告主隔离、逐日部分结果、故障退避/耗尽、崩溃后租约接管、旧fence/过期回写拒绝、取消幂等和终态、日结果不可变、报告/检查点原子提交及丢ACK查询；开关默认关闭、迁移缺失/漂移拒绝。回滚停新任务入口并保留表与结果，不删任务；无资金业务回滚。
 
-## C13C待细化
+## C13C正式契约：单目标受控续办与可信调用
 
-C13C：受控原事件重发/到期义务续办、独立可信RPC与offline BillingReconciliationJob。需要明确重发条件/幂等审计、单账户范围与授权，复用原payload/eventId；错误资金或已有坏fact不自动修复。真实PG/Kafka验证恢复后对账追平，不能把broker ACK或进程健康当业务通过。该部分仍是父S13必需范围，不由A替代。
+2026-10-16 在原F12范围冻结。采用一次显式目标的同步短事务命令（批次=1，小于100上限），每个目标的稳定命令结果就是恢复检查点；不新增另一套长任务/租约框架、不自动全账户修复。C13B继续负责多日持久核查。
+
+- RecoveryCommand={commandId UUID, advertiserId正long, budgetDate严格原预算日, family三族, action REPUBLISH/EXPIRE, targetId UUID, reason1～256, trusted actor1～128}。流量固定SANDBOX/CNY。commandId全局唯一并绑定输入；同输入重复返回首次不可变结果，actor只保留首次审计；同ID改内容/跨广告主冲突。查询必须同时匹配广告主。
+- 单次恢复在adDb五秒REQUIRES_NEW短事务内：领取命令唯一键→固定目标锁→必要账户锁→副作用及终态结果原子提交。数据库异常/超时维持未知，调用方只用原ID查询/重试。命令记录含创建/完成时间、actor/reason和固定结果，不存错误原文；未提交PENDING不可见。终态记录DB禁止更新/删除，保留期未知不自动清理。
+- REPUBLISH只处理原账本对应的原Outbox，范围须匹配广告主/预算日。DEAD或PUBLISHED且publishedAt距DB现在至少60秒才可重置READY，原payload/eventId/destination/key不变、fence递增、attempts归零、published_at清空以满足既有READY约束；原事件内容及命令审计保留。READY/SENDING不抢活跃工作。已存在匹配fact返回ALREADY_APPLIED；已有不匹配fact或账本/载荷身份异常返回NEEDS_REVIEW，不改任何历史或补钱。重新领取传输不保证投影完成，必须重新inspect证明追平。
+- EXPIRE只接受指定账户日的既有资格/预占。沿原reservation或quote→账户锁序，持齐锁后读DB时间；尚未到期NOT_ELIGIBLE，已终态ALREADY_TERMINAL，不存在或跨范围NOT_FOUND；真实到期HELD仅原owner释放一次并记录EXPIRED。绝不调用会主动提前释放的release，不复用全局expireOne充当账户日范围恢复。
+- 固定结果枚举REQUEUED/ALREADY_APPLIED/NOT_ELIGIBLE/NEEDS_REVIEW/EXPIRED/ALREADY_TERMINAL/NOT_FOUND。结果表示首次事务的观察与动作，不把新查询结果改写成旧命令因果；后续当前状态由快照查验。
+- 新迁移V018恢复命令表；内部恢复独立reconciliation-recovery-enabled=false，与sandbox/reconciliation共同安装。默认关闭，无自动tick/生产收费操作。
+- 新reconciliation.proto划分只读Snapshot RPC与管理RPC。独立advertiser caller仅可Inspect；独立offline caller可Inspect及C13B create/get/advance/cancel/days、Recover/GetRecovery。caller须不同且不能是通用recsys，nosec缺可信caller仍拒绝。金额全部规范十进制字符串，不直接序列化内部BudgetAccount；三族/范围/时间/计数/版本在双向mapper校验。对外恢复错误映射统一错误目录。
+- recsys-offline新增BillingReconciliationJob，只通过owner RPC，固定命令动作inspect/create/advance/get/cancel/days/recover/get-recovery；每次CLI最多一次有意写RPC，不自动循环重试、选新ID或替换未知结果。actor取可信配置，不取任意CLI伪装主体；用户显式提供稳定UUID和原因。复用现有gRPC依赖/BOM/内部令牌和deadline；无需直连资金库。
+- C13C可拆C1（内部恢复+V018+PG/Kafka）和C2（proto/RPC/offline及安全/真实TCP）交付，两部分均完成父C才DONE。C14直接复用Inspect，advertiser仍须每请求执行严格view归属验证。
+
+验收：三族DEAD/PUBLISHED缺fact恢复经真实Kafka投影后重查追平；等待窗口/活跃租约/已有坏fact/跨范围/重复命令/内容冲突；三族到期与未到期/已捕获不重复释放，原预算日不漂移；提交前故障全部回滚、丢响应查原结果；可信caller矩阵、精确wire双向映射、真实TCP与offline无资金库写入。退回关闭新入口且保留原Outbox排空和到期义务，命令/账本/投影不删除。
 
 ## 文件、验收与回滚
 

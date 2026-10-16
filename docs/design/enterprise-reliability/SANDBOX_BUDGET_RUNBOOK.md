@@ -478,3 +478,7 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 显式安装V017并保存脚本摘要；开启 `sandbox-enabled`、`reconciliation-enabled`、`reconciliation-tasks-enabled` 三项才安装内部任务服务，默认均不因此改变。无需开启新收费。先创建含稳定UUID、广告主、1～31原预算日、原因和可信actor的任务，再每次advance一天；原ID查询可恢复提交未知结果，COMPLETED不代表账平。
 
 30秒租约到期才接管，每日期最多20次领取，失败有1～300秒退避；FAILED需要排查后新建有意任务，不能清零原次数。CANCELLED保留已完成报告，相同取消命令/原因可重试；不能取消COMPLETED/FAILED。报告与审计不可变，暂不自动清理。当前内部无RPC/CLI，等待S13C；关闭入口保留证据，不能以删表作为回退。真实PG与资金回归见ER-S13B_RESULT。
+
+## C13C1：受控恢复内部能力
+
+显式迁移V018后才可开启`recsys.ad.billing.reconciliation-recovery-enabled`，还需sandbox/reconciliation及原三族owner已安装；默认关闭，无自动修复。一次命令仅一个明确原目标；重复必须保留commandId及原内容，提交超时先查原ID。REPUBLISH只续发DEAD或等待60秒以上的PUBLISHED且缺fact原事件，READY/SENDING不抢占；NEEDS_REVIEW不自动改账。EXPIRE按原广告主/预算日和DB到期时间释放既有HELD，不提前释放、不释放CAPTURED。恢复返回REQUEUED只代表进入原relay，需inspect确认fact追平。C2 RPC/offline尚未交付，不能宣称已有远程操作命令。保留恢复审计，不自动清理。

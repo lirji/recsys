@@ -53,3 +53,5 @@ ER-S12C2测试装配：ad-serving增加现有advertiser的`test-support`普通�
 ER-S13A：沿ad owner的现有PostgreSQL/JDBC，对单账户原预算日用REQUIRES_NEW+REPEATABLE_READ+readOnly+5秒截止实现一致核查。逐条READ_COMMITTED可能跨捕获提交读取不一致；锁账户会增加资金写等待，均不选。新增V016账户日索引，不改历史迁移。没有新第三方组件/依赖/版本/调度器；offline可信调用的依赖仅在后续C契约批准后引入。数据源/只读/隔离语义通过真实PG并发验证，不编造容量或RTO/RPO数字。
 
 ER-S13B：沿用adDb的MyBatis-Plus Mapper/XML与现有Jackson。V017追加任务、不可变日结果和审计；同广告主部分唯一索引代替全局分布式锁，领取/回写短事务与RR核查分离。30秒lease和20次有界尝试仅为sandbox技术运行边界；不引入调度框架或自动清理。
+
+ER-S13C：恢复按单目标同步短事务和持久命令结果执行，复用原owner到期规则与Outbox relay，避免新增恢复调度器。V018只保存命令/审计；PUBLISHED最小等待60秒是sandbox防重发风暴的技术边界。C2在offline增加已有recsys-proto与项目已用gRPC client starter依赖边，版本由根BOM统一，复用内部身份/deadline；不新增技术栈或跨库写入。

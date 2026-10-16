@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.ad.persistence.mapper.addb.BillingRecoveryMapper">
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM ad_billing_schema_history WHERE version=18</select>
+    <select id="verifySchema" resultType="map" timeout="5">SELECT command_id,advertiser_id,budget_date,family,action,target_id,reason,actor,status,created_at,completed_at FROM ad_billing_recovery_command LIMIT 0</select>
+    <insert id="insert" timeout="5">
+        INSERT INTO ad_billing_recovery_command(command_id,advertiser_id,budget_date,family,action,target_id,reason,actor)
+        VALUES(#{command.commandId},#{command.advertiserId},#{command.budgetDate},#{command.family},#{command.action},#{command.targetId},#{command.reason},#{command.actor})
+        ON CONFLICT DO NOTHING
+    </insert>
+    <select id="find" resultType="com.recsys.ad.persistence.mapper.addb.BillingRecoveryMapper$CommandRow" timeout="5">
+        SELECT command_id,advertiser_id,budget_date,family,action,target_id,reason,actor,status,created_at,completed_at
+        FROM ad_billing_recovery_command WHERE command_id=#{commandId} AND advertiser_id=#{advertiserId}
+    </select>
+    <update id="complete" timeout="5">
+        UPDATE ad_billing_recovery_command SET status=#{status},completed_at=clock_timestamp()
+        WHERE command_id=#{command.commandId} AND advertiser_id=#{command.advertiserId} AND status='PENDING'
+    </update>
+    <select id="lockOutbox" resultType="java.util.UUID" timeout="5" useCache="false">
+        SELECT o.event_id FROM <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.outbox"/> o
+        JOIN <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.ledger"/> l ON l.ledger_id=o.event_id
+        WHERE o.event_id=#{command.targetId} AND l.advertiser_id=#{command.advertiserId} AND l.budget_date=#{command.budgetDate} FOR UPDATE OF o
+    </select>
+    <sql id="obligationMatches"><choose>
+        <when test="family.name() == 'CLICK'">
+            EXISTS(SELECT 1 FROM ad_click_settlement s JOIN ad_click_quote q ON q.quote_id=s.qualification_id
+                WHERE s.qualification_id=l.qualification_id AND q.advertiser_id=l.advertiser_id AND s.budget_date=l.budget_date
+                  AND s.state='CAPTURED' AND s.ledger_id=l.ledger_id AND q.amount=l.amount)
+        </when>
+        <when test="family.name() == 'CONVERSION'">
+            EXISTS(SELECT 1 FROM ad_conversion_settlement s JOIN ad_conversion_quote q ON q.quote_id=s.qualification_id
+                WHERE s.qualification_id=l.qualification_id AND s.advertiser_id=l.advertiser_id AND s.budget_date=l.budget_date
+                  AND s.state='CAPTURED' AND s.ledger_id=l.ledger_id AND q.amount=l.amount)
+        </when>
+        <otherwise>
+            EXISTS(SELECT 1 FROM ad_budget_reservation r WHERE r.reservation_id=l.qualification_id
+                AND r.advertiser_id=l.advertiser_id AND r.budget_date=l.budget_date AND r.state='CAPTURED' AND r.amount=l.amount)
+        </otherwise>
+    </choose></sql>
+    <select id="target" resultType="com.recsys.ad.persistence.mapper.addb.BillingRecoveryMapper$TargetRow" timeout="5" useCache="false">
+        SELECT l.ledger_id event_id,l.qualification_id,l.amount,o.delivery_state,o.destination,o.partition_key,o.payload_json,
+            <include refid="obligationMatches"/> obligation_matches,f.event_id IS NOT NULL fact_present,
+            coalesce(f.qualification_id=l.qualification_id AND f.advertiser_id=l.advertiser_id
+                AND f.budget_date=l.budget_date AND f.amount=l.amount,false) fact_matches,f.payload_hash fact_hash
+        FROM <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.ledger"/> l
+        LEFT JOIN <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.outbox"/> o ON o.event_id=l.ledger_id
+        LEFT JOIN <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.fact"/> f ON f.event_id=l.ledger_id
+        WHERE l.ledger_id=#{command.targetId} AND l.advertiser_id=#{command.advertiserId} AND l.budget_date=#{command.budgetDate}
+    </select>
+    <update id="requeue" timeout="5">
+        UPDATE <include refid="com.recsys.ad.persistence.mapper.addb.ReconciliationMapper.outbox"/>
+        SET delivery_state='READY',attempts=0,fence=fence+1,available_at=clock_timestamp(),last_error=NULL,published_at=NULL
+        WHERE event_id=#{targetId} AND (delivery_state='DEAD' OR
+            (delivery_state='PUBLISHED' AND published_at&lt;=clock_timestamp()-#{waitSeconds}*interval '1 second'))
+    </update>
+</mapper>

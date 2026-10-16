@@ -141,6 +141,22 @@ public class ConversionSettlementService {
             });
         });
     }
+    /** 恢复命令和到期效果共用同库事务；quote→账户锁序与原捕获路径一致。 */
+    BillingRecovery.Status expireForRecovery(BillingReconciliation.Scope scope, UUID id) {
+        BillingRecoveryService.requireTransaction(dataSource());
+        if (!repository.lockQuote(id)) return BillingRecovery.Status.NOT_FOUND;
+        var subject = repository.owner(id);
+        var quote = quotes.find(id, subject).orElseThrow();
+        var current = repository.find(id, subject).orElse(null);
+        if (current == null || quote.advertiserId() != scope.advertiserId()
+                || !current.prepared().budgetDate().equals(scope.budgetDate())) return BillingRecovery.Status.NOT_FOUND;
+        if (current.state() != State.HELD) return BillingRecovery.Status.ALREADY_TERMINAL;
+        var account = originalAccount(quote, current);
+        var now = accounts.databaseNow();
+        if (now.isBefore(quote.expiresAt())) return BillingRecovery.Status.NOT_ELIGIBLE;
+        close(quote, current, account, CloseReason.EXPIRED, now);
+        return BillingRecovery.Status.EXPIRED;
+    }
     /** 单笔短事务回收；多执行器通过同序quote行锁SKIP LOCKED分工。 */
     public boolean expireOne() {
         return Boolean.TRUE.equals(transactions.execute(tx->{
