@@ -1,6 +1,6 @@
 # ER-S15C2：LIVE/HISTORY真实Seen消费
 
-状态：DONE / PASS（本片实现及本地必要验收）；Git交付待前置CI终态与CI预算确认。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。基线C1/main `d05d23c0432243ae0d985edba963ffdc9aa85db6`，原分支`feat/er-s15c-seen-recovery`；证据`.dev/codex-flow-reliability/round-6ebaf7da/`。设计679274fd与C1实现提交保持独立。
+状态：DONE / PASS（本片实现及本地必要验收）；实现提交a2ca663c保留独立；本轮按明确授权完成CI预算修正并正常交付，精确Git/新CI事实见delivery.json/ci-snapshot.json。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。基线C1/main `d05d23c0432243ae0d985edba963ffdc9aa85db6`，原分支`feat/er-s15c-seen-recovery`；证据`.dev/codex-flow-reliability/round-6ebaf7da/`。设计679274fd与C1实现提交保持独立。
 
 ## 实现和恢复核对
 
@@ -8,7 +8,7 @@
 
 新增SeenStream绑定三流配置，VersionedSeenItemsConsumer装配独立LIVE/HISTORY产品listener；旧入口与新版共用SeenRecordListener真实手动ACK路径。新版严格复用LegacyBehaviorCodec并检查UTF8、key与来源，原wire/time不变。各流独立控制、Admin、组和恢复服务，停止器按真实group映射；隔离查询和所有指标按stream区分，恢复操作先核对流再领取预算。四开关均false，实际实现后撤掉C1未实现开关拒绝；单开关只启动本流，全关无Seen连接。
 
-继续复用C1 PG持久预算/租约/fence/命令/起点登记；事务外SADD→PG APPLIED→ACK，NO_EFFECT/QUARANTINED分别持久。C1 engine-seen V001及其他旧迁移不改，无新schema/第三方依赖/基础设施/CI配置。behavior已有engine test-support依赖承担跨模块验收，engine没有反向依赖behavior。Replica说明仅覆盖实际投影，保留读失败空集语义并去除日志中的业务ID/原错误文本。
+继续复用C1 PG持久预算/租约/fence/命令/起点登记；事务外SADD→PG APPLIED→ACK，NO_EFFECT/QUARANTINED分别持久。C1 engine-seen V001及其他旧迁移不改，无新schema/第三方依赖/基础设施；唯一CI修正是明确批准的behavior门禁超时12→20分钟。behavior已有engine test-support依赖承担跨模块验收，engine没有反向依赖behavior。Replica说明仅覆盖实际投影，保留读失败空集语义并去除日志中的业务ID/原错误文本。
 
 ## 已执行验证与失败记录
 
@@ -44,12 +44,14 @@
 
 分离只读审查由同一Agent实施，不声称第二评审者。检查实际listener/ACK顺序、参数作用域、SQL/owner、默认装配、恢复/保留边界、测试替身范围与文档事实；最终结果见`independent-review.json`。持久化边界657产品Java/96 Mapper XML/45历史SQL及公开错误检查PASS；Code Hygiene无阻断，见code-hygiene.json；状态IMPLEMENTATION_COMPLETE_WITH_LIMITATIONS。没有配置统一Java formatter或独立Java静态分析器，人工检查与边界脚本不冒称这些工具已运行。
 
-C1公共实现因参数化重新验证；无变化旧HTTP/归因/错误/Flink相关22项与DTO2项按指纹复用C1有效证据。自然S15A、B1/B2及非法源整改有效旧证据保留；没有重复资金/午夜/自然fixture整改或验收。S15A原17项产品/测试/fixture指纹未变，旧workflow在B1阶段已有演进、本轮不把历史workflow摘要相同作为复用前提；A01～A10有效证据复用。B01～B12及B2整改由本轮行为门禁重验，C01～C18全适用项通过。S15本地原范围已齐，父S15仍待最终源码CI终态核对，不把共享启用或S19列入已完成。
+C1公共实现因参数化重新验证；无变化旧HTTP/归因/错误/Flink相关22项与DTO2项按指纹复用C1有效证据。自然S15A、B1/B2及非法源整改有效旧证据保留；没有重复资金/午夜/自然fixture整改或验收。S15A原17项产品/测试/fixture指纹未变，旧workflow在B1阶段已有演进、本轮不把历史workflow摘要相同作为复用前提；A01～A10有效证据复用。B01～B12及B2整改由本轮行为门禁重验，C01～C18全适用项通过。S15原A/B/C实施及已批准必要验收已齐，父S15记DONE/PASS；新源码CI状态独立登记，尚未取得终态不得写远程全绿。共享启用、S19及全历史重建不在已完成范围。
 
 所有开关默认关闭，无共享Seen/资金启用、业务数据访问、共享容器重启、部署或新worktree。初始化耗尽保持不可变FAILED及排他占有，owner另行处置，没有自动修复入口；已知record可RESTORE，但Kafka仅存原文且本库无record的另组全量重建没有入口。B2 ALREADY_CAPTURED/PUBLISHED不等于重新发送。非法/漂移/保留缺口单列，lag=0与PG APPLIED不是Redis历史完整证明。
 
 ## Git与CI
 
-复用原任务分支，设计/C1提交不改历史；本片创建独立完整逻辑提交，CI预算提案若获批另作单一CI逻辑提交，正常ff合并push前需前置CI38958960102精确d05d23c0终态。当前7门禁成功、build运行中，不取消或重跑。现有行为CI限时12分钟，本轮完整本地13分05秒、前置C1 job11分48秒；仅12→20分钟的单行补丁已备于ci-timeout-proposal.patch，因原边界禁止未批准CI修改，正等待用户单独确认，CI文件尚未修改。实际交付SHA和新CI绑定写`delivery.json`、`ci-snapshot.json`，不能拿前置CI替代本片源码CI。
+复用原任务分支，设计/C1提交不改历史；C2独立提交a2ca663c95a6c0e9a9278a53f28baee82d7114bb的32路径blob与验证指纹一致。前置CI38958960102精确d05d23c0已completed/success、8/8成功，恢复后再次在线核实，见preceding-ci-before-delivery.json；未取消或重跑。
 
-保护原用户改动和CODEX_PROGRESS历史正文；所有.dev/target保留，不提交运行材料、不清理。回退关闭对应消费/恢复，保留迁移/审计/位点，旧二进制不得带旧吞错consumer重入组。本回合完成后返回父协调者，下一片S16，之后S17～21；S22～25暂停。
+完整本地13分05秒超过原CI12分钟，前置C1 behavior job已用11分48秒。用户请求2728fdeb明确批准仅behavior-reliability-gate超时12→20分钟，已单独落实，原产品租约/测试断言和全部其他job/验证步骤不变。Ruby YAML解析、结构逐项比较、精确单行diff检查PASS，见ci-static-check.json；无源码变化，不重跑83项。CI修正及必要说明另作独立逻辑提交，不改写a2ca663c。实际ff/push完整SHA和新CI绑定写delivery.json、ci-snapshot.json，不能拿前置CI替代新源码CI结论。
+
+保护原用户改动和CODEX_PROGRESS历史正文；所有.dev/target保留，不提交运行材料、不清理。回退关闭对应消费/恢复，保留迁移/审计/位点，旧二进制不得带旧吞错consumer重入组。本回合完成后返回父协调者，下一回合C16正式设计，之后S16～21；S22～25暂停。

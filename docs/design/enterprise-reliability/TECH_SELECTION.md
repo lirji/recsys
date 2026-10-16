@@ -81,7 +81,7 @@ B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shar
 | 持久隔离/恢复 | BUILD有限域能力，REUSE_EXISTING engine primary PG/MyBatis XML/显式版本SQL；独立engine-seen owner history | 仅内存计数不能跨退出；额外DLT增加投递/审计窗口；不用通用任务平台。每条消费PG写、原文和审计增长，未测生产容量 | S15C1 |
 | Seen效果 | REUSE_EXISTING StringRedisTemplate / seen:{user} SADD，不设TTL、不新建缓存层 | 业务eventId Inbox不能证明Redis集合还在；不将原消息hash当业务ID | 已有，C1修确认、C2接新版 |
 | 消费起点 | BUILD有界初始化审计，复用Kafka Admin现有API；旧组ADOPT、新组EARLIEST_RETAINED、新分区单独登记；运行reset=none | latest会跳过预发布事件；无条件earliest无法区分offset过期。增加一次受控登记操作，不运行共享迁移 | S15C1 |
-| 故障验证 | REUSE_EXISTING Testcontainers、PG16、apache/kafka:3.7.1、redis:7-alpine，独占临时实例 | 不用Mock/测试Sink替代产品Seen，不改CI配置；单节点不证明副本容灾 | S15C1/C2 |
+| 故障验证 | REUSE_EXISTING Testcontainers、PG16、apache/kafka:3.7.1、redis:7-alpine，独占临时实例 | 不用Mock/测试Sink替代产品Seen；CI仅用户批准的behavior超时12→20分钟，单节点不证明副本容灾 | S15C1/C2 |
 
 版本来自Boot3.2.5 BOM及实际engine测试classpath，Kafka client3.6.2、Spring Data Redis3.2.5/Lettuce6.3.2.RELEASE一致；本机3.1.4 JAR API已核查。dev-infra Redis声明redis:7-alpine，只读核对未操作共享实例。官方3.1.4错误处理/容器和Kafka3.6.2配置、Redis SADD依据及2～3选项比较统一见[C15_DESIGN](C15_DESIGN.md) C-F/C-D；不新增依赖边/版本、端口、账号或密钥。完整恢复仍受Kafka/PG原文保留与Redis数据丢失影响，生产RTO/RPO及容量UNVERIFIED。
 

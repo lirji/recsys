@@ -2,7 +2,7 @@
 
 ## 当前状态与范围
 
-父片 **ER-S15=IN_PROGRESS**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：C15A设计与S15A实现已交付；S15A本地108/16/462项及远程CI38923751782全部通过，详见[ER-S15A_RESULT](ER-S15A_RESULT.md)。回合347abae9完成S15B1原子接受/重复CLICK修复/两流发送与审计重放，本地25项新验收+16项回归PASS，见[ER-S15B1_RESULT](ER-S15B1_RESULT.md)。S15B2显式历史清单/审计取消/真实报告和旧入口兼容已本地验收，完整门禁43项+补充24项PASS，见[ER-S15B2_RESULT](ER-S15B2_RESULT.md)；父B完成，C1旧Seen已交付，C2新版产品及最终完整行为83项已PASS；当前父S15保持IN_PROGRESS，待最终源码CI和Git交付核对。
+父片 **ER-S15=DONE / PASS（实施与已批准必要验收）**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：C15A设计与S15A实现已交付；S15A本地108/16/462项及远程CI38923751782全部通过，详见[ER-S15A_RESULT](ER-S15A_RESULT.md)。回合347abae9完成S15B1原子接受/重复CLICK修复/两流发送与审计重放，本地25项新验收+16项回归PASS，见[ER-S15B1_RESULT](ER-S15B1_RESULT.md)。S15B2显式历史清单/审计取消/真实报告和旧入口兼容已本地验收，完整门禁43项+补充24项PASS，见[ER-S15B2_RESULT](ER-S15B2_RESULT.md)；父B完成，C1旧Seen已交付，C2新版产品及最终完整行为83项已PASS；A/B/C必要验收全部满足。C2本地a2ca663c保留独立，前置C1 CI8/8成功；本轮仅按明确授权修正behavior CI超时12→20分钟并完成正常交付，精确Git/新CI事实见round-6ebaf7da/delivery.json与ci-snapshot.json。新CI未终态不得宣称远程全绿。
 
 用户持续授权 S15～S21 分轮正常提交/合并/push，每回合只完成一个最小纵向片或必要设计门禁。S22～S25 暂停。仅 Sandbox/独占组件验证；不部署、不启用共享资金、不重启共享基础设施。原目录任务分支，无额外 worktree；11 个保护文件及原 C15A 草案始终保留。
 
@@ -38,4 +38,4 @@ B2回合8395c172完成显式有界历史清单、公平逐项续办、审计取�
 
 ## C2新版实现回合（6ebaf7da）
 
-在C1已交付d05d23c0上复用原分支，接入LIVE/HISTORY独立真实listener和按流控制/恢复/指标；原codec、三流确认及默认关闭契约保持。真实PG/Kafka/Redis专项已证明B2原history捕获/可靠发布到产品HISTORY、Redis和Replica读模型，C01～C18公共与新版完整门禁83项全部PASS，见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。原A源码指纹/有效A01～A10与B1/B2/整改已核对，本地原S15范围已齐；父片仍待新源码CI终态与实际交付核实后关闭，S19不在本片内。
+在C1已交付d05d23c0上复用原分支，接入LIVE/HISTORY独立真实listener和按流控制/恢复/指标；原codec、三流确认及默认关闭契约保持。真实PG/Kafka/Redis专项已证明B2原history捕获/可靠发布到产品HISTORY、Redis和Replica读模型，C01～C18公共与新版完整门禁83项全部PASS，见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。原A源码指纹/有效A01～A10与B1/B2/整改已核对，本地原S15范围已齐；父片按原范围DONE/PASS；实际交付和新CI状态单列，不把共享启用、全历史完整、生产能力或S19标为完成。下一回合C16正式设计，之后S16～21，S22～25暂停。

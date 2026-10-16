@@ -1,12 +1,12 @@
-# 当前任务：ER-S15C2 LIVE/HISTORY真实Seen链路
+# 当前任务：ER-S15C2 / S15交付收尾
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式协议同目录`C15_DESIGN.md` C15C。回合证据`.dev/codex-flow-reliability/round-6ebaf7da/`，请求6ebaf7da-ee0c-4646-acd1-e0ab5d67a673。原目录feat/er-s15c-seen-recovery，基线/main/origin-main=d05d23c0432243ae0d985edba963ffdc9aa85db6；C2实现与验收完成，实际Git动作见本回合delivery.json。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约/结果：同目录`C15_DESIGN.md`、`ER-S15C2_RESULT.md`、`ER-S15_RESULT.md`。恢复与交付事实：`.dev/codex-flow-reliability/round-6ebaf7da/{handoff.json,delivery.json,ci-snapshot.json}`。本次恢复请求2728fdeb-0114-4968-bc8e-9ce2189902df，沿原目录/原feat/er-s15c-seen-recovery交付，不新worktree。
 
-C1最终源/验收/11保护核对通过，未知recordId已有NOT_FOUND，真实PG回归PASS，无产品整改。C2独立LIVE/HISTORY真实listener和三流恢复/控制/指标参数化已完成；B2原history→Kafka→产品HISTORY→Redis→Replica通过。最终完整behavior-reliability 83项/14类PASS，0失败/错误/跳过，13分05秒；session68719已exit0，没有本地运行中测试。见full-behavior-result.json/final-reports/source-fingerprints.json，22项被测源码冻结；不要重复运行。分离只读审查/静态/hygiene无阻断，formatter与独立Java静态分析未配置。保护11/旧迁移fixture37/历史正文一致，旧自然/资金/午夜有效证据复用。
+S15A/B/C原必要实施及验收全部PASS，父S15 DONE；C2完整83项/14类、零失败错误跳过、13分05秒。22项源码与a2ca663c提交blob核对一致，83项有效结果复用，不重复运行。11保护、37项旧迁移/fixture及下方历史正文保持。C1未知recordId回归确认已有NOT_FOUND，无产品整改。前置C1 CI38958960102精确d05d23c0已8/8成功并于本轮在线复核。
 
-下一步：前置CI38958960102精确d05d23c0当前7/8成功、build运行中，推送前必须终态；当前未取消/重跑。完整本地13分05秒超过现有行为CI12分钟，单行12→20分钟提案ci-timeout-proposal.patch已向用户请求单独确认（原边界禁止未批准CI配置修改），尚无答复、尚未改CI，不得把等待当批准。32路径允许清单delivery-paths.json及暂存blob核对PASS，保护内容不在暂存；实际提交状态见delivery.json。已授权C2本地逻辑提交继续完成；CI提案批准后仅落实该单行并核验，保持独立CI逻辑提交；前置CI终态后正常ff/push→登记新CI并返回父协调者。C2本地DONE/PASS，父S15仍IN_PROGRESS等待最终CI/实际交付，不把本地成功当远程成功。
+用户已明确批准仅behavior-reliability-gate超时12→20分钟；仅该行及必要交付说明独立提交，不改写a2ca663c。YAML与结构逐项比较PASS，产品租约/断言和其他job不变。正常ff/push和新CI精确SHA/run/status以delivery.json/ci-snapshot.json为准：没有实际证据不得重推或声称远程全绿。无本地运行中产品/测试操作，远程CI若运行中先查询，不取消。交付后返回父协调者；下一回合C16正式设计，之后S16～21；S22～25暂停。
 
-保护原用户改动、历史正文、.dev/target、已发布迁移及fixture；不部署/共享启用/共享数据访问/共享容器重启，不新worktree，不stash/reset/clean/强推，不递归codex-flow。初始化耗尽保持FAILED/owner，无自动解占用；Redis历史全量重建和生产容量未知。下一业务片S16，后续S17～21；S22～25暂停。运行/CI状态见active-operation.json与preceding-ci-latest.json。
+原用户改动、.dev/target、旧迁移及fixture保留；不部署/共享启用/共享数据访问/共享容器重启，不stash/reset/clean/强推或递归codex-flow。初始化耗尽保持FAILED/owner，无自动解占用；Redis全历史重建、生产容量/RTO/RPO未知；完整已实现能力与测试替身边界见结果文件。
 
 ---
 

@@ -432,14 +432,14 @@ SADD重复安全依赖同一 `seen:{user}` 集合；APPLIED不是可重建的全
 
 ### C-I：文件边界与有界实施顺序
 
-原ER-S15C保留为父片，新增两个串行子片；设计提交与实现提交独立，下一回合复用`feat/er-s15c-seen-recovery`。无新worktree、CI配置修改或部署。
+原ER-S15C保留为父片，新增两个串行子片；设计提交与实现提交独立，下一回合复用`feat/er-s15c-seen-recovery`。无新worktree或部署；CI只允许本回合明确批准的behavior门禁超时12→20分钟。
 
 | 子片 | 可观察闭环 / 文件（engine主源码包`com.recsys.recengine`） | 依赖与验收 |
 |---|---|---|
 | ER-S15C1 | 旧Seen可靠消费、暂停、持久隔离及命令恢复。修改`filter/SeenItemsConsumer.java`接真实record+ACK并消除吞错；新增`filter/seen/SeenRecord.java`、`SeenMessageDecoder.java`、`SeenProjectionService.java`、`SeenRecoveryRepository.java`、`SeenRecoveryService.java`、`SeenConsumerConfiguration.java`、`SeenConsumerErrorHandler.java`、`SeenOffsetInitializer.java`；primary `SeenRecoveryMapper.java`及`mapper/recengine/primary/SeenRecoveryMapper.xml`；engine-seen V001；application.yml只增加默认false与明确配置说明。 | C15C门禁；C01～C12/C15～C18适用旧流部分。必须真实旧listener+PG+Kafka+Redis，含初始化、毒消息重放、持久次数/退出恢复；不是先搭未接入的仓储层。 |
 | ER-S15C2 | 新增`filter/seen/VersionedSeenItemsConsumer.java`两listener复用C1，live/history独立组与配置；修改ReplicaSeenItemsSource/SeenItemsSource及配置历史注释；补全部产品与受影响回归。 | C1；C01～C18全部，特别live/history预发布/故障/重平衡与history实际集合；不改Flink产品或behavior Outbox。 |
 
-测试新增在engine `src/test/java/com/recsys/recengine/filter/seen/`：`SeenRecoveryPostgresTest`、`SeenRecoveryKafkaRedisTest`、`SeenConsumerConfigurationTest`、`SeenRecoveryProcessMain`（只测试的独立JVM入口）及最小`SeenRecoveryFixture`。修改原LegacySeenCompatibilityTest以适配方法签名且保留7/8字段、长整数、16次调用断言；测试必须不削弱原契约。沿现有Testcontainers PG16、apache/kafka:3.7.1、redis:7-alpine，独占随机端口/topic/group/schema；不读共享数据。test group沿behavior-reliability，下一片不改CI配置即进入原门禁。如实现发现实际需要改边界，先补有界契约，不能顺手重构资金或fixture。
+测试新增在engine `src/test/java/com/recsys/recengine/filter/seen/`：`SeenRecoveryPostgresTest`、`SeenRecoveryKafkaRedisTest`、`SeenConsumerConfigurationTest`、`SeenRecoveryProcessMain`（只测试的独立JVM入口）及最小`SeenRecoveryFixture`。修改原LegacySeenCompatibilityTest以适配方法签名且保留7/8字段、长整数、16次调用断言；测试必须不削弱原契约。沿现有Testcontainers PG16、apache/kafka:3.7.1、redis:7-alpine，独占随机端口/topic/group/schema；不读共享数据。test group沿behavior-reliability，继续原门禁命令；完整验收13分05秒后，用户于2728fdeb明确批准仅将该job超时12→20分钟。如实现发现实际需要改边界，先补有界契约，不能顺手重构资金或fixture。
 
 每片依次：核对设计/保护/前置CI→实现一条纵向闭环→真实组件负例/恢复窗口→受影响回归→分离只读验证/静态与文档→独立逻辑提交。C1实现验证完成后按父安排连同本设计正常ff合并push；C2再按原交付规则推进。未完成C2不得将父S15C/S15记DONE。
 
@@ -473,6 +473,6 @@ SADD重复安全依赖同一 `seen:{user}` 集合；APPLIED不是可重建的全
 
 原C01～C18和C1初始化所有权/锁序/多PAUSED协议不变。C2新增SeenStream固定配置、VersionedSeenItemsConsumer的LIVE/HISTORY实例、SeenRecordListener共用ACK路径；control/offset initializer/recovery按流独立，mapper隔离查询和指标带stream，错误处理器按group归属停止。配置见BEHAVIOR_EVENTS_RUNBOOK，所有开关仍false；实际实现后才撤除C1对未实现新版开关的拒绝。
 
-新流使用原LegacyBehaviorCodec并验证UTF8、key与逻辑来源。两流首次消费前预发布消息、真实Redis暂停/错误类型恢复、同eventId不同offset、独立JVM SADD/PG后退出、两consumer重平衡、保留缺口/Redis丢集合及B2原history真实链路在C2验证，结果与限制见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。C1 V001未改，未新增迁移/依赖/CI配置；Flink仍只旧流，S19独立。
+新流使用原LegacyBehaviorCodec并验证UTF8、key与逻辑来源。两流首次消费前预发布消息、真实Redis暂停/错误类型恢复、同eventId不同offset、独立JVM SADD/PG后退出、两consumer重平衡、保留缺口/Redis丢集合及B2原history真实链路在C2验证，结果与限制见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。C1 V001未改，未新增迁移/依赖；CI仅按明确授权调整behavior门禁超时12→20分钟，其他job/步骤不变；Flink仍只旧流，S19独立。
 
 父局部record(UUID)疑点已由真实PG回归核对：rawRecord.require将未知ID变为固定NOT_FOUND，未出现NPE，无需产品整改。初始化耗尽仍不可变FAILED且保留占有，owner另行受控处置；没有自动解占用或自动全历史重建入口。

@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合6ebaf7da执行ER-S15C2。基线d05d23c0及C1最终源/测试/11保护已核对；父局部NOT_FOUND意见以真实回归核验。前置CI38958960102运行中，推送前查终态。证据`.dev/codex-flow-reliability/round-6ebaf7da/`；C2本地DONE/PASS，交付等待前置CI终态及CI预算确认；父S15未关闭，S22～25暂停。
+2026-10-17 回合6ebaf7da完成ER-S15C2；恢复请求2728fdeb明确批准仅behavior CI超时12→20分钟。83项/14类完整PASS，A/B/C原S15必要验收已齐，父S15 DONE/PASS。前置C1 CI38958960102精确d05d23c0已8/8成功。Git和新CI实际状态单列于`.dev/codex-flow-reliability/round-6ebaf7da/{delivery,ci-snapshot}.json`，新CI未终态不宣称全绿；S22～25暂停。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -48,7 +48,7 @@
 | ER-S13C | ER-S13B、C13C已冻结 | 原F12受控续办、可信RPC及offline BillingReconciliationJob | C1/C2均通过；[完整验收](ER-S13_RESULT.md) | no | DONE |
 | ER-S13 | ER-S06、ER-S12 | 原F12完整对账与恢复；A/B/C均必需 | A/B/C均完成；[完整验收](ER-S13_RESULT.md) | no | DONE |
 | ER-S14 | ER-S13、C14五维规划/独立复审PASS | 原F13 Sandbox只读资金报表，详见C14_DESIGN | HTTP/PG/RPC13项、真实view-only授权、前端246项、双配置浏览器8项及截图；见ER-S14_RESULT | no | DONE |
-| ER-S15 | ER-S06、ER-S08 | 原 F14：自然 Outbox + 旧 BehaviorService + 适用行为消费者；A/B/C 全部必需 | DB 成功 broker 失败、重复/崩溃/恢复后的下游效果；PG/Kafka/适用 Redis，见 [ER-S15_RESULT](ER-S15_RESULT.md) | no | IN_PROGRESS |
+| ER-S15 | ER-S06、ER-S08 | 原 F14：自然 Outbox + 旧 BehaviorService + 适用行为消费者；A/B/C 全部必需 | DB 成功 broker 失败、重复/崩溃/恢复后的下游效果；PG/Kafka/适用 Redis，见 [ER-S15_RESULT](ER-S15_RESULT.md) | no | DONE |
 | ER-D0/C15A | ER-S06、ER-S08 | CONTRACTS C15 / C15_DESIGN；自然已接受事件发送的正式设计门禁 | 原源码/契约、范围覆盖、文件边界和 A01～A10 核验 PASS；仅设计，见 ER-S15_RESULT | no | DONE |
 | ER-S15A | ER-D0/C15A | behavior 自然 Outbox V002、Mapper、relay/worker/配置；不改旧行为 | A01～A10 PASS；自然108项/行为16项，真实PG/Kafka+进程退出；[验收](ER-S15A_RESULT.md)，fixture不代产品消费者 | no | DONE |
 | ER-D0/C15B | ER-S15A | 旧事件身份、原子写、CLICK重复修复/历史恢复/开关与消费者边界正式冻结 | D-B01～D-B09设计PASS；[结果](ER-D0-C15B_RESULT.md)，产品验收B01～B12未执行 | no | DONE |
@@ -70,7 +70,7 @@
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。
 
 
-当前恢复入口：C1已在round-282d2b60通过必要验收，Git交付/CI读取该目录delivery.json与ci-snapshot.json；原任务分支及设计提交保留。当前C2本地DONE/PASS，详见round-6ebaf7da；父S15本地A/B/C必需验收已齐，仍待最终源码CI与Git交付核对，本回合完成交付后返回父协调者，不递归启动后续轮次。
+当前恢复入口：C1与C2及原A/B必要验收均PASS，父S15按原范围DONE。C2实现a2ca663c与设计/C1提交独立，CI预算单行修正另作逻辑提交；本回合实际ff/push和新CI状态读取round-6ebaf7da/delivery.json、ci-snapshot.json。完成后返回父协调者，下一回合C16正式设计，之后S16～21；不递归启动下一片。
 
 ## 当前有界整改 ER-CI-FIX-01（2026-10-17）
 
@@ -140,6 +140,6 @@
 - [x] 未知recordId真实PG接口回归；已有NOT_FOUND护栏不重复整改。
 - [x] 三流参数化与LIVE/HISTORY严格解码、独立产品listener。
 - [x] C01～C18适用真实验收及behavior→engine测试方向的原history全链路。
-- [ ] 分离审查/文档/保护/CI终态/逻辑提交/ff/push/新CI。
+- [x] 分离审查/文档/保护/前置CI终态/本地逻辑提交；正常ff/push与新CI精确状态见delivery.json/ci-snapshot.json。
 
-本回合最终完整门禁83项/14类PASS，详见full-behavior-result.json，22项被测源码冻结。前置CI38958960102仍build运行中，其他7门禁成功；不取消。现有行为CI12分钟，本地完整13分05秒；单行12→20分钟提案等待用户批准，未修改CI。分离审查与保护/链接/静态通过；Git实际动作以本回合delivery.json为准；没有远程核对证据前不能报已push。
+本回合最终完整门禁83项/14类PASS，详见full-behavior-result.json，22项被测源码冻结。恢复核对11保护/37旧迁移fixture/历史正文与83项XML一致；前置C1 CI8/8成功。请求2728fdeb已明确批准behavior CI超时12→20分钟；仅此单行，YAML/语义逐项比对及diff PASS，不重复产品测试。C2独立提交a2ca663c保留，CI修正/文档另作逻辑提交；Git/新CI实际动作以本回合delivery.json/ci-snapshot.json为准。
