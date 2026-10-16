@@ -12,6 +12,8 @@ import java.util.ArrayList;
 public class ReconciliationService {
     private final ReconciliationRepository repository;
     private final TransactionTemplate transactions;
+    /** 持久任务必须核查同一个owner，禁止将另一库的快照保存到本任务。 */
+    javax.sql.DataSource dataSource() { return repository.dataSource(); }
     public ReconciliationService(ReconciliationRepository repository,TransactionTemplate transactions) {
         if(!(transactions.getTransactionManager() instanceof DataSourceTransactionManager manager)
                 || manager.getDataSource()!=repository.dataSource() || !manager.isEnforceReadOnly()

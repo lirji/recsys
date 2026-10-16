@@ -472,3 +472,9 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 每次只核验指定广告主和原预算日，资金BALANCED不等于投影CAUGHT_UP。pending/DEAD/最老创建时间解释传输积压；PUBLISHED仍可能缺fact。0元也必须有相应事件笔数，due-but-held仍属于账户held。缺账户显示ACCOUNT_MISSING，缺表/数据库故障/5秒超时保持未知，禁止把异常转0。observedAt与accountVersion仅解释本次快照，不能当全局水位。
 
 报告仅诊断，不自动改余额/账本/fact。资金差额或已有坏事实须保留证据；不能靠重新收费、删账或重建历史平账。停用本片只停止新核查，可保留V016索引。当前未证明生产规模、保留期或恢复承诺；测试使用独占PG。
+
+### S13B持久化只读对账任务
+
+显式安装V017并保存脚本摘要；开启 `sandbox-enabled`、`reconciliation-enabled`、`reconciliation-tasks-enabled` 三项才安装内部任务服务，默认均不因此改变。无需开启新收费。先创建含稳定UUID、广告主、1～31原预算日、原因和可信actor的任务，再每次advance一天；原ID查询可恢复提交未知结果，COMPLETED不代表账平。
+
+30秒租约到期才接管，每日期最多20次领取，失败有1～300秒退避；FAILED需要排查后新建有意任务，不能清零原次数。CANCELLED保留已完成报告，相同取消命令/原因可重试；不能取消COMPLETED/FAILED。报告与审计不可变，暂不自动清理。当前内部无RPC/CLI，等待S13C；关闭入口保留证据，不能以删表作为回退。真实PG与资金回归见ER-S13B_RESULT。

@@ -1,5 +1,7 @@
 # 企业可靠性实施状态
 
+2026-10-16 恢复：用户批准连续完成 S13B/C、S14～S21。原目录复用 `feat/sandbox-billing-reconciliation`，基线 `0667fedc`；S13A CI 38708139517 已成功。当前先冻结 C13B 内部持久任务契约，再依次完成实现、独立验证与正常 Git 交付。S22～S25 仍暂停；不启用共享资金、不执行生产部署。已有 MyBatis-Plus 与统一错误码治理必须沿用。用户七项已有配置/文档与测试产物保持独立。
+
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
 | ID | Needs | 正式契约 / Owner / 范围 | 验收及 Runtime | 并行 | 状态 |
@@ -40,7 +42,7 @@
 | ER-S12C2 | ER-S12B、ER-S12C1 | C12_DESIGN / CONTRACTS C12C2；严格广告主归属、独立caller与稳定双模式交付 | 355钱链路、45最终专项、14真实浏览器PASS，详见ER-S12C2_RESULT | no | DONE |
 | ER-S12 | ER-S11、Q-04已确认 | 原F11；广告主认证转化业务键、原子捕获/迟到及双模式可靠事件 | A/B/C1/C2完整闭环，详见ER-S12_RESULT | no | DONE |
 | ER-S13A | ER-S06、ER-S12 | C13_DESIGN / CONTRACTS C13A；common-ad/ad一致账户日快照与V016索引 | 同库PG并发/三族/差额/未知/隔离；只读无RPC；[验收](ER-S13A_RESULT.md) | no | DONE |
-| ER-S13B | ER-S13A、待冻结C13B | 原F12持久化有界对账任务/检查点/fence/审计 | 真实PG重启/重复/并发/取消与范围 | no | TODO |
+| ER-S13B | ER-S13A、C13B已冻结 | 原F12持久化有界对账任务/检查点/fence/审计 | 真实PG专项10项与资金链436项通过；[验收](ER-S13B_RESULT.md) | no | DONE |
 | ER-S13C | ER-S13B、待冻结C13C | 原F12受控续办、可信RPC及offline BillingReconciliationJob | 真实PG/Kafka故障恢复、重复不改账 | no | TODO |
 | ER-S13 | ER-S06、ER-S12 | 原F12完整对账与恢复；A/B/C均必需 | 原PLAN/VALIDATION_PLAN，A不替代父片 | no | IN_PROGRESS |
 | ER-S14～ER-S25 | 依赖见 PLAN | 逐片提升对应 CONTRACTS，范围不扩大 | 验收见 PLAN 与 VALIDATION_PLAN | no | TODO |

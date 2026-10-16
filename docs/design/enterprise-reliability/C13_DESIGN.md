@@ -30,9 +30,24 @@ Scope={advertiserId正long,budgetDate严格ISO日期}，trafficClass固定SANDBO
 
 单次报告仅同owner事务，不跨库join、不调用Kafka/Redis/RPC。SQL集中ReconciliationRepository；Application Service验证同一事务资源。独立`recsys.ad.billing.reconciliation-enabled=false`与sandbox共同安装；不依赖新增收费admission，暂停收费仍可核对历史。启动验证必要既有迁移及追加V016索引摘要，不自动迁移。
 
-## 后续契约待细化（禁止提前实现）
+## C13B正式契约：持久化有界只读任务
 
-C13B：持久化账户日任务及有界检查点，需冻结输入/状态/批次/重试/租约/取消与终态语义，追加后续版本迁移。不能按MAX(id)假定提交顺序；每轮观察范围与结果时间必须真实。
+2026-10-16 在用户已批准的 S13B 范围内冻结以下内部契约；不增加收费规则、对外接口或自动全账户调度器。
+
+- 创建输入为 advertiserId、taskId(UUID)、startDate/endDate（原预算日，含两端，1～31天）、reason（1～256字符）、可信 actor（1～128字符）。流量 SANDBOX、币种 CNY 固定。taskId 全局唯一且绑定广告主；同ID同范围/原因返回原任务，actor仅作首次审计，不参与幂等比较；跨广告主或内容变更拒绝。每广告主最多一个 READY/RUNNING 任务，由数据库部分唯一索引保障，不同广告主互不串行。
+- 状态 READY→RUNNING→READY/COMPLETED；失败可从 RUNNING→READY（退避）或 FAILED；READY/RUNNING 可取消为 CANCELLED。COMPLETED 仅表示全部日期核查完毕，不能当作资金平账。FAILED/CANCELLED 保留已完成日期，终态不自动重开，需要新taskId重新核查。
+- 每次 advance 只领取一个 nextDate；短 READ_COMMITTED 独立事务，数据库时钟，30秒租约，单调 version 作为 fence。每日期最多20次领取，领取即计次，崩溃/超时也计数；租约过期可重新领取，次数耗尽转 FAILED。失败指数退避从1秒至300秒上限，并带最多20%抖动且总延迟不超过300秒；成功推进一天并归零次数。全部写事务5秒截止。不得在外层事务中调用任务用例。
+- 领取提交后调用C13A独立5秒只读RR快照；不同日期observedAt不同。仅当taskId/advertiserId/date/version/state/有效lease全部匹配时，原子插入不可变每日报告并推进检查点。完成事务提交前失败则报告和进度均回滚；提交后丢响应以taskId及日结果查询恢复，重复advance处理下一未完成日期。旧fence、过期lease、取消后的回写被拒绝。
+- 日结果主键(taskId,budgetDate)，包含序列化版本1、完整Snapshot、observedAt、领取fence；DB拒绝修改/删除报告与审计。报告读取受task所属广告主约束，最多31条，顺序按budgetDate；坏JSON/缺依赖明确失败，不转成空报告。
+- cancel输入为advertiserId/taskId/commandId(UUID)/reason/可信actor。相同取消commandId和reason返回原CANCELLED结果，原actor不被改写；不同取消命令、不同原因或对COMPLETED/FAILED取消均冲突。取消与完成按任务行锁串行化；取消不删除已有日结果、不改变账本、不撤销已提交业务效果。
+- 创建、领取、失败/租约耗尽、日完成、取消均写追加审计(taskId,version,event,actor,budgetDate,attempts,DB时间)，与状态更新同事务。错误类型只存固定 SNAPSHOT_FAILED/LEASE_EXHAUSTED，不落异常消息或凭据。
+- 新表迁移V017；保留期限未知，暂不自动清理。复用adDb/MyBatis XML、现有Jackson；无新依赖。独立reconciliation-tasks-enabled=false，需sandbox-enabled与reconciliation-enabled共同开启；不依赖新增收费admission。应用启动只校验迁移，不自动DDL。
+
+允许文件：common-ad新增ReconciliationTask内部值；ad新增任务Repository/Service/Configuration、Mapper/XML、V017及真实PG测试；更新本设计/CONTRACTS/TECH_SELECTION/实施状态/运行手册/验收证据。所有SQL放XML，业务层不拼SQL。
+
+验收：真实PG持久化重建服务、同ID重复/冲突、并发创建/领取、广告主隔离、逐日部分结果、故障退避/耗尽、崩溃后租约接管、旧fence/过期回写拒绝、取消幂等和终态、日结果不可变、报告/检查点原子提交及丢ACK查询；开关默认关闭、迁移缺失/漂移拒绝。回滚停新任务入口并保留表与结果，不删任务；无资金业务回滚。
+
+## C13C待细化
 
 C13C：受控原事件重发/到期义务续办、独立可信RPC与offline BillingReconciliationJob。需要明确重发条件/幂等审计、单账户范围与授权，复用原payload/eventId；错误资金或已有坏fact不自动修复。真实PG/Kafka验证恢复后对账追平，不能把broker ACK或进程健康当业务通过。该部分仍是父S13必需范围，不由A替代。
 
