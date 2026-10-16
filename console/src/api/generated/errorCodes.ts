@@ -1029,6 +1029,10 @@ export const errorCodes = {
     message: '实验配置写入结果未能确认，可能已有部分配置生效，请刷新并核对实际配置',
     httpStatus: 0,
   },
+  ADVERTISER_RESPONSE_INVALID: {
+    message: '广告管理数据不完整或标识无法精确读取，请刷新或联系管理员',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

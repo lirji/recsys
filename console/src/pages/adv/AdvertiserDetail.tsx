@@ -1,6 +1,8 @@
 import { showApiError } from '../../api/errors';
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useAdvertiserPermissions } from '../../hooks/useAdvertiserPermissions';
+import PermissionNotice from '../../components/adv/PermissionNotice';
+import { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,
   Alert,
@@ -27,8 +29,11 @@ import { formatBudgetEstimate } from '../../utils/adPricing';
 
 export default function AdvertiserDetail() {
   const { id } = useParams();
-  const advertiserId = Number(id);
+  const advertiserId = id ?? '';
   const { message } = App.useApp();
+  const access = useAdvertiserPermissions(advertiserId);
+  const client = useQueryClient();
+  const inFlight = useRef(false);
   const query = useQuery({
     queryKey: queryKeys.advertiser(advertiserId),
     queryFn: () => getAdvertiser(advertiserId),
@@ -37,26 +42,39 @@ export default function AdvertiserDetail() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<AdvertiserUpsert>();
 
-  useEffect(() => {
-    if (query.data)
-      form.setFieldsValue({
-        name: query.data.name,
-        dailyBudget: query.data.dailyBudget,
-        status: query.data.status,
-      });
-  }, [query.data, form]);
+  const openEdit = () => {
+    if (!query.data) return;
+    form.resetFields();
+    form.setFieldsValue({
+      name: query.data.name,
+      dailyBudget: query.data.dailyBudget,
+      status: query.data.status,
+    });
+    setOpen(true);
+  };
 
   const submit = async () => {
-    const values = await form.validateFields();
+    if (!access.can('manageAdvertiser') || inFlight.current) return;
+    inFlight.current = true;
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      inFlight.current = false;
+      return;
+    }
     setSaving(true);
     try {
       await updateAdvertiser(advertiserId, values);
       message.success('已更新');
       setOpen(false);
-      query.refetch();
+      await query.refetch();
+      await client.invalidateQueries({ queryKey: queryKeys.advertisers() });
     } catch (e) {
       showApiError(e, message.error);
+      void access.query.refetch();
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   };
@@ -69,6 +87,7 @@ export default function AdvertiserDetail() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader title={`广告主 #${a.advertiserId}`} accent={ACCENTS.ad} description={a.name} />
+      <PermissionNotice access={access} />
       <Card
         title={`广告主 #${a.advertiserId}`}
         extra={
@@ -79,7 +98,11 @@ export default function AdvertiserDetail() {
             <Link to={`/advertiser/${advertiserId}/report`}>
               <Button>投放报表</Button>
             </Link>
-            <Button type="primary" onClick={() => setOpen(true)}>
+            <Button
+              type="primary"
+              disabled={!access.can('manageAdvertiser') || saving}
+              onClick={openEdit}
+            >
               编辑
             </Button>
           </Space>
@@ -103,10 +126,14 @@ export default function AdvertiserDetail() {
           title="编辑广告主"
           open={open}
           onOk={submit}
+          okButtonProps={{ disabled: !access.can('manageAdvertiser') }}
           confirmLoading={saving}
-          onCancel={() => setOpen(false)}
+          cancelButtonProps={{ disabled: saving }}
+          closable={!saving}
+          maskClosable={!saving}
+          onCancel={() => !saving && setOpen(false)}
         >
-          <Form form={form} layout="vertical">
+          <Form form={form} layout="vertical" disabled={saving || !access.can('manageAdvertiser')}>
             <Form.Item name="name" label="名称" rules={[{ required: true }]}>
               <Input />
             </Form.Item>

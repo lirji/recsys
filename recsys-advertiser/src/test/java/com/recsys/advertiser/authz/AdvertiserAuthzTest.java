@@ -62,6 +62,42 @@ class AdvertiserAuthzTest {
     }
 
     @Test
+    void capabilitySnapshotDistinguishesDenyFromDependencyFailure() {
+        loginAs("viewer");
+        var a = authz("enforce");
+        when(engine.check(any(), eq("view"), any(), any())).thenReturn(true);
+        when(engine.check(any(), eq("edit"), any(), any())).thenReturn(false);
+        when(engine.check(any(), eq("review"), any(), any())).thenReturn(false);
+        assertThat(a.allowsAdvertiser("view", 1001)).isTrue();
+        assertThat(a.allowsAdvertiser("edit", 1001)).isFalse();
+        assertThat(a.allowsPlatform("review")).isFalse();
+        when(engine.check(any(), eq("edit"), any(), any())).thenThrow(new IllegalStateException("private dependency"));
+        assertThatThrownBy(() -> a.allowsAdvertiser("edit", 1001)).isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+    }
+
+    @Test
+    void capabilitySnapshotDoesNotAuthorizeLaterWriteOrBypassOwnership() {
+        loginAs("owner");
+        var a = authz("enforce");
+        when(engine.check(any(), anyString(), any(), any())).thenReturn(true);
+        assertThat(a.allowsAdvertiser("edit", 1001)).isTrue();
+        when(engine.check(any(), anyString(), any(), any())).thenReturn(false);
+        assertThatThrownBy(() -> a.requireAdvertiser("edit", 1001)).isInstanceOfSatisfying(ResponseStatusException.class,
+                e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+        assertThat(a.allowsAdvertiser("edit", 1002)).isFalse();
+    }
+
+    @Test
+    void capabilitySnapshotPreservesLegacyModes() {
+        assertThat(authz("disabled").allowsPlatform("administrate")).isTrue();
+        verifyNoInteractions(engine);
+        loginAs("legacy");
+        when(engine.check(any(), anyString(), any(), any())).thenReturn(false);
+        assertThat(authz("shadow").allowsPlatform("review")).isTrue();
+    }
+
+    @Test
     void invalidMode_failsFast() {
         assertThatThrownBy(() -> authz("enfoce")).isInstanceOf(IllegalArgumentException.class);
     }

@@ -97,6 +97,16 @@ docker compose -f docker/docker-compose.yml --profile console up -d --build   # 
 
 前端 DTO 与 Java record 手工对齐,见 `src/api/types.ts`(实验/广告枚举以服务端为准)。E2E 烟雾:`npm run test:e2e`(Playwright,登录页可独立于后端)。
 
+### 广告后台接口兼容与操作权限
+
+广告管理接口保留原数字 ID，并增加 `adIdText`、`advertiserIdText`、`creativeIdText`、`idText` 等精确字符串。浏览器优先读取文本，路由与写请求全程使用字符串；只有安全整数的旧响应可以兼容，不安全数字会提示数据异常，防止误操作其他记录。先部署兼容后端，再发布前端。
+
+`GET /api/advertiser/permissions` 查询开户等平台操作，`GET /api/advertiser/{id}/permissions` 查询当前广告主的 `editAds/manageAdvertiser/reviewAds` 能力。按钮依据服务端有效权限展示；权限失败、身份切换或刷新期间关闭写入口，支持重试。权限查询沿用现有 disabled/shadow/enforce 策略，每次写入仍重新判权；本次不改变环境的权限模式。
+
+广告详情分别展示启停状态和真实 `reviewStatus/reviewReason`，不把启用等同于已投放。修改广告的 `audienceId` 省略/null 表示保持，`0` 表示清除，正数绑定；界面清空定向会显式发送字符串 `"0"`。编辑或驳回失败保留草稿，创意/竞价词读取失败显示错误与重试。
+
+专项验收：`npm run build && npx playwright test e2e/advertiser-workflows.spec.ts`，所有写请求由测试隔离，不修改共享广告账户。详见 [ADV-UI-01](../docs/plans/advertiser-console-fixes/PLAN.md)。
+
 ## 目录
 
 ```

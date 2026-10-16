@@ -12,8 +12,11 @@ import { ACCENTS } from '../../theme/tokens';
 
 export default function AdvertiserReport() {
   const { id } = useParams();
-  const advertiserId = Number(id);
-  const query = useQuery({ queryKey: ['advertiser-report', advertiserId], queryFn: () => advertiserReport(advertiserId) });
+  const advertiserId = id ?? '';
+  const query = useQuery({
+    queryKey: ['advertiser-report', advertiserId],
+    queryFn: () => advertiserReport(advertiserId),
+  });
   const rows: AdReportRow[] = query.data ?? [];
 
   const labels = rows.map((r) => r.title || `#${r.adId}`);
@@ -25,8 +28,18 @@ export default function AdvertiserReport() {
     { title: '点击', dataIndex: 'clicks', width: 80 },
     { title: '转化', dataIndex: 'conversions', width: 80 },
     { title: '花费', dataIndex: 'spend', width: 100, render: (v: number) => v?.toFixed(2) },
-    { title: 'CTR', dataIndex: 'ctr', width: 90, render: (v: number) => (v * 100).toFixed(2) + '%' },
-    { title: 'CVR', dataIndex: 'cvr', width: 90, render: (v: number) => (v * 100).toFixed(2) + '%' },
+    {
+      title: 'CTR',
+      dataIndex: 'ctr',
+      width: 90,
+      render: (v: number) => (v * 100).toFixed(2) + '%',
+    },
+    {
+      title: 'CVR',
+      dataIndex: 'cvr',
+      width: 90,
+      render: (v: number) => (v * 100).toFixed(2) + '%',
+    },
     { title: 'eCPM', dataIndex: 'ecpm', width: 100, render: (v: number) => v?.toFixed(2) },
   ];
 
@@ -37,16 +50,30 @@ export default function AdvertiserReport() {
         <ChartSkeleton height={300} />
       </Space>
     );
-  if (query.isError) return <Alert type="error" showIcon message={toApiError(query.error).message} />;
+  if (query.isError)
+    return <Alert type="error" showIcon message={toApiError(query.error).message} />;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card title={`广告主 #${advertiserId} 投放报表`} style={{ borderLeft: `3px solid ${ACCENTS.gsp}` }}>
-        <Table<AdReportRow> rowKey="adId" size="small" columns={columns} dataSource={rows} pagination={false} />
+      <Card
+        title={`广告主 #${advertiserId} 投放报表`}
+        style={{ borderLeft: `3px solid ${ACCENTS.gsp}` }}
+      >
+        <Table<AdReportRow>
+          rowKey="adId"
+          size="small"
+          columns={columns}
+          dataSource={rows}
+          pagination={false}
+        />
       </Card>
       {rows.length > 0 ? (
         <>
-          <CollapsibleCard title="曝光 / 点击 / 转化" icon={<BarChartOutlined />} accent={ACCENTS.recall}>
+          <CollapsibleCard
+            title="曝光 / 点击 / 转化"
+            icon={<BarChartOutlined />}
+            accent={ACCENTS.recall}
+          >
             <EBar
               categories={labels}
               series={[

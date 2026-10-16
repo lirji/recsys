@@ -122,9 +122,9 @@ jobs:
           npm run build
       - name: Isolated browser, PostgreSQL and Kafka acceptance
         run: python3 scripts/test-sandbox-exposure.py
-      - name: Public error and data quality browser recovery
+      - name: Public error, data quality and advertiser browser recovery
         working-directory: console
-        run: npx playwright test e2e/public-errors.spec.ts e2e/data-quality-status.spec.ts --output=../recsys-rec-engine/target/public-error-browser-evidence
+        run: npx playwright test e2e/public-errors.spec.ts e2e/data-quality-status.spec.ts e2e/advertiser-workflows.spec.ts --output=../recsys-rec-engine/target/public-error-browser-evidence
       - name: Isolated natural browser and PostgreSQL acceptance
         run: python3 scripts/test-natural-exposure.py
       - name: Isolated mixed feed browser and PostgreSQL acceptance

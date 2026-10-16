@@ -1,5 +1,7 @@
 import { showApiError } from '../../api/errors';
-import { useState } from 'react';
+import { useAdvertiserPermissions } from '../../hooks/useAdvertiserPermissions';
+import PermissionNotice from '../../components/adv/PermissionNotice';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,
@@ -27,7 +29,9 @@ import { formatBudgetEstimate } from '../../utils/adPricing';
 
 export default function AdvertiserList() {
   const { message } = App.useApp();
+  const access = useAdvertiserPermissions();
   const queryClient = useQueryClient();
+  const inFlight = useRef(false);
   const query = useQuery({ queryKey: queryKeys.advertisers(), queryFn: listAdvertisers });
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<AdvertiserUpsert>();
@@ -39,12 +43,22 @@ export default function AdvertiserList() {
       form.resetFields();
       await queryClient.invalidateQueries({ queryKey: queryKeys.advertisers() });
     },
-    onError: (e) => showApiError(e, message.error),
+    onError: (e) => {
+      showApiError(e, message.error);
+      void access.query.refetch();
+    },
   });
 
   const submit = async () => {
-    const values = await form.validateFields();
-    createMut.mutate(values);
+    if (!access.can('createAdvertiser') || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await createMut.mutateAsync(await form.validateFields());
+    } catch {
+      /* 字段错误留在表单，接口错误由 mutation.onError 展示。 */
+    } finally {
+      inFlight.current = false;
+    }
   };
 
   const columns = [
@@ -52,7 +66,7 @@ export default function AdvertiserList() {
       title: 'ID',
       dataIndex: 'advertiserId',
       width: 90,
-      render: (id: number) => <Link to={`/advertiser/${id}`}>{id}</Link>,
+      render: (id: string) => <Link to={`/advertiser/${id}`}>{id}</Link>,
     },
     {
       title: '名称',
@@ -110,11 +124,16 @@ export default function AdvertiserList() {
         accent={ACCENTS.ad}
         description="广告主账户、日预算与投放入口。"
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
+          <Button
+            type="primary"
+            disabled={!access.can('createAdvertiser') || createMut.isPending}
+            onClick={() => setOpen(true)}
+          >
             新建广告主
           </Button>
         }
       />
+      <PermissionNotice access={access} />
       <Card>
         {query.isError ? (
           <Alert type="error" showIcon message={toApiError(query.error).message} />
@@ -134,13 +153,18 @@ export default function AdvertiserList() {
           title="新建广告主"
           open={open}
           onOk={submit}
+          okButtonProps={{ disabled: !access.can('createAdvertiser') }}
           confirmLoading={createMut.isPending}
-          onCancel={() => setOpen(false)}
+          cancelButtonProps={{ disabled: createMut.isPending }}
+          closable={!createMut.isPending}
+          maskClosable={!createMut.isPending}
+          onCancel={() => !createMut.isPending && setOpen(false)}
           destroyOnClose
         >
           <Form
             form={form}
             layout="vertical"
+            disabled={createMut.isPending || !access.can('createAdvertiser')}
             initialValues={{ status: 'active', dailyBudget: 1000 }}
           >
             <Form.Item name="name" label="名称" rules={[{ required: true, message: '必填' }]}>

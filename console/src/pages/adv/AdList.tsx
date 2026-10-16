@@ -1,5 +1,7 @@
 import { showApiError } from '../../api/errors';
-import { useState } from 'react';
+import { useAdvertiserPermissions } from '../../hooks/useAdvertiserPermissions';
+import PermissionNotice from '../../components/adv/PermissionNotice';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Alert, Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tag } from 'antd';
 import { Link, useParams } from 'react-router-dom';
@@ -7,7 +9,7 @@ import { createAd, listAds } from '../../api/advertiser';
 import { queryKeys } from '../../api/queryKeys';
 import { toApiError } from '../../api/client';
 import type { AdUpsert, AdView } from '../../api/types';
-import { StatusTag } from '../../components/adv/statusTags';
+import { StatusTag, ReviewStatusTag } from '../../components/adv/statusTags';
 import AdBillingFields from '../../components/adv/AdBillingFields';
 import PageHeader from '../../components/PageHeader';
 import { ACCENTS } from '../../theme/tokens';
@@ -15,9 +17,11 @@ import { formatId } from '../../utils/formatId';
 
 export default function AdList() {
   const { advId } = useParams();
-  const advertiserId = Number(advId);
+  const advertiserId = advId ?? '';
   const { message } = App.useApp();
+  const access = useAdvertiserPermissions(advertiserId);
   const queryClient = useQueryClient();
+  const inFlight = useRef(false);
   const query = useQuery({
     queryKey: queryKeys.ads(advertiserId),
     queryFn: () => listAds(advertiserId),
@@ -32,12 +36,22 @@ export default function AdList() {
       form.resetFields();
       await queryClient.invalidateQueries({ queryKey: queryKeys.ads(advertiserId) });
     },
-    onError: (e) => showApiError(e, message.error),
+    onError: (e) => {
+      showApiError(e, message.error);
+      void access.query.refetch();
+    },
   });
 
   const submit = async () => {
-    const values = await form.validateFields();
-    createMut.mutate(values);
+    if (!access.can('editAds') || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await createMut.mutateAsync(await form.validateFields());
+    } catch {
+      /* 字段错误留在表单，接口错误由 mutation.onError 展示。 */
+    } finally {
+      inFlight.current = false;
+    }
   };
 
   const columns = [
@@ -45,7 +59,7 @@ export default function AdList() {
       title: 'adId',
       dataIndex: 'adId',
       width: 160,
-      render: (id: number) => <Link to={`/advertiser/ad/${id}`}>{formatId(id)}</Link>,
+      render: (id: string) => <Link to={`/advertiser/ad/${id}`}>{formatId(id)}</Link>,
     },
     {
       title: '标题',
@@ -61,6 +75,12 @@ export default function AdList() {
       render: (s: string) => <StatusTag status={s} />,
     },
     {
+      title: '审核',
+      dataIndex: 'reviewStatus',
+      width: 130,
+      render: (s: string | null) => <ReviewStatusTag status={s} />,
+    },
+    {
       title: '计费',
       dataIndex: 'optimizationType',
       width: 90,
@@ -72,7 +92,7 @@ export default function AdList() {
             title: '人群',
             dataIndex: 'audienceId',
             width: 90,
-            render: (id: number | null) => (id ? <Tag>{id}</Tag> : null),
+            render: (id: string | null) => (id ? <Tag>{id}</Tag> : null),
           },
         ]
       : []),
@@ -97,11 +117,16 @@ export default function AdList() {
         title={`广告主 #${advertiserId} 的广告`}
         accent={ACCENTS.ad}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
+          <Button
+            type="primary"
+            disabled={!access.can('editAds') || createMut.isPending}
+            onClick={() => setOpen(true)}
+          >
             新建广告
           </Button>
         }
       />
+      <PermissionNotice access={access} />
       <Card>
         {query.isError ? (
           <Alert type="error" showIcon message={toApiError(query.error).message} />
@@ -122,21 +147,29 @@ export default function AdList() {
         title="新建广告"
         open={open}
         onOk={submit}
+        okButtonProps={{ disabled: !access.can('editAds') }}
         confirmLoading={createMut.isPending}
-        onCancel={() => setOpen(false)}
+        cancelButtonProps={{ disabled: createMut.isPending }}
+        closable={!createMut.isPending}
+        maskClosable={!createMut.isPending}
+        onCancel={() => !createMut.isPending && setOpen(false)}
         destroyOnClose
       >
         <Form
           form={form}
           layout="vertical"
+          disabled={createMut.isPending || !access.can('editAds')}
           initialValues={{ optimizationType: 'CPC', status: 'active', qualityScore: 1.0 }}
         >
           <Form.Item
             name="itemId"
             label="关联 itemId(创意/向量来源)"
-            rules={[{ required: true, message: '必填' }]}
+            rules={[
+              { required: true, message: '必填' },
+              { pattern: /^[1-9]\d{0,18}$/, message: '请输入完整的正整数 itemId' },
+            ]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} />
+            <Input inputMode="numeric" maxLength={19} />
           </Form.Item>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '必填' }]}>
             <Input />

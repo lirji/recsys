@@ -1,6 +1,6 @@
-import { showApiError } from '../../api/errors';
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { showApiError, toApiError } from '../../api/errors';
+import { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,
   Alert,
@@ -13,11 +13,10 @@ import {
   Modal,
   Popconfirm,
   Space,
-  Steps,
   Tag,
 } from 'antd';
 import { PictureOutlined, SafetyCertificateOutlined, TagsOutlined } from '@ant-design/icons';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   deleteAd,
   getAd,
@@ -27,63 +26,106 @@ import {
   updateAd,
 } from '../../api/advertiser';
 import { queryKeys } from '../../api/queryKeys';
-import { toApiError } from '../../api/client';
-import type { AdUpsert, AdView } from '../../api/types';
-import { StatusTag } from '../../components/adv/statusTags';
+import type { AdUpsert, AdvertiserPermissions } from '../../api/types';
+import { StatusTag, ReviewStatusTag } from '../../components/adv/statusTags';
 import AdBillingFields from '../../components/adv/AdBillingFields';
 import CreativePanel from '../../components/adv/CreativePanel';
 import BidwordPanel from '../../components/adv/BidwordPanel';
+import PermissionNotice from '../../components/adv/PermissionNotice';
+import { useAdvertiserPermissions } from '../../hooks/useAdvertiserPermissions';
 import CollapsibleCard from '../../components/CollapsibleCard';
 import PageHeader from '../../components/PageHeader';
 import { ResultRowsSkeleton } from '../../components/Skeletons';
 import { ACCENTS } from '../../theme/tokens';
 
 export default function AdDetail() {
-  const { adId } = useParams();
-  const id = Number(adId);
+  const { adId = '' } = useParams();
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const query = useQuery({ queryKey: queryKeys.ad(id), queryFn: () => getAd(id) });
-
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: queryKeys.ad(adId), queryFn: () => getAd(adId) });
+  const ad = query.data;
+  const access = useAdvertiserPermissions(ad?.advertiserId, !!ad);
   const [editOpen, setEditOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [form] = Form.useForm<AdUpsert>();
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
-  useEffect(() => {
-    if (query.data)
-      form.setFieldsValue({
-        title: query.data.title,
-        landingUrl: query.data.landingUrl,
-        qualityScore: query.data.qualityScore,
-        status: query.data.status,
-        optimizationType: query.data.optimizationType,
-        targetCpa: query.data.targetCpa ?? undefined,
-        audienceId: query.data.audienceId ?? undefined,
-      });
-  }, [query.data, form]);
-
-  const act = async (fn: () => Promise<unknown>, ok: string) => {
+  // 只有已确认成功才关闭弹窗；锁也覆盖同一事件循环内的重复点击。
+  const act = async (
+    permission: keyof AdvertiserPermissions,
+    fn: () => Promise<unknown>,
+    ok: string,
+    deleted = false,
+  ) => {
+    if (inFlight.current || !access.can(permission)) return false;
+    inFlight.current = true;
+    setBusy(true);
     try {
       await fn();
       message.success(ok);
-      query.refetch();
-    } catch (e) {
-      showApiError(e, message.error);
+      if (deleted) navigate(`/advertiser/${ad!.advertiserId}/ads`);
+      else await client.invalidateQueries({ queryKey: queryKeys.ad(adId) });
+      await client.invalidateQueries({ queryKey: queryKeys.ads(ad!.advertiserId) });
+      return true;
+    } catch (error) {
+      showApiError(error, message.error);
+      void access.query.refetch();
+      return false;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   };
 
   const submitEdit = async () => {
-    const values = await form.validateFields();
-    await act(() => updateAd(id, { ...values, audienceId: values.audienceId ?? 0 }), '已更新广告');
-    setEditOpen(false);
+    try {
+      const values = await form.validateFields();
+      if (
+        await act(
+          'editAds',
+          () => updateAd(adId, { ...values, audienceId: values.audienceId || '0' }),
+          '已更新广告',
+        )
+      ) {
+        setEditOpen(false);
+      }
+    } catch {
+      /* AntD 将字段校验错误保留在表单，不触发接口或关闭弹窗。 */
+    }
   };
 
   if (query.isLoading) return <ResultRowsSkeleton rows={5} />;
   if (query.isError)
-    return <Alert type="error" showIcon message={toApiError(query.error).message} />;
-  const ad: AdView = query.data!;
-  const paused = (ad.status ?? '').toLowerCase() === 'paused';
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message={toApiError(query.error).message}
+        action={<Button onClick={() => query.refetch()}>重试</Button>}
+      />
+    );
+  if (!ad) return null;
+  const paused = ad.status === 'paused';
+  const canEdit = access.can('editAds');
+  const canReview = access.can('reviewAds');
+  const reviewKnown = ['approved', 'pending_review', 'rejected'].includes(ad.reviewStatus ?? '');
+
+  const openEdit = () => {
+    // 只在用户打开时取快照，后台刷新不能覆盖尚未保存的输入。
+    form.resetFields();
+    form.setFieldsValue({
+      title: ad.title,
+      landingUrl: ad.landingUrl,
+      qualityScore: ad.qualityScore,
+      optimizationType: ad.optimizationType,
+      targetCpa: ad.targetCpa ?? undefined,
+      audienceId: ad.audienceId ?? undefined,
+    });
+    setEditOpen(true);
+  };
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -92,32 +134,35 @@ export default function AdDetail() {
         accent={ACCENTS.ad}
         description={ad.title || '广告详情 / 审核 / 创意 / 竞价词'}
       />
+      <PermissionNotice access={access} />
       <Card
         title={`广告 #${ad.adId}`}
         style={{ borderLeft: `3px solid ${ACCENTS.recall}` }}
         extra={
-          <Space>
-            <Button onClick={() => setEditOpen(true)}>编辑</Button>
+          <Space wrap>
+            <Button disabled={!canEdit || busy} onClick={openEdit}>
+              编辑
+            </Button>
             <Popconfirm
               title="删除该广告?"
-              onConfirm={() =>
-                act(
-                  () => deleteAd(id).then(() => navigate(`/advertiser/${ad.advertiserId}/ads`)),
-                  '已删除',
-                )
-              }
+              disabled={!canEdit || busy}
+              onConfirm={() => act('editAds', () => deleteAd(adId), '已删除', true)}
             >
-              <Button danger>删除</Button>
+              <Button danger disabled={!canEdit || busy}>
+                删除
+              </Button>
             </Popconfirm>
           </Space>
         }
       >
-        <Descriptions bordered column={2} size="small">
+        <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small">
           <Descriptions.Item label="标题">{ad.title}</Descriptions.Item>
-          <Descriptions.Item label="状态">
+          <Descriptions.Item label="启停状态">
             <StatusTag status={ad.status} />
           </Descriptions.Item>
-          <Descriptions.Item label="广告主">{ad.advertiserId}</Descriptions.Item>
+          <Descriptions.Item label="广告主">
+            <Link to={`/advertiser/${ad.advertiserId}`}>{ad.advertiserId}</Link>
+          </Descriptions.Item>
           <Descriptions.Item label="itemId">{ad.itemId}</Descriptions.Item>
           <Descriptions.Item label="计费类型">
             <Tag>{ad.optimizationType}</Tag>
@@ -133,60 +178,81 @@ export default function AdDetail() {
           </Descriptions.Item>
         </Descriptions>
       </Card>
-
       <CollapsibleCard
         title="生命周期 / 审核"
         icon={<SafetyCertificateOutlined />}
         accent={ACCENTS.rank}
       >
-        <Steps
-          size="small"
-          style={{ marginBottom: 16 }}
-          items={[
-            { title: '创建 / 机审' },
-            { title: '送审 pending_review' },
-            { title: '人审 通过 / 驳回' },
-            { title: paused ? '已下线' : '投放中', status: paused ? 'wait' : 'finish' },
-          ]}
-          current={paused ? 3 : 3}
-        />
+        <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="审核状态">
+            <ReviewStatusTag status={ad.reviewStatus} />
+          </Descriptions.Item>
+          <Descriptions.Item label="审核说明">
+            {ad.reviewReason || '暂无审核说明'}
+          </Descriptions.Item>
+        </Descriptions>
         <Space wrap>
-          <Button onClick={() => act(() => submitReview(id), '已重新送审')}>重新送审</Button>
-          <Button type="primary" onClick={() => act(() => reviewAd(id, 'approve'), '已通过')}>
+          <Button
+            disabled={!canEdit || busy}
+            onClick={() => act('editAds', () => submitReview(adId), '已重新送审')}
+          >
+            重新送审
+          </Button>
+          <Button
+            type="primary"
+            disabled={!canReview || busy || !reviewKnown || ad.reviewStatus === 'approved'}
+            onClick={() => act('reviewAds', () => reviewAd(adId, 'approve'), '审核已通过')}
+          >
             审核通过
           </Button>
-          <Button danger onClick={() => setRejectOpen(true)}>
+          <Button
+            danger
+            disabled={!canReview || busy || !reviewKnown || ad.reviewStatus === 'rejected'}
+            onClick={() => {
+              setReason('');
+              setRejectOpen(true);
+            }}
+          >
             驳回
           </Button>
-          {paused ? (
-            <Button
-              type="primary"
-              ghost
-              onClick={() => act(() => setAdStatus(id, 'active'), '已上线')}
-            >
-              上线
-            </Button>
-          ) : (
-            <Button onClick={() => act(() => setAdStatus(id, 'paused'), '已下线')}>下线</Button>
-          )}
+          <Button
+            disabled={!canEdit || busy || (!paused && ad.status !== 'active')}
+            onClick={() =>
+              act(
+                'editAds',
+                () => setAdStatus(adId, paused ? 'active' : 'paused'),
+                paused ? '广告已启用' : '广告已暂停',
+              )
+            }
+          >
+            {paused ? '启用' : '暂停'}
+          </Button>
         </Space>
         <Alert
           style={{ marginTop: 12 }}
           type="info"
           showIcon
-          message="在线只服务 approved 广告(倒排/DB 召回/DCO 三处闸门);审核状态未在 AdView 返回,此处步骤为示意,以操作结果为准。"
+          message="启用与审核分别生效。只有审核通过的广告才可能参与投放，实际展示还受广告主状态、预算和竞价条件影响。"
         />
       </CollapsibleCard>
-
       <CollapsibleCard title="创意" icon={<PictureOutlined />} accent={ACCENTS.rerank}>
-        <CreativePanel adId={id} />
+        <CreativePanel adId={adId} advertiserId={ad.advertiserId} canEdit={canEdit && !busy} />
       </CollapsibleCard>
       <CollapsibleCard title="竞价词" icon={<TagsOutlined />} accent={ACCENTS.ad}>
-        <BidwordPanel adId={id} />
+        <BidwordPanel adId={adId} advertiserId={ad.advertiserId} canEdit={canEdit && !busy} />
       </CollapsibleCard>
-
-      <Modal title="编辑广告" open={editOpen} onOk={submitEdit} onCancel={() => setEditOpen(false)}>
-        <Form form={form} layout="vertical">
+      <Modal
+        title="编辑广告"
+        open={editOpen}
+        onOk={submitEdit}
+        confirmLoading={busy}
+        okButtonProps={{ disabled: !canEdit }}
+        cancelButtonProps={{ disabled: busy }}
+        closable={!busy}
+        maskClosable={!busy}
+        onCancel={() => !busy && setEditOpen(false)}
+      >
+        <Form form={form} layout="vertical" disabled={busy || !canEdit}>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -201,19 +267,26 @@ export default function AdDetail() {
           </Space>
         </Form>
       </Modal>
-
       <Modal
         title="驳回广告"
         open={rejectOpen}
-        onOk={() =>
-          act(() => reviewAd(id, 'reject', reason), '已驳回').then(() => setRejectOpen(false))
-        }
-        onCancel={() => setRejectOpen(false)}
+        confirmLoading={busy}
+        okButtonProps={{ disabled: !canReview }}
+        cancelButtonProps={{ disabled: busy }}
+        closable={!busy}
+        maskClosable={!busy}
+        onOk={async () => {
+          if (await act('reviewAds', () => reviewAd(adId, 'reject', reason), '已驳回'))
+            setRejectOpen(false);
+        }}
+        onCancel={() => !busy && setRejectOpen(false)}
       >
         <Input.TextArea
+          aria-label="驳回原因"
           rows={3}
           placeholder="驳回原因(可选)"
           value={reason}
+          disabled={busy || !canReview}
           onChange={(e) => setReason(e.target.value)}
         />
       </Modal>

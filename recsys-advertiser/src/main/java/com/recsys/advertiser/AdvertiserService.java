@@ -6,6 +6,7 @@ import com.recsys.advertiser.dto.AdUpsert;
 import com.recsys.advertiser.dto.AdView;
 import com.recsys.advertiser.dto.AdvertiserUpsert;
 import com.recsys.advertiser.dto.AdvertiserView;
+import com.recsys.advertiser.dto.AdvertiserPermissions;
 import com.recsys.advertiser.dto.BidwordUpsert;
 import com.recsys.advertiser.dto.BidwordView;
 import com.recsys.advertiser.dto.CreativeUpsert;
@@ -56,6 +57,21 @@ public class AdvertiserService {
     }
 
     // ======================= 广告主 =======================
+
+    /** 开户页只查询平台权限，不扫描所有广告主或为每条记录追加判权。 */
+    public AdvertiserPermissions platformPermissions() {
+        return new AdvertiserPermissions(
+                authz.allowsPlatform("administrate"), authz.allowsPlatform("review"), false, false);
+    }
+
+    /** 先判可见范围，再给当前对象的操作提示；不扩大列表或详情的可见边界。 */
+    public AdvertiserPermissions advertiserPermissions(long advertiserId) {
+        authz.requireAdvertiser("view", advertiserId);
+        if (!repo.advertiserExists(advertiserId)) throw notFound("广告主不存在");
+        return new AdvertiserPermissions(false,
+                authz.allowsPlatform("review"), authz.allowsAdvertiser("edit", advertiserId),
+                authz.allowsAdvertiser("manage", advertiserId));
+    }
 
     @Transactional
     public AdvertiserView createAdvertiser(AdvertiserUpsert req) {
@@ -304,7 +320,7 @@ public class AdvertiserService {
     private AdView assembleAdView(AdvertiserRepository.AdRow r) {
         return new AdView(r.adId(), r.advertiserId(), r.itemId(), r.title(), r.landingUrl(), r.qualityScore(),
                 r.status(), r.optimizationType(), r.targetCpa(), r.audienceId(), r.hasEmbedding(),
-                repo.listBidwords(r.adId()), repo.listCreatives(r.adId()));
+                repo.listBidwords(r.adId()), repo.listCreatives(r.adId()), r.reviewStatus(), r.reviewReason());
     }
 
     // ======================= 竞价词 =======================

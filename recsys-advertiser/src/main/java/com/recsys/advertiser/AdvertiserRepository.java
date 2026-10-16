@@ -131,7 +131,7 @@ public class AdvertiserRepository {
     private static AdRow withEmbedding(AdRow r, boolean hasEmbedding) {
         return new AdRow(r.adId(), r.advertiserId(), r.itemId(), r.title(), r.landingUrl(),
                 r.qualityScore(), r.status(), r.reviewStatus(), r.optimizationType(), r.targetCpa(),
-                r.audienceId(), hasEmbedding);
+                r.audienceId(), hasEmbedding, r.reviewReason());
     }
 
     /** 审核决定落库(A2):设 review_status + review_reason。 */
@@ -284,6 +284,6 @@ public class AdvertiserRepository {
     public record AdRow(long adId, long advertiserId, long itemId, String title, String landingUrl,
                         double qualityScore, String status, String reviewStatus,
                         String optimizationType, Double targetCpa, Long audienceId,
-                        boolean hasEmbedding) {
+                        boolean hasEmbedding, String reviewReason) {
     }
 }

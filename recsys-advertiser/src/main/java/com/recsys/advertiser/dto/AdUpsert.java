@@ -24,6 +24,6 @@ public record AdUpsert(
         @Pattern(regexp = "active|paused", message = "status 仅支持 active/paused") String status,
         @Pattern(regexp = "CPC|OCPC|CPM|OCPM|CPA", message = "optimizationType 仅支持 CPC/OCPC/CPM/OCPM/CPA") String optimizationType,
         @PositiveOrZero(message = "targetCpa 不能为负") Double targetCpa,
-        @Positive(message = "audienceId 必须为正") Long audienceId,
+        @PositiveOrZero(message = "audienceId 不能为负，0 表示清除定向") Long audienceId,
         @Valid List<BidwordUpsert> bidwords) {
 }

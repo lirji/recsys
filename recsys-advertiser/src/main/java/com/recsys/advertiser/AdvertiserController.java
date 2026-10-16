@@ -3,6 +3,7 @@ package com.recsys.advertiser;
 import com.recsys.advertiser.dto.AdReportRow;
 import com.recsys.advertiser.dto.AdvertiserUpsert;
 import com.recsys.advertiser.dto.AdvertiserView;
+import com.recsys.advertiser.dto.AdvertiserPermissions;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +36,18 @@ public class AdvertiserController {
     @GetMapping
     public List<AdvertiserView> list() {
         return service.listAdvertisers();
+    }
+
+    /** 平台操作权限仅用于界面适配，不能代替写接口的服务端判权。 */
+    @GetMapping("/permissions")
+    public AdvertiserPermissions platformPermissions() {
+        return service.platformPermissions();
+    }
+
+    /** 返回当前主体对当前广告主的有效权限，拒绝和依赖故障保持不同语义。 */
+    @GetMapping("/{id}/permissions")
+    public AdvertiserPermissions permissions(@PathVariable long id) {
+        return service.advertiserPermissions(id);
     }
 
     @GetMapping("/{id}")

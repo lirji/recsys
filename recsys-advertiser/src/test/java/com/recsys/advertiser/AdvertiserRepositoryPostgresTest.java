@@ -1,6 +1,14 @@
 package com.recsys.advertiser;
 
 import com.recsys.persistence.spring.SpringSqlSessions;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recsys.advertiser.authz.AdvertiserAuthz;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.mock;
 
 import com.zaxxer.hikari.HikariDataSource;
 import com.recsys.advertiser.persistence.config.AdvertiserPersistenceConfiguration;
@@ -114,6 +122,51 @@ class AdvertiserRepositoryPostgresTest {
         assertThat(repository.listAdvertisersRaw()).extracting(v -> v.advertiserId()).isSorted();
     }
 
+    /** 真实分片生成的长ID经HTTP文本字段往返，空定向及审核结果必须真正落库。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void consoleHttpPreservesIdsReviewAndAudienceSemantics() throws Exception {
+        long ad = insertAd(1);
+        long creative = repository.insertCreative(ad, "creative", "/creative", "approved");
+        long bidword = repository.insertBidword(ad, "space", "exact", 2.5, "CPC");
+        var service = new AdvertiserService(repository, mock(AdIndexSyncService.class), mock(StringRedisTemplate.class),
+                new AdvertiserAuthz("disabled", mock(ObjectProvider.class)));
+        var http = MockMvcBuilders.standaloneSetup(new AdController(service), new CreativeController(service),
+                new AdvertiserController(service)).defaultRequest(get("/").accept("application/json")).build();
+        var json = new ObjectMapper();
+        var body = json.readTree(http.perform(get("/api/advertiser/ad/" + ad))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(body.get("adIdText").asText()).isEqualTo(Long.toString(ad));
+        assertThat(body.get("adId").longValue()).isEqualTo(ad);
+        assertThat(body.get("creatives").get(0).get("creativeIdText").asText()).isEqualTo(Long.toString(creative));
+        assertThat(body.get("bidwords").get(0).get("idText").asText()).isEqualTo(Long.toString(bidword));
+        http.perform(put("/api/advertiser/creative/" + creative).contentType("application/json")
+                .content("{\"title\":\"edited exact id\"}" )).andExpect(status().isOk());
+        assertThat(repository.listCreatives(ad).get(0).title()).isEqualTo("edited exact id");
+        http.perform(put("/api/advertiser/ad/" + ad).contentType("application/json")
+                .content("{\"title\":\"clear audience\",\"audienceId\":\"0\"}" )).andExpect(status().isOk());
+        assertThat(repository.findAdRow(ad).audienceId()).isNull();
+        http.perform(put("/api/advertiser/ad/" + ad).contentType("application/json")
+                .content("{\"audienceId\":\"1306381397547552769\"}" )).andExpect(status().isOk());
+        http.perform(put("/api/advertiser/ad/" + ad).contentType("application/json")
+                .content("{\"title\":\"keep audience\",\"audienceId\":null}" )).andExpect(status().isOk());
+        assertThat(repository.findAdRow(ad).audienceId()).isEqualTo(1306381397547552769L);
+        http.perform(put("/api/advertiser/ad/" + ad).contentType("application/json")
+                .content("{\"audienceId\":-1}" )).andExpect(status().isBadRequest());
+        http.perform(post("/api/advertiser/ad/" + ad + "/review").param("decision", "reject").param("reason", "需要修改落地页"))
+                .andExpect(status().isOk());
+        var rejected = json.readTree(http.perform(get("/api/advertiser/ad/" + ad))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(rejected.get("reviewStatus").asText()).isEqualTo("rejected");
+        assertThat(rejected.get("reviewReason").asText()).isEqualTo("需要修改落地页");
+        http.perform(post("/api/advertiser/ad/" + ad + "/submit-review")).andExpect(status().isOk());
+        assertThat(repository.findAdRow(ad).reviewStatus()).isEqualTo("pending_review");
+        var permissions = json.readTree(http.perform(get("/api/advertiser/1/permissions"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(permissions.get("editAds").asBoolean()).isTrue();
+        assertThat(permissions.get("manageAdvertiser").asBoolean()).isTrue();
+    }
+
     @Test
     void partialUpdatesKeepNullFieldsExceptExplicitAudienceClear() {
         long ad = insertAd(1);
@@ -132,6 +185,8 @@ class AdvertiserRepositoryPostgresTest {
         assertThat(repository.setAdReview(ad, "rejected", "reason")).isOne();
         assertThat(repository.findAdRow(ad).landingUrl()).isEqualTo("/new");
         assertThat(repository.findAdRow(ad).reviewStatus()).isEqualTo("rejected");
+        assertThat(repository.findAdRow(ad).reviewReason()).isEqualTo("reason");
+        assertThat(repository.listAdRows(1).get(0).reviewReason()).isEqualTo("reason");
         assertThat(repository.updateAd(999, null, null, null, null, null, null, null, null)).isZero();
         assertThat(repository.findAdRow(999)).isNull();
     }

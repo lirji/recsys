@@ -1,5 +1,7 @@
 package com.recsys.advertiser.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 
 /**
@@ -19,5 +21,23 @@ public record AdView(
         Long audienceId,
         boolean hasEmbedding,
         List<BidwordView> bidwords,
-        List<CreativeView> creatives) {
+        List<CreativeView> creatives,
+        String reviewStatus,
+        String reviewReason) {
+
+    /** 兼容保留数字字段；浏览器以文本标识避免 Snowflake 精度丢失。 */
+    @JsonProperty("adIdText")
+    public String adIdText() { return Long.toString(adId); }
+
+    /** 兼容保留数字字段；浏览器以文本标识避免 Snowflake 精度丢失。 */
+    @JsonProperty("advertiserIdText")
+    public String advertiserIdText() { return Long.toString(advertiserId); }
+
+    /** 兼容保留数字字段；浏览器以文本标识避免 Snowflake 精度丢失。 */
+    @JsonProperty("itemIdText")
+    public String itemIdText() { return Long.toString(itemId); }
+
+    /** 兼容保留数字字段；浏览器以文本标识避免 Snowflake 精度丢失。 */
+    @JsonProperty("audienceIdText")
+    public String audienceIdText() { return audienceId == null ? null : Long.toString(audienceId); }
 }

@@ -25,6 +25,7 @@
             <arg column="target_cpa" javaType="java.lang.Double"/>
             <arg column="audience_id" javaType="java.lang.Long"/>
             <arg column="has_embedding" javaType="_boolean"/>
+            <arg column="review_reason" javaType="string"/>
         </constructor>
     </resultMap>
     <resultMap id="bidword" type="com.recsys.advertiser.dto.BidwordView">
@@ -95,10 +96,10 @@
         SELECT COALESCE(advertiser_id,0) FROM ad WHERE ad_id=#{adId}
     </select>
     <select id="findAd" resultMap="ad">
-        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding FROM ad WHERE ad_id=#{adId}
+        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding,review_reason FROM ad WHERE ad_id=#{adId}
     </select>
     <select id="listAds" resultMap="ad">
-        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding FROM ad WHERE advertiser_id=#{advertiserId} ORDER BY ad_id
+        SELECT ad_id,advertiser_id,COALESCE(item_id,0) AS item_id,title,landing_url,COALESCE(quality_score,0) AS quality_score,status,review_status,optimization_type,target_cpa,audience_id,false AS has_embedding,review_reason FROM ad WHERE advertiser_id=#{advertiserId} ORDER BY ad_id
     </select>
     <select id="embeddingAdIds" resultType="long">
         SELECT ad_id FROM ad_embedding WHERE ad_id = ANY(#{ids,typeHandler=com.recsys.persistence.typehandler.LongArrayTypeHandler})

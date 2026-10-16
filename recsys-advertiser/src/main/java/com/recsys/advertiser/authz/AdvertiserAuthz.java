@@ -103,6 +103,26 @@ public class AdvertiserAuthz {
         decide(permission, ResourceRef.of("platform", PLATFORM_ID));
     }
 
+    /** 展示权限沿用写入口的有效策略；普通拒绝返回 false，依赖故障仍返回 503。 */
+    public boolean allowsPlatform(String permission) {
+        return allows(permission, ResourceRef.of("platform", PLATFORM_ID));
+    }
+
+    /** 权限快照仅用于 UI 提示，后续写入仍须重新执行 requireAdvertiser。 */
+    public boolean allowsAdvertiser(String permission, long advertiserId) {
+        return allows(permission, ResourceRef.of("advertiser", Long.toString(advertiserId)));
+    }
+
+    private boolean allows(String permission, ResourceRef resource) {
+        try {
+            decide(permission, resource);
+            return true;
+        } catch (ResponseStatusException error) {
+            if (error.getStatusCode().value() == HttpStatus.FORBIDDEN.value()) return false;
+            throw error;
+        }
+    }
+
     /**
      * 列表过滤(enforce 才真过滤;shadow 只记会隐藏几条):按 view 权限 checkBulk。
      * 匿名主体 enforce 下得空列表(fail-closed)。

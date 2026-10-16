@@ -160,7 +160,7 @@ export interface ExperimentWriteResult {
 
 // ===== 广告主后台 =====
 export interface AdvertiserView {
-  advertiserId: number;
+  advertiserId: string;
   name: string;
   dailyBudget: number;
   status: string;
@@ -174,8 +174,8 @@ export interface AdvertiserUpsert {
 }
 
 export interface BidwordView {
-  id: number;
-  adId: number;
+  id: string;
+  adId: string;
   keyword: string;
   matchType: string;
   bid: number;
@@ -189,8 +189,8 @@ export interface BidwordUpsert {
 }
 
 export interface CreativeView {
-  creativeId: number;
-  adId: number;
+  creativeId: string;
+  adId: string;
   title: string;
   landingUrl: string;
   status: string;
@@ -202,35 +202,37 @@ export interface CreativeUpsert {
 }
 
 export interface AdView {
-  adId: number;
-  advertiserId: number;
-  itemId: number;
+  adId: string;
+  advertiserId: string;
+  itemId: string;
   title: string;
   landingUrl: string;
   qualityScore: number;
   status: string;
   optimizationType: string;
   targetCpa?: number | null;
-  audienceId?: number | null;
+  audienceId?: string | null;
   hasEmbedding: boolean;
   bidwords: BidwordView[];
   creatives: CreativeView[];
+  reviewStatus?: string | null;
+  reviewReason?: string | null;
 }
 export type BillingType = 'CPC' | 'OCPC' | 'CPM' | 'OCPM' | 'CPA';
 export interface AdUpsert {
-  itemId?: number | null;
+  itemId?: string | null;
   title: string;
   landingUrl?: string;
   qualityScore?: number | null;
   status?: string;
   optimizationType?: BillingType | string;
   targetCpa?: number | null;
-  audienceId?: number | null;
+  audienceId?: string | null;
   bidwords?: BidwordUpsert[];
 }
 
 export interface AdReportRow {
-  adId: number;
+  adId: string;
   title: string;
   impressions: number;
   clicks: number;
@@ -239,6 +241,13 @@ export interface AdReportRow {
   ctr: number;
   cvr: number;
   ecpm: number;
+}
+
+export interface AdvertiserPermissions {
+  createAdvertiser: boolean;
+  reviewAds: boolean;
+  editAds: boolean;
+  manageAdvertiser: boolean;
 }
 
 // ===== 离线报表(recsys-web 的 /api/console/report)=====

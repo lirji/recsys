@@ -1,4 +1,4 @@
-import { Form, InputNumber, Select } from 'antd';
+import { Form, Input, InputNumber, Select } from 'antd';
 
 const BILLING_OPTIONS = [
   { value: 'CPC', label: 'CPC 按点击' },
@@ -25,10 +25,13 @@ export default function AdBillingFields() {
       <Form.Item
         name="audienceId"
         label="定向人群"
+        rules={[
+          { pattern: /^[1-9]\d{0,18}$/, message: '请输入完整的正整数人群 ID，留空可取消定向' },
+        ]}
         extra="Look-alike audience_id,空=不定向"
         style={{ flex: 1 }}
       >
-        <InputNumber min={0} style={{ width: '100%' }} placeholder="可选" />
+        <Input inputMode="numeric" maxLength={19} placeholder="可选" />
       </Form.Item>
     </>
   );

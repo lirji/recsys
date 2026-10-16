@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import type { AdvertiserView, SponsoredAd } from '../src/api/types';
+import type { SponsoredAd } from '../src/api/types';
 
 // C01 的确定性响应夹具，只验证展示契约；所有 API 被隔离，不向真实账户发送请求。
-const advertisers: AdvertiserView[] = [
+const advertisers = [
   {
     advertiserId: 1,
     name: '已知分计数',
@@ -51,8 +51,9 @@ test.beforeEach(async ({ page }) => {
       await route.abort();
       return;
     }
-    const result =
-      path === '/api/advertiser'
+    const result = path.endsWith('/permissions')
+      ? { createAdvertiser: false, reviewAds: false, editAds: false, manageAdvertiser: false }
+      : path === '/api/advertiser'
         ? advertisers
         : path === '/api/advertiser/2'
           ? advertisers[1]
