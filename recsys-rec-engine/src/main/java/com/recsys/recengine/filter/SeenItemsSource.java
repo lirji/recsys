@@ -9,7 +9,7 @@ import java.util.Set;
  * <ul>
  *   <li>{@code db}(默认):{@link DbSeenItemsSource} 直读行为上下文的 {@code user_behavior} 表(今日行为)。</li>
  *   <li>{@code replica}:{@link ReplicaSeenItemsSource} 读 rec-engine 自有的 {@code seen:{user}} 读模型
- *       (由 {@link SeenItemsConsumer} 消费 {@code behavior-events} 构建)—— 在线不再跨上下文直读 user_behavior。</li>
+ *       (由旧Seen及独立LIVE/HISTORY消费者构建)，仅包含已捕获且实际成功的正反馈，不保证全历史完整。</li>
  * </ul>
  */
 public interface SeenItemsSource {

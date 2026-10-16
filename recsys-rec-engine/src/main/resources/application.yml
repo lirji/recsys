@@ -126,15 +126,19 @@ recsys:
   # P4 已看来源:db(默认,直读 user_behavior,回滚落点)| replica(读 seen:{user} 事件读模型,DB-per-service)。
   # 延迟提示:db 模式是每请求 `SELECT DISTINCT item_id ... WHERE user_id=?` 全历史扫(重度用户历史越长越慢、
   # 且并行召回时各占一条连接)。生产建议切 replica(SEEN_SOURCE=replica) → 一次 Redis SMEMBERS 取已看集,
-  # 常数级、不占 JDBC 连接;切前需先 SEEN_CONSUME=true 让 behavior-events 监听器灌好 seen:{user} 读模型。
+  # 不占 JDBC 连接；仅覆盖已成功投影的旧流/live/history。切换前须验证历史覆盖，lag=0不证明完整。
   behavior:
     seen-source: ${SEEN_SOURCE:db}
-    seen-consume: ${SEEN_CONSUME:false}   # 是否启动 behavior-events 监听器建 seen 读模型(replica 模式需先开它灌读模型)
+    seen-consume: ${SEEN_CONSUME:false}   # 旧流须先显式登记起点；replica只覆盖实际成功消费的记录
     seen:
-      # C1仅装配内部受控命令；不会自动初始化位点或重放消息。
+      # 显式内部命令；不会自动初始化位点、重放或重建历史集合。
       recovery-enabled: ${SEEN_RECOVERY_ENABLED:false}
-      live-consume: false # C2尚未实现，不得启用。
-      history-consume: false # C2尚未实现，不得启用。
+      live-consume: ${SEEN_LIVE_CONSUME:false}
+      history-consume: ${SEEN_HISTORY_CONSUME:false}
+      live-topic: ${SEEN_LIVE_TOPIC:behavior-accepted-v1}
+      history-topic: ${SEEN_HISTORY_TOPIC:behavior-history-recovery-v1}
+      live-group: ${SEEN_LIVE_GROUP:recsys-rec-engine-seen-live-v1}
+      history-group: ${SEEN_HISTORY_GROUP:recsys-rec-engine-seen-history-v1}
     topic: behavior-events
   recall:
     quota:

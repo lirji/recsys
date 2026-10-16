@@ -1,12 +1,12 @@
-# 当前任务：ER-S15C1 旧Seen完整可靠消费闭环
+# 当前任务：ER-S15C2 LIVE/HISTORY真实Seen链路
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。正式协议：同目录`C15_DESIGN.md` C15C及父审查补充；回合证据：`.dev/codex-flow-reliability/round-282d2b60/`。原目录复用分支`feat/er-s15c-seen-recovery`，独立设计提交`679274fda27ad4d5a5339023f88235cdd4e2e077`保留。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式协议同目录`C15_DESIGN.md` C15C。回合证据`.dev/codex-flow-reliability/round-6ebaf7da/`，请求6ebaf7da-ee0c-4646-acd1-e0ab5d67a673。原目录feat/er-s15c-seen-recovery，基线/main/origin-main=d05d23c0432243ae0d985edba963ffdc9aa85db6；C2实现与验收完成，实际Git动作见本回合delivery.json。
 
-C1 DONE/PASS（实现及必要验证）：完整behavior73项后，审查最终engine33项PASS，未变behavior/streaming44和旧相关回归22复用。最终编译、分离只读审查、保护/文档/hygiene均已核对；formatter和独立Java静态分析未配置。权威证据`validation-result.json`、`independent-review.json`与`validated-source-fingerprints.json`。所有测试操作已结束；真实失败和红绿证据保留。
+C1最终源/验收/11保护核对通过，未知recordId已有NOT_FOUND，真实PG回归PASS，无产品整改。C2独立LIVE/HISTORY真实listener和三流恢复/控制/指标参数化已完成；B2原history→Kafka→产品HISTORY→Redis→Replica通过。最终完整behavior-reliability 83项/14类PASS，0失败/错误/跳过，13分05秒；session68719已exit0，没有本地运行中测试。见full-behavior-result.json/final-reports/source-fingerprints.json，22项被测源码冻结；不要重复运行。分离只读审查/静态/hygiene无阻断，formatter与独立Java静态分析未配置。保护11/旧迁移fixture37/历史正文一致，旧自然/资金/午夜有效证据复用。
 
-Git实际分支/提交/ff/push结果、新源码CI及运行任务分别读取本回合`delivery.json`、`ci-snapshot.json`、`active-operation.json`，恢复先查询未知结果，不能由本地PASS猜测推送或CI成功。前置源码CI38947474433精确6c868e73完整SHA已再次确认8/8成功，未取消重跑。下一片C2 READY；本回合只返回父协调者，不递归启动C2或S16～21，S22～25暂停，父S15C/S15仍IN_PROGRESS。
+下一步：前置CI38958960102精确d05d23c0当前7/8成功、build运行中，推送前必须终态；当前未取消/重跑。完整本地13分05秒超过现有行为CI12分钟，单行12→20分钟提案ci-timeout-proposal.patch已向用户请求单独确认（原边界禁止未批准CI配置修改），尚无答复、尚未改CI，不得把等待当批准。32路径允许清单delivery-paths.json及暂存blob核对PASS，保护内容不在暂存；实际提交状态见delivery.json。已授权C2本地逻辑提交继续完成；CI提案批准后仅落实该单行并核验，保持独立CI逻辑提交；前置CI终态后正常ff/push→登记新CI并返回父协调者。C2本地DONE/PASS，父S15仍IN_PROGRESS等待最终CI/实际交付，不把本地成功当远程成功。
 
-仅Sandbox独占验证，不部署/共享启用；11保护、已发布迁移/fixture与下方历史正文不变。用户原修改和.dev/target保留，无stash/reset/clean/强推、新worktree。采用session-handoff/backend-implementation/implementation-validation/project-documentation/update-progress-docs/task-git-delivery及architecture-standards的业务建模、配置治理、持久化、分布式、并发安全、缓存、Kafka、中间件故障、容量/数据演进、发布治理章节。父审查只补最小协议，原有效门禁不重做。
+保护原用户改动、历史正文、.dev/target、已发布迁移及fixture；不部署/共享启用/共享数据访问/共享容器重启，不新worktree，不stash/reset/clean/强推，不递归codex-flow。初始化耗尽保持FAILED/owner，无自动解占用；Redis历史全量重建和生产容量未知。下一业务片S16，后续S17～21；S22～25暂停。运行/CI状态见active-operation.json与preceding-ci-latest.json。
 
 ---
 

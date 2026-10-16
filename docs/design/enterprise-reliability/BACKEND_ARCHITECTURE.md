@@ -143,10 +143,12 @@ S15A 实际交付：V002、primary Mapper/XML、NaturalOutboxRepository、严格
 旧Seen/Flink维持旧topic，最小topic guard阻止新版误配；新版本化Seen消费在C15C，Flink可靠计算在S19。至少一次重复、历史未分类与无时区时间是显式风险，不靠producer幂等或场景字段消除。部署单元/依赖版本不变；B1已实现并独占验证，无共享迁移或生产吞吐承诺。公共领域类型保留在common，严格JSON codec复用platform既有Jackson依赖。B2以同owner的V002、BehaviorHistoryMapper/XML和显式BehaviorHistoryRepository实现命令/items/cancel；持久访问序号公平轮转，单项与原Outbox捕获同事务，不新增框架或线程。报告固定捕获结果并读取真实Outbox发送状态；旧Seen/Flink启动前拒绝新版保留流，旧格式不按hash合并。C15C旧格式失败确认由C1实现，运行和证据另见ER-S15C1_RESULT；B1/B2证据见BEHAVIOR_EVENTS_RUNBOOK、ER-S15B1_RESULT、ER-S15B2_RESULT。
 
 
-## C15C 架构增量（C1旧流已实现，C2待实施）
+## C15C 架构增量（C1旧流与C2新版已实现）
 
 Seen是rec-engine自有读模型。旧Seen与新版live/history独立listener/group共用受控Seen处理器、primary Mapper和engine-seen独立迁移历史；不增加部署单元、第三方版本或跨owner写权限。Kafka记录技术身份包含cluster/topicId/group/partition/offset，摘要只校验原字节，不能成为旧业务去重键。PG短事务领取→事务外Redis幂等SADD→PG结果→手动确认，各崩溃窗口由持久次数/租约/fence和原记录重读恢复。毒消息隔离、正常无效果和真实应用分列，Redis失败暂停，不转隔离成功。
 
-这一设计增加每条消费的PG写与存储成本，以获得跨进程预算、持久隔离和稳定命令审计；生产容量待实测。PG结果不是Redis集合完整性的权威，集合丢失不能仅靠offset恢复。初始化/受控重放为内部显式用例，无自动全量回填或公开控制面。完整取舍、迁移/回退、默认关闭、起点和保留边界见[C15_DESIGN](C15_DESIGN.md) C15C；S15C1/C2完成前不把父S15或全链路标为完成。
+这一设计增加每条消费的PG写与存储成本，以获得跨进程预算、持久隔离和稳定命令审计；生产容量待实测。PG结果不是Redis集合完整性的权威，集合丢失不能仅靠offset恢复。初始化/受控重放为内部显式用例，无自动全量回填或公开控制面。完整取舍、迁移/回退、默认关闭、起点和保留边界见[C15_DESIGN](C15_DESIGN.md) C15C；实现、隔离验收和Git状态见ER-S15C1_RESULT、ER-S15C2_RESULT；不据此推断共享切换或全历史完整。
 
-C1实际边界为filter/seen领域包、primary SeenRecoveryMapper/XML和db/engine-seen/V001；SeenItemsConsumer已接真实容器。新增seen_stream_control保存初始化所有权/停止原因，control→command→record短锁序；锁不跨Redis/Admin。初始化失败/未知保持原owner，成功绑定与释放同事务；整流屏障跨分区/进程有效。仅LEGACY装配，C2开关显式拒绝，避免误报新版能力已生效。固定维度指标沿现有Micrometer，不新加依赖或后台采样器。缺表/checksum或primary错绑拒绝启用，迁移不由应用自动执行。
+C1实际边界为filter/seen领域包、primary SeenRecoveryMapper/XML和db/engine-seen/V001；SeenItemsConsumer已接真实容器。新增seen_stream_control保存初始化所有权/停止原因，control→command→record短锁序；锁不跨Redis/Admin。初始化失败/未知保持原owner，成功绑定与释放同事务；整流屏障跨分区/进程有效。C1当时仅LEGACY装配；C2已增加VersionedSeenItemsConsumer的LIVE/HISTORY两个实例，使用SeenRecordListener共用确认顺序，SeenStream固定配置绑定。固定维度指标沿现有Micrometer，不新加依赖或后台采样器。缺表/checksum或primary错绑拒绝启用，迁移不由应用自动执行。
+
+C2每流独立SeenListenerControl、SeenOffsetInitializer与SeenRecoveryService；共享factory和有界停止executor按真实group映射流，禁止LEGACY硬编码污染新流。SQL隔离查询与指标按stream过滤，恢复命令先核对归属再领取预算。Replica只读实际Redis集合，缺集合/故障沿既有空结果语义，不把空结果或lag=0宣称历史已完备。engine-seen V001、behavior owner、Flink产品及POM保持；跨模块真实验收放behavior测试方向，无环。

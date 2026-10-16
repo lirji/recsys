@@ -96,3 +96,10 @@ B2新增必需边界：已有DEAD/INVALID_SOURCE分别与源不变/删除/漂移
 隔离组件测试使用唯一topic/group/schema/测试key，失败必须定位实际组件/产品窗口；不改共享数据或既有午夜fixture，不以Mock、跳过或降低断言替代。命令建议沿既有 `mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`，加本片受影响回归；设计回合未执行此命令。C1/C2测试均必须纳入原tag门禁，无需修改CI配置。
 
 C1最终验证采用增量证据：完整behavior-reliability先运行73项（engine29/behavior42/streaming2），随后对审查修改后的engine独立重验并补旧DTO回归，未变behavior/streaming44复用同轮源指纹与XML。C07增加同ID不同观测的真实PG红绿反例；C06增加隔离提交后独立JVM退出；C11使用真实Admin删group位点与越end。提交窗口异常注入位于真实consumer/真实SADD后，Admin与Redis查询仍真实；仅证明这些确定性窗口，不宣称实际Kafka网络断连、ACL拒绝、集群容灾或生产吞吐。
+
+
+## ER-S15C2最终验证入口
+
+同一完整命令仍为`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`。C1公共机制因三流参数化重新执行，新增VersionedSeenKafkaRedisTest真实双流、Bean装配/开关/作用域、Redis暂停、独立JVM与重平衡；BehaviorHistorySeenIntegrationTest沿既有behavior→engine测试依赖，验证原B2捕获/发布→真实HISTORY→Redis→Replica。未知recordId现有PG回归固定NOT_FOUND；不重做设计或旧资金/午夜/自然fixture。
+
+完整C01～C18映射、失败根因、源指纹和本地/CI事实见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)与`.dev/codex-flow-reliability/round-6ebaf7da/`。进程断点/consumer提交代理只证明相应真实副作用后窗口，不宣称真实网络丢包、ACL拒绝、生产吞吐或全量历史恢复。

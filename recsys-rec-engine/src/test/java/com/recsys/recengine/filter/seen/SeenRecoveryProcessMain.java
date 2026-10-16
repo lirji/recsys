@@ -12,7 +12,7 @@ public final class SeenRecoveryProcessMain {
         var f=new SeenRecoveryFixture(new DriverManagerDataSource(jdbc,e.get("SEEN_TEST_USER"),e.get("SEEN_TEST_PASSWORD")));
         String phase=args[0];
         SeenProjectionService.Probe probe=(p,r)->{if(p.name().equals(phase))java.lang.Runtime.getRuntime().halt(73);};
-        try(var r=f.new Runtime(e.get("SEEN_TEST_BOOTSTRAP"),e.get("SEEN_TEST_TOPIC"),e.get("SEEN_TEST_GROUP"),e.get("SEEN_TEST_REDIS_HOST"),Integer.parseInt(e.get("SEEN_TEST_REDIS_PORT")),
+        try(var r=f.new Runtime(SeenStream.valueOf(e.getOrDefault("SEEN_TEST_STREAM","LEGACY")),e.get("SEEN_TEST_BOOTSTRAP"),e.get("SEEN_TEST_TOPIC"),e.get("SEEN_TEST_GROUP"),e.get("SEEN_TEST_REDIS_HOST"),Integer.parseInt(e.get("SEEN_TEST_REDIS_PORT")),
                 phase.equals("RECOVERY")||phase.equals("INIT")?null:probe,phase)) {
             if(phase.equals("RECOVERY") || phase.equals("INIT")) {r.recovery.advance(UUID.fromString(args[1]));throw new IllegalStateException("预期断点未执行");}
             r.listener.start();

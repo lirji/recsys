@@ -467,3 +467,12 @@ SADD重复安全依赖同一 `seen:{user}` 集合；APPLIED不是可重建的全
 | C18 | 实测有界线程/队列、单次poll/重试、停止与脱敏日志；生产吞吐/Redis容量仍UNVERIFIED。完整behavior-reliability及受影响旧回归通过，不能降低断言/跳过真实组件。 |
 
 设计门禁D-C01～D-C09与本表不同：设计只核对事实/版本、分类与ACK、起点、持久/事务、恢复/保留、旧新全覆盖、文件切片、验收映射及保护/交付。具体结果见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)。
+
+
+### C-I：C2实际落地对照（6ebaf7da）
+
+原C01～C18和C1初始化所有权/锁序/多PAUSED协议不变。C2新增SeenStream固定配置、VersionedSeenItemsConsumer的LIVE/HISTORY实例、SeenRecordListener共用ACK路径；control/offset initializer/recovery按流独立，mapper隔离查询和指标带stream，错误处理器按group归属停止。配置见BEHAVIOR_EVENTS_RUNBOOK，所有开关仍false；实际实现后才撤除C1对未实现新版开关的拒绝。
+
+新流使用原LegacyBehaviorCodec并验证UTF8、key与逻辑来源。两流首次消费前预发布消息、真实Redis暂停/错误类型恢复、同eventId不同offset、独立JVM SADD/PG后退出、两consumer重平衡、保留缺口/Redis丢集合及B2原history真实链路在C2验证，结果与限制见[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。C1 V001未改，未新增迁移/依赖/CI配置；Flink仍只旧流，S19独立。
+
+父局部record(UUID)疑点已由真实PG回归核对：rawRecord.require将未知ID变为固定NOT_FOUND，未出现NPE，无需产品整改。初始化耗尽仍不可变FAILED且保留占有，owner另行受控处置；没有自动解占用或自动全历史重建入口。

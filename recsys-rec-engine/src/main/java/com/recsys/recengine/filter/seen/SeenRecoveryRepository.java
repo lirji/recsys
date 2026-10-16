@@ -188,13 +188,18 @@ public final class SeenRecoveryRepository {
         });
     }
     /** PG是状态数量权威，失败由指标层显示NaN，不能包装为零积压。 */
-    public long statusCount(String status) {
+    public long statusCount(String status) {return statusCount(SeenStream.LEGACY.name(),status);}
+    /** 各流分别观测，禁止新版借用LEGACY计数。 */
+    public long statusCount(String stream,String status) {
+        SeenStream.valueOf(stream);
         if(!Set.of(SeenRecord.State.READY.name(),SeenRecord.State.APPLYING.name(),SeenRecord.State.APPLIED.name(),SeenRecord.State.NO_EFFECT.name(),SeenRecord.State.QUARANTINED.name(),SeenRecord.State.PAUSED.name()).contains(status))throw new SeenRecord.Failure(INVALID_COMMAND);
-        return transaction(()->mapper.statusCount(status));
+        return transaction(()->mapper.statusCount(stream,status));
     }
     /** 只在显式指标采集时读取，不新增扫描调度器或自动清理。 */
-    public double oldestPendingSeconds() {return transaction(mapper::oldestPendingSeconds);}
-    List<SeenRecord> quarantine(OffsetDateTime at,UUID id,int limit) { return transaction(()->mapper.quarantine(at,id,limit)); }
+    public double oldestPendingSeconds() {return oldestPendingSeconds(SeenStream.LEGACY.name());}
+    /** 查询指定流的积压年龄，异常继续由指标层报告未知。 */
+    public double oldestPendingSeconds(String stream) {SeenStream.valueOf(stream);return transaction(()->mapper.oldestPendingSeconds(stream));}
+    List<SeenRecord> quarantine(String stream,OffsetDateTime at,UUID id,int limit) { return transaction(()->mapper.quarantine(stream,at,id,limit)); }
     private boolean valid(Command current,Command claim) { return current.status().equals(SeenRecord.CommandState.RUNNING.name()) && current.fence()==claim.fence() && current.leaseActive(); }
     // 并发同ID的只读观测可能不同；请求语义相同就复用先提交的完整冻结清单。
     private static void sameInitialization(Command a, Command b) {

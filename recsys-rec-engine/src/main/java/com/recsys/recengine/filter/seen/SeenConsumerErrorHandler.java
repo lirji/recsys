@@ -11,9 +11,12 @@ import java.util.concurrent.*;
 public final class SeenConsumerErrorHandler extends CommonContainerStoppingErrorHandler implements AutoCloseable {
     private final SeenRecoveryRepository repository;
     private final ThreadPoolExecutor executor;
+    private final java.util.Map<String,SeenStream> groups;
     /** 独立单线程及容量3队列隔离停止动作，不占公共异步执行器。 */
-    public SeenConsumerErrorHandler(SeenRecoveryRepository repository) {this(repository,executor());}
-    private SeenConsumerErrorHandler(SeenRecoveryRepository repository,ThreadPoolExecutor executor) {super(executor);this.repository=repository;this.executor=executor;}
+    public SeenConsumerErrorHandler(SeenRecoveryRepository repository) {this(repository,executor(),null);}
+    /** 三流共享停止队列；只接受启动时核验过的group→stream映射。 */
+    public SeenConsumerErrorHandler(SeenRecoveryRepository repository,java.util.Map<String,SeenStream> groups) {this(repository,executor(),java.util.Map.copyOf(groups));}
+    private SeenConsumerErrorHandler(SeenRecoveryRepository repository,ThreadPoolExecutor executor,java.util.Map<String,SeenStream> groups) {super(executor);this.repository=repository;this.executor=executor;this.groups=groups;}
     private static ThreadPoolExecutor executor() {
         return new ThreadPoolExecutor(1,1,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(3),task->{
             Thread thread=new Thread(task,"seen-container-stop");thread.setDaemon(true);return thread;
@@ -31,8 +34,9 @@ public final class SeenConsumerErrorHandler extends CommonContainerStoppingError
     private void stop(Exception exception,Consumer<?,?> consumer,MessageListenerContainer container) {
         Throwable classified=exception;while(!(classified instanceof SeenRecord.Failure) && classified.getCause()!=null)classified=classified.getCause();
         var code=classified instanceof SeenRecord.Failure f?f.code():SeenRecord.Code.INTERNAL_ERROR;
-        io.micrometer.core.instrument.Metrics.counter("recsys.seen.stops","stream","LEGACY","reason",code.name()).increment();
-        try {repository.stop("LEGACY",code);}catch(RuntimeException unavailable){org.slf4j.LoggerFactory.getLogger(SeenConsumerErrorHandler.class).warn("Seen停止标记未确认，仍继续停止容器");}
+        SeenStream identity=groups==null?SeenStream.LEGACY:groups.get(container.getContainerProperties().getGroupId());
+        if(identity!=null)io.micrometer.core.instrument.Metrics.counter("recsys.seen.stops","stream",identity.name(),"reason",code.name()).increment();
+        try {if(identity!=null)repository.stop(identity.name(),code);}catch(RuntimeException unavailable){org.slf4j.LoggerFactory.getLogger(SeenConsumerErrorHandler.class).warn("Seen停止标记未确认，仍继续停止容器");}
         try {super.handleOtherException(new SeenRecord.Failure(code),consumer,container,false);}
         catch(RejectedExecutionException saturated) {container.stopAbnormally(()->{});throw new SeenRecord.Failure(code);}
     }

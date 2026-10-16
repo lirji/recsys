@@ -21,10 +21,12 @@ class SeenConsumerConfigurationTest {
             assertFalse(c.containsBean("seenKafkaListenerContainerFactory"));
         });
     }
-    @Test void unavailableC2SwitchesCannotSilentlyEnableAnAbsentListener() {
-        for(String flag:List.of("live-consume","history-consume"))new ApplicationContextRunner()
-            .withUserConfiguration(SeenItemsConsumer.class,SeenConsumerConfiguration.class)
-            .withPropertyValues("recsys.behavior.seen."+flag+"=true").run(c->assertNotNull(c.getStartupFailure()));
+    @Test void allOffStillRejectsCrossStreamTopicsAndSharedGroups() {
+        for(String property:List.of("recsys.behavior.seen.live-topic=behavior-history-recovery-v1",
+                "recsys.behavior.seen.history-topic=behavior-accepted-v1","recsys.behavior.seen.live-group=recsys-rec-engine-seen",
+                "recsys.behavior.seen.history-group=recsys-rec-engine-seen-live-v1","recsys.behavior.seen.live-topic=behavior-accepted-v1."))
+            new ApplicationContextRunner().withUserConfiguration(SeenItemsConsumer.class,SeenConsumerConfiguration.class)
+                .withPropertyValues(property).run(c->assertNotNull(c.getStartupFailure()));
     }
     @Test void hardPropertiesOverrideUnsafeGlobalKafkaAndErrorHandlerNeverRecovers() {
         var properties=new KafkaProperties();properties.getConsumer().setEnableAutoCommit(true);properties.getConsumer().setAutoOffsetReset("latest");

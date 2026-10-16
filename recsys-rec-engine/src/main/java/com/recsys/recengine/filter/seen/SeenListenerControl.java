@@ -14,16 +14,24 @@ public final class SeenListenerControl implements SmartLifecycle {
     private final SeenRecoveryRepository repository;
     private final SeenOffsetInitializer offsets;
     private final boolean auto;
+    private final SeenStream stream;
+    /** 绑定入口与容器本身，避免包装时丢失暂停目标。 */
+    @FunctionalInterface public interface Listener { void accept(org.apache.kafka.clients.consumer.ConsumerRecord<byte[],byte[]> record,org.springframework.kafka.support.Acknowledgment ack,Consumer<?,?> consumer,MessageListenerContainer container); }
     /** 容器不自行启动，所有启动路径均经本控制器。 */
     public SeenListenerControl(ConcurrentKafkaListenerContainerFactory<byte[],byte[]> factory,SeenItemsConsumer listener,
                                SeenRecoveryRepository repository,SeenOffsetInitializer offsets,String topic,String group,boolean auto) {
-        this.repository=repository;this.offsets=offsets;this.auto=auto;
-        container=factory.createContainer(topic);container.setBeanName("seen-legacy");container.setAutoStartup(false);
+        this(factory,SeenStream.LEGACY,listener::onEvent,repository,offsets,topic,group,auto);
+    }
+    /** 每条流独立容器/组/暂停状态，共享factory硬配置。 */
+    public SeenListenerControl(ConcurrentKafkaListenerContainerFactory<byte[],byte[]> factory,SeenStream stream,Listener listener,
+                              SeenRecoveryRepository repository,SeenOffsetInitializer offsets,String topic,String group,boolean auto) {
+        this.repository=repository;this.offsets=offsets;this.auto=auto;this.stream=stream;
+        container=factory.createContainer(topic);container.setBeanName("seen-"+stream.name().toLowerCase(java.util.Locale.ROOT));container.setAutoStartup(false);
         container.getContainerProperties().setGroupId(group);
-        container.setupMessageListener((AcknowledgingConsumerAwareMessageListener<byte[],byte[]>)(record,ack,consumer)->listener.onEvent(record,ack,consumer,container));
+        container.setupMessageListener((AcknowledgingConsumerAwareMessageListener<byte[],byte[]>)(record,ack,consumer)->listener.accept(record,ack,consumer,container));
         container.getContainerProperties().setConsumerRebalanceListener(new ConsumerAwareRebalanceListener() {
             @Override public void onPartitionsAssigned(Consumer<?,?> consumer,Collection<TopicPartition> partitions) {
-                offsets.validate();if(repository.blocked("LEGACY"))container.pause();
+                offsets.validate();if(repository.blocked(stream.name()))container.pause();
             }
             // revoke/lost不flush未确认记录；旧调用必须依赖租约/fence与consumer线程确认。
         });
@@ -31,15 +39,15 @@ public final class SeenListenerControl implements SmartLifecycle {
     /** 运行开关只请求启动，不能绕过持久STOP或身份/位点检查。 */
     @Override public synchronized void start() {
         offsets.validate();
-        var control=repository.control("LEGACY");
+        var control=repository.control(stream.name());
         if(control.stopReason()!=null)throw new SeenRecord.Failure(SeenRecord.Code.STREAM_STOPPED);
-        if(repository.blocked("LEGACY"))container.pause();
+        if(repository.blocked(stream.name()))container.pause();
         container.start();
     }
     /** 必须先显式恢复全部记录，才可恢复整个流。 */
     public synchronized void resume() {
         offsets.validate();
-        if(repository.blocked("LEGACY"))throw new SeenRecord.Failure(SeenRecord.Code.STREAM_PAUSED);
+        if(repository.blocked(stream.name()))throw new SeenRecord.Failure(SeenRecord.Code.STREAM_PAUSED);
         if(!container.isRunning())start();
         container.resume();
     }
@@ -57,4 +65,6 @@ public final class SeenListenerControl implements SmartLifecycle {
     public boolean isPaused() {return container.isPauseRequested();}
     /** 分配信息用于技术验证，不作为处理完成水位。 */
     public Collection<TopicPartition> assigned() {return container.getAssignedPartitions();}
+    /** 指标和受控调用使用绑定身份，不从消息猜测流。 */
+    public SeenStream stream() {return stream;}
 }

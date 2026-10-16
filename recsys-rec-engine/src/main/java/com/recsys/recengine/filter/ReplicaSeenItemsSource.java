@@ -12,10 +12,11 @@ import java.util.Set;
 
 /**
  * 副本已看来源(P4):读 rec-engine 自有的 {@code seen:{user}} Redis Set 读模型(由 {@link SeenItemsConsumer}
- * 从 {@code behavior-events} 构建),不再跨上下文直读 {@code user_behavior}(DB-per-service)。
+ * 及独立LIVE/HISTORY入口构建),不再跨上下文直读 {@code user_behavior}(DB-per-service)。
  * 仅 {@code recsys.behavior.seen-source=replica} 时装配。fail-open:异常返回空集(不过滤)。
  *
- * <p>注:读模型只含消费者启动后到达的事件;历史已看需一次性从 user_behavior 回填 {@code seen:{user}}(P4 收尾项)。
+ * <p>包含登记起点后实际成功消费的旧/在线/历史合法正反馈；未捕获、非法源、源漂移和保留缺口仍未知。
+ * Redis丢集合不会由普通重启或lag=0补全；已知记录可受控RESTORE，不能据此声称全历史完整。
  */
 @Component
 @ConditionalOnProperty(name = "recsys.behavior.seen-source", havingValue = "replica")
@@ -25,10 +26,12 @@ public class ReplicaSeenItemsSource implements SeenItemsSource {
 
     private final StringRedisTemplate redis;
 
+    /** 仅读取engine自有投影，不跨owner补查历史。 */
     public ReplicaSeenItemsSource(StringRedisTemplate redis) {
         this.redis = redis;
     }
 
+    /** 失败沿原fail-open；结果不携带历史完整性承诺。 */
     @Override
     public Set<Long> seenItems(long userId) {
         try {
@@ -46,7 +49,7 @@ public class ReplicaSeenItemsSource implements SeenItemsSource {
             }
             return out;
         } catch (Exception e) {
-            log.warn("已看查询失败(seen 读模型),本次不过滤 user={}: {}", userId, e.getMessage());
+            log.warn("已看查询失败，本次不过滤 type={}", e.getClass().getSimpleName());
             return Set.of();
         }
     }

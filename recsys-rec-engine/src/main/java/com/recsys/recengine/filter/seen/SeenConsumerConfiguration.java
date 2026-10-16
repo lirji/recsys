@@ -23,11 +23,13 @@ import java.time.Duration;
 import java.util.*;
 import static com.recsys.recengine.filter.seen.SeenRecord.Code.*;
 
-/** 只装配C1旧流；全关时零Seen恢复表/Admin连接，C2开关不得被误当作已实现。 */
+/** 三流按各自开关装配；全关时零Seen恢复表/Admin连接，组与路由绑定不可串流。 */
 @Configuration(proxyBeanMethods=false)
-@ConditionalOnExpression("${recsys.behavior.seen-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+@ConditionalOnExpression("${recsys.behavior.seen-consume:false} or ${recsys.behavior.seen.live-consume:false} or ${recsys.behavior.seen.history-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
 @EnableConfigurationProperties(KafkaProperties.class)
 public class SeenConsumerConfiguration {
+    /** 纯配置校验不建连接，三流共用一致的已核验绑定。 */
+    @Bean public Map<SeenStream,SeenStream.Binding> seenBindings(Environment env) {return SeenStream.bindings(env);}
     /** 迁移必须已显式完成，装配只校验primary库。 */
     @Bean public SeenRecoveryRepository seenRecoveryRepository(@Qualifier("sqlSessionTemplate") SqlSessionTemplate sessions) {
         var repository=new SeenRecoveryRepository(sessions,new DataSourceTransactionManager(sessions.getSqlSessionFactory().getConfiguration().getEnvironment().getDataSource()));
@@ -44,7 +46,9 @@ public class SeenConsumerConfiguration {
         return new SeenProjectionService(repository,decoder,redis);
     }
     /** 停止executor随宿主关闭，不留下无界后台任务。 */
-    @Bean(destroyMethod="close") public SeenConsumerErrorHandler seenConsumerErrorHandler(SeenRecoveryRepository repository) {return new SeenConsumerErrorHandler(repository);}
+    @Bean(destroyMethod="close") public SeenConsumerErrorHandler seenConsumerErrorHandler(SeenRecoveryRepository repository,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        var groups=new HashMap<String,SeenStream>();bindings.values().forEach(b->groups.put(b.group(),b.stream()));return new SeenConsumerErrorHandler(repository,groups);
+    }
     /** 硬可靠性参数覆盖通用Kafka配置，TLS/SASL等连接属性沿宿主。 */
     public static Map<String,Object> consumerProperties(KafkaProperties kafka) {
         var p=new HashMap<String,Object>(kafka.buildConsumerProperties(null));
@@ -57,7 +61,7 @@ public class SeenConsumerConfiguration {
         p.put(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,1048576);p.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,1048576);
         return p;
     }
-    /** 旧Seen只能接专用确认策略，不使用Boot默认失败恢复器。 */
+    /** 三流只能接专用确认策略，不使用Boot默认失败恢复器。 */
     @Bean(name="seenKafkaListenerContainerFactory") public ConcurrentKafkaListenerContainerFactory<byte[],byte[]> seenKafkaListenerContainerFactory(KafkaProperties kafka,SeenConsumerErrorHandler handler) {
         return factory(consumerProperties(kafka),handler);
     }
@@ -71,35 +75,81 @@ public class SeenConsumerConfiguration {
         p.setAssignmentCommitOption(ContainerProperties.AssignmentCommitOption.NEVER);p.setPollTimeout(500);p.setPauseImmediate(true);p.setShutdownTimeout(10000);
         return factory;
     }
-    /** Admin仅用于受控起点/身份查询，重试和总API时间均有界。 */
-    @Bean(destroyMethod="close") public SeenOffsetInitializer seenOffsetInitializer(SeenRecoveryRepository repository,KafkaProperties kafka,Environment env) {
+    // 三流共享工厂和一个有界停止队列，各自独立Admin、内部命令与消费生命周期。
+    private static SeenOffsetInitializer offsets(SeenRecoveryRepository repository,KafkaProperties kafka,SeenStream.Binding binding) {
         var admin=new HashMap<String,Object>(kafka.buildAdminProperties(null));admin.put("default.api.timeout.ms",5000);admin.put("request.timeout.ms",5000);admin.put("retries",3);
-        return new SeenOffsetInitializer(repository,Admin.create(admin),consumerProperties(kafka),"LEGACY",topic(env),group(env));
+        return new SeenOffsetInitializer(repository,Admin.create(admin),consumerProperties(kafka),binding.stream().name(),binding.topic(),binding.group());
     }
-    /** 恢复开关控制内部命令受理，不启动自动扫描或重放。 */
-    @Bean public SeenRecoveryService seenRecoveryService(SeenRecoveryRepository repository,SeenOffsetInitializer offsets,SeenProjectionService projection,SeenMessageDecoder decoder,Environment env) {
-        return new SeenRecoveryService(repository,offsets,projection,decoder,env.getProperty("recsys.behavior.seen.recovery-enabled",Boolean.class,false));
+    /** LEGACY仅在消费或显式恢复开启时创建Admin；启动不改位点。 */
+    @ConditionalOnExpression("${recsys.behavior.seen-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean(destroyMethod="close") public SeenOffsetInitializer seenOffsetInitializer(SeenRecoveryRepository repository,KafkaProperties kafka,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        return offsets(repository,kafka,bindings.get(SeenStream.LEGACY));
     }
-    /** 开关开启也必须经过持久登记、位点与全流屏障检查。 */
+    /** LEGACY受控命令只访问该流；恢复开关不启动自动作业。 */
+    @ConditionalOnExpression("${recsys.behavior.seen-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public SeenRecoveryService seenRecoveryService(SeenRecoveryRepository repository,@Qualifier("seenOffsetInitializer") SeenOffsetInitializer offsets,SeenProjectionService projection,SeenMessageDecoder decoder,Environment env) {
+        return new SeenRecoveryService(repository,offsets,projection,decoder,env.getProperty("recsys.behavior.seen.recovery-enabled",Boolean.class,false),SeenStream.LEGACY);
+    }
+    /** LEGACY开关只请求启动，不能绕过登记和持久义务。 */
+    @ConditionalOnExpression("${recsys.behavior.seen-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
     @Bean public SeenListenerControl seenListenerControl(@Qualifier("seenKafkaListenerContainerFactory") ConcurrentKafkaListenerContainerFactory<byte[],byte[]> factory,
-            SeenItemsConsumer listener,SeenRecoveryRepository repository,SeenOffsetInitializer offsets,Environment env) {
-        return new SeenListenerControl(factory,listener,repository,offsets,topic(env),group(env),env.getProperty("recsys.behavior.seen-consume",Boolean.class,false));
+            SeenItemsConsumer listener,SeenRecoveryRepository repository,@Qualifier("seenOffsetInitializer") SeenOffsetInitializer offsets,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        var binding=bindings.get(SeenStream.LEGACY);
+        return new SeenListenerControl(factory,SeenStream.LEGACY,listener::onEvent,repository,offsets,binding.topic(),binding.group(),binding.consume());
+    }
+    /** LIVE仅在消费或显式恢复开启时创建Admin；启动不改位点。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.live-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean(destroyMethod="close") public SeenOffsetInitializer liveSeenOffsetInitializer(SeenRecoveryRepository repository,KafkaProperties kafka,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        return offsets(repository,kafka,bindings.get(SeenStream.LIVE));
+    }
+    /** LIVE受控命令只访问该流；恢复开关不启动自动作业。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.live-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public SeenRecoveryService liveSeenRecoveryService(SeenRecoveryRepository repository,@Qualifier("liveSeenOffsetInitializer") SeenOffsetInitializer offsets,SeenProjectionService projection,SeenMessageDecoder decoder,Environment env) {
+        return new SeenRecoveryService(repository,offsets,projection,decoder,env.getProperty("recsys.behavior.seen.recovery-enabled",Boolean.class,false),SeenStream.LIVE);
+    }
+    /** LIVE版本化产品入口，按各自逻辑来源解码。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.live-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public VersionedSeenItemsConsumer liveSeenItemsConsumer(SeenProjectionService projection) {return new VersionedSeenItemsConsumer(SeenStream.LIVE,projection);}
+    /** LIVE开关只请求启动，不能绕过登记和持久义务。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.live-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public SeenListenerControl liveSeenListenerControl(@Qualifier("seenKafkaListenerContainerFactory") ConcurrentKafkaListenerContainerFactory<byte[],byte[]> factory,
+            @Qualifier("liveSeenItemsConsumer") VersionedSeenItemsConsumer listener,SeenRecoveryRepository repository,@Qualifier("liveSeenOffsetInitializer") SeenOffsetInitializer offsets,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        var binding=bindings.get(SeenStream.LIVE);
+        return new SeenListenerControl(factory,SeenStream.LIVE,listener::onEvent,repository,offsets,binding.topic(),binding.group(),binding.consume());
+    }
+    /** HISTORY仅在消费或显式恢复开启时创建Admin；启动不改位点。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.history-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean(destroyMethod="close") public SeenOffsetInitializer historySeenOffsetInitializer(SeenRecoveryRepository repository,KafkaProperties kafka,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        return offsets(repository,kafka,bindings.get(SeenStream.HISTORY));
+    }
+    /** HISTORY受控命令只访问该流；恢复开关不启动自动作业。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.history-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public SeenRecoveryService historySeenRecoveryService(SeenRecoveryRepository repository,@Qualifier("historySeenOffsetInitializer") SeenOffsetInitializer offsets,SeenProjectionService projection,SeenMessageDecoder decoder,Environment env) {
+        return new SeenRecoveryService(repository,offsets,projection,decoder,env.getProperty("recsys.behavior.seen.recovery-enabled",Boolean.class,false),SeenStream.HISTORY);
+    }
+    /** HISTORY版本化产品入口，按各自逻辑来源解码。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.history-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public VersionedSeenItemsConsumer historySeenItemsConsumer(SeenProjectionService projection) {return new VersionedSeenItemsConsumer(SeenStream.HISTORY,projection);}
+    /** HISTORY开关只请求启动，不能绕过登记和持久义务。 */
+    @ConditionalOnExpression("${recsys.behavior.seen.history-consume:false} or ${recsys.behavior.seen.recovery-enabled:false}")
+    @Bean public SeenListenerControl historySeenListenerControl(@Qualifier("seenKafkaListenerContainerFactory") ConcurrentKafkaListenerContainerFactory<byte[],byte[]> factory,
+            @Qualifier("historySeenItemsConsumer") VersionedSeenItemsConsumer listener,SeenRecoveryRepository repository,@Qualifier("historySeenOffsetInitializer") SeenOffsetInitializer offsets,@Qualifier("seenBindings") Map<SeenStream,SeenStream.Binding> bindings) {
+        var binding=bindings.get(SeenStream.HISTORY);
+        return new SeenListenerControl(factory,SeenStream.HISTORY,listener::onEvent,repository,offsets,binding.topic(),binding.group(),binding.consume());
     }
     /** 固定维度接现有Micrometer；采集失败为NaN，不把PG不可达伪装成零积压。 */
-    @Bean public io.micrometer.core.instrument.binder.MeterBinder seenMetrics(SeenRecoveryRepository repository,SeenListenerControl control) {
+    @Bean public io.micrometer.core.instrument.binder.MeterBinder seenMetrics(SeenRecoveryRepository repository,List<SeenListenerControl> controls) {
         return registry->{
+          for(var control:controls) {
+            String stream=control.stream().name();
             for(String state:List.of(SeenRecord.State.READY.name(),SeenRecord.State.APPLYING.name(),SeenRecord.State.APPLIED.name(),SeenRecord.State.NO_EFFECT.name(),SeenRecord.State.QUARANTINED.name(),SeenRecord.State.PAUSED.name()))
-                io.micrometer.core.instrument.Gauge.builder("recsys.seen.records",()->metric(()->repository.statusCount(state)))
-                    .tags("stream","LEGACY","status",state).register(registry);
-            io.micrometer.core.instrument.Gauge.builder("recsys.seen.oldest.pending.seconds",()->metric(repository::oldestPendingSeconds)).tag("stream","LEGACY").register(registry);
-            io.micrometer.core.instrument.Gauge.builder("recsys.seen.paused",control,c->c.isPaused()?1:0).tag("stream","LEGACY").register(registry);
-            io.micrometer.core.instrument.Gauge.builder("recsys.seen.stopped",control,c->c.isRunning()?0:1).tag("stream","LEGACY").register(registry);
+                io.micrometer.core.instrument.Gauge.builder("recsys.seen.records",()->metric(()->repository.statusCount(stream,state)))
+                    .tags("stream",stream,"status",state).register(registry);
+            io.micrometer.core.instrument.Gauge.builder("recsys.seen.oldest.pending.seconds",()->metric(()->repository.oldestPendingSeconds(stream))).tag("stream",stream).register(registry);
+            io.micrometer.core.instrument.Gauge.builder("recsys.seen.paused",control,c->c.isPaused()?1:0).tag("stream",stream).register(registry);
+            io.micrometer.core.instrument.Gauge.builder("recsys.seen.stopped",control,c->c.isRunning()?0:1).tag("stream",stream).register(registry);
+          }
         };
     }
     private static double metric(java.util.function.DoubleSupplier value) {try{return value.getAsDouble();}catch(SeenRecord.Failure unavailable){return Double.NaN;}}
-    private static String topic(Environment env) {String topic=env.getProperty("recsys.behavior.topic","behavior-events");com.recsys.common.behavior.LegacyBehaviorAccepted.requireLegacyTopic(topic);return topic;}
-    private static String group(Environment env) {
-        String value=env.getProperty("recsys.behavior.seen-group","recsys-rec-engine-seen");
-        if(value.isBlank() || value.length()>200 || value.contains(","))throw new SeenRecord.Failure(INVALID_COMMAND);return value;
-    }
 }

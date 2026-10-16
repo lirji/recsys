@@ -85,9 +85,9 @@ public interface SeenRecoveryMapper {
     /** 只有原命令可释放占有，不影响别的恢复。 */
     int releaseRecord(@Param("id") UUID id, @Param("command") UUID command, @Param("status") String status);
     /** 仅固定状态的当前数量/积压年龄，指标读取同样受短事务超时约束。 */
-    long statusCount(@Param("status") String status);
+    long statusCount(@Param("stream") String stream,@Param("status") String status);
     /** 积压年龄来自PG事实，不能用消费lag推断集合完整。 */
-    double oldestPendingSeconds();
+    double oldestPendingSeconds(@Param("stream") String stream);
     /** 稳定游标分页隔离原记录，避免一次取出无界原文。 */
-    List<SeenRecord> quarantine(@Param("at") OffsetDateTime at, @Param("id") UUID id, @Param("limit") int limit);
+    List<SeenRecord> quarantine(@Param("stream") String stream,@Param("at") OffsetDateTime at, @Param("id") UUID id, @Param("limit") int limit);
 }

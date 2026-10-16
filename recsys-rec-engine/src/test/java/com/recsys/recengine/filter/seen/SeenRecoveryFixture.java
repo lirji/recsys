@@ -75,6 +75,7 @@ class SeenRecoveryFixture {
         try {var o=observer.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get(5,TimeUnit.SECONDS).get(new TopicPartition(topic,partition));return o==null?null:o.offset();}
         catch(Exception e){throw new AssertionError(e);}
     }
+    SeenRecord at(SeenStream stream,int partition,long offset) {return mapper.coordinate(stream.name(),partition,offset);}
     SeenRecord at(int partition,long offset) {return mapper.coordinate("LEGACY",partition,offset);}
     static void await(BooleanSupplier condition,int seconds) throws Exception {
         long deadline=System.nanoTime()+Duration.ofSeconds(seconds).toNanos();while(!condition.getAsBoolean()){assertTrue(System.nanoTime()<deadline,"等待真实状态超时");Thread.sleep(50);}
@@ -85,22 +86,28 @@ class SeenRecoveryFixture {
         var factory=new LettuceConnectionFactory(new RedisStandaloneConfiguration(host,port),config);factory.afterPropertiesSet();factory.start();return factory;
     }
     Runtime runtime(String bootstrap,String topic,String group,String host,int port) {return new Runtime(bootstrap,topic,group,host,port,null,null);}
+    Runtime runtime(SeenStream stream,String bootstrap,String topic,String group,String host,int port) {return new Runtime(stream,bootstrap,topic,group,host,port,null,null);}
     class Runtime implements AutoCloseable {
         final LettuceConnectionFactory redisFactory;final StringRedisTemplate redis;final SeenOffsetInitializer offsets;
         final SeenProjectionService projection;final SeenRecoveryService recovery;final SeenConsumerErrorHandler errors;final SeenListenerControl listener;
         Runtime(String bootstrap,String topic,String group,String host,int port,SeenProjectionService.Probe probe,String fault) {
+            this(SeenStream.LEGACY,bootstrap,topic,group,host,port,probe,fault);
+        }
+        Runtime(SeenStream stream,String bootstrap,String topic,String group,String host,int port,SeenProjectionService.Probe probe,String fault) {
             redisFactory=redisFactory(host,port);redis=new StringRedisTemplate(redisFactory);
             var props=SeenConsumerConfiguration.consumerProperties(kafka(bootstrap));
-            offsets=new SeenOffsetInitializer(repo,admin(bootstrap),props,"LEGACY",topic,group) {
+            offsets=new SeenOffsetInitializer(repo,admin(bootstrap),props,stream.name(),topic,group) {
                 @Override protected void afterOffsets(SeenRecoveryMapper.Command claim) {if("INIT".equals(fault))java.lang.Runtime.getRuntime().halt(73);}
             };
             projection=probe==null?new SeenProjectionService(repo,decoder,redis) {
                 @Override public void applyRedis(SeenMessageDecoder.Decoded d) {super.applyRedis(d);if("RECOVERY".equals(fault))java.lang.Runtime.getRuntime().halt(73);}
             }:new SeenProjectionService(repo,decoder,redis,probe);
-            recovery=new SeenRecoveryService(repo,offsets,projection,decoder,true);errors=new SeenConsumerErrorHandler(repo);
+            recovery=new SeenRecoveryService(repo,offsets,projection,decoder,true,stream);errors=new SeenConsumerErrorHandler(repo,Map.of(group,stream));
             var beans=new DefaultListableBeanFactory();beans.registerSingleton("projection",projection);
-            var consumer=new SeenItemsConsumer(beans.getBeanProvider(SeenProjectionService.class),topic);
-            listener=new SeenListenerControl(SeenConsumerConfiguration.factory(props,errors),consumer,repo,offsets,topic,group,false);
+            SeenListenerControl.Listener consumer;
+            if(stream==SeenStream.LEGACY)consumer=new SeenItemsConsumer(beans.getBeanProvider(SeenProjectionService.class),topic)::onEvent;
+            else consumer=new VersionedSeenItemsConsumer(stream,projection)::onEvent;
+            listener=new SeenListenerControl(SeenConsumerConfiguration.factory(props,errors),stream,consumer,repo,offsets,topic,group,false);
         }
         void initialize() {var id=UUID.randomUUID();recovery.initialize(id,SeenOffsetInitializer.Mode.EARLIEST_RETAINED,"test-owner","独占初始化");assertEquals("SUCCEEDED",recovery.advance(id).status());}
         @Override public void close() {listener.stop();errors.close();offsets.close();redisFactory.destroy();}

@@ -254,7 +254,7 @@ C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显�
 
 C15A 的 wire 校验、状态转移、资源/配置、兼容回退及 A01～A10 验收均以 C15_DESIGN 为准；本 producer 对当前 v1 使用字段允许列表，未来扩展需先升级 codec。物理 topic 仅允许 natural-impression-accepted-v1 及其隔离后缀，不投旧 behavior-events。测试 PG Inbox/effect 仅证明测试下游；不代表产品自然消费已实现。
 
-父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B 的 wire/身份/开关迁移/历史恢复已在 C15_DESIGN 正式冻结；C15C 的消费确认/毒消息恢复设计详见 C15_DESIGN 的 C15C 正式增量及 ER-D0-C15C_RESULT，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。C15A 产品已按本契约实现并经隔离验证，见 ER-S15A_RESULT；运行开关默认关闭，无共享环境迁移或启用。C15B1/B2已实现并本地验收，见ER-S15B1_RESULT/ER-S15B2_RESULT；C15C按C1/C2串行落地，当前旧流实现和验收进度见ER-S15C1_RESULT；父S15C仍需C2。
+父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B 的 wire/身份/开关迁移/历史恢复已在 C15_DESIGN 正式冻结；C15C 的消费确认/毒消息恢复设计详见 C15_DESIGN 的 C15C 正式增量及 ER-D0-C15C_RESULT，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。C15A 产品已按本契约实现并经隔离验证，见 ER-S15A_RESULT；运行开关默认关闭，无共享环境迁移或启用。C15B1/B2已实现并本地验收，见ER-S15B1_RESULT/ER-S15B2_RESULT；C15C按C1/C2串行落地，旧流与新版产品实现和验收分别见ER-S15C1_RESULT、ER-S15C2_RESULT；父状态只以IMPLEMENTATION_SLICES为准。
 
 
 ### C15B：旧行为原子接受、稳定事件与显式历史恢复
@@ -274,6 +274,8 @@ B2实现使用同owner V002的持久visit_sequence/last_visit轮转，command→
 B2边界整改（9fb853b6，真实PG复现）：原事件为DEAD/INVALID_SOURCE且源行删除时，新清单仍记INVALID_SOURCE/COMPLETED_WITH_ISSUES，不计covered；合法原快照删除仍ALREADY_CAPTURED。当前源存在且摘要漂移时保留SOURCE_CHANGED。仅更正后续捕获分类，原payload/eventId/发送状态与历史终态记录不可改写；过去误分类须新受控命令核查。
 
 
-C15C正式增量（89a217e3冻结；282d2b60实现C1）：以[C15_DESIGN的C15C](C15_DESIGN.md)为详细契约，三流LEGACY/LIVE/HISTORY全部显式手动确认。正反馈SADD成功后记录APPLIED再ACK；合法IMPRESSION为NO_EFFECT；非法数据先持久QUARANTINED再确认，依赖故障不得伪装隔离成功。engine自有技术坐标/预算/隔离与稳定恢复命令，不发明旧业务ID，不跨owner写behavior表。默认关闭，沿原旧Seen开关升级后无吞错旁路；新组受控登记最早保留起点，旧组只读采用有效committed，缺失/过期不静默reset。Redis在ACK后丢集合仍需显式RESTORE或有依据的历史恢复，不能以lag=0声称完整；history不进入旧Flink。新表和文件边界、命令审计/保留局限、C01～C18真实PG/Kafka/Redis验收及C1/C2顺序均在正式设计冻结。C1实现旧流；C2 live/history仍待后续验收。
+C15C正式增量（89a217e3冻结；282d2b60实现C1，6ebaf7da实现C2）：以[C15_DESIGN的C15C](C15_DESIGN.md)为详细契约，三流LEGACY/LIVE/HISTORY全部显式手动确认。正反馈SADD成功后记录APPLIED再ACK；合法IMPRESSION为NO_EFFECT；非法数据先持久QUARANTINED再确认，依赖故障不得伪装隔离成功。engine自有技术坐标/预算/隔离与稳定恢复命令，不发明旧业务ID，不跨owner写behavior表。默认关闭，沿原旧Seen开关升级后无吞错旁路；新组受控登记最早保留起点，旧组只读采用有效committed，缺失/过期不静默reset。Redis在ACK后丢集合仍需显式RESTORE或有依据的历史恢复，不能以lag=0声称完整；history不进入旧Flink。新表和文件边界、命令审计/保留局限、C01～C18真实PG/Kafka/Redis验收及C1/C2顺序均在正式设计冻结。C1实现旧流；C2以独立组接入LIVE/HISTORY，复用原codec并校验逻辑来源，报告/恢复/停止/指标均按流绑定。C2真实验收与未执行边界见ER-S15C2_RESULT。
 
 C1补充协议：engine自有seen_stream_control在外部Kafka位点副作用前持久排他。不同初始化command不能互相接管；同ID并发只读观测不改变先持久化的原清单。同组ENROLL仅改已冻结新增分区，逐项保护旧位点；所有PAUSED、耗尽或活动恢复义务处理完才允许整流resume/start放行。审计/租约/结果及失败保留规则详见C15_DESIGN C-S补充，不把同ID幂等或最终唯一键当跨命令隔离。
+
+C2未新增schema或修改C1 V001；behavior既有engine test-support依赖承载B2→真实HISTORY→Redis→Replica全链路，engine不反向依赖behavior。所有开关仍false；初始化耗尽保持FAILED及占有，不自动翻转终态或清空owner。

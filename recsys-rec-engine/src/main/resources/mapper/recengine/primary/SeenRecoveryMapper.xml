@@ -74,7 +74,7 @@
         WHERE command_id=#{id} AND status='RUNNING' AND attempts=3 AND lease_until&lt;=clock_timestamp()</update>
     <update id="releaseRecord">UPDATE seen_record SET active_command_id=NULL,status=#{status},lease_until=NULL WHERE record_id=#{id} AND active_command_id=#{command}</update>
     <select id="quarantine" resultType="com.recsys.recengine.filter.seen.SeenRecord" useCache="false" flushCache="true">SELECT <include refid="record"/> FROM seen_record
-        WHERE status='QUARANTINED' <if test="at != null">AND (created_at,record_id)&gt;(#{at},#{id})</if> ORDER BY created_at,record_id LIMIT #{limit}</select>
-    <select id="statusCount" resultType="long" useCache="false" flushCache="true">SELECT count(*) FROM seen_record WHERE stream='LEGACY' AND status=#{status}</select>
-    <select id="oldestPendingSeconds" resultType="double" useCache="false" flushCache="true">SELECT COALESCE(EXTRACT(EPOCH FROM (clock_timestamp()-min(created_at))),0)::double precision FROM seen_record WHERE stream='LEGACY' AND status IN ('READY','APPLYING','PAUSED')</select>
+        WHERE stream=#{stream} AND status='QUARANTINED' <if test="at != null">AND (created_at,record_id)&gt;(#{at},#{id})</if> ORDER BY created_at,record_id LIMIT #{limit}</select>
+    <select id="statusCount" resultType="long" useCache="false" flushCache="true">SELECT count(*) FROM seen_record WHERE stream=#{stream} AND status=#{status}</select>
+    <select id="oldestPendingSeconds" resultType="double" useCache="false" flushCache="true">SELECT COALESCE(EXTRACT(EPOCH FROM (clock_timestamp()-min(created_at))),0)::double precision FROM seen_record WHERE stream=#{stream} AND status IN ('READY','APPLYING','PAUSED')</select>
 </mapper>

@@ -1,6 +1,6 @@
-# 旧行为可靠事件：B1/B2 运行与恢复边界
+# 行为可靠事件与三流 Seen：运行与恢复边界
 
-本文件对应 ER-S15B1/B2；正式消息和业务契约见 [C15_DESIGN](C15_DESIGN.md)。代码交付不表示已部署或已切换。当前只在独占 PostgreSQL 16 / Kafka 3.7.1 夹具验证，未连接共享业务数据。C15C 实际旧/新 Seen 消费恢复尚未交付。
+本文件对应 ER-S15B1/B2/C1/C2；正式消息和业务契约见 [C15_DESIGN](C15_DESIGN.md)。代码交付不表示已部署或已切换。当前只在独占 PostgreSQL 16 / Kafka 3.7.1 / Redis 7 夹具验证，未连接共享业务数据。旧、新 Seen 产品恢复现已实现；验收与交付状态见 ER-S15C1_RESULT、ER-S15C2_RESULT。
 
 ## 配置与启用前提
 
@@ -70,11 +70,11 @@ POST `/api/behavior` 仍返回 `{ok:true}`，batch 仍逐条提交并返回原 c
 
 内部失败以 `BehaviorHistoryRepository.Failure.code()` 返回 INVALID_COMMAND、COMMAND_CONFLICT、NOT_FOUND、SOURCE_MISMATCH、MIGRATION_INVALID 或 PERSISTENCE_FAILURE。数据库/事务异常没有原始 cause 或源行文本。结果未知先用原 commandId/cancelId 查询或精确重试，不能换 UUID 掩盖原操作。审计与快照未定保留期，不自动清理。
 
-## 旧消费者兼容与下一门禁
+## 旧消费者兼容与流式边界
 
 旧 Seen `recsys.behavior.topic` 和 Flink `--topic` / `BEHAVIOR_TOPIC` 保持默认 `behavior-events`，启动时拒绝 `behavior-accepted-v1`、`behavior-history-recovery-v1`、`natural-impression-accepted-v1` 及其点号后缀。Seen listener 即使关闭也检查错误路由，Flink 在连接组件前拒绝。原8字段/缺 exposureId 格式保持；没有 eventId 的重复旧消息逐次处理，不使用内容 hash 合并。
 
-C15C 必须同时处理旧格式 Seen Redis 失败吞错确认，单增新 listener 不算完成。B2 没有开启新 listener，也未证明真实 Seen 集合/offset 恢复。S19 独立承担 Flink 的窗口与 checkpoint 语义；history 不能混入实时累加。
+C1已消除旧格式Seen吞错，C2接入新版两个真实listener；B2捕获和发布完成仍不等于Seen应用，须分别查看消费者隔离/暂停和实际集合。S19 独立承担 Flink 的窗口与 checkpoint 语义；history 不能混入实时累加。
 
 ## 验证与回退
 
@@ -83,9 +83,9 @@ B1/B2 必跑：`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -a
 本片回退只关闭新增 capture/relay，或恢复已批准的兼容代码/配置；不可删事件、回写快照或假装撤销已发送消息。关闭 capture 后的新写保证退回旧模式，须明确记录。保留期未确认，不加自动清理；实际共享切换、历史清单、消费者启用和生产容量均须后续授权与验收。
 
 
-## C15C 消费恢复运行边界（C1旧流；共享环境未启用）
+## C15C 消费恢复运行边界（三流；共享环境未启用）
 
-详细契约见[C15_DESIGN](C15_DESIGN.md) C15C，验证与限制见[ER-S15C1_RESULT](ER-S15C1_RESULT.md)。以下为内部owner调用顺序，未提供公共HTTP/RPC或运维CLI；本回合仅在独占测试环境执行。C2两个新版listener尚未实现，其开关打开会拒绝启动。
+详细契约见[C15_DESIGN](C15_DESIGN.md) C15C，验证与限制见[ER-S15C1_RESULT](ER-S15C1_RESULT.md)、[ER-S15C2_RESULT](ER-S15C2_RESULT.md)。以下为内部owner调用顺序，未提供公共HTTP/RPC或运维CLI；本回合仅在独占测试环境执行。LEGACY/LIVE/HISTORY独立产品listener与组，共用可靠确认机制；所有消费/恢复开关仍默认false。
 
 ### 迁移、登记与启动
 
@@ -93,7 +93,21 @@ B1/B2 必跑：`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -a
 2. 在明确授权的engine primary库执行`recsys-rec-engine/src/main/resources/db/engine-seen/V001__seen_recovery.sql`。计算实际脚本SHA256，在同一数据库会话先设置`SET recsys.migration_sha256 = '<实际SHA256>'`再执行脚本；脚本自带BEGIN/COMMIT、中文表/列注释及独立engine_seen_schema_history。不修改behavior/ad或旧迁移；应用启动只核对摘要，不自动建表。不要把文档示例当共享迁移授权。
 3. 仅打开`recsys.behavior.seen.recovery-enabled`以装配内部恢复能力，尚不开始消费。沿现有spring.kafka地址/TLS/SASL、Redis≤2秒超时与primary数据源。用稳定UUID、可信actor/reason调用`SeenRecoveryService.initialize(id, mode, actor, reason)`。旧组ADOPT_COMMITTED只采用有效committed；确无登记和位点的新组用EARLIEST_RETAINED冻结当前最早保留起点；已有组扩分区仅ENROLL_NEW_PARTITIONS。所有模式要求无活跃成员；不能将原分区丢位点当作新分区。
 4. 先`report(id)`再`advance(id)`；每次advance最多一次外部处理尝试。command READY/RUNNING/终态及3次预算、30秒租约均持久。初始化在任何alter前拥有流控制权，另一个command无权覆盖；同ID复用最先持久的清单，不能重新采样beginningOffset。响应未知先读原命令和真实broker位点；只补缺项，已有不等于冻结值就拒绝。初始化FAILED仍保留占有，原终态不改，须owner另行处置，不能靠新ID绕过。
-5. 初始化SUCCEEDED且身份/所有分区/位点/整流义务检查通过后，才可由获授权owner开启旧seen-consume或显式调用SeenListenerControl.start。offset reset固定none；缺表/摘要漂移、位点缺失/越界、topic重建、新分区未登记都拒绝。没有在共享环境执行上述步骤。
+5. 初始化SUCCEEDED且身份/所有分区/位点/整流义务检查通过后，才可由获授权owner开启该流消费开关或显式调用该流SeenListenerControl.start。offset reset固定none；缺表/摘要漂移、位点缺失/越界、topic重建、新分区未登记都拒绝。没有在共享环境执行上述步骤。
+
+### 三流配置和调用归属
+
+| 流 | 消费开关（默认false） | topic / group默认值 | 内部bean前缀 |
+|---|---|---|---|
+| LEGACY | `recsys.behavior.seen-consume` / `SEEN_CONSUME` | `recsys.behavior.topic=behavior-events` / `recsys.behavior.seen-group=recsys-rec-engine-seen` | `seen` |
+| LIVE | `recsys.behavior.seen.live-consume` / `SEEN_LIVE_CONSUME` | `seen.live-topic=behavior-accepted-v1` / `seen.live-group=recsys-rec-engine-seen-live-v1` | `liveSeen` |
+| HISTORY | `recsys.behavior.seen.history-consume` / `SEEN_HISTORY_CONSUME` | `seen.history-topic=behavior-history-recovery-v1` / `seen.history-group=recsys-rec-engine-seen-history-v1` | `historySeen` |
+
+表中`seen.*`前缀均为`recsys.behavior`。新版topic/group环境变量分别是`SEEN_LIVE_TOPIC/GROUP`和`SEEN_HISTORY_TOPIC/GROUP`。新topic仅允许逻辑本名或合法点号隔离后缀，三group必须不同；即使全关也校验配置。全关不建立Seen Kafka/Admin/新表访问；单消费开关只装配对应控制器，缺迁移或登记拒绝启动。`recovery-enabled=true`装配三流内部能力，消费仍由各自开关控制，没有自动初始化或恢复循环。
+
+使用相应`seenRecoveryService/liveSeenRecoveryService/historySeenRecoveryService`与`seenListenerControl/liveSeenListenerControl/historySeenListenerControl`（显式Qualifier）。命令、record查询、隔离游标、advance和resume都限定绑定流；跨流返回NOT_ELIGIBLE且不消耗目标预算，未知recordId固定NOT_FOUND。初始化和恢复仍须稳定UUID及可信actor/reason，不开放HTTP入口。
+
+新版严格复用LegacyBehaviorCodec，LIVE只接BEHAVIOR_POST/NOT_ATTEMPTED，HISTORY只接LEGACY_ROW/UNKNOWN；key必须匹配原userId。非法UTF8、版本、来源或key先持久隔离，不能变成NO_EFFECT。不同offset即使同eventId也各自登记并真实SADD；返回0仍成功。历史ts=null/local原文保留，不进入旧Flink。三流会写同一用户Seen集合，但暂停/停止/组/恢复权限和指标隔离；某流暂停不阻断其他流。
 
 ### 暂停、停止与单记录恢复
 
@@ -105,10 +119,10 @@ B1/B2 必跑：`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -a
 
 ### 保留、观测与回退
 
-ACK后Redis集合丢失不会由正常重启、APPLIED或lag=0自动修复。已知记录RESTORE仅代表局部恢复；未捕获历史需B2明确清单和C2产品history链路。B2 ALREADY_CAPTURED/PUBLISHED不等于重新发送；仅Kafka保留但本库无record的全量/另组重建没有本片入口，须owner另行方案。不能凭本片推断全部历史完整。
+ACK后Redis集合丢失不会由正常重启、APPLIED或lag=0自动修复。已知记录RESTORE仅代表局部恢复；未捕获且仍可捕获的历史需B2明确清单和实际HISTORY链路。B2 ALREADY_CAPTURED/PUBLISHED不等于重新发送；仅Kafka保留但本库无record的全量/另组重建没有本片入口，须owner另行方案。不能凭本片推断全部历史完整。
 
 key≤1KiB、value≤32KiB保存原字节；超限只保存坐标/长度/摘要，不能截断冒充原文。完整PG原文可脱离Kafka保留重判；缺完整原文按同cluster/topicId/partition/offset有界重取，过期/缺项SOURCE_UNAVAILABLE，相邻记录不能替代。不自动删除记录/审计，生产保留/存储容量/RTO/RPO未知。
 
-现有Micrometer暴露固定维度`recsys.seen.records`（READY/APPLYING/APPLIED/NO_EFFECT/QUARANTINED/PAUSED）、`oldest.pending.seconds`、`paused`、`stopped`、`attempts`、`recovery`、`commit.failures`、`stops`；PG读失败为NaN，不冒充零。broker committed仍需Admin核对，指标不是位点权威。每流单consumer、单poll记录、停止线程1/队列3、PG事务5秒、Redis≤2秒；生产吞吐未测。
+现有Micrometer暴露固定维度`recsys.seen.records`（READY/APPLYING/APPLIED/NO_EFFECT/QUARANTINED/PAUSED）、`oldest.pending.seconds`、`paused`、`stopped`、`attempts`、`recovery`、`commit.failures`、`stops`；PG读失败为NaN，不冒充零。broker committed仍需Admin核对，指标不是位点权威。每流单consumer、单poll记录，三流共用停止线程1/队列3、PG事务5秒、Redis≤2秒；生产吞吐未测。
 
 回退先关闭Seen消费/恢复能力，保留全部表、原文、审计和位点；回退旧二进制仍须保持旧consumer关闭，避免恢复吞错入口。无共享切换/部署/清理授权。history不转投旧Flink实时累计，S19仍独立完成checkpoint/窗口恢复。

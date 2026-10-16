@@ -84,4 +84,11 @@ class SeenRecoveryPostgresTest {
         var changed=SeenRecoveryService.command(id,"INITIALIZE","LEGACY",null,original.replace("EARLIEST_RETAINED","ADOPT_COMMITTED"),"owner","同一受控请求");
         assertEquals(SeenRecord.Code.COMMAND_CONFLICT,assertThrows(SeenRecord.Failure.class,()->race.repo.initialize(binding,changed,List.of())).code());
     }
+    @Test void unknownRecordReportReturnsFixedNotFoundThroughRealRepository() {
+        var service=new SeenRecoveryService(f.repo,null,null,f.decoder,false);
+        var failure=assertThrows(SeenRecord.Failure.class,()->service.record(UUID.randomUUID()));
+        assertEquals(SeenRecord.Code.NOT_FOUND,failure.code());
+        assertNull(failure.getCause());
+        assertEquals("Seen操作未完成: NOT_FOUND",failure.getMessage());
+    }
 }

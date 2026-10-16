@@ -85,4 +85,6 @@ B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shar
 
 版本来自Boot3.2.5 BOM及实际engine测试classpath，Kafka client3.6.2、Spring Data Redis3.2.5/Lettuce6.3.2.RELEASE一致；本机3.1.4 JAR API已核查。dev-infra Redis声明redis:7-alpine，只读核对未操作共享实例。官方3.1.4错误处理/容器和Kafka3.6.2配置、Redis SADD依据及2～3选项比较统一见[C15_DESIGN](C15_DESIGN.md) C-F/C-D；不新增依赖边/版本、端口、账号或密钥。完整恢复仍受Kafka/PG原文保留与Redis数据丢失影响，生产RTO/RPO及容量UNVERIFIED。
 
-C1沿上述版本完成实现，真实独占组件、Spring配置与独立JVM验证见ER-S15C1_RESULT。增加流控制表是跨command副作用排他的最小持久机制，不新增通用编排系统。Kafka Admin总API预算5秒、元数据发现最多3次内部重试；协调器首次引导由隔离夹具只读等待，未放宽产品时限。Redis停止重启验收使用独立容器并记录Docker端点变化，不声称验证固定端点自动重连。新功能仍默认关闭，C2/生产容量另行验收。
+C1沿上述版本完成实现，真实独占组件、Spring配置与独立JVM验证见ER-S15C1_RESULT。增加流控制表是跨command副作用排他的最小持久机制，不新增通用编排系统。Kafka Admin总API预算5秒、元数据发现最多3次内部重试；协调器首次引导由隔离夹具只读等待，未放宽产品时限。Redis停止重启验收使用独立容器并记录Docker端点变化，不声称验证固定端点自动重连。新功能仍默认关闭；C2真实产品链路见ER-S15C2_RESULT，生产容量未验收。
+
+C2继续复用既有platform LegacyBehaviorCodec、Spring record容器、PG Mapper XML及StringRedisTemplate；两个产品listener仅参数化逻辑流，不升级库、不新增第三方或部署单元。现有behavior→engine test-support依赖承载原历史全链路，无engine→behavior反向边；测试自建PG16/Kafka3.7.1/Redis7，未访问共享实例。

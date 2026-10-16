@@ -26,7 +26,7 @@ public class SeenProjectionService {
     /** 每次poll单记录，原坐标终态重投复用PG结果，不能据此推断Redis永不丢失。 */
     public Outcome consume(String stream,int partition,long offset,byte[] key,byte[] value) {
         if(repository.blocked(stream)) return Outcome.PAUSED;
-        var decoded=decoder.decode(key,value);
+        var decoded=decoder.decode(stream,key,value);
         var record=repository.register(stream,partition,offset,key,value,decoded);
         if(record.activeCommandId()!=null) return Outcome.PAUSED;
         if(record.acknowledgeable()) { probe.at(Phase.CLASSIFIED,record); return Outcome.ACK; }
