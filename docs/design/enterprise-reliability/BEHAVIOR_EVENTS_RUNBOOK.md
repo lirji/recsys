@@ -52,7 +52,7 @@ POST `/api/behavior` 仍返回 `{ok:true}`，batch 仍逐条提交并返回原 c
 
 1. `captureHistory(commandId, sourceId, behaviorIds, actor, reason)`：稳定 UUID、当前 owner 源 UUID、1～100 个不重复正 BIGINT、非空 actor≤200/reason≤1000。先排序生成不可变清单及摘要，同事务登记所有项。排列不同的同内容重试返回原任务；改内容冲突。清单缺失源行也持久为 WAITING_SOURCE。
 2. `advanceHistory(commandId)`：单次最多访问 10 个不同 ID，每项独立 REQUIRES_NEW/READ_COMMITTED，事务5秒/锁4秒/语句5秒。锁序 command→item→源行→Outbox，原事件和结果同提交。按持久 `last_visit,behaviorId` 轮转；前10项一直缺失也不挡住后项。缺失项不会删除或误报完成，后来提交可再次捕获；进程退出只回滚正在处理项，已提交项继续保留。
-3. `historyReport(commandId)`：最多100项，返回原清单/审计和逐项结果、查询时发送状态。原事件已有时复用身份/路由/字节；源漂移标 SOURCE_CHANGED，不覆盖事件。源删除但原快照仍在可返回 ALREADY_CAPTURED；没有原快照保持等待。终态结果固定，若需重新检查后来漂移，登记新命令。
+3. `historyReport(commandId)`：最多100项，返回原清单/审计和逐项结果、查询时发送状态。原事件已有时复用身份/路由/字节；源漂移标 SOURCE_CHANGED，不覆盖事件。源删除但合法原快照仍在可返回 ALREADY_CAPTURED；已知 DEAD/INVALID_SOURCE 即使源行删除仍为 INVALID_SOURCE；没有原快照保持等待。终态结果固定，若需重新检查后来漂移，登记新命令。
 4. `cancelHistory(cancelId, commandId, actor, reason)`：独立稳定取消 UUID，审计和 OPEN→CANCELLED 同事务，与 advance 串行。精确重试返回首次审计，换内容冲突；原任务已终态返回 ALREADY_TERMINAL。已捕获/发送事件不会撤销，等待项保留并计入 `cancelledUnprocessed`。
 
 | 报告字段 | 含义 |
@@ -65,6 +65,8 @@ POST `/api/behavior` 仍返回 `{ok:true}`，batch 仍逐条提交并返回原 c
 | `cancelledUnprocessed` | 被取消命令中仍 WAITING_SOURCE 的数量；不得作为已覆盖或已发送 |
 
 单次查询中逐项发送状态来自同一 SQL 快照；relay 可以随后推进它。历史旧 writer、原发布结果和无时区时间仍未知；LEGACY_ROW/UNKNOWN、`behavior.ts=null` 与原 local 时间保持。INVALID_SOURCE 继续使用 B1 的 DEAD 隔离义务，普通 replay 不能重开。报告只证明显式清单，不证明全表或封闭历史范围；不能用 MAX(id) 宣称追平。
+
+边界整改9fb853b6：当前源仍在且摘要漂移时保持 SOURCE_CHANGED；否则已知 INVALID_SOURCE 不因删除变为 ALREADY_CAPTURED。两类问题均不计 covered，最终为 COMPLETED_WITH_ISSUES。本修正没有迁移或历史回填，旧终态报告不会自动改写；若旧版本报告把已知非法且已删除源记作无问题覆盖，保留原命令/审计，以新稳定commandId、可信actor/reason和原显式ID清单重新核验。不要尝试改payload、重置状态或删除审计来“修复”报告。
 
 内部失败以 `BehaviorHistoryRepository.Failure.code()` 返回 INVALID_COMMAND、COMMAND_CONFLICT、NOT_FOUND、SOURCE_MISMATCH、MIGRATION_INVALID 或 PERSISTENCE_FAILURE。数据库/事务异常没有原始 cause 或源行文本。结果未知先用原 commandId/cancelId 查询或精确重试，不能换 UUID 掩盖原操作。审计与快照未定保留期，不自动清理。
 

@@ -270,3 +270,5 @@ capture/live-relay/history-relay默认false；任一新功能与旧use-kafka/pub
 C15B父审查补充：B2公平续办不得让前10个WAITING_SOURCE永久阻断后续可见项；C15C须修复旧格式Seen入口Redis异常吞错确认，并用真实Kafka/Redis验证恢复。细则与验收见C15_DESIGN，B1不实现B2/C。
 
 B2实现使用同owner V002的持久visit_sequence/last_visit轮转，command→item→源行→Outbox逐项短事务；输入/终态/取消审计不可变。取消未处理项仍WAITING_SOURCE且单列，报告读取实际Outbox发送状态，CAPTURED不等于PUBLISHED。原迁移、原身份/快照与默认关闭保持，具体接口和回退见BEHAVIOR_EVENTS_RUNBOOK。
+
+B2边界整改（9fb853b6，真实PG复现）：原事件为DEAD/INVALID_SOURCE且源行删除时，新清单仍记INVALID_SOURCE/COMPLETED_WITH_ISSUES，不计covered；合法原快照删除仍ALREADY_CAPTURED。当前源存在且摘要漂移时保留SOURCE_CHANGED。仅更正后续捕获分类，原payload/eventId/发送状态与历史终态记录不可改写；过去误分类须新受控命令核查。

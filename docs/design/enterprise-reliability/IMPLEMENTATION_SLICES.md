@@ -52,9 +52,9 @@
 | ER-D0/C15A | ER-S06、ER-S08 | CONTRACTS C15 / C15_DESIGN；自然已接受事件发送的正式设计门禁 | 原源码/契约、范围覆盖、文件边界和 A01～A10 核验 PASS；仅设计，见 ER-S15_RESULT | no | DONE |
 | ER-S15A | ER-D0/C15A | behavior 自然 Outbox V002、Mapper、relay/worker/配置；不改旧行为 | A01～A10 PASS；自然108项/行为16项，真实PG/Kafka+进程退出；[验收](ER-S15A_RESULT.md)，fixture不代产品消费者 | no | DONE |
 | ER-D0/C15B | ER-S15A | 旧事件身份、原子写、CLICK重复修复/历史恢复/开关与消费者边界正式冻结 | D-B01～D-B09设计PASS；[结果](ER-D0-C15B_RESULT.md)，产品验收B01～B12未执行 | no | DONE |
-| ER-S15B | ER-D0/C15B | 原 F14 旧 BehaviorService可靠事件；B1/B2均必需 | B1/B2均本地PASS；B01～B12由两片实际证据覆盖，见ER-S15B1_RESULT/ER-S15B2_RESULT；C仍必需 | no | DONE |
+| ER-S15B | ER-D0/C15B | 原 F14 旧 BehaviorService可靠事件；B1/B2均必需 | B1/B2及新增非法快照删除边界整改均本地PASS；见ER-S15B2-FIX-01_RESULT；C仍必需 | no | DONE |
 | ER-S15B1 | ER-D0/C15B | 旧POST同库原子接受、CLICK原行重复修复、独立live/history可靠发送及审计重放 | 25项B1+16项回归PASS；[结果](ER-S15B1_RESULT.md)，Git/CI独立记录 | no | DONE |
-| ER-S15B2 | ER-S15B1 | 有界显式历史清单/续办/审计取消，旧Seen/Flink topic guard与兼容 | B2新18项、完整门禁43项+回归24项PASS；公平续办/真实history/兼容，见ER-S15B2_RESULT | no | DONE |
+| ER-S15B2 | ER-S15B1 | 有界显式历史清单/续办/审计取消，旧Seen/Flink topic guard与兼容 | 原18/43+24项及边界整改PG15+Kafka2 PASS；无问题覆盖排除已知非法源，见ER-S15B2-FIX-01_RESULT | no | DONE |
 | ER-D0/C15C | ER-S15B | 补 SeenItemsConsumer 的失败确认、毒消息/重放和格式兼容契约 | 明确新旧Seen的Redis失败确认/位点恢复；不能保留旧吞错入口 | no | TODO |
 | ER-S15C | ER-D0/C15C | 原 F14 适用行为消费者，首先为真实已看投影；不吞失败确认 | Kafka/Redis（若有 Inbox 则 PG）：断连、重复、重平衡、提交窗口及恢复集合/offset | no | TODO |
 | ER-S16 | ER-S06 | 原 F15 目录分片本库原子 Outbox、多分片暂停续办；正式契约待冻结 | 真实目录分片/Kafka；公共库不能冒充同库事务 | no | TODO |
@@ -96,3 +96,14 @@
 - [x] 同Agent分离只读验证、hygiene/静态、文档、保护/运行检查PASS；hygiene仅工具配置限制。正常Git及新CI结论见本回合delivery.json/ci-snapshot.json，不能把本地PASS当远程全绿。
 
 证据`.dev/codex-flow-reliability/round-8395c172/`，下一业务步骤ER-D0/C15C；本回合不启动第二片。
+
+## 当前回合9fb853b6：B2非法快照删除边界复核
+
+状态本地DONE/PASS；父发现已真实PG复现后修复（红3例/1失败，绿17项全PASS）。B2原证据保留，不重做整片；Git/CI交付仍须真实结果。
+
+- [x] 核对B2 Git/验证、16源码和11保护指纹；读取父审查及正式契约。
+- [x] 未改产品代码前真实PG复现，明确分类优先级与合法删除对照；原不变/漂移对照通过。
+- [x] 最小分类修正/契约澄清、真实PG15+Kafka2=17项PASS；同Agent分离只读验证PASS，无事实回写。
+- [x] 保护/现场核对PASS，6个独占容器均退出；正常Git交付以本回合delivery.json为准，前置CI终态见b2-ci.json，新源码CI见ci-snapshot.json。推送前必等前置终态，远程未绿不写全绿。
+
+证据`.dev/codex-flow-reliability/round-9fb853b6/`；本回合不同时推进C15C设计或消费者实现。

@@ -118,8 +118,8 @@ public class BehaviorHistoryRepository {
         String eventId = null;
         if (original != null) {
             eventId = original.eventId();
-            result = source == null ? ItemState.ALREADY_CAPTURED
-                    : original.sourceChanged() ? ItemState.SOURCE_CHANGED
+            // 源行消失不消除已知非法快照；保留原隔离义务，不能把它计为无问题覆盖。
+            result = source != null && original.sourceChanged() ? ItemState.SOURCE_CHANGED
                     : "INVALID_SOURCE".equals(original.error()) ? ItemState.INVALID_SOURCE : ItemState.ALREADY_CAPTURED;
         } else if (source == null) {
             result = ItemState.WAITING_SOURCE;

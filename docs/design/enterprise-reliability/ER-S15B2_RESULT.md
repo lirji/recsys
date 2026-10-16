@@ -51,3 +51,8 @@
 独立验证为同一Agent的分离只读pass，不声称第二评审者。未修改共享时钟/资金规则、未部署、未启用共享CPC/CPA/对账、未访问共享测试数据；不新建worktree、不清理用户内容。
 
 本次18个独占测试容器均已退出，所有本地测试会话结束（runtime-final.json）；11保护文件、原迁移/CPA、跨日修复3源文件及CODEX_PROGRESS历史段落指纹一致。验证后16个源码/测试/workflow路径指纹不变。独立只读验证PASS见independent-review.json；验证未发现失败，无重跑旧CI或放宽断言。新增commit的完整SHA、正常ff合并/push和新CI状态写入delivery.json/ci-snapshot.json，后续main推送前须先核实该源码CI终态。下一业务步骤ER-D0/C15C，随后真实旧/新Seen恢复，再按原序S16～S21；本回合不自行启动下一片，S22～S25继续暂停。
+
+
+## 后续边界复核（9fb853b6）
+
+父协调者提出“已知DEAD/INVALID_SOURCE且源删除”组合；原18项新增验收未覆盖此组合，原PASS不证明该边界。已在未改产品代码前用真实PG复现：3例中仅deleted失败，错误为ALREADY_CAPTURED/COMPLETE及covered多1；源不变/漂移对照通过。最小整改和新验收详见 [ER-S15B2-FIX-01_RESULT](ER-S15B2-FIX-01_RESULT.md)。不修改原交付事实、原迁移或已有历史记录。

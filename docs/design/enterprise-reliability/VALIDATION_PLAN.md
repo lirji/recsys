@@ -85,3 +85,5 @@ C15B设计门禁只验证源事实、CLICK重复修复/无键POST边界、事务
 B1实际结果：25项新验收（主体23+Spring装配2）及16项旧行为/归因/错误回归PASS，见ER-S15B1_RESULT。B2后续结果见下；C15C实际消费效果仍UNVERIFIED，父S15不得关闭。
 
 B2实际结果（8395c172）：新18项（PG12、Kafka2、旧Seen2、旧Flink2），完整行为门禁43项/9类及补充回归24项/6类全部PASS，零失败/错误/跳过；B08～B12、前10缺失公平续办、原history真实发送/租约恢复、取消及覆盖报告通过。证据映射与命令见ER-S15B2_RESULT。B1/B2均验收，父B可DONE；Seen真实Redis确认恢复和Flink窗口依然不能由测试Sink或旧解析测试替代。
+
+B2新增必需边界：已有DEAD/INVALID_SOURCE分别与源不变/删除/漂移组合。删除后仍INVALID_SOURCE、无问题covered不增加、命令COMPLETED_WITH_ISSUES；合法快照删除仍ALREADY_CAPTURED，源漂移保持SOURCE_CHANGED。原Outbox所有列和已有命令/结果均不变，修复后的原命令重试稳定。原B2未覆盖该组合；真实PG红绿证据见ER-S15B2-FIX-01_RESULT，不能凭父意见或旧PASS跳过核实。

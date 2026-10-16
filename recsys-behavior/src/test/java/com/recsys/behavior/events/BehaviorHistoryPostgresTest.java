@@ -133,6 +133,38 @@ class BehaviorHistoryPostgresTest {
         assertTrue(f.jdbc.queryForObject("SELECT octet_length(source_snapshot_json)>70000 FROM behavior_event_outbox WHERE behavior_id=5",Boolean.class));
     }
 
+    /** 非法快照是已知事实；删除源行不能洗掉隔离，合法快照删除仍正常复用。 */
+    @ParameterizedTest @ValueSource(strings={"unchanged","deleted","changed"})
+    void knownInvalidSnapshotRemainsIssueAcrossSourceLifecycle(String sourceState) {
+        f.seed(1);f.seed(2);f.jdbc.update("UPDATE user_behavior SET action='INVALID_ACTION' WHERE id=1");
+        UUID initial=UUID.randomUUID();f.register(initial,1L,2L);var initialReport=f.history().advanceHistory(initial);
+        assertEquals("COMPLETED_WITH_ISSUES",initialReport.command().status());
+        assertEquals(1L,initialReport.resultCounts().get("INVALID_SOURCE"));assertEquals(1,initialReport.covered());
+        String invalidId=initialReport.items().getFirst().eventId();
+        assertEquals("DEAD",f.state(invalidId));assertNull(f.payload(invalidId));
+        var originalEvents=f.jdbc.queryForList("SELECT * FROM behavior_event_outbox ORDER BY event_id");
+        if(sourceState.equals("deleted"))f.jdbc.update("DELETE FROM user_behavior WHERE id=1");
+        if(sourceState.equals("changed"))f.jdbc.update("UPDATE user_behavior SET action='PLAY' WHERE id=1");
+        f.jdbc.update("DELETE FROM user_behavior WHERE id=2");
+        UUID command=UUID.randomUUID();f.register(command,1L,2L);var report=f.history().advanceHistory(command);
+        String expected=sourceState.equals("changed")?"SOURCE_CHANGED":"INVALID_SOURCE";
+        assertAll(
+                ()->assertEquals(expected,report.items().getFirst().status()),
+                ()->assertEquals(expected,report.items().getFirst().error()),
+                ()->assertEquals("COMPLETED_WITH_ISSUES",report.command().status()),
+                ()->assertEquals(1,report.covered()),
+                ()->assertEquals(1L,report.resultCounts().get("ALREADY_CAPTURED")),
+                ()->assertEquals(1L,report.resultCounts().get(expected)),
+                ()->assertEquals(1L,report.deliveryCounts().get("DEAD")),
+                ()->assertEquals(0L,report.deliveryCounts().get("PUBLISHED")));
+        assertEquals(invalidId,report.items().getFirst().eventId());
+        assertEquals("ALREADY_CAPTURED",report.items().get(1).status());
+        assertEquals(initialReport.items().get(1).eventId(),report.items().get(1).eventId());
+        assertEquals(report,f.history().advanceHistory(command));
+        assertEquals(initialReport,f.history().historyReport(initial));
+        assertEquals(originalEvents,f.jdbc.queryForList("SELECT * FROM behavior_event_outbox ORDER BY event_id"));
+    }
+
     @Test void driftDeletionAndAlreadyCapturedLiveKeepOriginalIdentityRouteAndBytes() {
         String live=f.accept();long liveId=f.jdbc.queryForObject("SELECT behavior_id FROM behavior_event_outbox WHERE event_id=?",Long.class,live);
         f.seed(100); f.seed(101);UUID initial=UUID.randomUUID();f.register(initial,100L,101L);f.history().advanceHistory(initial);

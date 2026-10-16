@@ -1,14 +1,14 @@
-# 当前任务：ER-S15B2 显式历史恢复与消费入口兼容
+# 当前任务：ER-S15B2 已知非法快照删除边界整改
 
-权威实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约C15_DESIGN C15B；本片结果ER-S15B2_RESULT。证据`.dev/codex-flow-reliability/round-8395c172/`。原目录任务分支`feat/er-s15b2-behavior-history`，基线031a0443b73ca1fb260339301b850713c4a17ee2；完整交付SHA、ff合并/push及新源码CI以该目录delivery.json/ci-snapshot.json和实际Git为准。后续main推送前先核对新CI终态，未知不重跑。
+权威状态`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；结果`ER-S15B2-FIX-01_RESULT.md`。当前回合证据`.dev/codex-flow-reliability/round-9fb853b6/`；基线86a094ff370e9def9300fce68a7a830e49a99f19，原目录独立分支`fix/er-s15b2-invalid-source-coverage`。完整交付SHA、ff合并/push以delivery.json/实际Git为准；前置B2 CI38943483849结论见b2-ci.json，本整改新CI见ci-snapshot.json。禁止新main推送取消仍需核实的CI；未知操作先查询、不重跑。
 
-B2本地DONE/PASS，父B已具备B1/B2验收，父S15仍IN_PROGRESS。追加V002、显式最多100 IDs/advance最多10项、持久公平轮转、原事件同源事务捕获、审计取消/真实发送报告、旧Seen/Flink保留topic guard与原格式兼容。完整门禁43项（新18+B1受影响25）及补充回归24项全部零失败/错误/跳过，见test-summary.json/最终报告目录；同Agent分离只读验证PASS，hygiene仅formatter/独立Java静态分析配置限制。所有本地测试结束，本次容器均退出，详见runtime-final.json；11保护/原迁移/CPA/跨日fixture/本文件历史指纹均一致。
+本地整改DONE/PASS。父复核发现已在未改产品代码前用真实PG复现：3例中仅删除组合失败，非法项误报ALREADY_CAPTURED/COMPLETE、covered多1；红日志/XML保留。最小修正保留当前源漂移的SOURCE_CHANGED，否则已知INVALID_SOURCE即使源删除仍INVALID_SOURCE、不计无问题覆盖。合法删除照常复用原事件；不改已发布V001/V002、原payload/eventId/发送状态或历史终态记录。旧误分类须新受控清单核验，不自动回写。
 
-B1已交付13f79e89；跨日修复031a0443及有效确定性边界/浏览器证据复用，前置CI38937727953已8门禁全部成功，未重跑旧失败。用户授权仅Sandbox独占实例及正常Git提交/ff合并/push；不部署、不启用共享开关或操作共享数据、不递归编排。禁止改已发布V001/自然V001/V002/旧历史SQL及旧CPA纳秒fixture；11保护文件和原历史正文保持，.dev/target不提交、不清理。
+绿色PG15+Kafka2=17项全部零失败/错误/跳过，原反例断言不变；同Agent分离只读验证PASS。持久化/公开错误/diff和hygiene通过，formatter/独立Java静态分析仍未配置。11保护、5个原迁移/CPA指纹、午夜fixture3文件、其余14个B2源文件和本文件历史正文均一致；6个独占测试容器退出，无本地测试运行。B1、午夜fixture与B2其余有效验收复用。
 
-采用backend-implementation、implementation-validation、project-documentation、update-progress-docs、task-git-delivery、ci-cd-gate及恢复技能。规范业务建模、配置、持久化事务、分布式契约、并发安全、Kafka、中间件验证、容量数据演进和发布治理已核对；专题audit/jobs/db-runtime/messaging/outbox/retention/config。
+授权仅本片分类/报告及必要契约、回归与正常Git交付；无共享数据/资金/开关/部署，无递归编排、stash/强推/清理，.dev/target保留不提交。采用backend-implementation、implementation-validation、project-documentation、update-progress-docs、task-git-delivery/ci-cd-gate；业务建模、持久化事务、分布式契约、并发验证、数据演进及发布治理规范已核对。
 
-本回合只交付B2后返回外层。下一业务步骤ER-D0/C15C及真实旧/新Seen失败确认、Redis/offset恢复；不得只增加新listener而留下旧吞错。之后按原序S16～21；S22～25暂停，整体未完成。
+本回合交付有界整改后返回。下一回合ER-D0/C15C，仅先设计门禁：同时包含旧格式Seen和新live/history的Redis失败不确认、SADD后确认、有界重试/暂停、offset窗口、毒消息持久隔离/受控重放和重平衡恢复；真实Kafka/Redis验收。无旧消息hash身份，history不进旧Flink累计，S19独立。随后S15C及S16～21持续推进；父S15与整体未完成，S22～25暂停。
 
 ---
 
