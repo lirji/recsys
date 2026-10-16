@@ -1,16 +1,14 @@
-# 当前任务：codex-flow 企业可靠性 ER-D0/C15B
+# 当前任务：企业可靠性 ER-S15B1
 
-权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约 `C15_DESIGN.md` / `CONTRACTS.md`。回合 `30bd2b82-dda3-46b7-ae2f-63271c05cc0e` 只完成 **C15B设计门禁DONE/PASS**，验收见 `docs/design/enterprise-reliability/ER-D0-C15B_RESULT.md`。未实现S15B，B01～B12运行验收UNVERIFIED；下一片S15B1 READY，父S15 IN_PROGRESS，S22～S25暂停。
+权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本片结果 `ER-S15B1_RESULT.md`，正式契约 `C15_DESIGN.md` / `CONTRACTS.md`，运行说明 `BEHAVIOR_EVENTS_RUNBOOK.md`。回合347abae9只完成B1；B1本地DONE/PASS，B2 READY，父S15B/S15保持IN_PROGRESS，S22～25暂停。后续由外层推进，不自行启动B2或codex-flow。
 
-原目录 `/Users/liruijun/personal/LLM/recsys`，任务分支 `docs/er-s15b-behavior-event-contract`，基线7fccd6fe0e4c8752b087f435066c3120ef81e0da。S15A的18源码指纹与11保护指纹一致；远程CI38923751782已completed/success，7个job全部成功，精确绑定7fccd6fe；确认终态后才允许新main推送。c032ea12时间测试修正不重复修改。
+原目录任务分支 `feat/er-s15b1-behavior-event-delivery`，基线8b695c76bc343a082d64add4775f1f0729957bc4。本地25项新验收+16项旧回归PASS，静态边界/错误目录PASS；Hygiene无阻断但无统一formatter/独立Java静态分析。四种真实JVM退出、原payload与fixture单一效果均验证；实际Seen/Flink未验证。
 
-D-B01～D-B09设计验证通过，23个直接证据源文件未变；本轮只有10个文档，未启动Maven/组件/应用/部署进程，不另启codex-flow。正式决定：原行稳定身份与同库Outbox，CLICK重复修复原行待发；保留无键POST原语义；历史混合来源UNKNOWN、无时区原时间、独立恢复流及有界ID清单；旧Seen/Flink兼容与C15C/S19范围不转移。
+Git与CI准确状态/完整SHA：`.dev/codex-flow-reliability/round-347abae9/delivery.json`、`ci-snapshot.json`（交付前不得假定已存在或成功）；源码指纹、最终日志/报告、保护指纹与独立验证同目录。当前准备正常提交/合并/push；无本地测试会话继续运行，组件已随测试关闭。
 
-当前Git/CI实际结果与不可变SHA读取 `.dev/codex-flow-reliability/round-30bd2b82/delivery.json`、`ci-snapshot.json`；设计验证与源CI证据在同目录design-validation.json/source-evidence.json/s15a-ci.json。产品未变，Code Hygiene/编译/运行测试N/A；新设计提交CI不能沿用源CI成功。11保护文件和下方历史/部署入口保留，所有.dev/target/原未跟踪材料不提交或清理。
+C15B设计CI38927688429已completed/failure：6门禁成功，浏览器ACCOUNT_MISSING，与fixture初始化和请求跨上海午夜相符；c15b-ci-finding.json有证据，未重跑/未改旧资金fixture。S15A源码CI成功不重复验证或挪用。11保护文件与前片17项实现/fixture指纹不变，CI仅新增B1门禁；历史部署入口保持。
 
-下一回合先核对本门禁Git/CI和保护指纹，再执行S15B1：从behavior-events/V001、primary Mapper和同DataSource短事务开始，完成原子接受/重复CLICK修复/两流可靠发送的真实隔离PG/Kafka验收。本回合返回外层，不进入第二片。仅Sandbox，不部署、不启用共享资金、不重启共享基础设施。
-
-规范：architecture-standards业务建模、并发安全、持久化事务、分布式契约、配置、Kafka/中间件、容量演进与发布治理；continue-approved-delivery / backend-architecture-design / implementation-slicing；由update-progress-docs、task-git-delivery和ci-cd-gate同步状态。下方仅历史，不续做旧任务。
+下一片B2必须处理前10缺失项的公平续办，C15C必须修复旧Seen吞Redis异常确认。仅Sandbox/独占验证，不部署/启用共享开关/读写共享数据；所有.dev/target材料不提交或清理。采用session-handoff/backend-implementation/implementation-validation/project-documentation/update-progress-docs/task-git-delivery/ci-cd-gate；规范章节详见本片结果与原历史。
 
 ---
 

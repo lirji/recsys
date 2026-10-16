@@ -45,6 +45,14 @@ public class BehaviorService {
             EnumSet.of(ActionType.CLICK, ActionType.LIKE, ActionType.PLAY);
 
     private final BehaviorMapper behavior;
+    private com.recsys.behavior.events.BehaviorEventRepository reliableCapture;
+
+    /** 默认兼容模式无此仓储；relay-only不会悄悄开启新写捕获。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void configureReliableCapture(com.recsys.behavior.events.BehaviorEventRepository repository,
+            com.recsys.behavior.events.BehaviorEventConfiguration.Properties properties) {
+        if (properties.captureEnabled()) reliableCapture=repository;
+    }
     private final ObjectProvider<KafkaTemplate<String, String>> kafkaProvider;
     private final StringRedisTemplate redis;
     private final MeterRegistry meterRegistry;
@@ -74,6 +82,14 @@ public class BehaviorService {
     /** 接收一条行为事件:点击类行为使用服务端接收时间，并用服务端曝光归因后落地。 */
     public void record(BehaviorEvent raw) {
         BehaviorEvent ev = resolveExposureBucket(normalize(raw));
+        if (reliableCapture!=null) {
+            var accepted=reliableCapture.accept(ev);
+            if (accepted==com.recsys.behavior.events.BehaviorEventRepository.Acceptance.INSERTED) recordClickMetric(ev);
+            else if (accepted==com.recsys.behavior.events.BehaviorEventRepository.Acceptance.COLLISION) {
+                log.warn("行为曝光唯一键归属碰撞 classification=CLICK_OWNER_COLLISION");
+            }
+            return;
+        }
         // DB 是 CLICK 幂等权威；重复曝光 ID updateCount=0，HTTP 仍返回 200，但不重复计数/发事件。
         if (!insert(ev)) {
             log.debug("重复行为已幂等忽略 action={} exposure={}", ev.action(), ev.exposureId());

@@ -52,3 +52,7 @@
 实际提交SHA/ff合并/push与新CI状态记录在本地同目录 `delivery.json` / `ci-snapshot.json`，不提交自引用SHA；最终答复同步给出。无本轮测试/应用/部署后台进程，无新codex-flow实例；外层协调者保持原控制。本轮独立任务分支保留，无需清理worktree或原用户/忽略文件。
 
 无需要新业务决策的设计阻塞。本回合到此交接；下一回合先核对本门禁Git/CI与保护指纹，再执行 **ER-S15B1**，从behavior-events/V001与同库Mapper事务开始，并以真实隔离PG/Kafka完成B1验收。不得提前把S15B、S15或S15～S21记DONE。
+
+## 后续核对：设计提交CI终态
+
+347abae9回合只读核对：`8b695c76bc343a082d64add4775f1f0729957bc4` 的CI38927688429最终completed/failure，build、资金、自然、安全及两种action浏览器共6门禁成功；sandbox-exposure-browser-gate失败。4个浏览器断言的页面均有ACCOUNT_MISSING，后端断言未发生真实计费。fixture第175行只为初始化时Asia/Shanghai当天创建账户，日志显示初始化在15:59 UTC、请求始于16:00:05 UTC，与跨上海午夜缺次日账户的原因相符（推断，未执行跨日复现）。非c032ea12精度问题；按保护边界未修改旧资金fixture、未重跑。详见本地round-347abae9/c15b-ci-finding.json及归档日志。设计核验PASS不等于这轮CI全绿。

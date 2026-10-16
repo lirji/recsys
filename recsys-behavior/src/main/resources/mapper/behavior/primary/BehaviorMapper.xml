@@ -6,6 +6,12 @@
         VALUES(#{userId},#{itemId},#{action},#{value},#{scene},#{bucket},#{exposureId},#{timestamp})
         ON CONFLICT (exposure_id) WHERE action='CLICK' AND exposure_id IS NOT NULL DO NOTHING
     </insert>
+    <select id="insertReturning" resultType="long" affectData="true" flushCache="true" useCache="false">
+        INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,exposure_id,ts)
+        VALUES(#{userId},#{itemId},#{action},#{value},#{scene},#{bucket},#{exposureId},#{timestamp})
+        ON CONFLICT (exposure_id) WHERE action='CLICK' AND exposure_id IS NOT NULL DO NOTHING
+        RETURNING id
+    </select>
     <select id="attributedBuckets" resultType="string">
         SELECT bucket FROM user_behavior WHERE exposure_id=#{exposureId} AND user_id=#{userId}
         AND item_id=#{itemId} AND action='IMPRESSION' ORDER BY id DESC LIMIT 1

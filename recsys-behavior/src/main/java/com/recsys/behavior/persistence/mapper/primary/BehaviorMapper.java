@@ -8,6 +8,8 @@ import java.util.List;
 public interface BehaviorMapper {
     /** 影响行数为0表示重复曝光点击，服务不得再次计指标或发布事件。 */
     int insert(BehaviorWrite row);
+    /** 可靠捕获取得实际源行身份，冲突必须另条SQL读取赢家。 */
+    Long insertReturning(BehaviorWrite row);
     /** 列表区分不存在和存在但bucket为NULL，两者对曝光ID验证的含义不同。 */
     List<String> attributedBuckets(@Param("exposureId") String exposureId, @Param("userId") long userId,
                                     @Param("itemId") long itemId);

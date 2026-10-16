@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper">
+    <resultMap id="pending" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Pending">
+        <constructor><idArg column="event_id" javaType="string"/><arg column="event_type" javaType="string"/>
+            <arg column="schema_version" javaType="_int"/><arg column="destination" javaType="string"/>
+            <arg column="partition_key" javaType="string"/><arg column="wire_payload_json" javaType="string"/>
+            <arg column="wire_payload_sha256" javaType="string"/><arg column="fence" javaType="_long"/><arg column="attempts" javaType="_int"/></constructor>
+    </resultMap>
+    <resultMap id="locked" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Locked">
+        <constructor><arg column="status" javaType="string"/><arg column="fence" javaType="_long"/><arg column="attempts" javaType="_int"/><arg column="last_error" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="replay" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Replay">
+        <constructor><idArg column="replay_id" javaType="java.util.UUID"/><arg column="event_id" javaType="string"/>
+            <arg column="actor" javaType="string"/><arg column="reason" javaType="string"/><arg column="old_attempts" javaType="_int"/>
+            <arg column="previous_fence" javaType="_long"/><arg column="new_fence" javaType="_long"/>
+            <arg column="replayed_at" javaType="java.time.OffsetDateTime"/></constructor>
+    </resultMap>
+    <resultMap id="backlog" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Backlog">
+        <constructor><arg column="pending" javaType="_long"/><arg column="dead" javaType="_long"/><arg column="oldest_seconds" javaType="_double"/></constructor>
+    </resultMap>
+    <resultMap id="source" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Source">
+        <constructor><idArg column="id" javaType="_long"/><arg column="source_id" javaType="java.util.UUID"/>
+            <arg column="snapshot" javaType="string"/><arg column="captured_at" javaType="string"/></constructor>
+    </resultMap>
+    <resultMap id="click" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Click">
+        <constructor><idArg column="id" javaType="_long"/><arg column="user_id" javaType="java.lang.Long"/><arg column="item_id" javaType="java.lang.Long"/></constructor>
+    </resultMap>
+    <resultMap id="existing" type="com.recsys.behavior.persistence.mapper.primary.BehaviorEventMapper$Existing">
+        <constructor><idArg column="event_id" javaType="string"/><arg column="status" javaType="string"/></constructor>
+    </resultMap>
+    <select id="verifySourceSchema" resultType="boolean">SELECT behavior_verify_source_schema()</select>
+    <select id="sourceId" resultType="java.util.UUID" useCache="false">SELECT source_id FROM behavior_event_source WHERE singleton</select>
+    <select id="lockClick" resultMap="click" useCache="false" flushCache="true">
+        SELECT id,user_id,item_id FROM user_behavior WHERE action='CLICK' AND exposure_id=#{exposureId} FOR UPDATE
+    </select>
+    <select id="source" resultMap="source" useCache="false" flushCache="true">
+        SELECT b.id,s.source_id,
+            CASE WHEN octet_length(behavior_source_snapshot(b))&lt;=65536 THEN behavior_source_snapshot(b) ELSE NULL END AS snapshot,
+            to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS captured_at
+        FROM user_behavior b CROSS JOIN behavior_event_source s WHERE b.id=#{id} AND s.singleton FOR UPDATE OF b
+    </select>
+    <select id="existing" resultMap="existing" useCache="false">
+        SELECT event_id,status FROM behavior_event_outbox WHERE behavior_id=#{id} AND source_id=(SELECT source_id FROM behavior_event_source WHERE singleton)
+    </select>
+    <insert id="insertEvent" timeout="5">
+        INSERT INTO behavior_event_outbox(event_id,source_id,behavior_id,origin,destination,partition_key,
+            source_snapshot_json,source_snapshot_sha256,wire_payload_json,wire_payload_sha256,capture_reason,created_at,status,last_error)
+        SELECT s.source_id::text||':user_behavior:'||b.id::text,s.source_id,b.id,#{origin},#{destination},#{key},
+            behavior_source_snapshot(b),encode(sha256(convert_to(behavior_source_snapshot(b),'UTF8')),'hex'),
+            #{payload},encode(sha256(convert_to(#{payload},'UTF8')),'hex'),#{reason},CAST(#{capturedAt} AS timestamptz),
+            CASE WHEN #{payload}::text IS NULL THEN 'DEAD' ELSE 'READY' END,
+            CASE WHEN #{payload}::text IS NULL THEN 'INVALID_SOURCE' ELSE NULL END
+        FROM user_behavior b CROSS JOIN behavior_event_source s WHERE b.id=#{id} AND s.singleton
+    </insert>
+    <sql id="eventColumns">event_id,event_type,schema_version,destination,partition_key,wire_payload_json,wire_payload_sha256,fence,attempts</sql>
+    <sql id="replayColumns">replay_id,event_id,actor,reason,old_attempts,previous_fence,new_fence,replayed_at</sql>
+    <select id="migrationHashes" resultType="string" timeout="5">SELECT script_sha256 FROM behavior_event_schema_history WHERE version=#{version}</select>
+    <select id="verifyOutbox" resultMap="pending" timeout="5">SELECT <include refid="eventColumns"/> FROM behavior_event_outbox WHERE status='READY' AND available_at IS NOT NULL AND last_error IS NULL LIMIT 0</select>
+    <select id="verifyReplay" resultMap="replay" timeout="5">SELECT <include refid="replayColumns"/> FROM behavior_event_replay LIMIT 0</select>
+    <update id="boundLocks">SET LOCAL lock_timeout = '4s'</update>
+    <update id="boundStatements">SET LOCAL statement_timeout = '5s'</update>
+    <select id="claim" resultMap="pending" timeout="5" affectData="true" flushCache="true" useCache="false">
+        WITH due AS (SELECT event_id FROM behavior_event_outbox
+            WHERE destination=#{destination} AND status IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts &lt; #{maxAttempts}
+            ORDER BY available_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED)
+        UPDATE behavior_event_outbox o SET status='SENDING',attempts=attempts+1,fence=fence+1,
+            available_at=clock_timestamp()+(#{leaseSeconds} * interval '1 second')
+        FROM due WHERE o.event_id=due.event_id RETURNING o.event_id,o.event_type,o.schema_version,
+            o.destination,o.partition_key,CASE WHEN octet_length(o.wire_payload_json)&lt;=32768 THEN o.wire_payload_json ELSE NULL END AS wire_payload_json,o.wire_payload_sha256,o.fence,o.attempts
+    </select>
+    <update id="published" timeout="5">
+        UPDATE behavior_event_outbox SET status='PUBLISHED',published_at=clock_timestamp(),last_error=NULL
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <update id="failed" timeout="5">
+        UPDATE behavior_event_outbox SET status=CASE WHEN attempts &gt;= #{maxAttempts} OR #{error}='INVALID_EVENT' THEN 'DEAD' ELSE 'READY' END,
+            available_at=clock_timestamp()+(#{delayMs} * interval '1 millisecond'),last_error=#{error}
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='SENDING' AND available_at &gt; clock_timestamp()
+    </update>
+    <update id="exhaust" timeout="5">
+        WITH due AS (SELECT event_id FROM behavior_event_outbox
+            WHERE destination=#{destination} AND status IN ('READY','SENDING') AND available_at &lt;= clock_timestamp() AND attempts=#{maxAttempts}
+            ORDER BY available_at,event_id LIMIT #{limit} FOR UPDATE SKIP LOCKED)
+        UPDATE behavior_event_outbox o SET status='DEAD',last_error='ATTEMPTS_EXHAUSTED' FROM due WHERE o.event_id=due.event_id
+    </update>
+    <select id="replay" resultMap="replay" timeout="5" useCache="false">
+        SELECT <include refid="replayColumns"/> FROM behavior_event_replay WHERE replay_id=#{replayId}
+    </select>
+    <select id="lockEvent" resultMap="locked" timeout="5" useCache="false">
+        SELECT status,fence,attempts,last_error FROM behavior_event_outbox WHERE event_id=#{eventId} FOR UPDATE
+    </select>
+    <insert id="insertReplay" timeout="5">
+        INSERT INTO behavior_event_replay(replay_id,event_id,actor,reason,old_attempts,previous_fence,new_fence)
+        VALUES(#{replayId},#{eventId},#{actor},#{reason},#{attempts},#{fence},#{fence}+1)
+        ON CONFLICT(replay_id) DO NOTHING
+    </insert>
+    <update id="reopen" timeout="5">
+        UPDATE behavior_event_outbox SET status='READY',attempts=0,fence=fence+1,available_at=clock_timestamp(),last_error=NULL
+        WHERE event_id=#{eventId} AND fence=#{fence} AND status='DEAD' AND last_error&lt;&gt;'INVALID_SOURCE'
+    </update>
+    <select id="backlog" resultMap="backlog" timeout="5" useCache="false">
+        SELECT count(*) FILTER (WHERE status IN ('READY','SENDING')) AS pending,
+            count(*) FILTER (WHERE status='DEAD') AS dead,
+            coalesce(extract(epoch FROM clock_timestamp()-min(created_at) FILTER (WHERE status IN ('READY','SENDING'))),0) AS oldest_seconds
+        FROM behavior_event_outbox WHERE destination=#{destination} AND status &lt;&gt; 'PUBLISHED'
+    </select>
+</mapper>

@@ -1,6 +1,6 @@
 # C15：behavior 已接受事件可靠发送
 
-2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B 正式契约已由后续设计门禁补齐（本文件末节），尚未实现；C15C 只保留范围与必需验收。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
+2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B 正式契约已补齐，B1已实现并本地验收，B2尚未实现；C15C 只保留范围与必需验收。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
 
 本文件为 [CONTRACTS C15](CONTRACTS.md#c15behavior-可靠事件的分阶段契约) 的规范性细节，状态唯一来源为 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。原 `C15A_DESIGN.md` 是受保护历史草案，未修改、不纳入交付。用户允许常规技术决定；不改变已批准自然政策、HTTP 语义、收费、正式样本或数据保留政策。
 
@@ -153,7 +153,7 @@ A 可先扩展迁移、保留旧 writer，完成 owner 升级和隔离验收后�
 
 ## C15B：旧行为可靠事件正式契约（ER-D0/C15B）
 
-本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；只冻结设计，尚无 S15B 产品实现。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的消费确认/Redis 恢复仍须独立门禁。
+本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；原设计门禁仅冻结设计；后续B1实现与验证见ER-S15B1_RESULT，B2尚未实现。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的消费确认/Redis 恢复仍须独立门禁。
 
 ### 源事实、不变量与取舍
 
@@ -197,7 +197,7 @@ READ_COMMITTED 的 `DO NOTHING` 可能因当前语句快照不可见的并发提
 
 ### 事件身份、来源与 wire v1
 
-新增 `LegacyBehaviorAcceptedV1`，不修改 HTTP 的旧 BehaviorEvent record。common 中新增明确类型/codec，wire 不复用自然 Event。规范：
+新增 `LegacyBehaviorAcceptedV1`，不修改 HTTP 的旧 BehaviorEvent record。common 中新增明确类型、platform提供严格JSON codec，wire 不复用自然 Event。规范：
 
 | 字段 | 类型与语义 |
 |---|---|
@@ -244,6 +244,8 @@ ACK 后 mark 失败不是发送失败的证明，允许原事件重发；Kafka �
 
 B2 追加 `db/behavior-events/V002__behavior_history_capture.sql`，持久 `behavior_history_command`（输入清单/摘要、actor/reason、创建/完成状态）和 `behavior_history_item`（commandId,behaviorId 唯一、状态、eventId/固定错误、审计时间）。输入和最终结果不可变。首次登记同 commandId 同内容返回原任务，不同内容冲突；缺失行也先持久请求，不能因“当时查不到”永久跳过。
 
+公平续办要求（父审查补充，B2必需）：WAITING_SOURCE 不得固定占据最小前10项。B2门禁必须冻结持久公平轮转或等价扫描规则，保证后续可见项获得处理机会；验收包含超过10项且前10项缺失、后项存在，后项必须先取得结果，缺失项后来提交后仍可续办。不得通过删除缺失项或误标完成满足公平性。
+
 每次显式 `advanceHistory(commandId)` 最多处理10项，逐项短事务；先锁command确认OPEN，再SELECT待办 FOR UPDATE SKIP LOCKED，锁序 command→item→source row→Outbox，确保事件创建与 item结果同提交。持锁无网络，进程退出事务回滚，其他调用可续办；无需要长期持有的扫描cursor/内存队列。源行查询采用新的 READ_COMMITTED 语句；若原事件已存在而源行已删除，返回ALREADY_CAPTURED并保留原事件；没有原快照的不可见/缺失项保留 WAITING_SOURCE，不标 DONE、不推进不可逆水位；调用次数不自动清空它。查询/续办本身幂等，旧 `MAX(id)` 不能说明提交先后。
 
 结果分类：`CAPTURED`（本次建立历史事件）、`ALREADY_CAPTURED`（已有稳定事件，原LIVE/history路由不变）、`INVALID_SOURCE`（DEAD隔离）、`SOURCE_CHANGED`（已有快照与当前源行不符，保留原事件）、`WAITING_SOURCE`。只有所有项取得非WAITING_SOURCE的终态结果才结束本次覆盖；含非法/漂移时标 `COMPLETED_WITH_ISSUES`，不得写“全部已投递”。持久命令状态 `OPEN/COMPLETE/COMPLETED_WITH_ISSUES/CANCELLED`，不增加自动运行线程；取消需独立稳定取消命令及actor/reason审计（V002的不可变behavior_history_cancel表，cancelId唯一，同键改内容冲突，精确重试返回原结果），只拒绝后续未处理项，不能撤销已建事件或ACK，不能把缺失当已覆盖。取消与 advance 以 command 锁后 item 锁串行化，所有路径统一锁序，跨命令重叠 ID 由 Outbox 唯一约束去重。
@@ -274,16 +276,16 @@ B2 追加 `db/behavior-events/V002__behavior_history_capture.sql`，持久 `beha
 
 B 的文件边界含最小兼容guard/测试，不改变旧入口 Kafka group/offset，也不创建新产品投影。新消费端必须先部署再开新relay；任何将新topic写进旧topic配置的误操作必须 fail-fast，不能静默丢弃。
 
-### 有界实施顺序与必需验收（尚未执行）
+### 有界实施顺序与必需验收（B1结果见ER-S15B1_RESULT）
 
 | 子片 | 文件/owner与可观察结果 | 前置/退出门禁 |
 |---|---|---|
-| S15B1 | behavior 新 `events/BehaviorEvent{Configuration,Repository,Codec,Relay,Job,KafkaPublisher}`（具体拆类可按职责精简）、primary Mapper/XML、`db/behavior-events/V001`；common `LegacyBehaviorAccepted`/codec；调整BehaviorService与BehaviorMapper写入口；单条原子接受、重复修复、两流可靠发送与审计重放 | C15B PASS；B01～B07、B10/B11中对应项真实通过；不把B2历史操作遗漏成父B完成 |
+| S15B1 | behavior 新 `events/BehaviorEvent{Configuration,Repository,Codec,Relay,Job,KafkaPublisher}`（具体拆类可按职责精简）、primary Mapper/XML、`db/behavior-events/V001`；common `LegacyBehaviorAccepted` / platform `LegacyBehaviorCodec`；调整BehaviorService与BehaviorMapper写入口；单条原子接受、重复修复、两流可靠发送与审计重放 | C15B PASS；B01～B07、B10/B11中对应项真实通过；不把B2历史操作遗漏成父B完成 |
 | S15B2 | history command/items V002、Mapper/内部恢复服务；Seen/Flink旧入口topic guard与兼容测试、运行手册；显式历史清单可重试续办/审计取消/报告真实覆盖 | B1；B08～B12及B1受影响回归全通过，才记S15B DONE |
 
 共同边界：SQL只在XML/迁移，所有新表/字段中文注释；不改历史SQL、自然实现、保护Compose/运行说明、旧CPA时间修正，不新增第三方依赖。测试复用 S15A/S06 的独占 PG/Kafka，B2兼容guard测试不启动共享Flink或Redis。CI复用现有工作流新增清晰行为可靠性tag/门禁或纳入既有必跑命令，不能让新增测试落入默认排除而宣称通过；具体工作流修改只在实施片落地。
 
-| 验收ID | 必须观察的行为（均为后续产品验收，当前UNVERIFIED） |
+| 验收ID | 必须观察的行为（按子片结果分别核实，不将B1推广为父片完成） |
 |---|---|
 | B01 | 真实schema预检/迁移失败回滚/摘要漂移；V001旧writer仍能写；sourceId跨应用重启稳定，不同源库相同id不冲突；自然/历史SQL字节不变 |
 | B02 | 新源行与Outbox同成败，注入序列化/Outbox失败不得残留新源行；新字段/大ID/null/时间/非有限/超长各有保留或隔离结果，错误脱敏 |
@@ -299,3 +301,9 @@ B 的文件边界含最小兼容guard/测试，不改变旧入口 Kafka group/of
 | B12 | 历史清单准备/捕获/隔离/等待/取消/发送分别计数，不把CAPTURED当PUBLISHED；保护11文件、原迁移、HTTP/batch/归因/统一错误回归，必需测试无skip |
 
 容量数值是有界sandbox技术参数，非吞吐/SLA承诺；历史批次100/advance10/事务5秒若实测不足，必须在原契约下缩小每次工作量并记录，不放宽一致性/丢数据。没有待用户选择的新增业务政策；真实环境的封闭历史清单、旧writer退出和消费启用属于后续运行前提，缺失时保持默认关闭并报告，不能阻塞隔离实现或伪装为已部署。
+
+### 父审查补充：C15C旧格式失败确认边界
+
+C15C必须覆盖已启用的旧格式 SeenItemsConsumer：Redis异常不能吞错后确认，须有明确重试/位点恢复和毒消息隔离契约，并以真实Kafka/Redis验证失败期间offset不越过未完成效果、恢复后SADD及确认。旧消息无eventId不妨碍幂等SADD后确认；不得按内容hash发明业务去重。仅增加新版listener不满足父S15。B1只记录该未来边界，不实现B2/C。
+
+B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shared Kernel，仅放LegacyBehaviorAccepted不可变契约；严格JSON codec放入已有依赖common与Jackson的recsys-platform/behavior，供behavior及后续Seen复用，owner元数据校验仍在behavior。保留既有Jackson版本，不新增第三方依赖或Maven依赖边；消息格式、身份与全部严格校验不变。首轮编译发现common无Jackson后采用此边界，不引入手写JSON解析器。
