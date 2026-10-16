@@ -71,3 +71,16 @@ ER-D0/C15B：沿已存在PostgreSQL/MyBatis-Plus/Kafka/Jackson，不新增依赖
 稳定命令/逐项结果复用已选PG能力，不增加后台扫描器；低ID晚提交等待原清单项后续续办。旧Flink value-only入口不能安全处理重复历史，新版特征流保持关闭至S19。相关PG事务/Kafka外部效果语义已经官方文档核验（链接在C15_DESIGN）；版本不变，本设计不宣称新增组件兼容实测。S15B1/B2隔离实测分别见ER-S15B1_RESULT和ER-S15B2_RESULT。B2选择PG持久visit_sequence/last_visit轮转，避免前10缺失项饿死后项；无需新依赖、CDC或自动扫描线程。
 
 B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shared Kernel，仅放LegacyBehaviorAccepted不可变契约；严格JSON codec放入已有依赖common与Jackson的recsys-platform/behavior，供behavior及后续Seen复用，owner元数据校验仍在behavior。保留既有Jackson版本，不新增第三方依赖或Maven依赖边；消息格式、身份与全部严格校验不变。首轮编译发现common无Jackson后采用此边界，不引入手写JSON解析器。
+
+
+## C15C：Seen消费恢复（设计冻结，产品未实现）
+
+| 能力 | 决策 / 选定与原因 | 备选 / 成本 | 引入阶段 |
+|---|---|---|---|
+| 消费生命周期 | REUSE_EXISTING：Spring Kafka3.1.4专用record factory、MANUAL_IMMEDIATE、明确nack/暂停及停止处理器 | 默认log-only recoverer不满足不丢；自写轮询会重复已有容器重平衡。三流各单线程，接受一流暂停阻塞该流其他分区 | S15C1旧流，C2 live/history |
+| 持久隔离/恢复 | BUILD有限域能力，REUSE_EXISTING engine primary PG/MyBatis XML/显式版本SQL；独立engine-seen owner history | 仅内存计数不能跨退出；额外DLT增加投递/审计窗口；不用通用任务平台。每条消费PG写、原文和审计增长，未测生产容量 | S15C1 |
+| Seen效果 | REUSE_EXISTING StringRedisTemplate / seen:{user} SADD，不设TTL、不新建缓存层 | 业务eventId Inbox不能证明Redis集合还在；不将原消息hash当业务ID | 已有，C1修确认、C2接新版 |
+| 消费起点 | BUILD有界初始化审计，复用Kafka Admin现有API；旧组ADOPT、新组EARLIEST_RETAINED、新分区单独登记；运行reset=none | latest会跳过预发布事件；无条件earliest无法区分offset过期。增加一次受控登记操作，不运行共享迁移 | S15C1 |
+| 故障验证 | REUSE_EXISTING Testcontainers、PG16、apache/kafka:3.7.1、redis:7-alpine，独占临时实例 | 不用Mock/测试Sink替代产品Seen，不改CI配置；单节点不证明副本容灾 | S15C1/C2 |
+
+版本来自Boot3.2.5 BOM及实际engine测试classpath，Kafka client3.6.2、Spring Data Redis3.2.5/Lettuce6.3.2.RELEASE一致；本机3.1.4 JAR API已核查。dev-infra Redis声明redis:7-alpine，只读核对未操作共享实例。官方3.1.4错误处理/容器和Kafka3.6.2配置、Redis SADD依据及2～3选项比较统一见[C15_DESIGN](C15_DESIGN.md) C-F/C-D；不新增依赖边/版本、端口、账号或密钥。完整恢复仍受Kafka/PG原文保留与Redis数据丢失影响，生产RTO/RPO及容量UNVERIFIED。

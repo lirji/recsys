@@ -87,3 +87,10 @@ B1实际结果：25项新验收（主体23+Spring装配2）及16项旧行为/归
 B2实际结果（8395c172）：新18项（PG12、Kafka2、旧Seen2、旧Flink2），完整行为门禁43项/9类及补充回归24项/6类全部PASS，零失败/错误/跳过；B08～B12、前10缺失公平续办、原history真实发送/租约恢复、取消及覆盖报告通过。证据映射与命令见ER-S15B2_RESULT。B1/B2均验收，父B可DONE；Seen真实Redis确认恢复和Flink窗口依然不能由测试Sink或旧解析测试替代。
 
 B2新增必需边界：已有DEAD/INVALID_SOURCE分别与源不变/删除/漂移组合。删除后仍INVALID_SOURCE、无问题covered不增加、命令COMPLETED_WITH_ISSUES；合法快照删除仍ALREADY_CAPTURED，源漂移保持SOURCE_CHANGED。原Outbox所有列和已有命令/结果均不变，修复后的原命令重试稳定。原B2未覆盖该组合；真实PG红绿证据见ER-S15B2-FIX-01_RESULT，不能凭父意见或旧PASS跳过核实。
+
+
+## C15C 设计与后续真实验收
+
+89a217e3只执行D-C01～D-C09设计验证，结果见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)；不把审查当消费运行证据。产品C01～C18完整矩阵在[C15_DESIGN](C15_DESIGN.md) C-V，当前全部UNVERIFIED。C1先交付旧Seen的真实PG/Kafka/Redis确认、预算/暂停/毒消息/重放/初始化/独立JVM恢复；C2再接live/history、真实B2→产品Seen→Redis→ReplicaSeenItemsSource并完成父片回归。默认错误处理器、首次latest、既有位点丢失、重平衡、ACK窗口与Redis集合丢失负对照均不可删。
+
+隔离组件测试使用唯一topic/group/schema/测试key，失败必须定位实际组件/产品窗口；不改共享数据或既有午夜fixture，不以Mock、跳过或降低断言替代。命令建议沿既有 `mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`，加本片受影响回归；设计回合未执行此命令。C1/C2测试均必须纳入原tag门禁，无需修改CI配置。

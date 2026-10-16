@@ -1,6 +1,6 @@
 # C15：behavior 已接受事件可靠发送
 
-2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。C15B 正式契约已补齐，B1已实现并本地验收，B2实现与验收见ER-S15B2_RESULT；C15C 只保留范围与必需验收。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
+2026-10-16，基线 `1f77eb4d037844199c922cd2bf92ea230fc0a56f`。承接已批准 [PLAN](PLAN.md) 的 ER-S15/F14，依赖 S06/S08；设计回合已完成 `ER-D0/C15A` 必要门禁。**C15A 为正式实施契约；S15A 已实现并通过本地 A01～A10，见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。B1/B2及非法快照删除边界整改已实现并验收。C15C 的正式增量契约见本文末节，设计验证见 ER-D0-C15C_RESULT；消费者产品验收仍未执行。** 父 S15 必须包含自然 Outbox、旧 BehaviorService 和适用行为消费者，不能因 A 完成而 DONE。
 
 本文件为 [CONTRACTS C15](CONTRACTS.md#c15behavior-可靠事件的分阶段契约) 的规范性细节，状态唯一来源为 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。原 `C15A_DESIGN.md` 是受保护历史草案，未修改、不纳入交付。用户允许常规技术决定；不改变已批准自然政策、HTTP 语义、收费、正式样本或数据保留政策。
 
@@ -139,7 +139,7 @@ A05/A06/A07 组合须展示：源事实 eventId、原 payload 摘要、Outbox �
 | ER-S15B | 旧 BehaviorService、BehaviorMapper、BehaviorEvent、user_behavior 与本库 Outbox/relay | C15B：源行稳定事件身份/格式、同事务插入、原有 CLICK 唯一规则、无业务键事件的保证边界、use-kafka/publish-events 组合迁移、新旧消息共存；既有已接受行的显式覆盖/补发和去重策略，不把未知历史发送伪造为已发 | 真实 PG/Kafka：DB 成功 broker 失败；HTTP/DB 重复不漏发也不额外造业务事件；提交/ACK 崩溃恢复；后续消费者能使用稳定身份 |
 | ER-S15C | SeenItemsConsumer 的已看投影，以及新旧事件解析调用点 | C15C：成功副作用后才确认、Redis 故障重试/停分区、毒消息持久隔离与受控重放、重平衡和 offset 提交窗口；若增加 Inbox，应说明外部 Redis 恢复，不能先 Inbox 已消费再 best-effort SADD | 真实 Kafka/Redis（若有 Inbox 则 PG）：断 Redis 不能跳过；重复/重启恢复后的实际 seen 集合和消费位点正确；新旧版本共存无静默丢失 |
 
-上述是原 F14 范围内要求；C15B wire/迁移细节现已在下方正式冻结，C15C 仍须独立门禁。B 完成后 C 继续；源发送通过、消费未通过时父 S15 保持 IN_PROGRESS。Flink 消费适配须与 B 事件契约协调并做兼容测试，checkpoint/事件时间/迟到和窗口对账仍归 S19，不能借此删除 S15 的已看消费验收。
+上述是原 F14 范围内要求；C15B wire/迁移与 C15C 消费恢复细节分别见下方正式增量契约。B 完成后 C 继续；源发送通过、消费未通过时父 S15 保持 IN_PROGRESS。Flink 消费适配须与 B 事件契约协调并做兼容测试，checkpoint/事件时间/迟到和窗口对账仍归 S19，不能借此删除 S15 的已看消费验收。
 
 没有事实依据将所有旧 POST（无事件 ID）视为业务幂等；C15B 应保留既有语义并明确保证边界，真正需要新业务去重政策时才报告外层。既有消息发送不确定的历史补发也不能静默触发正式特征重复累计；仅隔离验证，真实切换不在本授权内。
 
@@ -153,7 +153,7 @@ A 可先扩展迁移、保留旧 writer，完成 owner 升级和隔离验收后�
 
 ## C15B：旧行为可靠事件正式契约（ER-D0/C15B）
 
-本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；原设计门禁仅冻结设计；后续B1实现与验证见ER-S15B1_RESULT，B2显式清单与兼容实现见ER-S15B2_RESULT。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的消费确认/Redis 恢复仍须独立门禁。
+本节是原 F14 的正式增量契约，设计基线 `7fccd6fe`；原设计门禁仅冻结设计；后续B1实现与验证见ER-S15B1_RESULT，B2显式清单与兼容实现见ER-S15B2_RESULT。S15B 分为 B1 在线接受/重复修复与发送、B2 显式历史恢复/消费兼容验收，全部完成才关闭父 B。不会给无键旧 POST 增加业务幂等，也不执行共享切换。事件身份、来源和恢复决定如下；C15C 的独立门禁及消费确认/Redis恢复契约见本文末节。
 
 ### 源事实、不变量与取舍
 
@@ -310,3 +310,151 @@ B 的文件边界含最小兼容guard/测试，不改变旧入口 Kafka group/of
 C15C必须覆盖已启用的旧格式 SeenItemsConsumer：Redis异常不能吞错后确认，须有明确重试/位点恢复和毒消息隔离契约，并以真实Kafka/Redis验证失败期间offset不越过未完成效果、恢复后SADD及确认。旧消息无eventId不妨碍幂等SADD后确认；不得按内容hash发明业务去重。仅增加新版listener不满足父S15。B1只记录该未来边界，不实现B2/C。
 
 B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shared Kernel，仅放LegacyBehaviorAccepted不可变契约；严格JSON codec放入已有依赖common与Jackson的recsys-platform/behavior，供behavior及后续Seen复用，owner元数据校验仍在behavior。保留既有Jackson版本，不新增第三方依赖或Maven依赖边；消息格式、身份与全部严格校验不变。首轮编译发现common无Jackson后采用此边界，不引入手写JSON解析器。
+
+## C15C：Seen 消费确认、隔离和恢复正式契约（ER-D0/C15C）
+
+设计基线 `6c868e7349ba72682a8b7707fe7acdfcc98c3ed3`，回合 `89a217e3`。本节是原 F14 的必要增量设计；只设计，不代表已实现、已迁移或已消费。适用旧 `SeenItemsConsumer`、新 LIVE/HISTORY 三条流。原 HTTP、batch、归因、事件身份和已发布迁移不变；自然曝光无正反馈 Seen 效果，不新增自然 listener；history 只恢复适用 Seen，不送旧 Flink。S19 独立。无共享启用、部署、自动全表回填或缓存平台建设。
+
+### C-F：现场事实、假设和技术依据
+
+| ID | 已核实事实及影响 |
+|---|---|
+| C-F01 | `filter/SeenItemsConsumer.java` 用新建 ObjectMapper 读 BehaviorEvent，正反馈 SADD 后 catch 所有异常并正常返回；`LegacySeenCompatibilityTest` 仅 Mock Redis/直接方法调用，没有 broker 位点证明。旧入口必须一起改。 |
+| C-F02 | engine `application.yml:60～68` 为旧组 `recsys-rec-engine-seen`、`auto-offset-reset=latest`，未显式 ack-mode/auto-commit。专用配置必须覆盖这些默认；不改其他消费者 factory。 |
+| C-F03 | Boot 3.2.5 BOM及本地 engine 实际 surefire classpath一致：Spring Kafka 3.1.4、Kafka client 3.6.2、Spring Data Redis 3.2.5、Lettuce 6.3.2.RELEASE。本机对应 JAR 的 javap 已核对 MANUAL_IMMEDIATE、nack(Duration)、setAsyncAcks、AssignmentCommitOption、停止处理器和 Admin 位点 API。无版本升级/新第三方依赖。 |
+| C-F04 | `LegacyBehaviorCodec` 已严格校验新版32KiB wire、key、身份、版本及来源；common 保留无JSON依赖契约。旧7/8字段和长整数必须保留，不把新envelope交给旧解析器。 |
+| C-F05 | `BillingProjectionConsumer` 有手动提交/3次重试/退出机制，但属于资金PG投影，无Redis隔离重放，不能直接复用其业务仓储。复用确认顺序与测试设施，不引入跨owner依赖。项目无可直接复用的 Seen 错误处理器或隔离库。 |
+| C-F06 | engine已有primary SqlSessionTemplate和Mapper扫描、显式owner SQL/启动verifySchema惯例。Seen表归engine；不能写behavior/ad表，也不复用其schema history或业务幂等键。 |
+| C-F07 | ReplicaSeenItemsSource 读 `seen:{user}`，失败返回空集；注释仍称只覆盖开启后事件。SADD无TTL，读模型不保证历史完整；普通消费者不能感知已提交位点后的Redis数据丢失。 |
+| C-F08 | 父只读依据 `.dev/codex-flow-reliability/C15C_PARENT_NOTES.md` 五项逐项核实。共享组位点、Kafka保留期、Redis持久化/驱逐策略、生产吞吐及RTO/RPO未知；本回合不查询共享业务环境。 |
+
+Spring 3.1.4 默认错误处理器可以有限重试后日志恢复并跳过，不能仅依赖抛异常；本设计不用默认 recoverer。[官方异常处理](https://docs.spring.io/spring-kafka/docs/3.1.4/reference/kafka/annotation-error-handling.html)。手动确认、nack和同步提交的API语义按[3.1.4 listener container](https://docs.spring.io/spring-kafka/docs/3.1.4/reference/kafka/receiving-messages/message-listener-container.html)核对。Kafka `latest` 在无位点/扩分区时可能漏掉已发布记录，fetch大小也不是绝对内存上限，按[3.6.2 ConsumerConfig源码](https://github.com/apache/kafka/blob/3.6.2/clients/src/main/java/org/apache/kafka/clients/consumer/ConsumerConfig.java)约束。SADD重复成员返回0仍是成功，[Redis SADD](https://redis.io/docs/latest/commands/sadd/)。这些是机制依据，不能替代C01～C18真实验收。
+
+### C-D：方案比较与选择
+
+| 决策 | 选定方案 | 备选及未选原因 / 成本 |
+|---|---|---|
+| C-D01 确认与暂停 | 三个独立单线程 Spring record listener，专用factory，MANUAL_IMMEDIATE；正常路径显式ACK；可重试失败nack；预算耗尽持久PAUSED并暂停整条流 | 只删catch+默认处理器会跳过；自写Kafka轮询可行但重复容器生命周期/重平衡机制。接受一条流内暂时阻塞其他分区，其他两流独立；无分区公平性承诺。 |
+| C-D02 持久恢复 | engine自有技术记录：每个Kafka坐标在副作用前持久领取，保存有界原字节、尝试/租约/fence、结果；命令审计重放 | 仅内存重试会在进程退出后重置预算；仅DLT不能原子涵盖PG审计且增加新topic/投递失败窗口；通用任务平台无必要。代价是每条记录PG读写和存储增长，未测生产吞吐，不宣称零成本。 |
+| C-D03 幂等边界 | 正反馈效果为SADD；无eventId旧消息按不同坐标逐条处理；技术键含Kafka来源，摘要仅校验字节 | 不按内容hash去重，不把事件eventId当Redis已存在证明。不引入业务Inbox去重库或更改behavior事件。技术APPLIED只证明此前成功，不证明集合永存。 |
+| C-D04 起点 | 显式、稳定命令登记绑定和每分区起点；既有组只读ADOPT，新组只允许冻结EARLIEST_RETAINED；listener统一auto.offset.reset=none | 不默认latest，不无条件earliest重置旧组。增加一次受控初始化操作，换取区分新组与offset丢失；保留期外数据不伪造。 |
+| C-D05 重放 | 同一engine内部命令重用原key/value和Seen处理器，单条目标、持久预算、审计；不重新发Kafka、不移动主组offset | 修改毒消息字节或伪造旧业务身份破坏证据；自动全量Redis重建超出本片。需要显式目标清单及权限边界。 |
+
+### C-C：输入分类与ACK条件
+
+通道枚举 `LEGACY / LIVE / HISTORY`。LEGACY沿原topic和seen-group；LIVE固定逻辑topic `behavior-accepted-v1`、默认group `recsys-rec-engine-seen-live-v1`；HISTORY为 `behavior-history-recovery-v1`、默认group `recsys-rec-engine-seen-history-v1`。允许原逻辑名的点号隔离后缀，不许regex/逗号多topic、通道串接、自然topic或三个group相同。旧topic guard即使关闭也保留。
+
+| 分类 | 判定 | 效果/持久结果 | 是否可ACK |
+|---|---|---|---|
+| POSITIVE | 合法CLICK/LIKE/PLAY/RATING | 同步 `SADD seen:{userId} decimal(itemId)`；返回0或1均成功；随后PG有效fence写APPLIED | 只有SADD已成功且PG结果已提交；Redis异常、null返回、超时未知均不可确认 |
+| NO_EFFECT | 合法IMPRESSION（包括history中的旧曝光） | 不访问Redis，记录NO_EFFECT；RATING即使value=0仍沿原正反馈集合口径 | PG分类持久后可确认，不记applied |
+| INVALID_DATA | 非JSON、UTF-8非法、重复字段、未知字段/版本/动作、空value/tombstone、非法关键ID、新格式key/来源/topic不匹配等 | 记录QUARANTINED和固定reason、原字节或明确未保存说明 | 隔离记录提交后才可确认；这表示已隔离，绝不表示Seen完成 |
+| DEPENDENCY_FAILURE | Redis连接/超时/WRONGTYPE、PG、Kafka可观察提交异常/权限等 | Redis失败仍是未履行正反馈，不能转毒消息“成功”；PG或Kafka失败保留未知结果 | 不确认；短退避、暂停/停止，恢复先查持久状态和真实位点 |
+| INTERNAL_FAILURE | 未知代码/序列化/运行时异常 | 脱敏停止；不将所有异常粗暴归INVALID_DATA | 不确认，不走日志跳过 |
+
+旧JSON保留7/8字段、可空scene/bucket/exposureId及完整64位ID；要求userId/itemId为正long、action为已知枚举，拒绝浮点/字符串向ID静默转换及重复字段。value为有限数字（缺省0），ts允许原有long值/缺省0，Seen不按时间滤掉历史；这两项不增加新的正反馈政策。旧key此前未参与解析，仍不以key缺失/不匹配丢弃合法旧value，只原样记录。未知字段沿旧ObjectMapper的拒绝行为。新流必须复用LegacyBehaviorCodec，额外验证 `destination()` 与具体逻辑流一致；不推断历史时区、writer或trafficClass。自然误路由必须隔离，不视为合法IMPRESSION。
+
+### C-P：最小持久模型与所有权
+
+新建engine owner目录 `db/engine-seen/V001__seen_recovery.sql`，与engine-delivery序列分离。显式事务迁移、独立 `engine_seen_schema_history` 和SHA256；全部表/字段中文COMMENT，PK/UNIQUE/CHECK与不可变输入触发器，启动仅校验不自动迁移。旧迁移、fixture和behavior源数据完全不改。
+
+| 表/逻辑对象 | 最少字段、约束与访问路径 |
+|---|---|
+| `seen_stream_partition` | `(stream,partition)`主键；不可变clusterId/topicId/topic/groupId、bootstrapOffset、登记commandId；最多32分区/流；记录初始化状态及已观察committed offset（后者仅证据，不替代broker权威）。同一cluster/topic/group/partition唯一；topic重建或group换绑拒绝复用。 |
+| `seen_record` | 技术键`(clusterId,topicId,groupId,partition,offset)`唯一，含stream/topic；独立record UUID供命令引用；key/value原bytea或null、长度/带null标记和长度分隔的SHA256、payloadComplete、firstClassification/firstError/首次时间不可变。状态READY/APPLYING/APPLIED/NO_EFFECT/QUARANTINED/PAUSED；attempts 0..3、epoch、fence、leaseUntil、activeCommandId、nextAttemptAt、lastError/lastSuccessAt，UTC timestamptz/DB时间。索引(stream,status,nextAttemptAt)，隔离查询用(createdAt,recordId)稳定分页。 |
+| `seen_recovery_command` | UUID主键；kind=INITIALIZE/RETRY/RECHECK/RESTORE，规范化不可变request和摘要、可信actor≤200/reason≤1000、创建时间；READY/RUNNING/SUCCEEDED/FAILED和固定result；attempts 0..3、30秒租约/fence、前后状态/epoch、完成时间；相同ID改内容冲突，终态结果不可变。初始化最多32分区，其余每命令只一条record。 |
+
+记录不是业务事件权威：没有对eventId建业务去重唯一键，原eventId可作受限查询信息；同内容/同eventId但不同Kafka坐标仍分别执行SADD。一个坐标重复投递只能复用完全一致的key/value摘要；不一致停止COORDINATE_CONFLICT，不能覆盖。
+
+正常wire≤32KiB，key≤1KiB时完整存储，包含null标记；不存无业务用途Kafka headers，重放不得依赖headers。超过限额的毒消息只存坐标/长度/摘要，`payloadComplete=false`，不截断后冒充原文；隔离后若需重取，限定同cluster/topicId/partition/offset且校验摘要。broker过期/删topic/压缩缺项不可恢复时明确SOURCE_UNAVAILABLE，不能拿“下一个offset”代替。非法字节原样保存，不能先宽松UTF-8替换。日志/API摘要均无原JSON、key、userId或异常cause正文。
+
+领取/标记均独立REQUIRES_NEW、READ_COMMITTED短事务，事务5秒/锁4秒/语句5秒，绑定primary同一DataSource。锁序command（若有）→record；初始化只锁command→stream_partition。冲突按唯一键重读校验。外部Redis/Kafka调用绝不持PG事务/行锁。副作用前提交attempts+1/fence+1/30秒lease，最后一次领取退出也消耗预算；有效lease+fence才允许结果写回。普通流READY→APPLYING→APPLIED，失败回READY或PAUSED；合法无效果/非法数据可直接持久NO_EFFECT/QUARANTINED且不计Redis尝试。恢复命令只在已声明终态上开启新epoch，原字节和首次分类/原因不变，当前结果可随受控重判改变；命令自身终态不可改。未过期旧租约不被抢占；过期后重新领取或预算耗尽PAUSED。stale执行器即使SADD成功也不得写回或ACK；幂等SADD使外部旧调用残留安全，不宣称fence能撤销Redis请求。
+
+### C-O：确认、重试、暂停与提交窗口
+
+专用 `seenKafkaListenerContainerFactory`（三个container复用相同硬配置、独立consumer/group/thread）：
+
+- `enable.auto.commit=false`；record模式；`AckMode.MANUAL_IMMEDIATE`；`syncCommits=true`、syncCommitTimeout=5s、commitRetries=0、asyncAcks=false；`AssignmentCommitOption.NEVER`，禁止框架在分配时偷偷建立位点。
+- key/value均ByteArrayDeserializer，解析在业务处理器内；max.poll.records=1、pollTimeout=500ms、max.poll.interval.ms=60000、session.timeout.ms=15000、heartbeat.interval.ms=3000、default.api.timeout.ms=5000、request.timeout.ms=5000；每流concurrency=1。继承spring.kafka地址/TLS/SASL，显式可靠性属性不接受被外部通用配置放宽。
+- auto.offset.reset=none、allow.auto.create.topics=false、missingTopicsFatal=true、RangeAssignor；不使用Kafka事务、异步ACK、@RetryableTopic、默认DefaultErrorHandler或log-only recoverer。认证失败停止，禁止无界自动重新启动。
+- fetch.max.bytes=1MiB、max.partition.fetch.bytes=1MiB；启用前校验最多32分区、topic cleanup.policy=delete及有效max.message.bytes≤1MiB。Kafka可能返回超过fetch限制的首批，压缩展开也影响内存；32KiB应用校验不是绝对堆上限，生产容量另测；topic配置不可核验则拒绝启用，不能自行修改共享配置。
+- Redis沿现有StringRedisTemplate，启用时校验命令/连接timeout均≤2s（当前默认2000ms）；不改全局Redis配置。每次只SADD单成员，不加TTL、不调用DEL/SMEMBERS重建，不后台无界批量。
+
+处理步骤：登记/校验原记录→分类→领取→Redis（正反馈）→PG状态提交→listener线程调用acknowledge。APPLIED/NO_EFFECT/QUARANTINED重复坐标只复用已存终态并ACK，不能重造新业务ID；APPLIED须先前确实在SADD成功后持久。新Kafka坐标即使内容相同仍走完整路径。所有ACK还须当前assignment有效；ACK调用后的提交异常不得改成正常返回。本机3.1.4字节码核对：doCommitSync会暂存RebalanceInProgressException对应提交，processAck会忽略WakeupException；所以ACK调用返回不能证明broker已提交。这两种框架内部窗口允许未确认终态记录重投，暂存offset只来自已完成/隔离项，不得包括失败项；其余可观察提交异常停止。C04/C05/C09须用Admin核查最终committed与后续交付，不以本地ack计数充当broker确认指标。
+
+Redis失败：持久lastError及READY/nextAttemptAt，第1/2次使用nack(1s/2s加0～250ms抖动)，先seek回当前记录，由容器保持poll/心跳。第3次或过期的第3次租约转PAUSED：nack使当前位置可重读，再request整个该流container.pause（pauseImmediate=true）；暂停期间只poll心跳，不继续SADD/PG重试。人工恢复命令完成后才resume，不能只按定时器无限重试。暂停新分配同样查持久PAUSED；某个进程退出不解除暂停，其他流仍可独立工作。
+
+PG不可用/标记提交未知、可观察的Kafka commit异常、未知代码异常走显式停止处理器：以 `CommonContainerStoppingErrorHandler` 的停止语义为基础，显式isAckAfterHandle=false、无recoverer，传入脱敏异常；专用单线程有界停止executor（队列最多3，拒绝必须安全停机，不能退回丢弃）。停止不ACK当前项，不自动循环start。nack/暂停调用本身失败也停止。framework日志不得带原record/解析cause。恢复先查询记录与broker committed，不能把超时当未提交。此路径无持久PG记录时也不能因重启而跳到latest。
+
+| 故障窗口 | 恢复规则 |
+|---|---|
+| 领取提交前退出 | 无副作用/无ACK，原offset重读。提交结果未知先读行。 |
+| 领取后、SADD前退出 | 租约后续办；次数持久，最多3次后PAUSED。 |
+| SADD已执行但响应超时，或SADD后PG提交前退出 | 不ACK；过租约重做SADD，集合单成员；第三次未知仍暂停，不冒称未产生效果。 |
+| APPLIED提交后、ACK前退出/commit超时 | broker位点可能旧或新；旧则读原终态ACK，新则继续。APPLIED只证明先前SADD成功，不保证Redis随后没有丢数据。 |
+| 隔离事务提交前/后退出 | 前者原位重试；后者唯一坐标复用隔离，不重复审计、不重解析为成功，之后可ACK。 |
+| rebalance/revoke/lost | 只提交已成功显式ACK，不在回调flush未完成位点；所有权丢失不再ACK，stale fence不能写回；新owner查有效租约并nack等待，查PAUSED则暂停。 |
+
+已提交位点是“下一条offset”，不能跨过尚未成功或未隔离记录。max.poll.records=1和同步ACK避免同批后项越过前项；不同partition不宣称全局顺序。暂停整流是有意的保守边界，C1必须验证同流后项不越过；C2补证另一流仍可前进。
+
+### C-S：新旧组起点、保留与恢复命令
+
+应用默认关闭：保留`recsys.behavior.seen-consume=false`；新增`recsys.behavior.seen.live-consume=false`、`history-consume=false`、`recovery-enabled=false`。旧seen-consume一旦开启就使用新可靠路径，不保留能吞错的旁路开关；缺迁移/登记拒绝启用。四开关全关时不建Kafka消费者/Admin、不校验新表、不创建恢复后台线程；保留无连接的topic校验。seen-source仍默认db。新旧二进制不能混在同一Seen组运行，旧吞错成员会破坏不变量；升级必须先停旧成员，登记后再启新成员。本回合不执行该切换。
+
+内部受控 `SeenRecoveryService` 不加公网HTTP、RPC或自动调度；caller负责可信actor和目标授权，不能信任消息里的actor。开启recovery-enabled只装配能力，不自动执行任何命令。普通已登记流在该开关关闭后仍能履行已接受记录；手工重放/初始化不能绕过开关。返回固定领域码，未来公开适配必须走项目统一错误映射，不先新造公开错误码。
+
+1. `initialize(commandId, stream, mode, actor, reason)`：mode=ADOPT_COMMITTED、EARLIEST_RETAINED或ENROLL_NEW_PARTITIONS；显式绑定当前配置的cluster/topicId/topic/group，不接受任意broker/topic。锁定不可变分区清单及begin/end观测（≤32）。所有初始化模式均要求组无活跃成员；已终态同ID重试先返回原审计，不重新登记。ADOPT只读采用每分区有效committed，既有组无位点/越界拒绝，不写broker位点。EARLIEST仅允许无登记且无任何已提交位点、组无活跃成员；将当时各分区beginningOffset冻结为起点，不用latest。两个新组上线前先登记；即使先发布再启动也覆盖起点之后保留的记录。旧组沿原groupId先ADOPT；首次旧组确无历史位点时才显式EARLIEST。
+2. 初始化通过单次`advance(commandId)`在事务外用Admin设置**全新组或已批准新增分区**的冻结offset，再逐分区读回验证，最后同PG事务保存绑定和SUCCEEDED。PG/Kafka不假装原子：退出/响应未知后先查当前offset；部分已写且等于冻结值的保留，仅补尚缺项；有任何不一致/新成员则CONFLICT停止，不覆盖现有位点。只有登记SUCCEEDED才启动listener；没有应用成员竞写的受控窗口是前置条件，不能承诺防住越权Admin同时改位点。新分区未登记时停流；ENROLL_NEW_PARTITIONS只允许已登记同一绑定的新增且无committed的分区，整组无活跃成员，旧分区登记/committed逐项核对但不修改；仅将新分区当时beginningOffset冻结并设置。已有分区缺位点不能冒充新增，仍为OFFSET_GAP。命令重试先读原request/冻结清单再访问Kafka，不重新计算beginningOffset；kind/mode/配置绑定或record目标/expectedDigest/actor/reason共同确定同内容，改任一项冲突。
+3. 每次assignment核对cluster/topicId与已登记分区、broker committed在当前begin..end范围内。无位点、out-of-range、topic重建、记录PAUSED或未完成记录已被外部位点越过均停止/暂停并报告OFFSET_GAP/IDENTITY_CHANGED，不自动seek earliest/latest。没有记录的既往丢失不能检测为完整；旧吞错组早前已提交的漏Seen也不会自动重现。
+4. `requestRecovery(commandId, recordId, mode, expectedDigest, actor, reason)`：一命令一记录；RETRY仅PAUSED依赖故障，RECHECK仅QUARANTINED（修复解析器版本后原字节重判），RESTORE仅APPLIED（显式补回已知丢失的成员）。无任意新payload/userId/目标key参数。已存在同ID同内容返回原命令；改内容COMMAND_CONFLICT，不再执行第二轮。不同命令不能同时占有该record有效lease；activeCommandId非空时普通listener只等待/暂停，不能领取，恢复claim同时推进command和record的fence。
+5. `advance(commandId)`：一次最多一个外部处理尝试，30秒DB lease/fence，命令最多3次、退避1/2秒；每轮先领取后调用同一产品解析/Seen处理器，成功后record结果与命令结果同事务。RETRY开新epoch和3次预算，原次数/原因保留在命令审计；普通重启不新开epoch。失败命令终态不可重开，确需再试须新commandId/actor/reason。RESTORE不能因APPLIED短路，必须真实再次SADD；RECHECK仍非法时返回STILL_INVALID，隔离证据不变；不提供忽略/删毒消息的“修正”。
+6. 缺完整payload时，用隔离fetch consumer手动assign到原坐标，enable.auto.commit=false、无主group、poll最多5秒，校验topicId/offset/摘要；不改变正常listener位点，取回后仍要通过当前codec。记录过期、压缩缺项、来源变化分别SOURCE_UNAVAILABLE/IDENTITY_CHANGED；不能改字节代替。完整PG原文仍在且来源身份已受控绑定时，重放不依赖Kafka仍保留该记录。
+7. `report(commandId)`和`record(recordId)`只返回脱敏状态、固定错误、attempts、fence、时间、payloadComplete和结果；隔离列表cursor=(createdAt,recordId)、limit 1..100。APPLIED、QUARANTINED、NO_EFFECT、PAUSED分别计数；命令SUCCEEDED不等于整组lag=0/历史完整。恢复不提交主group位点；原暂停listener重新读终态后自行ACK。恢复成功与container.resume之间退出，重启查状态可继续，不丢义务。命令终态时同事务释放activeCommandId；第3次命令领取后退出由下次advance在租约过期后清算FAILED并释放占用，record保留PAUSED（仍非法则QUARANTINED），不可永久卡在RUNNING。
+
+命令稳定错误：INVALID_COMMAND、COMMAND_CONFLICT、NOT_FOUND、NOT_ELIGIBLE、ACTIVE_LEASE、STILL_INVALID、SOURCE_UNAVAILABLE、IDENTITY_CHANGED、OFFSET_GAP、DEPENDENCY_UNAVAILABLE、INTERNAL_ERROR。初始化/恢复审计必须记录可信actor/reason、固定目标、前后状态与结果；不将这些内部码当已发布HTTP接口。
+
+### C-R：Redis历史集合丢失、保留和运维边界
+
+SADD重复安全依赖同一 `seen:{user}` 集合；APPLIED不是可重建的全量业务事实。Redis在ACK后flush/驱逐/持久化丢失时，正常消费只处理后续记录，已提交offset和PG的APPLIED不会自动补全历史。不得用消费者running/lag=0判断完整。ReplicaSeenItemsSource注释与手册必须同步：历史仅包括已捕获且实际消费成功的合法正反馈，SOURCE_CHANGED/INVALID_SOURCE、未捕获和保留期外未知仍有缺口；read fail-open政策不改变。
+
+本片提供已知record的RESTORE和真实history消费两条受控入口，不新增自动全量扫描。已ACK记录的PG原文还在可显式RESTORE；behavior原行尚在而从未捕获的通过既有B2显式清单。若只有Kafka原文且本库没有目标record，本片不提供扫描/另组重建入口；另组重建需owner另行有界方案和独立绑定，不能绕过当前每流唯一绑定或reset运行组。B2 ALREADY_CAPTURED/PUBLISHED不保证再次发布，不能仅重交history命令宣称重建。全量完整清单、已PUBLISHED源事件的额外重发入口、已删源及Kafka/PG原文都失去时的恢复不在本片承诺内；输出缺口，需要owner另行批准/设计，不编造时间、事件或效果。
+
+不自动删除技术记录、命令/隔离原文或设置Redis TTL；PG和Kafka保留期由运行owner后续明确，隔离测试topic无自动过期只为故障窗口。监控seen.record各状态、paused/stopped、oldest_pending、quarantine_count、attempts、commit_failures与恢复结果（固定stream/status标签）；存储增长和容量未测，不伪造生产SLO。日志只记技术坐标/固定码/commandId，不输出原消息或解析cause。关闭消费者只停止新领取，容器shutdownTimeout=10s，未完成lease/记录保留；不在finally ACK，不删除集合或回退迁移。回退旧二进制前必须保持seen-consume关闭，不能重新启用旧吞错路径。
+
+### C-I：文件边界与有界实施顺序
+
+原ER-S15C保留为父片，新增两个串行子片；设计提交与实现提交独立，下一回合复用`feat/er-s15c-seen-recovery`。无新worktree、CI配置修改或部署。
+
+| 子片 | 可观察闭环 / 文件（engine主源码包`com.recsys.recengine`） | 依赖与验收 |
+|---|---|---|
+| ER-S15C1 | 旧Seen可靠消费、暂停、持久隔离及命令恢复。修改`filter/SeenItemsConsumer.java`接真实record+ACK并消除吞错；新增`filter/seen/SeenRecord.java`、`SeenMessageDecoder.java`、`SeenProjectionService.java`、`SeenRecoveryRepository.java`、`SeenRecoveryService.java`、`SeenConsumerConfiguration.java`、`SeenConsumerErrorHandler.java`、`SeenOffsetInitializer.java`；primary `SeenRecoveryMapper.java`及`mapper/recengine/primary/SeenRecoveryMapper.xml`；engine-seen V001；application.yml只增加默认false与明确配置说明。 | C15C门禁；C01～C12/C15～C18适用旧流部分。必须真实旧listener+PG+Kafka+Redis，含初始化、毒消息重放、持久次数/退出恢复；不是先搭未接入的仓储层。 |
+| ER-S15C2 | 新增`filter/seen/VersionedSeenItemsConsumer.java`两listener复用C1，live/history独立组与配置；修改ReplicaSeenItemsSource/SeenItemsSource及配置历史注释；补全部产品与受影响回归。 | C1；C01～C18全部，特别live/history预发布/故障/重平衡与history实际集合；不改Flink产品或behavior Outbox。 |
+
+测试新增在engine `src/test/java/com/recsys/recengine/filter/seen/`：`SeenRecoveryPostgresTest`、`SeenRecoveryKafkaRedisTest`、`SeenConsumerConfigurationTest`、`SeenRecoveryProcessMain`（只测试的独立JVM入口）及最小`SeenRecoveryFixture`。修改原LegacySeenCompatibilityTest以适配方法签名且保留7/8字段、长整数、16次调用断言；测试必须不削弱原契约。沿现有Testcontainers PG16、apache/kafka:3.7.1、redis:7-alpine，独占随机端口/topic/group/schema；不读共享数据。test group沿behavior-reliability，下一片不改CI配置即进入原门禁。如实现发现实际需要改边界，先补有界契约，不能顺手重构资金或fixture。
+
+每片依次：核对设计/保护/前置CI→实现一条纵向闭环→真实组件负例/恢复窗口→受影响回归→分离只读验证/静态与文档→独立逻辑提交。C1实现验证完成后按父安排连同本设计正常ff合并push；C2再按原交付规则推进。未完成C2不得将父S15C/S15记DONE。
+
+### C-V：产品必需验收（本设计回合均UNVERIFIED）
+
+| ID | 必须观察的结果 |
+|---|---|
+| C01 | 真实旧7/8字段、长整数、四种正反馈与不同offset同内容均走产品处理；SADD返回0也可ACK；合法IMPRESSION无Redis调用但持久NO_EFFECT；非法关键字段不能伪装无效果。 |
+| C02 | 真实Redis停止/超时/WRONGTYPE：位点不越过目标，持久attempts耗尽PAUSED；无吞错、log-only恢复、后续同分区越过或无限retry；恢复命令后集合与committed offset正确。 |
+| C03 | SADD生效后响应丢失、SADD后PG标记前退出：原记录可重做、集合单成员，技术次数持久；测试触发真实Redis后断点，不用Mock代效果。 |
+| C04 | PG APPLIED提交后ACK前独立JVM halt；broker commit返回未知；重新启动产品listener，用Admin查真实committed，验证原记录/字节和无效果遗漏。 |
+| C05 | 真实两consumer同组重平衡、处理中revoke/kill、新owner续办，过期租约/fence防旧回写；PAUSED和预算跨进程不重置；同流后项不越过。 |
+| C06 | 非JSON/UTF-8、未知action/version、新版来源或key错配、tombstone/过长数据都持久隔离；同坐标重复唯一，PG隔离提交失败不ACK；QUARANTINED不计applied。 |
+| C07 | 稳定RETRY/RECHECK/RESTORE命令的同ID重试/改内容冲突、并发命令、lease/fence、终态不可变；旧原文/审计不可改；修复依赖后真实SADD，仍非法明确STILL_INVALID。 |
+| C08 | 领取后进程退出、最后一次领取退出、恢复命令副作用后/结果前退出，次数和原payload不丢；新command才能重开预算；无共享调度器。 |
+| C09 | PG故障/结果未知、Kafka权限或可观察提交异常、代码异常：显式停止/不ACK；恢复先查现状。框架内部暂存的重平衡提交/Wakeup窗口单独检查，只能包含已终态项，允许重投。容器ErrorHandler配置断言与真实offset验证必须同时有，不能只看listener抛异常。 |
+| C10 | 旧组预置非零committed，ADOPT不改变位点；新组先发布再初始化EARLIEST并启动，全部保留事件可见；bootstrap写Kafka后PG前退出可核查续办，冲突不覆盖。 |
+| C11 | offset被删/低于begin或超过end、topic同名重建、新增分区未登记、已有活跃组误初始化均拒绝；真实retention删段或受控DeleteRecords制造缺口，不能Mock范围检查替代。 |
+| C12 | 完整隔离原文在Kafka删除后仍可受控重判；不完整payload坐标缺失明确SOURCE_UNAVAILABLE且不改状态为APPLIED；相邻offset不能顶替。 |
+| C13 | LIVE/HISTORY产品listener各自消费原事件，两组独立；Redis断连恢复、同eventId不同offset重复SADD、history未知ts和原local时间不被改写。 |
+| C14 | 使用B2原history发布流程→真实Kafka→产品HISTORY listener→真实Redis→ReplicaSeenItemsSource读集合；不合法/无正反馈单列，Flink不订阅history、旧topic guard回归。不能以测试Sink替代。 |
+| C15 | ACK后独占Redis删除该测试key：常规重启/lag=0仍不自动补全（负对照）；RESTORE原APPLIED记录真实恢复；没有完整清单时报告局部恢复而非全历史完整。 |
+| C16 | 四开关全关零Seen Kafka/Admin/新表连接，误配topic即使关闭也拒绝；旧开关开但缺表/摘要/起点拒绝；新旧组独立、未知配置不退回默认factory。 |
+| C17 | 新迁移表/列注释、约束、checksum漂移拒绝、primary绑定/事务回滚、不可变原文/命令与无跨owner写；原迁移、11保护和fixture指纹不变。 |
+| C18 | 实测有界线程/队列、单次poll/重试、停止与脱敏日志；生产吞吐/Redis容量仍UNVERIFIED。完整behavior-reliability及受影响旧回归通过，不能降低断言/跳过真实组件。 |
+
+设计门禁D-C01～D-C09与本表不同：设计只核对事实/版本、分类与ACK、起点、持久/事务、恢复/保留、旧新全覆盖、文件切片、验收映射及保护/交付。具体结果见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)。

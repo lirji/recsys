@@ -1,14 +1,12 @@
-# 当前任务：ER-S15B2 已知非法快照删除边界整改
+# 当前任务：ER-D0/C15C Seen 消费恢复设计门禁
 
-权威状态`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；结果`ER-S15B2-FIX-01_RESULT.md`。当前回合证据`.dev/codex-flow-reliability/round-9fb853b6/`；基线86a094ff370e9def9300fce68a7a830e49a99f19，原目录独立分支`fix/er-s15b2-invalid-source-coverage`。完整交付SHA、ff合并/push以delivery.json/实际Git为准；前置B2 CI38943483849结论见b2-ci.json，本整改新CI见ci-snapshot.json。禁止新main推送取消仍需核实的CI；未知操作先查询、不重跑。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。回合证据：`.dev/codex-flow-reliability/round-89a217e3/`。原目录任务分支 `feat/er-s15c-seen-recovery`，基线 `6c868e7349ba72682a8b7707fe7acdfcc98c3ed3`；下一实施回合复用此分支。本回合只设计、独立本地设计提交，不实现消费者、不合并、不推送、不递归编排。
 
-本地整改DONE/PASS。父复核发现已在未改产品代码前用真实PG复现：3例中仅删除组合失败，非法项误报ALREADY_CAPTURED/COMPLETE、covered多1；红日志/XML保留。最小修正保留当前源漂移的SOURCE_CHANGED，否则已知INVALID_SOURCE即使源删除仍INVALID_SOURCE、不计无问题覆盖。合法删除照常复用原事件；不改已发布V001/V002、原payload/eventId/发送状态或历史终态记录。旧误分类须新受控清单核验，不自动回写。
+恢复核对：上一轮B2整改红色PG3项/1失败及绿色PG15+Kafka2均与实际日志/XML对应；交付10文件、11保护、5迁移/CPA、3午夜fixture指纹一致。恢复时HEAD/main/origin-main均为整改完整SHA，原用户改动保留。远程ls-remote main也匹配完整SHA。CI38947474433已completed/success、8/8门禁全部通过，完整SHA精确匹配；原始证据preceding-ci-final.json。无取消/重跑或未处理验证失败。没有有效既有C15C门禁。
 
-绿色PG15+Kafka2=17项全部零失败/错误/跳过，原反例断言不变；同Agent分离只读验证PASS。持久化/公开错误/diff和hygiene通过，formatter/独立Java静态分析仍未配置。11保护、5个原迁移/CPA指纹、午夜fixture3文件、其余14个B2源文件和本文件历史正文均一致；6个独占测试容器退出，无本地测试运行。B1、午夜fixture与B2其余有效验收复用。
+本轮ER-D0/C15C DONE/PASS。正式契约C15_DESIGN末节；D-C01～D-C09、文档/链接/diff检查、1335产品文件及11保护/历史正文指纹全部PASS。设计Git实际结果/完整SHA读取本回合delivery.json；本回合不合并/push。下一片ER-S15C1 READY，复用当前分支：先做旧Seen真实PG/Kafka/Redis确认/隔离/重放/起点闭环，再C2新版live/history。设计和实现保留独立逻辑提交，C1实施必要验证完成后统一正常ff合并push。C01～C18产品验收全部UNVERIFIED，设计不代表消费者已可靠。
 
-授权仅本片分类/报告及必要契约、回归与正常Git交付；无共享数据/资金/开关/部署，无递归编排、stash/强推/清理，.dev/target保留不提交。采用backend-implementation、implementation-validation、project-documentation、update-progress-docs、task-git-delivery/ci-cd-gate；业务建模、持久化事务、分布式契约、并发验证、数据演进及发布治理规范已核对。
-
-本回合交付有界整改后返回。下一回合ER-D0/C15C，仅先设计门禁：同时包含旧格式Seen和新live/history的Redis失败不确认、SADD后确认、有界重试/暂停、offset窗口、毒消息持久隔离/受控重放和重平衡恢复；真实Kafka/Redis验收。无旧消息hash身份，history不进旧Flink累计，S19独立。随后S15C及S16～21持续推进；父S15与整体未完成，S22～25暂停。
+授权仅Sandbox和独占隔离验证，不部署/共享数据/共享开关，不改11保护、旧迁移、既有fixture、CI配置，不stash/reset/clean/强推；.dev/target保留不提交。已采用session-handoff、backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs、task-git-delivery；规范采用业务建模/配置/持久化/分布式/并发/缓存/Kafka/中间件/容量与数据演进/发布治理。整体S15～21未完成，S22～25暂停；设计回合结束返回父协调者。
 
 ---
 

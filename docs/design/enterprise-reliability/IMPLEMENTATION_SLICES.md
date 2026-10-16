@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合99fbfaf6完成必要整改ER-CI-FIX-01本地PASS：曝光浏览器按数据库上海日期种子当天/次日预算，确定性PG4项、真实宿主1项、Chromium4项和静态检查全部通过；详见 [整改结果](ER-CI-FIX-01_RESULT.md)。B1已在13f79e89提交/ff合并/push，CI38933333366终态success（8/8）；旧C15B CI38927688429保留failure，不重跑。新修复Git/CI见本轮delivery.json/fix-ci.json及实际Git。父S15B/S15仍IN_PROGRESS，下一业务片B2 READY，C15C后续，S22～25暂停；仅Sandbox，不部署。11保护文件/自然实现/旧CPA纳秒fixture均不变。
+2026-10-17 回合89a217e3执行ER-D0/C15C设计门禁：B2父整改6c868e73的实际PG红绿、11保护及Git已核对；完整SHA的CI38947474433已completed/success、8/8门禁通过，见preceding-ci-final.json。C15C正式设计D-C01～D-C09全部PASS；本回合只本地设计提交，不合并/push。父S15B已DONE，父S15仍IN_PROGRESS；下一实施片ER-S15C1，S22～25暂停。仅Sandbox，不部署或共享切换。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -55,8 +55,10 @@
 | ER-S15B | ER-D0/C15B | 原 F14 旧 BehaviorService可靠事件；B1/B2均必需 | B1/B2及新增非法快照删除边界整改均本地PASS；见ER-S15B2-FIX-01_RESULT；C仍必需 | no | DONE |
 | ER-S15B1 | ER-D0/C15B | 旧POST同库原子接受、CLICK原行重复修复、独立live/history可靠发送及审计重放 | 25项B1+16项回归PASS；[结果](ER-S15B1_RESULT.md)，Git/CI独立记录 | no | DONE |
 | ER-S15B2 | ER-S15B1 | 有界显式历史清单/续办/审计取消，旧Seen/Flink topic guard与兼容 | 原18/43+24项及边界整改PG15+Kafka2 PASS；无问题覆盖排除已知非法源，见ER-S15B2-FIX-01_RESULT | no | DONE |
-| ER-D0/C15C | ER-S15B | 补 SeenItemsConsumer 的失败确认、毒消息/重放和格式兼容契约 | 明确新旧Seen的Redis失败确认/位点恢复；不能保留旧吞错入口 | no | TODO |
-| ER-S15C | ER-D0/C15C | 原 F14 适用行为消费者，首先为真实已看投影；不吞失败确认 | Kafka/Redis（若有 Inbox 则 PG）：断连、重复、重平衡、提交窗口及恢复集合/offset | no | TODO |
+| ER-D0/C15C | ER-S15B | C15_DESIGN末节；旧Seen+live/history确认、隔离/重放/起点/Redis丢集合边界 | D-C01～D-C09设计PASS；见ER-D0-C15C_RESULT；产品C01～C18未验证 | no | DONE |
+| ER-S15C | ER-D0/C15C | 原F14适用消费者；C1旧Seen及C2新版均必需 | C01～C18真实PG/Kafka/Redis，产品验收未执行 | no | TODO |
+| ER-S15C1 | ER-D0/C15C | 旧Seen完整恢复闭环；engine-seen V001/Mapper/手动ACK/持久预算/隔离/命令与起点 | C01～C12、C15～C18旧流适用部分；真实组件/独立JVM；详见C15_DESIGN C-I/C-V | no | READY |
+| ER-S15C2 | ER-S15C1 | 独立LIVE/HISTORY产品listener、历史Seen与父片回归 | C01～C18全部；B2 history→产品Seen→Redis→真实读模型；不得替换成Sink | no | TODO |
 | ER-S16 | ER-S06 | 原 F15 目录分片本库原子 Outbox、多分片暂停续办；正式契约待冻结 | 真实目录分片/Kafka；公共库不能冒充同库事务 | no | TODO |
 | ER-S17 | ER-S16 | 原 F16 版本化目录投影/Inbox/墓碑/Redis 可靠刷新；正式契约待冻结 | PG/Kafka/Redis 重复、乱序、提交窗口与防复活 | no | TODO |
 | ER-S18 | ER-S06 | 原 F17 日志补洞、持久检查点/并发领取；正式契约待冻结 | 真实 PG 低 ID 晚提交、重复扫描/恢复，不能以 MAX(id) 代表提交顺序 | no | TODO |
@@ -68,7 +70,7 @@
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。
 
 
-当前恢复入口：ER-CI-FIX-01本地DONE/PASS，Git及新源码CI按整改结果和round-99fbfaf6/delivery.json/fix-ci.json核对；B1交付与8项源码CI均已成功；下一片ER-S15B2 READY。B2须公平续办显式清单、审计取消与消费topic guard，随后C15C/S15C。父S15B/S15仍IN_PROGRESS，S22～25暂停；本回合交付后返回外层，不启动第二片或codex-flow。
+当前恢复入口：C15C设计验证与交付见ER-D0-C15C_RESULT、round-89a217e3；下一实施片C1，复用feat/er-s15c-seen-recovery分支。C1/C2串行，均无并行资源授权；现有Runtime足够，无新Compose服务。设计只本地提交，本回合返回父协调者，不启动消费者实现或codex-flow。
 
 ## 当前有界整改 ER-CI-FIX-01（2026-10-17）
 
@@ -107,3 +109,14 @@
 - [x] 保护/现场核对PASS，6个独占容器均退出；正常Git交付以本回合delivery.json为准，前置CI终态见b2-ci.json，新源码CI见ci-snapshot.json。推送前必等前置终态，远程未绿不写全绿。
 
 证据`.dev/codex-flow-reliability/round-9fb853b6/`；本回合不同时推进C15C设计或消费者实现。
+
+
+## 当前回合89a217e3：ER-D0/C15C设计
+
+- [x] 核对上轮真实PG红3/1失败与绿PG15+Kafka2、10个交付文件、11保护、旧迁移/fixture、Git及父只读笔记；有效验证不重跑。
+- [x] 源码/实际依赖/官方3.1.4机制调查，比较方案；旧Seen+live/history全部纳入正式设计，C1/C2串行有界计划。
+- [x] 完整SHA对应CI38947474433终态success、8/8门禁通过；无未处理失败，无取消/重跑。
+- [x] D-C01～D-C09分离只读设计验证、文档链接/边界/保护核对PASS。
+- [x] 本地独立设计交付范围和恢复入口已冻结；实际提交SHA/结果见本回合delivery.json，不合并/push，下一实施回合复用分支。
+
+采用backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs和task-git-delivery；详细C01～C18仍UNVERIFIED，不把设计PASS变成产品DONE。S15～21整体未完成，S22～25暂停。

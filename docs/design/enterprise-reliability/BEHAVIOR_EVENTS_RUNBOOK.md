@@ -81,3 +81,16 @@ C15C 必须同时处理旧格式 Seen Redis 失败吞错确认，单增新 liste
 B1/B2 必跑：`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`。CI 独立 `behavior-reliability-gate` 保存 behavior `target/behavior-event-evidence` 及三个模块 Surefire 报告；必需组件测试没有 disabledWithoutDocker 跳过。结果与明确限制见 [ER-S15B1_RESULT](ER-S15B1_RESULT.md)、[ER-S15B2_RESULT](ER-S15B2_RESULT.md)。
 
 本片回退只关闭新增 capture/relay，或恢复已批准的兼容代码/配置；不可删事件、回写快照或假装撤销已发送消息。关闭 capture 后的新写保证退回旧模式，须明确记录。保留期未确认，不加自动清理；实际共享切换、历史清单、消费者启用和生产容量均须后续授权与验收。
+
+
+## C15C 消费恢复运行边界（设计，未实现/未启用）
+
+后续运行契约见[C15_DESIGN](C15_DESIGN.md) C15C。以下不是当前可用运维命令，C1/C2实现验收后才可按owner授权调用。
+
+- 旧seen-consume保留默认false；新版live/history与recovery开关默认false。旧开关启用后必须接新可靠消费者，缺engine-seen迁移/checksum/消费起点登记就拒绝；旧吞错版本不得与新版本在同组共存。初始化与重放均为内部可信actor/reason的稳定命令，无公网入口或自动执行器。
+- 迁移属于engine，不写behavior/ad表；旧组ADOPT有效committed不改位点；新组从命令冻结的最早保留位点开始；新增分区单独登记。auto.offset.reset=none；offset丢失/过期/topic换身份先报告缺口，不能直接reset到latest/earliest掩盖。Kafka写起点结果未知先查询再续办，不重跑整个命令。
+- Redis失败不ACK，3次持久预算后暂停；PG/commit未知或代码异常停止。核对依赖、技术记录、broker位点后使用稳定RETRY；毒消息只允许RECHECK原字节，不能编辑原文；重放不移动主组offset。QUARANTINED是隔离结果，不是Seen完成。
+- ACK后Redis集合丢失不会由正常重启或lag=0自动修复。已知APPLIED记录用RESTORE再次SADD；未捕获历史走B2显式清单；仅Kafka保留但没有本库record的全量/另组重建尚无本片入口，需owner另行有界方案。B2重复清单的ALREADY_CAPTURED/PUBLISHED不等于重新发出，不是自动重建入口。记录/源/Kafka保留范围之外明确不可恢复或未知，不自动扫描全量库、删集合或补写历史时间。
+- PG原文完整可脱离Kafka保留重判；超限仅坐标隔离在Kafka过期后返回SOURCE_UNAVAILABLE。不自动删除技术记录/审计，无已承诺生产保留期。观察APPLIED/NO_EFFECT/QUARANTINED/PAUSED及lag分别取义，停机不ACK未完成项，回退旧版本必须维持旧consumer关闭。
+
+本设计回合未连接共享Kafka/Redis/PG，未执行初始化/恢复/切换。真实组件验收全部留在C01～C18，history永不转投旧Flink实时累计。
