@@ -246,3 +246,12 @@ C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显�
 ## C14：严格只读账户日报表
 
 正式HTTP、完整DTO/空值/开关/错误及身份缓存约束见C14_DESIGN「正式C14契约/实施冻结」。GET `/api/advertiser/{advertiserId}/sandbox-reconciliation/{budgetDate}`每次严格view/fullyConsistent，经C13C Inspect读取同一资金owner快照；金额/ID/版本/计数全部字符串，缺失与零独立，不开放任何任务或恢复写操作。
+
+
+## C15：behavior 可靠事件的分阶段契约
+
+2026-10-16：正式 [C15_DESIGN](C15_DESIGN.md) 冻结 C15A（自然已接受事件可靠发送），承接 C08 的原事件身份/负载及 behavior 本库原子事实。V002 仅追加发送状态、租约/fence、受限重试与审计重放；不改 V001。独立默认关闭 relay，暂停新回执后仍可排空，不需要现行签名密钥；原事件历史政策自洽即可，不因超过资格期限拒发。发送确认后条件标记，允许重复；三种自然 kind、原字符串 ID、UTC 时间和 SANDBOX 来源保持。
+
+C15A 的 wire 校验、状态转移、资源/配置、兼容回退及 A01～A10 验收均以 C15_DESIGN 为准；本 producer 对当前 v1 使用字段允许列表，未来扩展需先升级 codec。物理 topic 仅允许 natural-impression-accepted-v1 及其隔离后缀，不投旧 behavior-events。测试 PG Inbox/effect 仅证明测试下游；不代表产品自然消费已实现。
+
+父 ER-S15 仍须完成旧 BehaviorService 的本库业务+Outbox 原子写、重复/历史待发恢复及适用消费者的业务效果后确认。C15B/C 的正式 wire/身份/开关迁移/毒消息恢复细节尚未冻结；其必需范围和验收已在 C15_DESIGN 保留，不能在自然子片完成时把父片 DONE。流式 checkpoint/事件时间/窗口投影归原 S19，S15 的已看投影故障恢复不能转移掉。本轮仅设计，无产品实现或运行时启用。
