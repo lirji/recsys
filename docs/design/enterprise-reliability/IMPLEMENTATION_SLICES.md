@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-16 恢复：用户批准连续完成 S13B/C、S14～S21。原目录复用 `feat/sandbox-billing-reconciliation`，基线 `0667fedc`；S13A CI 38708139517 已成功。当前先冻结 C13B 内部持久任务契约，再依次完成实现、独立验证与正常 Git 交付。S22～S25 仍暂停；不启用共享资金、不执行生产部署。已有 MyBatis-Plus 与统一错误码治理必须沿用。用户七项已有配置/文档与测试产物保持独立。
+2026-10-16 恢复：用户批准连续完成 S13B/C、S14～S21。原目录复用 `feat/sandbox-billing-reconciliation`，基线 `0667fedc`；S13A CI 38708139517 已成功。S13B/C已实现并通过本地完整验收，当前交付C2后进入S14。S22～S25 仍暂停；不启用共享资金、不执行生产部署。已有 MyBatis-Plus 与统一错误码治理必须沿用。用户七项已有配置/文档与测试产物保持独立。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -44,9 +44,11 @@
 | ER-S13A | ER-S06、ER-S12 | C13_DESIGN / CONTRACTS C13A；common-ad/ad一致账户日快照与V016索引 | 同库PG并发/三族/差额/未知/隔离；只读无RPC；[验收](ER-S13A_RESULT.md) | no | DONE |
 | ER-S13B | ER-S13A、C13B已冻结 | 原F12持久化有界对账任务/检查点/fence/审计 | 真实PG专项10项与资金链436项通过；[验收](ER-S13B_RESULT.md) | no | DONE |
 | ER-S13C1 | ER-S13B、C13C已冻结 | V018、内部原事件续发及到期义务恢复 | 真实PG/Kafka 7项、资金链443项通过；[验收](ER-S13C1_RESULT.md) | no | DONE |
-| ER-S13C2 | ER-S13C1 | 可信proto/RPC及offline入口 | caller矩阵、严格wire映射、真实TCP/CLI | no | IN_PROGRESS |
-| ER-S13C | ER-S13B、C13C已冻结 | 原F12受控续办、可信RPC及offline BillingReconciliationJob | C1已通过，C2可信RPC/offline待完成；两部分均必需 | no | IN_PROGRESS |
-| ER-S13 | ER-S06、ER-S12 | 原F12完整对账与恢复；A/B/C均必需 | 原PLAN/VALIDATION_PLAN，A不替代父片 | no | IN_PROGRESS |
-| ER-S14～ER-S25 | 依赖见 PLAN | 逐片提升对应 CONTRACTS，范围不扩大 | 验收见 PLAN 与 VALIDATION_PLAN | no | TODO |
+| ER-S13C2 | ER-S13C1 | 可信proto/RPC及offline入口 | 16项专项/32项相关回归通过；[验收](ER-S13C2_RESULT.md) | no | DONE |
+| ER-S13C | ER-S13B、C13C已冻结 | 原F12受控续办、可信RPC及offline BillingReconciliationJob | C1/C2均通过；[完整验收](ER-S13_RESULT.md) | no | DONE |
+| ER-S13 | ER-S06、ER-S12 | 原F12完整对账与恢复；A/B/C均必需 | A/B/C均完成；[完整验收](ER-S13_RESULT.md) | no | DONE |
+| ER-S14 | ER-S13、C14五维规划/独立复审PASS | 原F13 Sandbox只读资金报表，详见C14_DESIGN | 严格view、真实HTTP/PG/RPC、双模式浏览器与截图 | no | READY |
+| ER-S15～ER-S21 | 依赖见 PLAN | 本轮已授权，逐片提升对应CONTRACTS，范围不扩大 | 验收见PLAN/VALIDATION_PLAN | no | TODO |
+| ER-S22～ER-S25 | 依赖见 PLAN | 不在本轮恢复范围 | 保持原范围，等待后续用户授权 | no | TODO |
 
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。

@@ -70,3 +70,14 @@ A允许common-ad新增BillingReconciliation契约，ad新增ReconciliationReposi
 A验收：真实三族等待/捕获/释放、原预算日/广告主隔离、零金额笔数；账户平账而投影落后；同ID错误fact/额外fact/daily偏差；账户缺失与空日；并发capture跨读取间隙的快照一致；事务配置/资源错配拒绝、只读不可写、schema与默认关闭；查询有5秒截止。采用独占PG schema，既有fixture产生实际资金事实。不为大规模容量造虚假结果；聚合查询超时保持未知，Q-07目标仍待业务数据。
 
 新增索引不改旧数据/历史，能力默认关闭，回滚可停止新核查并保留索引。B/C任务与义务恢复另有排空约束。审查确认没有新服务、跨库写、隐藏双写或自动金额补偿。
+
+## C13C2 协议冻结
+
+- `reconciliation.v1.SandboxReconciliationService`：Inspect(scope)→Snapshot；CreateTask(Create)、GetTask/AdvanceTask(TaskIdentity)、CancelTask(Cancel)→TaskReply；GetDays(TaskIdentity)→DaysReply；Recover(Command)、GetRecovery(RecoveryIdentity)→RecoveryReply。scope为advertiserId/int64+budgetDate；UUID用规范字符串；日期严格ISO。响应Snapshot/Task/Recovery带schemaVersion=1、SANDBOX/CNY。固定枚举值用字符串传输并严格valueOf校验，未知值失败。
+- Snapshot逐字段对应C13A：account可缺失、差额用optional string保持null、金额六位字符串、计数/int64、三族固定顺序、Timestamp有存在性和范围校验。fundsStatus/差额/projectionStatus必须与解析后的事实重新计算一致。observedAt及lastAppliedAt均不是全局水位。
+- TaskReply保留完整首次Create输入与C13B全部检查点/租约/取消字段；校验完成天数、nextDate、state/lease/cancel关系。DaysReply携带任务身份，最多31条、日期连续升序、各Snapshot与日期及advertiser一致；不同日观察时间独立。恢复Reply带完整首次Command和不可变status/创建完成时间，状态必须属于其动作。
+- 边界权限先于参数解析；Inspect允许独立advertiser/offline，其余仅offline。匿名UNAUTHENTICATED，错误caller PERMISSION_DENIED；关闭tasks/recovery的管理方法FAILED_PRECONDITION；请求非法INVALID_ARGUMENT，冲突ALREADY_EXISTS，未观察到结果NOT_FOUND，数据库/内部坏响应UNAVAILABLE且固定未知提示。统一目录新增RPC_RECONCILIATION_*，不透出SQL/任意上游描述。
+- offline作业名billing-reconciliation，开关`recsys.offline.reconciliation.enabled=false`；启用时要求可信actor配置、开启内部认证且独立serviceName、已有internalSecret；不从`--actor`采信身份。复用`grpc.client.ad-serving`地址及既有token/deadline实现；deadline-ms默认20000、范围1000～30000，逐次RPC新建deadline，不重试。
+- CLI每次明确action：inspect需要advertiser-id/budget-date；create需要advertiser-id/task-id/start-date/end-date/reason；get/advance/days需要advertiser-id/task-id；cancel另需command-id/reason；recover需要advertiser-id/budget-date/command-id/family/recovery-action/target-id/reason；get-recovery需要advertiser-id/command-id。输出经双向校验的protobuf文本（金额仍是字符串），无令牌；远程失败映射JOB_RECONCILIATION_*，未知结果保留原ID，不换命令。
+
+- offline单独指定`--job=billing-reconciliation`时由原OfflineApplication选择限定上下文，只显式装载该Job、JobRunner、身份配置和既有GrpcClientAutoConfiguration；不扫描/初始化数据库、Redis、模型及其他作业。若与其他job混合则启动前拒绝。完成后关闭channel；其他原作业启动方式保持原路径。真实bootstrap测试将PG/Redis指向不可达端口仍完成一次RPC，验证不依赖这些资源。

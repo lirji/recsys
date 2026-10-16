@@ -11,6 +11,8 @@ import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.mock.env.MockEnvironment;
@@ -63,7 +65,8 @@ class BillingRecoveryPostgresKafkaTest {
                 new SimpleMeterRegistry(), BillingOutboxRepository.EventFamily.valueOf(family.name()));
     }
 
-    @Test void allFamiliesRecoverRealBrokerFailureAndReconcileAfterDuplicateDelivery() throws Exception {
+    @ParameterizedTest @ValueSource(strings = {"DEAD", "PUBLISHED"})
+    void allFamiliesRecoverRealBrokerFailureAndReconcileAfterDuplicateDelivery(String startingState) throws Exception {
         for (var family : ChargeMode.values()) {
             var id = capture(family); var original = event(family, id);
             String topic = "recovery-" + UUID.randomUUID();
@@ -78,6 +81,10 @@ class BillingRecoveryPostgresKafkaTest {
             unavailable.put("bootstrap.servers", "127.0.0.1:1"); unavailable.put("max.block.ms", 250);
             try (var publisher = new BillingKafkaPublisher(new KafkaProducer<>(unavailable), topic)) { assertTrue(relay(family, publisher).relayOne()); }
             assertEquals("DEAD", f.jdbc.queryForObject("SELECT delivery_state FROM " + table(family) + " WHERE event_id=?", String.class, id));
+            if ("PUBLISHED".equals(startingState)) {
+                // 独占fixture模拟已确认发送但缺失fact且超过等待窗口，随后仍走真实Kafka续发链路。
+                f.jdbc.update("UPDATE " + table(family) + " SET delivery_state='PUBLISHED',published_at=clock_timestamp()-interval '61 seconds' WHERE event_id=?", id);
+            }
             var cmd = command(family, Action.REPUBLISH, id); var result = service.recover(cmd);
             assertEquals(Status.REQUEUED, result.status()); assertEquals(result, fresh(repository).recover(cmd));
             assertEquals(original.payload(), event(family, id).payload()); assertEquals(original.key(), event(family, id).key());

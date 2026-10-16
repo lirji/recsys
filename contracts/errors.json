@@ -1813,6 +1813,90 @@
       "httpStatus": 0,
       "message": "事件或结算响应与原请求不一致，请保留原标识查询",
       "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_DISABLED",
+      "code": "RPC_RECONCILIATION_DISABLED",
+      "httpStatus": 0,
+      "message": "对账管理能力未启用",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_FORBIDDEN",
+      "code": "RPC_RECONCILIATION_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "当前调用方不可执行此对账操作",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_INVALID_ARGUMENT",
+      "code": "RPC_RECONCILIATION_INVALID_ARGUMENT",
+      "httpStatus": 0,
+      "message": "对账请求参数非法",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_CONFLICT",
+      "code": "RPC_RECONCILIATION_CONFLICT",
+      "httpStatus": 0,
+      "message": "对账命令内容或状态冲突",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_NOT_FOUND",
+      "code": "RPC_RECONCILIATION_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到原对账结果",
+      "httpDefault": false
+    },
+    {
+      "name": "RPC_RECONCILIATION_RESULT_UNKNOWN",
+      "code": "RPC_RECONCILIATION_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "对账结果未知，请保留原ID查询或重试",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_DISABLED",
+      "code": "JOB_RECONCILIATION_DISABLED",
+      "httpStatus": 0,
+      "message": "对账管理能力未启用，请核查owner配置",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_FORBIDDEN",
+      "code": "JOB_RECONCILIATION_FORBIDDEN",
+      "httpStatus": 0,
+      "message": "对账身份校验失败，请核查受控offline身份",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_CONFLICT",
+      "code": "JOB_RECONCILIATION_CONFLICT",
+      "httpStatus": 0,
+      "message": "对账命令冲突，请查询原ID并核查原始输入",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_NOT_FOUND",
+      "code": "JOB_RECONCILIATION_NOT_FOUND",
+      "httpStatus": 0,
+      "message": "当前未观察到原结果，请保留原ID，不代表在途命令未提交",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_RESULT_UNKNOWN",
+      "code": "JOB_RECONCILIATION_RESULT_UNKNOWN",
+      "httpStatus": 0,
+      "message": "对账结果未知，请保留原ID查询，不要新建替代命令",
+      "httpDefault": false
+    },
+    {
+      "name": "JOB_RECONCILIATION_REPLY_INVALID",
+      "code": "JOB_RECONCILIATION_REPLY_INVALID",
+      "httpStatus": 0,
+      "message": "对账响应校验失败，请保留原ID核查owner结果",
+      "httpDefault": false
     }
   ],
   "families": [

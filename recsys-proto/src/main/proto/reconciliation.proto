@@ -1,0 +1,117 @@
+syntax = "proto3";
+package reconciliation.v1;
+option java_package = "com.recsys.proto.reconciliation.v1";
+option java_multiple_files = true;
+import "google/protobuf/timestamp.proto";
+import "billing.proto";
+
+// Inspect可由独立advertiser/offline调用，其余管理操作仅offline；所有结果固定SANDBOX/CNY。
+service SandboxReconciliationService {
+  rpc Inspect(ReconciliationScope) returns (ReconciliationSnapshot);
+  rpc CreateTask(CreateReconciliationTask) returns (ReconciliationTaskReply);
+  rpc GetTask(ReconciliationTaskIdentity) returns (ReconciliationTaskReply);
+  rpc AdvanceTask(ReconciliationTaskIdentity) returns (ReconciliationTaskReply);
+  rpc CancelTask(CancelReconciliationTask) returns (ReconciliationTaskReply);
+  rpc GetDays(ReconciliationTaskIdentity) returns (ReconciliationDaysReply);
+  rpc Recover(BillingRecoveryCommand) returns (BillingRecoveryReply);
+  rpc GetRecovery(BillingRecoveryIdentity) returns (BillingRecoveryReply);
+}
+message ReconciliationScope { int64 advertiser_id = 1; string budget_date = 2; }
+message ReconciliationSnapshot {
+  int32 schema_version = 1;
+  string traffic_class = 2;
+  string currency = 3;
+  ReconciliationScope scope = 4;
+  google.protobuf.Timestamp observed_at = 5;
+  billing.v1.BudgetAccountReply account = 6; // 缺失账户不同于零账户
+  repeated ReconciliationFamily families = 7; // 固定IMPRESSION/CLICK/CONVERSION顺序
+  string funds_status = 8;
+  optional string held_delta = 9;
+  optional string charged_delta = 10;
+}
+message ReconciliationFamily {
+  string family = 1;
+  int64 held_count = 2;
+  string held_amount = 3;
+  int64 expired_held_count = 4;
+  int64 ledger_count = 5;
+  string ledger_amount = 6;
+  int64 missing_ledger_count = 7;
+  int64 invalid_ledger_count = 8;
+  int64 pending_outbox_count = 9;
+  int64 dead_outbox_count = 10;
+  int64 missing_outbox_count = 11;
+  google.protobuf.Timestamp oldest_pending_at = 12;
+  int64 fact_count = 13;
+  string fact_amount = 14;
+  int64 missing_fact_count = 15;
+  int64 invalid_fact_count = 16;
+  int64 unexpected_fact_count = 17;
+  google.protobuf.Timestamp last_applied_at = 18;
+  bool summary_present = 19;
+  int64 summary_count = 20;
+  string summary_amount = 21;
+  string projection_status = 22;
+}
+message ReconciliationTaskIdentity { int64 advertiser_id = 1; string task_id = 2; }
+message CreateReconciliationTask {
+  int64 advertiser_id = 1;
+  string task_id = 2;
+  string start_date = 3;
+  string end_date = 4;
+  string reason = 5;
+  string actor = 6; // 可信offline配置，终端CLI不能随意伪装
+}
+message CancelReconciliationTask {
+  ReconciliationTaskIdentity task = 1;
+  string command_id = 2;
+  string reason = 3;
+  string actor = 4;
+}
+message ReconciliationTaskReply {
+  int32 schema_version = 1;
+  string traffic_class = 2;
+  string currency = 3;
+  CreateReconciliationTask input = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string state = 6;
+  string next_date = 7;
+  int32 completed_days = 8;
+  int32 attempts = 9;
+  int64 version = 10;
+  google.protobuf.Timestamp available_at = 11;
+  google.protobuf.Timestamp lease_until = 12;
+  optional string last_failure = 13;
+  string updated_by = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  optional string cancel_command_id = 16;
+  optional string cancel_reason = 17;
+}
+message ReconciliationDay {
+  string budget_date = 1;
+  int64 fence = 2;
+  ReconciliationSnapshot snapshot = 3;
+}
+message ReconciliationDaysReply {
+  ReconciliationTaskIdentity task = 1;
+  repeated ReconciliationDay days = 2; // 最多31条、原预算日升序
+}
+message BillingRecoveryCommand {
+  string command_id = 1;
+  ReconciliationScope scope = 2;
+  string family = 3;
+  string action = 4;
+  string target_id = 5;
+  string reason = 6;
+  string actor = 7;
+}
+message BillingRecoveryIdentity { int64 advertiser_id = 1; string command_id = 2; }
+message BillingRecoveryReply {
+  int32 schema_version = 1;
+  string traffic_class = 2;
+  string currency = 3;
+  BillingRecoveryCommand command = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+}

@@ -1037,6 +1037,54 @@ export const errorCodes = {
     message: '事件或结算响应与原请求不一致，请保留原标识查询',
     httpStatus: 0,
   },
+  RPC_RECONCILIATION_DISABLED: {
+    message: '对账管理能力未启用',
+    httpStatus: 0,
+  },
+  RPC_RECONCILIATION_FORBIDDEN: {
+    message: '当前调用方不可执行此对账操作',
+    httpStatus: 0,
+  },
+  RPC_RECONCILIATION_INVALID_ARGUMENT: {
+    message: '对账请求参数非法',
+    httpStatus: 0,
+  },
+  RPC_RECONCILIATION_CONFLICT: {
+    message: '对账命令内容或状态冲突',
+    httpStatus: 0,
+  },
+  RPC_RECONCILIATION_NOT_FOUND: {
+    message: '当前未观察到原对账结果',
+    httpStatus: 0,
+  },
+  RPC_RECONCILIATION_RESULT_UNKNOWN: {
+    message: '对账结果未知，请保留原ID查询或重试',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_DISABLED: {
+    message: '对账管理能力未启用，请核查owner配置',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_FORBIDDEN: {
+    message: '对账身份校验失败，请核查受控offline身份',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_CONFLICT: {
+    message: '对账命令冲突，请查询原ID并核查原始输入',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_NOT_FOUND: {
+    message: '当前未观察到原结果，请保留原ID，不代表在途命令未提交',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_RESULT_UNKNOWN: {
+    message: '对账结果未知，请保留原ID查询，不要新建替代命令',
+    httpStatus: 0,
+  },
+  JOB_RECONCILIATION_REPLY_INVALID: {
+    message: '对账响应校验失败，请保留原ID核查owner结果',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

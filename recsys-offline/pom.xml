@@ -14,6 +14,15 @@
     <description>离线作业:数据导入、灌向量、ItemCF批算、热度、用户向量、样本生成。Track A/E。</description>
 
     <dependencies>
+        <!-- 对账只经owner RPC，不读取或写入adDb；版本沿用根BOM。 -->
+        <dependency>
+            <groupId>com.recsys</groupId>
+            <artifactId>recsys-proto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+        </dependency>
         <!-- 四路会话复用宿主数据源；框架版本由根dependencyManagement统一冻结。 -->
         <dependency>
             <groupId>com.recsys</groupId>

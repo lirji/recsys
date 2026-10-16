@@ -240,3 +240,5 @@ S11C内事件验证单元，正式字段校验/Inbox幂等/投递与位点恢复
 ## C13C：受控单目标续办及可信RPC/offline
 
 正式契约见[C13设计](C13_DESIGN.md#c13c正式契约单目标受控续办与可信调用)。稳定命令、显式账户日/三族/目标，单事务原事件再投递或真实到期释放，不改历史；60秒PUBLISHED等待窗口。离线只走独立可信caller，advertiser仅获得Inspect读取权；全部金额精确字符串。C1与C2均必需。
+
+C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显式typed Snapshot/Task/Day/Recovery，金额六位string、optional缺失值、日期/版本/派生状态双向校验；RPC调用方与离线命令均在入口严格校验。CLI独立启动上下文不初始化数据源，只经owner RPC，单动作单次有界调用。

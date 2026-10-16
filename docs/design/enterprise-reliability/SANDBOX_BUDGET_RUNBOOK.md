@@ -481,4 +481,26 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 
 ## C13C1：受控恢复内部能力
 
-显式迁移V018后才可开启`recsys.ad.billing.reconciliation-recovery-enabled`，还需sandbox/reconciliation及原三族owner已安装；默认关闭，无自动修复。一次命令仅一个明确原目标；重复必须保留commandId及原内容，提交超时先查原ID。REPUBLISH只续发DEAD或等待60秒以上的PUBLISHED且缺fact原事件，READY/SENDING不抢占；NEEDS_REVIEW不自动改账。EXPIRE按原广告主/预算日和DB到期时间释放既有HELD，不提前释放、不释放CAPTURED。恢复返回REQUEUED只代表进入原relay，需inspect确认fact追平。C2 RPC/offline尚未交付，不能宣称已有远程操作命令。保留恢复审计，不自动清理。
+显式迁移V018后才可开启`recsys.ad.billing.reconciliation-recovery-enabled`，还需sandbox/reconciliation及原三族owner已安装；默认关闭，无自动修复。一次命令仅一个明确原目标；重复必须保留commandId及原内容，提交超时先查原ID。REPUBLISH只续发DEAD或等待60秒以上的PUBLISHED且缺fact原事件，READY/SENDING不抢占；NEEDS_REVIEW不自动改账。EXPIRE按原广告主/预算日和DB到期时间释放既有HELD，不提前释放、不释放CAPTURED。恢复返回REQUEUED只代表进入原relay，需inspect确认fact追平。可信RPC与offline入口见下方C13C2。保留恢复审计，不自动清理。
+
+## C13C2：可信对账与离线命令
+
+owner配置`sandbox-enabled=true`、`reconciliation-enabled=true`；任务另需`reconciliation-tasks-enabled=true`和V017，恢复另需`reconciliation-recovery-enabled=true`和V018及原三族owner。两个caller配置为独立`recsys-advertiser`/`recsys-offline`；advertiser仅Inspect，offline可管理。关闭任务/恢复不影响只读Inspect。不要将服务凭据交给终端用户；现有共享内部密钥不提供泄露后服务强隔离。
+
+离线沿用原jar，唯一指定billing-reconciliation时只初始化RPC上下文，完成即退出。运行配置从受控环境提供：`RECSYS_OFFLINE_RECONCILIATION_ENABLED=true`、`RECSYS_OFFLINE_RECONCILIATION_ACTOR`、`RECSYS_SECURITY_ENABLED=true`、`RECSYS_SECURITY_SERVICE_NAME=recsys-offline`，以及与owner一致的internal-header/internal-secret；机密不写命令行或提交仓库。使用既有`grpc.client.ad-serving.address`和negotiation-type配置（本地隔离演练可PLAINTEXT；真实环境沿既有受控传输配置），对账deadline-ms默认20000、1000～30000。
+
+```sh
+java -jar recsys-offline/target/recsys-offline-1.0.0-SNAPSHOT.jar --job=billing-reconciliation --action=inspect --advertiser-id=123 --budget-date=2026-10-16
+```
+
+以下参数加在同一唯一作业名后；示例中的ID由操作人预先生成并保存，失败后不可自动替换：
+
+| action | 其他必需参数（均用`--键=值`） |
+| --- | --- |
+| create | advertiser-id、task-id、start-date、end-date、reason（1～31日） |
+| get / advance / days | advertiser-id、task-id；advance每次仅推进一日 |
+| cancel | advertiser-id、task-id、command-id、reason |
+| recover | advertiser-id、budget-date、command-id、family（IMPRESSION/CLICK/CONVERSION）、recovery-action（REPUBLISH/EXPIRE）、target-id、reason |
+| get-recovery | advertiser-id、command-id |
+
+恢复target-id在REPUBLISH时为原ledger/eventId，在EXPIRE时为原reservation/qualificationId。查询结果为已校验的protobuf文本，金额六位字符串；COMPLETED只说明核查结束，REQUEUED只说明已重新排队。查days逐日判断资金差额与投影状态，恢复后再inspect。NOT_FOUND只是当次未观察到，超时/数据库错误保持未知：先get/get-recovery，再以同ID同原输入受控重试；禁止无界脚本循环。命令/任务历史保留，无自动删除。
