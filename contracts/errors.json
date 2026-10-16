@@ -1897,6 +1897,41 @@
       "httpStatus": 0,
       "message": "对账响应校验失败，请保留原ID核查owner结果",
       "httpDefault": false
+    },
+    {
+      "name": "RECONCILIATION_INVALID_ARGUMENT",
+      "code": "RECONCILIATION_INVALID_ARGUMENT",
+      "httpStatus": 400,
+      "message": "对账查询范围非法，请检查广告主和预算日",
+      "httpDefault": false
+    },
+    {
+      "name": "RECONCILIATION_AUTHZ_UNAVAILABLE",
+      "code": "RECONCILIATION_AUTHZ_UNAVAILABLE",
+      "httpStatus": 503,
+      "message": "资金报表查看权限暂时无法确认，请稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RECONCILIATION_UNAVAILABLE",
+      "code": "RECONCILIATION_UNAVAILABLE",
+      "httpStatus": 503,
+      "message": "资金报表暂时不可用，请稍后重试",
+      "httpDefault": false
+    },
+    {
+      "name": "RECONCILIATION_RESPONSE_INVALID",
+      "code": "RECONCILIATION_RESPONSE_INVALID",
+      "httpStatus": 503,
+      "message": "资金报表响应校验失败，请重新查询",
+      "httpDefault": false
+    },
+    {
+      "name": "RECONCILIATION_CLIENT_INVALID",
+      "code": "RECONCILIATION_CLIENT_INVALID",
+      "httpStatus": 0,
+      "message": "资金报表数据格式异常，请重新查询",
+      "httpDefault": false
     }
   ],
   "families": [

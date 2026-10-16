@@ -1085,6 +1085,26 @@ export const errorCodes = {
     message: '对账响应校验失败，请保留原ID核查owner结果',
     httpStatus: 0,
   },
+  RECONCILIATION_INVALID_ARGUMENT: {
+    message: '对账查询范围非法，请检查广告主和预算日',
+    httpStatus: 400,
+  },
+  RECONCILIATION_AUTHZ_UNAVAILABLE: {
+    message: '资金报表查看权限暂时无法确认，请稍后重试',
+    httpStatus: 503,
+  },
+  RECONCILIATION_UNAVAILABLE: {
+    message: '资金报表暂时不可用，请稍后重试',
+    httpStatus: 503,
+  },
+  RECONCILIATION_RESPONSE_INVALID: {
+    message: '资金报表响应校验失败，请重新查询',
+    httpStatus: 503,
+  },
+  RECONCILIATION_CLIENT_INVALID: {
+    message: '资金报表数据格式异常，请重新查询',
+    httpStatus: 0,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

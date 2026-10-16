@@ -98,6 +98,24 @@ public class AdvertiserAuthz {
         return subject;
     }
 
+    /** 资金报表只需view但每次强制最新关系，旧disabled/shadow或ADMIN角色不能绕过归属。 */
+    public String requireReconciliationView(long advertiserId) {
+        if (advertiserId <= 0) throw new IllegalArgumentException("advertiserId须为正整数");
+        String subject = currentSubject();
+        if (subject == null || subject.isBlank() || subject.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        boolean allowed;
+        try {
+            allowed = engine().check(SubjectRef.user(subject), "view",
+                    ResourceRef.of("advertiser", Long.toString(advertiserId)), Consistency.fullyConsistent());
+        } catch (RuntimeException error) {
+            throw new com.recsys.platform.web.PublicHttpException(com.recsys.common.error.ErrorCode.RECONCILIATION_AUTHZ_UNAVAILABLE);
+        }
+        if (!allowed) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        return subject;
+    }
+
     /** 判当前主体的平台级权限(administrate=开户/全量管理,review=创意人审)。 */
     public void requirePlatform(String permission) {
         decide(permission, ResourceRef.of("platform", PLATFORM_ID));

@@ -3,3 +3,6 @@ export const SANDBOX_CLICK_ENABLED = import.meta.env.VITE_SANDBOX_CLICK_ENABLED 
 
 export const SANDBOX_CONVERSION_ENABLED =
   import.meta.env.VITE_SANDBOX_CONVERSION_ENABLED === 'true';
+
+export const SANDBOX_RECONCILIATION_ENABLED =
+  import.meta.env.VITE_SANDBOX_RECONCILIATION_ENABLED === 'true';

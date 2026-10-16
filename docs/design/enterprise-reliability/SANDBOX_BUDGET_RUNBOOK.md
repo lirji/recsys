@@ -467,7 +467,7 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 
 ## S13A：只读账户日对账
 
-显式安装adDb V016索引迁移并保留摘要；需要三族既有资金/投影结构（V001/003/005/006/008/009/010/012/013/014）。应用仅校验，不自动建表。`recsys.ad.billing.sandbox-enabled=true`和`reconciliation-enabled=true`共同安装，默认关闭，不依赖新收费admission。当前只有内部服务，公开RPC/offline待S13C，运营接口待S14。
+显式安装adDb V016索引迁移并保留摘要；需要三族既有资金/投影结构（V001/003/005/006/008/009/010/012/013/014）。应用仅校验，不自动建表。`recsys.ad.billing.sandbox-enabled=true`和`reconciliation-enabled=true`共同安装，默认关闭，不依赖新收费admission。可信RPC/offline入口已在S13C交付，只读运营HTTP/UI见下方S14。
 
 每次只核验指定广告主和原预算日，资金BALANCED不等于投影CAUGHT_UP。pending/DEAD/最老创建时间解释传输积压；PUBLISHED仍可能缺fact。0元也必须有相应事件笔数，due-but-held仍属于账户held。缺账户显示ACCOUNT_MISSING，缺表/数据库故障/5秒超时保持未知，禁止把异常转0。observedAt与accountVersion仅解释本次快照，不能当全局水位。
 
@@ -477,7 +477,7 @@ engine使用独立recsys-rec-engine caller；广告主使用recsys-advertiser ca
 
 显式安装V017并保存脚本摘要；开启 `sandbox-enabled`、`reconciliation-enabled`、`reconciliation-tasks-enabled` 三项才安装内部任务服务，默认均不因此改变。无需开启新收费。先创建含稳定UUID、广告主、1～31原预算日、原因和可信actor的任务，再每次advance一天；原ID查询可恢复提交未知结果，COMPLETED不代表账平。
 
-30秒租约到期才接管，每日期最多20次领取，失败有1～300秒退避；FAILED需要排查后新建有意任务，不能清零原次数。CANCELLED保留已完成报告，相同取消命令/原因可重试；不能取消COMPLETED/FAILED。报告与审计不可变，暂不自动清理。当前内部无RPC/CLI，等待S13C；关闭入口保留证据，不能以删表作为回退。真实PG与资金回归见ER-S13B_RESULT。
+30秒租约到期才接管，每日期最多20次领取，失败有1～300秒退避；FAILED需要排查后新建有意任务，不能清零原次数。CANCELLED保留已完成报告，相同取消命令/原因可重试；不能取消COMPLETED/FAILED。报告与审计不可变，暂不自动清理。可信RPC/CLI现见下方S13C2；关闭入口保留证据，不能以删表作为回退。真实PG与资金回归见ER-S13B_RESULT。
 
 ## C13C1：受控恢复内部能力
 
@@ -504,3 +504,13 @@ java -jar recsys-offline/target/recsys-offline-1.0.0-SNAPSHOT.jar --job=billing-
 | get-recovery | advertiser-id、command-id |
 
 恢复target-id在REPUBLISH时为原ledger/eventId，在EXPIRE时为原reservation/qualificationId。查询结果为已校验的protobuf文本，金额六位字符串；COMPLETED只说明核查结束，REQUEUED只说明已重新排队。查days逐日判断资金差额与投影状态，恢复后再inspect。NOT_FOUND只是当次未观察到，超时/数据库错误保持未知：先get/get-recovery，再以同ID同原输入受控重试；禁止无界脚本循环。命令/任务历史保留，无自动删除。
+
+## S14：账户日资金只读页
+
+入口`/advertiser/{advertiserId}/report?budgetDate=YYYY-MM-DD`，默认原预算日按Asia/Shanghai生成。仅在前端构建参数`VITE_SANDBOX_RECONCILIATION_ENABLED=true`时显示新区域，默认false且无新请求。advertiser需要`recsys.ad.billing.sandbox-enabled=true`和`recsys.advertiser.sandbox-reconciliation-enabled=true`才安装GET `/api/advertiser/{advertiserId}/sandbox-reconciliation/{budgetDate}`；缺任一开关时无该映射。owner沿S13A安装只读reconciliation能力；不需要开启task/recovery写操作。复用既有advertiser→ad-serving gRPC地址、独立服务身份及deadline，HTTP不跨库。CPC/CPA前端开关与本片开关互相独立，本轮没有启用共享实例或部署。
+
+每次查询需要ADVERTISER/ADMIN角色及advertiser对象`view`的fullyConsistent授权，ADMIN、disabled/shadow不绕过。无需`edit`；真实schema可用platform operator经view_reports获得只读关系。401/403隐藏旧资金缓存；权限依赖/owner不可用503，坏DTO同样拒绝而非转0。响应no-store；刷新、切范围及身份变化隐藏旧资金值，草稿日期仅提交后读取。
+
+账户消费与三族账本核对，投影状态另列；账户不存在不转零。金额/计数/版本使用字符串，观察时间与投影最后应用时间均非全局水位。旧ad_event全期估计统计及离线CSV有独立来源提示。报表只读，无恢复按钮；发现差异按S13诊断/恢复命令处理，禁止改历史账本平账。回退关闭本片前后端入口，保留S13数据与在途资金处理。
+
+验收入口：`python3 scripts/test-sandbox-reconciliation.py`（独占PG、真实HTTP/TCP，enabled与默认关闭，1440/390截图）。分别带`RECONCILIATION_MODE=in-process|grpc`只改变宿主engine部署配置；该读路径在两种配置中均为advertiser→owner TCP，不声称再次覆盖engine资金写链。真实权限验证用`scripts/test-reconciliation-authz.py`，显式提供`ACTIONS_AUTHZ_SERVER_JAR`、`ACTIONS_AUTHZ_SCHEMA`、`ACTIONS_SPICEDB_IMAGE`；脚本只创建和回收自己拥有的隔离服务/容器，不接共享SpiceDB。详情见ER-S14_RESULT。

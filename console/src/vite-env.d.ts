@@ -4,6 +4,7 @@
 interface ImportMetaEnv {
   readonly VITE_SANDBOX_CLICK_ENABLED?: string;
   readonly VITE_SANDBOX_CONVERSION_ENABLED?: string;
+  readonly VITE_SANDBOX_RECONCILIATION_ENABLED?: string;
   /** 最终混排 sandbox，默认关闭，须先启用对应 owner。 */
   readonly VITE_FEED_EXPOSURE_SANDBOX_ENABLED?: string;
   /** 自然图文 sandbox 显式启用，默认关闭。 */

@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-16 恢复：用户批准连续完成 S13B/C、S14～S21。原目录复用 `feat/sandbox-billing-reconciliation`，基线 `0667fedc`；S13A CI 38708139517 已成功。S13B/C已实现并通过本地完整验收，当前交付C2后进入S14。S22～S25 仍暂停；不启用共享资金、不执行生产部署。已有 MyBatis-Plus 与统一错误码治理必须沿用。用户七项已有配置/文档与测试产物保持独立。
+2026-10-16 恢复：用户批准连续完成 S13B/C、S14～S21。原目录复用 `feat/sandbox-billing-reconciliation`，基线 `0667fedc`；S13A CI 38708139517 已成功。S13B/C已全部交付（C2 a3bfb3bb），S14本地实现与验收PASS，准备Git交付。S22～S25 仍暂停；不启用共享资金、不执行生产部署。已有 MyBatis-Plus 与统一错误码治理必须沿用。用户七项已有配置/文档与测试产物保持独立。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -47,7 +47,7 @@
 | ER-S13C2 | ER-S13C1 | 可信proto/RPC及offline入口 | 16项专项/32项相关回归通过；[验收](ER-S13C2_RESULT.md) | no | DONE |
 | ER-S13C | ER-S13B、C13C已冻结 | 原F12受控续办、可信RPC及offline BillingReconciliationJob | C1/C2均通过；[完整验收](ER-S13_RESULT.md) | no | DONE |
 | ER-S13 | ER-S06、ER-S12 | 原F12完整对账与恢复；A/B/C均必需 | A/B/C均完成；[完整验收](ER-S13_RESULT.md) | no | DONE |
-| ER-S14 | ER-S13、C14五维规划/独立复审PASS | 原F13 Sandbox只读资金报表，详见C14_DESIGN | 严格view、真实HTTP/PG/RPC、双模式浏览器与截图 | no | READY |
+| ER-S14 | ER-S13、C14五维规划/独立复审PASS | 原F13 Sandbox只读资金报表，详见C14_DESIGN | HTTP/PG/RPC13项、真实view-only授权、前端246项、双配置浏览器8项及截图；见ER-S14_RESULT | no | DONE |
 | ER-S15～ER-S21 | 依赖见 PLAN | 本轮已授权，逐片提升对应CONTRACTS，范围不扩大 | 验收见PLAN/VALIDATION_PLAN | no | TODO |
 | ER-S22～ER-S25 | 依赖见 PLAN | 不在本轮恢复范围 | 保持原范围，等待后续用户授权 | no | TODO |
 

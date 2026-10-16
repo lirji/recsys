@@ -57,3 +57,5 @@ ER-S13B：沿用adDb的MyBatis-Plus Mapper/XML与现有Jackson。V017追加任�
 ER-S13C：恢复按单目标同步短事务和持久命令结果执行，复用原owner到期规则与Outbox relay，避免新增恢复调度器。V018只保存命令/审计；PUBLISHED最小等待60秒是sandbox防重发风暴的技术边界。C2在offline增加已有recsys-proto与项目已用gRPC client starter依赖边，版本由根BOM统一，复用内部身份/deadline；不新增技术栈或跨库写入。
 
 C13C2复用现有net.devh GrpcClientAutoConfiguration做offline限定启动上下文，仅在唯一作业billing-reconciliation时由原main显式选择；无新服务/版本/基础设施。普通作业仍走原Spring Boot入口。新错误只编辑contracts/errors.json并生成Java/TS，金额和空值由reconciliation.v1 typed消息承载。
+
+ER-S14：复用advertiser现有gRPC client、owner C13只读快照及严格view/fullyConsistent；显式字符串HTTP DTO避免Jackson时间/金额策略和JS精度影响。前端沿AntD/React Query/既有纯身份scope+epoch，追加响应后校验，不引入新事件队列/依赖。独立默认false构建flag通过现有Dockerfile ARG/ENV传递，不改受保护Compose、不部署。两种engine环境中只读链均为advertiser→owner TCP，浏览器测试不冒充engine写路径覆盖。

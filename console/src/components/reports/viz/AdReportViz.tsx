@@ -1,5 +1,10 @@
-import { Space } from 'antd';
-import { BarChartOutlined, DashboardOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons';
+import { Alert, Space } from 'antd';
+import {
+  BarChartOutlined,
+  DashboardOutlined,
+  FilterOutlined,
+  TableOutlined,
+} from '@ant-design/icons';
 import type { ReportTable } from '../../../api/types';
 import { num, tableToObjects } from '../../../api/report';
 import EBar from '../../charts/EBar';
@@ -37,9 +42,19 @@ export default function AdReportViz({ table }: { table: ReportTable }) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Alert
+        type="info"
+        showIcon
+        message="离线事件统计（ad_event）"
+        description="金额来自事件统计口径。当前文件未提供资金账本核对结果或全局消息水位；请在广告主报表查看 Sandbox 账户日资金。"
+      />
       <CliCommandCard job="ad-report" note="按广告位次聚合曝光/点击/转化/收入/eCPM" />
       {hasFunnel ? (
-        <CollapsibleCard title="变现漏斗:曝光 → 点击 → 转化" icon={<FilterOutlined />} accent={ACCENTS.ad}>
+        <CollapsibleCard
+          title="变现漏斗:曝光 → 点击 → 转化"
+          icon={<FilterOutlined />}
+          accent={ACCENTS.ad}
+        >
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ flex: '1 1 360px', minWidth: 300 }}>
               <EFunnel
@@ -81,7 +96,11 @@ export default function AdReportViz({ table }: { table: ReportTable }) {
       ) : null}
       {posRows.length > 0 ? (
         <>
-          <CollapsibleCard title="逐位次:曝光 / 点击 / 转化" icon={<BarChartOutlined />} accent={ACCENTS.rank}>
+          <CollapsibleCard
+            title="逐位次:曝光 / 点击 / 转化"
+            icon={<BarChartOutlined />}
+            accent={ACCENTS.rank}
+          >
             <EBar
               categories={cats}
               series={[
@@ -91,7 +110,11 @@ export default function AdReportViz({ table }: { table: ReportTable }) {
               ]}
             />
           </CollapsibleCard>
-          <CollapsibleCard title="逐位次:eCPM / 收入" icon={<DashboardOutlined />} accent={ACCENTS.recall}>
+          <CollapsibleCard
+            title="逐位次:eCPM / 收入"
+            icon={<DashboardOutlined />}
+            accent={ACCENTS.recall}
+          >
             <EBar
               categories={cats}
               series={[

@@ -242,3 +242,7 @@ S11C内事件验证单元，正式字段校验/Inbox幂等/投递与位点恢复
 正式契约见[C13设计](C13_DESIGN.md#c13c正式契约单目标受控续办与可信调用)。稳定命令、显式账户日/三族/目标，单事务原事件再投递或真实到期释放，不改历史；60秒PUBLISHED等待窗口。离线只走独立可信caller，advertiser仅获得Inspect读取权；全部金额精确字符串。C1与C2均必需。
 
 C13C2协议细节见C13_DESIGN「协议冻结」及reconciliation.proto：v1显式typed Snapshot/Task/Day/Recovery，金额六位string、optional缺失值、日期/版本/派生状态双向校验；RPC调用方与离线命令均在入口严格校验。CLI独立启动上下文不初始化数据源，只经owner RPC，单动作单次有界调用。
+
+## C14：严格只读账户日报表
+
+正式HTTP、完整DTO/空值/开关/错误及身份缓存约束见C14_DESIGN「正式C14契约/实施冻结」。GET `/api/advertiser/{advertiserId}/sandbox-reconciliation/{budgetDate}`每次严格view/fullyConsistent，经C13C Inspect读取同一资金owner快照；金额/ID/版本/计数全部字符串，缺失与零独立，不开放任何任务或恢复写操作。

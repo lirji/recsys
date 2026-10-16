@@ -1,5 +1,7 @@
 import { http } from './client';
 import { ClientError } from './errors';
+import { exposureRequestOptions, type ExposureIdentity } from './exposure';
+import { assertReportIdentity } from './sandboxReconciliation';
 import {
   advertiserId as exactId,
   normalizeAdvertiser,
@@ -43,8 +45,16 @@ export async function updateAdvertiser(id: string, req: AdvertiserUpsert): Promi
   const { data } = await http.put<AdvertiserWire>(`/api/advertiser/${exactId(id)}`, req);
   return normalizeAdvertiser(data);
 }
-export async function advertiserReport(id: string): Promise<AdReportRow[]> {
-  const { data } = await http.get<ReportWire[]>(`/api/advertiser/${exactId(id)}/report`);
+export async function advertiserReport(
+  id: string,
+  identity: ExposureIdentity,
+  signal?: AbortSignal,
+): Promise<AdReportRow[]> {
+  const { data } = await http.get<ReportWire[]>(
+    `/api/advertiser/${exactId(id)}/report`,
+    exposureRequestOptions(identity, signal),
+  );
+  await assertReportIdentity(identity, signal);
   return data.map(normalizeReport);
 }
 
