@@ -64,3 +64,8 @@ ER-S14：复用advertiser现有gRPC client、owner C13只读快照及严格view/
 ER-D0/C15A（2026-10-16，设计门禁）：沿已选 PG/Kafka/Spring Kafka、现有 MyBatis-Plus primary Mapper 与显式 owner SQL/checksum；不新加运行依赖或部署组件。相对 HTTP 重试/同步双写，已有自然 Outbox 保留稳定身份与恢复进度；相对抽取通用框架，behavior 自有少量领域类避免依赖资金 owner。固定有界 producer、单线程 worker、租约/fence、有限重试和审计重放的参数见 C15_DESIGN。
 
 隔离测试复用 postgres:16-alpine、apache/kafka:3.7.1 与 S06 GenericContainer 方法；behavior 已有 Testcontainers junit-jupiter/postgresql 提供所需基础能力，实际未新增 Kafka 测试依赖。测试 fixture 仅验证下游幂等机制，不能代替 S15C 产品消费或 S19 Flink。禁止修改共享 dev_infra/部署；设计回合未跑组件测试，后续 S15A 实施已通过真实 A01～A10；配置与兼容证据见 ER-S15A_RESULT。保留期未定，不增加清理或生产恢复承诺。
+
+
+ER-D0/C15B：沿已存在PostgreSQL/MyBatis-Plus/Kafka/Jackson，不新增依赖/服务/CDC。候选取舍详见C15_DESIGN的DB15-01～05：源库namespace+源行ID优于请求内容hash；本库事务优于DB后best-effort；专用版本topic优于向旧JSON加字段或仅Kafka header承载身份；有界显式历史清单优于未经来源核验的全表重放。代价是保留live/history两流、明确消费者切换门禁；最多两专属发送线程/producer，其他有界参数沿C15A，不能占用公共队列或随意抽通用框架。
+
+稳定命令/逐项结果复用已选PG能力，不增加后台扫描器；低ID晚提交等待原清单项后续续办。旧Flink value-only入口不能安全处理重复历史，新版特征流保持关闭至S19。相关PG事务/Kafka外部效果语义已经官方文档核验（链接在C15_DESIGN）；版本不变，本设计不宣称新增组件兼容实测。S15B1/B2真实测试需按B01～B12后续执行。

@@ -132,3 +132,12 @@ ER-S13A按[C13设计](C13_DESIGN.md)增加ad owner内部只读对账能力。资
 默认关闭的自然 relay 与回执接受独立，停新增可继续履行已接受事件义务；DB 租约/fence 只保护状态回写，不消除 Kafka 重复。自然 topic 与旧行为/正式样本隔离，A 的测试订阅端不是产品投影。旧 BehaviorService 原子事件及 SeenItemsConsumer 的失败确认缺口分别由 S15B/C 补齐；父片完成条件保留，Flink 恢复由 S19 承接。此补充仅覆盖 C15A，不把本文件其余历史草案自动升级为批准设计。
 
 S15A 实际交付：V002、primary Mapper/XML、NaturalOutboxRepository、严格 codec、专属 producer 和有界 worker；原回执写入路径不变。真实组件与进程崩溃验证见 ER-S15A_RESULT；默认关闭，无部署或共享迁移。
+
+
+## C15B 架构补充（设计冻结，尚未实现）
+
+沿behavior现有进程、primary DataSource/MyBatis-Plus，原BehaviorService接受的原子边界扩大到本库Outbox；归因Redis在事务外，Kafka只在独立relay。稳定源行身份解决投递重试，原无键POST仍可产生不同业务行。混合历史writer没有来源/发送证据，因此显式历史清单和重复CLICK修复标LEGACY_ROW，独立history流，不将旧IMPRESSION升格为自然可信事实。
+
+数据权威为user_behavior接受行及捕获时的不可变事件快照；不改engine/offline原写入口，不对其delete加隐藏FK阻断。behavior独立迁移目录/metadata/outbox/replay；B2增加有界历史命令/items/cancel审计，按明示清单续办而非全表CDC。所有SQL在Mapper XML。完整字段、锁序、状态/失败/恢复、默认关闭与回退以CONTRACTS C15B/C15_DESIGN为准；DB15-01～05为技术决定，FB01～07为源码事实。
+
+旧Seen/Flink维持旧topic，最小topic guard阻止新版误配；新版本化Seen消费在C15C，Flink可靠计算在S19。至少一次重复、历史未分类与无时区时间是显式风险，不靠producer幂等或场景字段消除。部署单元/依赖版本不变，本轮只交付设计，无环境迁移和生产吞吐承诺。

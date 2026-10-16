@@ -2,7 +2,7 @@
 
 ## 当前状态与范围
 
-父片 **ER-S15=IN_PROGRESS**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：ER-D0/C15A 设计门禁已交付；本回合 `eb5feb61-26b8-4a9c-aedf-e4ec6fbbf858` 的 **S15A 自然事件可靠发送已实现，本地 A01～A10 PASS**，详见 [ER-S15A_RESULT](ER-S15A_RESULT.md)。旧 BehaviorService 原子事件 S15B 和真实行为消费者 S15C 尚未实现，不能把自然测试 Inbox/effect 当作父片完成证据。
+父片 **ER-S15=IN_PROGRESS**。正式状态只维护 [IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)：C15A设计与S15A实现已交付；S15A本地108/16/462项及远程CI38923751782全部通过，详见[ER-S15A_RESULT](ER-S15A_RESULT.md)。本回合`30bd2b82-dda3-46b7-ae2f-63271c05cc0e`只完成 **ER-D0/C15B 正式契约门禁**，设计验收见[ER-D0-C15B_RESULT](ER-D0-C15B_RESULT.md)。S15B1/B2产品及真实行为消费者S15C尚未实现，不把设计或测试Inbox/effect当作父片完成。
 
 用户持续授权 S15～S21 分轮正常提交/合并/push，每回合只完成一个最小纵向片或必要设计门禁。S22～S25 暂停。仅 Sandbox/独占组件验证；不部署、不启用共享资金、不重启共享基础设施。原目录任务分支，无额外 worktree；11 个保护文件及原 C15A 草案始终保留。
 
@@ -20,6 +20,8 @@ V002 与 Mapper/XML/仓储、严格自然事件 codec、默认关闭的独立 re
 
 运行记录 `.dev/codex-flow-reliability/round-eb5feb61/` 不提交。原部署入口 `.dev/deployments/latest-1f77eb4d0378/PROGRESS.md` 保留，不重复部署。CODEX_PROGRESS 仅保存当前指向及原历史交接。
 
-## 下一操作
+## C15B门禁与下一操作
 
-本轮完成 Git 交付后返回外层。下一回合先核对本片交付 SHA/CI 和保护指纹，再执行 **ER-D0/C15B**：读取旧 BehaviorService、事件对象、Mapper/DDL、开关与消费者，冻结本库业务/Outbox 原子写、稳定事件身份、历史待发覆盖和迁移共存契约。已有无键旧请求不能擅自发明去重政策。随后依次 S15B→C15C→S15C；全部原验收通过前父 S15 不得 DONE，S19 Flink 范围不转移。
+C15B已基于旧BehaviorService、Mapper/DDL、混合writer、Seen/Flink源码补齐正式契约：源行稳定身份、同库原子写、CLICK冲突后原行修复、无键POST非幂等边界、独立历史恢复流和显式有界清单、开关迁移及消费兼容。设计门禁与Git记录见ER-D0-C15B_RESULT；未运行或冒充B01～B12产品验收。7fccd6fe远程CI成功终态已记录后才允许本轮推送，没有取消其源码CI；旧CPA时间问题不重复修改。
+
+本轮交付后返回外层，下一片 **ER-S15B1**：按C15_DESIGN从`db/behavior-events/V001__behavior_event_delivery.sql`与primary Mapper/同DataSource事务开始，实现旧POST/CLICK重复的可靠发送纵向链路并验证B1验收。随后S15B2显式历史恢复与兼容→C15C→S15C；原范围全部通过前父S15不得DONE，Flink完整恢复仍属S19。本轮无新业务政策问题，真实环境切换/历史清单不在当前执行授权内。

@@ -65,3 +65,6 @@ Hygiene advisory 复核：MAX_BYTES/MAX_ATTEMPTS/EXHAUST_LIMIT 为正式契约�
 交付证据写入本地 `delivery.json`，绑定测试修正 SHA、S15A SHA、main/origin/main 及 CI；该记录不提交，避免提交自引用。18 个源码/测试/workflow 路径的验证 SHA-256 见 source-fingerprints.json，提交前逐项再核对；文档和暂存允许清单见 delivery-paths.json。保护终检见 protected-final.json。远程 CI 必须查询本轮交付 SHA，运行中记 PENDING，不把本地 PASS 或旧基线绿灯当作远程成功。
 
 本轮 Git 交付后返回外层，下一操作是核对 CI 并执行 ER-D0/C15B 旧行为契约门禁，不自动进入第二片。无 A 业务决策阻塞；未完成 B/C 仍阻止父 S15 DONE。进程、日志和最新远程 run 记录以 CODEX_PROGRESS 的当前入口及本地 delivery/ci-snapshot 为准；所有 .dev、测试 target、用户未跟踪/忽略文件保留，不清理。
+
+
+后续核验（C15B门禁回合）：已读取GitHub CI [38923751782](https://github.com/lirji/recsys/actions/runs/38923751782)，headSha精确为`7fccd6fe0e4c8752b087f435066c3120ef81e0da`，completed/success，7个job均成功（含完整build、money-chain、natural-exposure及浏览器门禁）。这是远程最终证据，不是用本地108/16/462项替代。终态快照保存在`.dev/codex-flow-reliability/round-30bd2b82/s15a-ci.json`；确认结束后才允许本轮新main推送，没有concurrency取消该源码CI。

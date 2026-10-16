@@ -1,14 +1,16 @@
-# 当前任务：codex-flow 企业可靠性 ER-S15A
+# 当前任务：codex-flow 企业可靠性 ER-D0/C15B
 
-权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；本回合 `eb5feb61-26b8-4a9c-aedf-e4ec6fbbf858` 仅完成自然可靠发送 S15A，结果 `docs/design/enterprise-reliability/ER-S15A_RESULT.md`，正式契约 C15_DESIGN。父 S15 仍 IN_PROGRESS；下一片为 ER-D0/C15B，S22～S25 暂停。
+权威状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约 `C15_DESIGN.md` / `CONTRACTS.md`。回合 `30bd2b82-dda3-46b7-ae2f-63271c05cc0e` 只完成 **C15B设计门禁DONE/PASS**，验收见 `docs/design/enterprise-reliability/ER-D0-C15B_RESULT.md`。未实现S15B，B01～B12运行验收UNVERIFIED；下一片S15B1 READY，父S15 IN_PROGRESS，S22～S25暂停。
 
-原目录 `/Users/liruijun/personal/LLM/recsys`，分支 `feat/er-s15a-natural-event-delivery`，基线 d978e568。A01～A10 本地 PASS：自然门禁108项、既有行为/错误契约16项，均零失败/错误/跳过。上轮设计CI38915759801的money-chain失败已定位为时间输入精度偶发测试问题，确定性修正后完整资金门禁通过，实际数量见结果。Hygiene无阻断，formatter不可用/无独立静态分析。
+原目录 `/Users/liruijun/personal/LLM/recsys`，任务分支 `docs/er-s15b-behavior-event-contract`，基线7fccd6fe0e4c8752b087f435066c3120ef81e0da。S15A的18源码指纹与11保护指纹一致；远程CI38923751782已completed/success，7个job全部成功，精确绑定7fccd6fe；确认终态后才允许新main推送。c032ea12时间测试修正不重复修改。
 
-本地验证已结束；正常提交/ff合并/push 的实际结果、最新 SHA 与CI必须读取 `.dev/codex-flow-reliability/round-eb5feb61/delivery.json`、`ci-snapshot.json`，不从旧历史推断。日志在同目录 natural-final.log、behavior-regression.log、money-final.log；测试已退出成功。18个源码/workflow指纹、保护终检、进程崩溃标记同目录。11个保护文件、V001与下方历史正文一致，所有 .dev/target/既有未跟踪材料保留。
+D-B01～D-B09设计验证通过，23个直接证据源文件未变；本轮只有10个文档，未启动Maven/组件/应用/部署进程，不另启codex-flow。正式决定：原行稳定身份与同库Outbox，CLICK重复修复原行待发；保留无键POST原语义；历史混合来源UNKNOWN、无时区原时间、独立恢复流及有界ID清单；旧Seen/Flink兼容与C15C/S19范围不转移。
 
-本轮无应用/部署后台进程；仅测试独占实例。仅 Sandbox，不启用共享资金、不执行部署或重启共享基础设施，不另启动 codex-flow。下一回合先核对 Git/CI，再冻结旧行为身份、原子写、历史覆盖及开关共存契约；不提前实施 S15B。
+当前Git/CI实际结果与不可变SHA读取 `.dev/codex-flow-reliability/round-30bd2b82/delivery.json`、`ci-snapshot.json`；设计验证与源CI证据在同目录design-validation.json/source-evidence.json/s15a-ci.json。产品未变，Code Hygiene/编译/运行测试N/A；新设计提交CI不能沿用源CI成功。11保护文件和下方历史/部署入口保留，所有.dev/target/原未跟踪材料不提交或清理。
 
-规范：architecture-standards 的业务建模、并发安全、持久化事务、分布式契约、配置、Kafka/中间件、容量演进、发布治理；backend-implementation 的 Outbox/消息/任务/审计/韧性/配置/DB/观测/停机/保留。由 update-progress-docs 与 task-git-delivery 同步交付；下方仅历史，不续做旧任务。
+下一回合先核对本门禁Git/CI和保护指纹，再执行S15B1：从behavior-events/V001、primary Mapper和同DataSource短事务开始，完成原子接受/重复CLICK修复/两流可靠发送的真实隔离PG/Kafka验收。本回合返回外层，不进入第二片。仅Sandbox，不部署、不启用共享资金、不重启共享基础设施。
+
+规范：architecture-standards业务建模、并发安全、持久化事务、分布式契约、配置、Kafka/中间件、容量演进与发布治理；continue-approved-delivery / backend-architecture-design / implementation-slicing；由update-progress-docs、task-git-delivery和ci-cd-gate同步状态。下方仅历史，不续做旧任务。
 
 ---
 
