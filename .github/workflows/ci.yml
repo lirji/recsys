@@ -122,6 +122,9 @@ jobs:
           npm run build
       - name: Isolated browser, PostgreSQL and Kafka acceptance
         run: python3 scripts/test-sandbox-exposure.py
+      - name: Public error and data quality browser recovery
+        working-directory: console
+        run: npx playwright test e2e/public-errors.spec.ts e2e/data-quality-status.spec.ts --output=../recsys-rec-engine/target/public-error-browser-evidence
       - name: Isolated natural browser and PostgreSQL acceptance
         run: python3 scripts/test-natural-exposure.py
       - name: Isolated mixed feed browser and PostgreSQL acceptance
@@ -138,6 +141,7 @@ jobs:
             recsys-rec-engine/target/natural-browser-backend.log
             recsys-rec-engine/target/feed-browser-evidence/
             recsys-rec-engine/target/feed-browser-backend.log
+            recsys-rec-engine/target/public-error-browser-evidence/
           if-no-files-found: ignore
 
   # P3 供应链安全:Trivy 文件系统扫描——后端 Maven / 前端 npm 依赖漏洞(SCA)+ IaC/配置误配。

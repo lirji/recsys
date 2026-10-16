@@ -2,7 +2,7 @@
 
 ## projectSummary
 
-MP00～MP15实现、全仓clean verify、专项/浏览器及结构终审全部本地通过，本轮Git/CI收尾正在执行。业务SQL已统一为MyBatis-Plus管理的Mapper/XML，保持原业务模块、数据owner和运行边界。追加统一错误码/提示/魔法值目标仍未完成。
+MP00～MP15已实现、验证、正常Git交付且最终CI五门通过。业务SQL已统一为MyBatis-Plus管理的Mapper/XML，保持原业务模块、数据owner和运行边界。追加错误码EC01～EC08实现与最终本地验收完成，见[EC08_RESULT](../error-code-governance/EC08_RESULT.md)；整体最终Git/CI与本机Docker部署状态见根交接。
 
 ## baseline
 
@@ -33,11 +33,11 @@ HTTP/gRPC、数据库结构、MQ/Redis契约与业务算法保持，所有真实
 
 ## rollbackPlan / nextMilestone
 
-按PLAN第8节正常revert有界提交，禁止重写Git历史或操作共享数据；回退代码不能撤销已发生的业务写入。当前完成本批Git/最新CI，随后基于真实边界盘点实施统一错误码与展示。计划整体已授权，不恢复原暂停企业可靠性任务。
+按PLAN第8节正常revert有界提交，禁止重写Git历史或操作共享数据；回退代码不能撤销已发生的业务写入。SQL阶段Git/CI已完成；错误码治理已完成实现与本地验收，后续按根交接完成最终交付及用户追加的本机Docker运行验证。计划整体已授权，不恢复原暂停企业可靠性任务。
 
 ## remainingRisks / technicalDebt
 
-以下为迁移过程中已实证并保留的历史行为；后续治理不能把这些保护测试当成问题已解决。
+以下保留SQL迁移时发现的历史证据。Bandit/FTRL发布、AdCalibrate参数、Attribution大ID/部分失败、AdReport未知计数、oCPC故障分类和DataQuality假绿已由EC06对应片修复，见../error-code-governance/EC06_RESULT.md。R9手动事务传播、Lookalike/Hot缓存原子性仍为独立历史技术债；不能把SQL保护测试当作这些债务已解决。
 
 新增已证实技术债：ImportR9EmbeddingsJob原手动事务会提交/回滚外层先行工作，迁移R9EmbeddingStore保持该边界并用真实PG保护；未来事务治理须独立决定传播策略。Lookalike/Hot沿用两条Redis命令删除后写入，窗口仍存在，不能宣称原子替换；查询失败发生在删除前时旧数据保留已实证，见MP13C7_RESULT/MP13D1_RESULT。
 

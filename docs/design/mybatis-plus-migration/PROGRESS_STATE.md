@@ -6,7 +6,9 @@
 
 ## 当前状态
 
-`IN_PROGRESS`（整体含追加错误码目标）。MP00～MP15源码、本地验收、正常Git交付和远程CI均完成；最终ea5fda51876352bc96d74bcfcef06c2273bdab9c已在main/origin/main，CI38785419045五门禁SUCCESS。最终全仓1049/202类、资金384/68类、自然75/13类、三浏览器4+5+5、前端98、ONNX/契约和边界守卫通过，4个按需skip已补跑。错误治理已进入EC01，当前证据转到../error-code-governance/PROGRESS_STATE.md。
+MP00～MP15已完成并交付ea5fda51876352bc96d74bcfcef06c2273bdab9c，CI38785419045五门SUCCESS。追加错误码EC01～EC08实现与本地最终验收完成，见[EC08_RESULT](../error-code-governance/EC08_RESULT.md)。整体最终Git/CI与追加本机Docker部署状态由根CODEX_PROGRESS.md维护，原企业可靠性任务继续暂停。
+
+以下为SQL阶段历史记录，分支和阶段状态不代表当前现场。
 
 - 当前分支：`refactor/mybatis-plus-migration`，基线 `e7838776`。
 - 原企业可靠性 S13B～S25 继续暂停，根 CODEX_PROGRESS.md 原文保持。

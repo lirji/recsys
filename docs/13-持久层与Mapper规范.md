@@ -46,4 +46,4 @@ Flink 的 `ItemCategoryLoader` 在算子 `open()` 内构造无池、非 Spring �
 4. 验证真实 PG 的锁、约束、RETURNING、批次失败和资源释放；分片路径必须经过真实逻辑分片源。纯 Mock 不能证明事务行为。
 5. 运行 `python3 scripts/check_persistence_boundaries.py`，阻止 Java SQL/JDBC 回流、原文插值、RETURNING 声明丢失及初始迁移脚本漂移。该检查为词法约束，不替代语义审查和集成测试。
 
-迁移决策与逐片验证见 [迁移计划](design/mybatis-plus-migration/PLAN.md)、[SQL 核销表](design/mybatis-plus-migration/SQL_INVENTORY.md)和[当前进度](design/mybatis-plus-migration/PROGRESS_STATE.md)。旧离线错误提示、降级状态和部分发布日志的问题已单独记录，SQL 迁移完成不表示这些后续治理项完成。
+迁移决策与逐片验证见 [迁移计划](design/mybatis-plus-migration/PLAN.md)、[SQL 核销表](design/mybatis-plus-migration/SQL_INVENTORY.md)和[当前进度](design/mybatis-plus-migration/PROGRESS_STATE.md)。后续错误提示、降级状态和部分发布治理按独立切片完成，接口与作业处理方式见[错误码与故障处理](14-错误码与故障处理.md)，验收状态见[错误码治理进度](design/error-code-governance/PROGRESS_STATE.md)。

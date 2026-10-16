@@ -1,6 +1,8 @@
 # 统一错误码、错误展示与魔法值治理
 
-状态：IMPLEMENTING，依据用户追加目标及MyBatis迁移PLAN第10节持续授权执行，不再请求重复确认。基线`ea5fda51876352bc96d74bcfcef06c2273bdab9c`；独立分支`refactor/unified-error-codes`，原目录唯一worktree。
+当前实施与本地验收：EC01～EC08 DONE/PASS，见[EC08_RESULT](EC08_RESULT.md)。最终Git/CI状态见根交接；本机Docker部署为2026-10-16追加授权，独立验证，不恢复企业可靠性计划。
+
+授权记录：依据用户追加目标及MyBatis迁移PLAN第10节持续授权执行，不再请求重复确认。基线`ea5fda51876352bc96d74bcfcef06c2273bdab9c`；独立分支`refactor/unified-error-codes`，原目录唯一worktree。
 
 ## 目标与约束
 

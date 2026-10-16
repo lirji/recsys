@@ -1,63 +1,28 @@
 # 错误码治理重构报告
 
-基线ea5fda51，完整构建/集成/浏览器证据见../mybatis-plus-migration/MP15_RESULT.md。范围与分批实施见PLAN.md。
+## 最终结果
 
-已发现：通用code/message重复；部分GlobalExceptionHandler透传内部detail/message；局部HTTP/gRPC错误分散；网关默认响应与Servlet结构不一；前端忽略code并展示任意响应体；离线作业存在已实证的假成功/部分发布提示。均在本次目标内处理，不以一次全局替换掩盖遗漏。
+EC01～EC08实现、残留审查及本地最终门禁完成。SQL前置MP00～15已经交付；本次完成HTTP/gRPC/作业/对象内错误/前端的统一目录与安全提示，目录256项、8个显式码族。最终Git提交与对应CI结论见根CODEX_PROGRESS.md；本地验收不替代最终CI或Docker运行验收。
 
-行为兼容：既有HTTP/gRPC状态和code、正常业务结果、身份与重试语义保持；内部详情展示、假成功和已证实的大ID失真将有意修复，并在对应片记录CHANGED及证据。数据库/事务/消息/基础设施保持。
+## 变化与证据
 
-EC01完成公共错误目录、Servlet全局处理与前端共用安全展示，71项后端模块测试、138项前端测试、全仓compile等通过，详见EC01_RESULT。框架错误被误判500与任意详情展示已修复；当时安全链及局部业务尚未迁移，后续进展见下段。整体重构IN_PROGRESS，不能把公共层通过等同全项目完成。
+| 范围 | 结果 | 证据 |
+|---|---|---|
+| 公共错误与安全链 | 统一稳定code和安全message，未知异常不透传内部详情；原状态和字段保持 | EC01、EC02A/B_RESULT |
+| 业务HTTP与gRPC | 11个局部HTTP边界、服务和客户端目录化；身份依赖故障与业务拒绝分开，未知写入不假成功 | EC03及EC04各RESULT |
+| 控制台对象与作业 | 失败、缺数据、未知、部分完成真实可见，44Job逐项审计 | EC04E、EC05、EC06各RESULT |
+| 已证实业务问题 | 归因ID保持long精度；校准参数在发布前拒绝；巡检缺数据不假绿；Bandit/FTRL/多模态等发布失败明确 | EC06_RESULT与子片 |
+| 前端与认证 | 展示安全码/恢复指引，取消不弹错误；实验拒绝/坏ACK不假成功，采用真实50/50快照默认 | EC07B/C_RESULT、EC07_RESULT |
+| 回归保护 | 目录生成、已知公开出口检查、11项错误/巡检浏览器纳入既有CI | EC08_RESULT |
 
-EC02a/b安全链与响应式网关已完成本地验收，88项模块测试与真实Netty HTTP、三套真实浏览器通过，见EC02A/B_RESULT。CI发现的本地政策提示被泛化问题已通过提前执行EC07a修复：88项错误目录含前端受控码，139项前端测试通过。该失败证明任意文本防泄漏之外还须保留可行动的受控说明，后续EC07不得只以generic fallback宣称完成。EC03～EC06、EC07其余入口及EC08全量审计仍未完成。
+## 验证与兼容
 
-EC03已完成11个局部业务HTTP边界的目录接入，保持各域分类与503恢复语义，预算JSON说明归一为公共文案。生成8个显式ErrorFamily，旧88项代码/前端字典字节不变；基线保护、70项HTTP专项、393资金/76自然、24模块编译均过，见EC03_RESULT。EC04～08其余范围继续，不将HTTP完成当全项目完成。
+最终全仓1348项/235类（0失败错误、4按需skip）及独立shade制品1项通过；资金/自然门禁、广告4/自然5/混排5真实后端浏览器、11公开错误/巡检浏览器通过。前端202项、认证13项、类型与构建通过；完整计数、源码指纹及日志摘要见EC08_RESULT。三个按需浏览器宿主已显式补跑，余1个CI环境探针留给最终CI。
 
-EC04a完成sandbox gRPC服务端/认证边界，115项共享目录；原状态和资金结果不变，安全描述+trailer为兼容扩展，预算原异常详情和下游描述/metadata透传有意移除。41项专项含五服务真实TCP、398资金、139前端、24模块编译通过，见EC04A_RESULT。其余RPC/客户端/正常响应内错误仍待父EC04后续。
+原HTTP/gRPC成功协议、幂等身份、事务/锁顺序、金额算法、数据库结构及消息契约保持。内部详情泄漏、假成功、已证实大ID精度和非法参数晚失败的行为变化分别记录于对应片。没有为替换SQL框架重新拆服务，也未新增中间件。
 
-EC04b完成三个sandbox客户端及预算恢复提示，目录127项；保留HTTP旧码/字段，受控wireCode别名贯通后端和前端。内部服务身份失败与真正业务权限拒绝分开；损坏CPM/CPC/曝光响应不再误判用户输入。72项专项、406资金/76自然、149前端、24模块编译和三套真实浏览器全部通过，见EC04B_RESULT。普通RPC/公开对象内错误与后续作业/前端治理仍未完成。
+## 限制与后续
 
-EC04c完成普通广告/内容/用户RPC及四类客户端的安全目录适配，133目录项，保持真实测得的UNKNOWN及其他实际网络状态和重试判定；写入日志不再将未知称未落库。13项基线、83专项、149前端和24模块编译通过，见EC04C_RESULT。旧写fallback造成HTTP伪成功仍须EC04d修复，不能以安全描述替代行为正确。
+源码守卫是有界词法检查；Java统一formatter与独立静态分析未配置，手工审查无阻断。security-scan成功只证明报告流程执行，不代表零漏洞；没有容量、性能或全系统生产准入承诺。内部日志全面脱敏、既有缓存原子性和企业可靠性S13B～S25不在本轮范围。
 
-EC04d修复普通广告/兴趣写fallback的HTTP假成功；新增两项503目录码，总135。正常成功与outcome重复false保持，未增加写重试。真实TCP+AOP+HTTP验证及426资金、151前端、24模块编译通过，见EC04D_RESULT。严格兴趣读取与console对象仍需后续治理。
-
-EC04e1 DONE/PASS（本地）：严格兴趣查询故障从空200改受控503，推荐专用Reader保留冷启动降级；原读重试和普通写语义保持。总136码，User360局部错误也展示code。18基线、56专项/7类、154前端/21文件、24模块compile及目录/SQL/hygiene通过，见EC04E1_DESIGN/RESULT。无新增依赖/SQL/事务；父EC04的console边界及EC05～08继续。EC04d已ff/push e94cdac6，新CI38801955042运行；C的CI38799881069仅build取消、另四门成功。
-
-EC04e2 DONE/PASS（本地）：观测协议失败/部分结果不再当就绪或无流量，健康状态用显式编码枚举和安全URL，诊断失败/缺数据不默认PASS。新增8对象内码，总144项。22基线、最终63专项/6类、154前端/21文件、24compile、目录/SQL/hygiene通过，见EC04E2_DESIGN/RESULT。Hygiene一条第三方Python虚拟环境枚举相似advisory判不适用；Java工具限制保持。父EC04的SystemOps/User360/Item/Report/Alerts及EC05～08继续。E1已ff/push 8d2fedee，CI38802730985运行；D CI38801955042安全/自然成功，钱/浏览器/build取消。
-
-EC04e3 DONE/PASS（本地）：报表保留真实CSV回退，但DB失败无对应文件不再假空/404；告警复用诊断规则，信号缺失可见且不额外读eval。诊断/告警状态、来源为显式code枚举，JSON保持原字符串；总146目录项。101专项/8类、157前端/22文件、24compile、目录/SQL/hygiene通过，见EC04E3_DESIGN/RESULT。两条第三方Python环境枚举相似advisory判不适用，Java工具限制保持。父EC04剩余User360/Item/SystemOps及EC05～08继续；E2 CI38803835991四门成功、build运行。
-
-EC04e4 DONE/PASS（本地）：User360保留成功数据，各失败分区显示未知和安全码；存在性三态，完整游标后发布计数，坏Redis值/超时不伪零。目录148项，原146/8族保持。113后端/10类、163前端/23文件、24compile、目录/SQL/hygiene通过，见EC04E4_DESIGN/RESULT。Java工具限制保持，未新增SQL/事务/重试。父EC04剩余Item、SystemOps/作业状态及EC05～08继续。E3已ff/push3434795d，CI38805179085尚运行；E2四门成功、build取消。
-
-EC04e5 DONE/PASS（本地）：Item故障返回安全503，真实缺失/批量约束及标题fallback保持。目录149；36后端真实PG/HTTP等、164前端、24compile与目录/SQL/hygiene通过，见EC04E5_DESIGN/RESULT。父EC04剩余SystemOps与EC05共同推进。E4已交付d36f184b；后续最终SHA CI待EC08核验。
-
-EC05a DONE/PASS（本地）：作业状态codec、JobRunner预检/失败传播、DAG安全状态与未知结果、SystemOps安全消费和页面已实现，总159码。147后端/16类、168前端/25文件、24compile与目录/SQL/hygiene通过，见EC05A_DESIGN/RESULT。两处边界catch和第三方enum advisory已说明，Java工具限制保持。EC04（a～e5+SystemOps）既定公开边界本地验收完成；EC05其余Job/streaming、EC06～08继续。E5已交付d3f15c62，新片最终CI另核验。
-
-EC05b DONE/PASS（本地）：Flink类目不可读不再健康启动；向量/报表部分失败最终受控异常、成功部分保留并支持修复续跑。166码，43后端+streaming最终jar6+1、24compile、Python7、前端57专项/格式/ESLint、目录/SQL/hygiene通过，见EC05B_DESIGN/RESULT。生成器沿现有100列规范折行，无新依赖。父EC05其余Job、EC06～08继续；A已交付7bd314fd，新CI仍需最终SHA核验。
-
-EC05c DONE/PASS（本地）：五导入Job必需输入/坏参数/部分完成及R9校验目录化，JobArguments复用；合法semantic训练header、原空文件清除/批次/事务与可选ratings明确fallback保持。175码原166/8族不变；65后端/10类、前端57专项、Python7、24compile及目录/SQL/hygiene通过，详见EC05C_DESIGN/RESULT。Java工具限制保持。B已ff/push f09ccef8，CI四门成功、build仍运行。EC05其余业务Job及EC06～08继续。
-
-EC05d DONE/PASS（本地）：十二召回/样本Job无输入/无产出明确码，合法空词表/全负标签与部分关联缺失保持有效输出并受控提示；数字参数复用并前置拒绝。目录189，原175/8族保持；完整offline及依赖453项/83类0失败错误、1项CI环境探针skip（实际PG等均运行），前端57、24compile和目录/SQL/hygiene通过。见EC05D_DESIGN/RESULT。C已ff/push cb701520、CI四门成功/build仍运行；父EC05余项及EC06～08继续。
-
-EC05e DONE/PASS（本地）：种子/模拟参数先于清理校验，清理部分失败阻止生成；创意读取失败拒绝写事件，真实空创意保留NULL归因并受控提示。目录194原189/8族保持；55后端/7类含真实PG FK与Redis ACL故障及恢复、前端57、24compile和目录/SQL/hygiene通过。见EC05E_DESIGN/RESULT。D已ff/push bc781867，CI38811445623仍运行；EC05评估/报表/投影/共享CLI及EC06～08继续。
-
-EC05f DONE/PASS（本地）：三评估Job部分失败最终受控失败，正常/原部分CSV与曲线完整摘要保持；非法参数先于发布，缺head与空候选区分，Eval中断和Error不吞。目录202原194/8族保持；41后端/5类、57前端、24compile与目录/SQL/hygiene通过，详见EC05F_DESIGN/RESULT。E已ff/push b8638f28，CI38812115409四门SUCCESS/build运行；EC05报表/投影/共享CLI及EC06～08继续。
-
-EC05g DONE/PASS（本地）：报表空输入/非法统计参数、延迟样本不足/无效模型、人群缺向量最终失败明确码；合法空探索快照与仅种子包保持。209目录旧202/8族保持；84后端/10类（83首轮+AdSignals最终13替代12）、57前端、24compile与守卫/hygiene过。见EC05G_DESIGN/RESULT。F已ff/push 56465b38，CI38813384975运行；E CI已取消。EC05h共享来源参数后审计剩余作业，EC06～08继续。
-
-EC05h DONE/PASS（本地），父EC05本地验收完成：三共享来源与max-ts安全参数、三Sync校验先于DDL/full清除、Uplift严格参数且0 no-op保持。35个EC05 Job与9个待EC06 Job的44项清单见EC05H_RESULT。212目录旧209/8族保持；完整offline依赖477/84类0失败错误、1个CI环境探针skip（实际集成运行），57FE/24compile/守卫/hygiene过。G已ff/push2717c956，CI38814199492运行，F/E已取消。EC06～08继续。
-
-EC06a DONE/PASS（本地）：广告校准无效数值/样本不足/坏参数不覆盖旧曲线；广告报表未知风控计数不伪零、空输入不假成功。216目录原212/8族保持；56后端/6类、57前端、24compile/守卫/hygiene过，见EC06A_DESIGN/RESULT。正常完整CSV/JSON和原部分文件边界保持；计数异常适配器仅证明边界，不声称网络故障。H已ff/push82a4a07a，CI38815509098仍运行。EC06余7作业和EC07/08继续。
-
-EC06b DONE/PASS（本地）：归因全程long身份/具名触点/显式模型，三模型原SHA保持；质量/归因无输入或发布失败不假完成，NaN质量不再round成0，成功部分保留。223目录旧216/8族保持；59后端/7类、57FE、24compile/守卫/hygiene过，见EC06B_DESIGN/RESULT。A已ff/push c6921b8f，CI38816279798仍运行。EC06余5作业、EC07/08继续。
-
-EC06c1 DONE/PASS（本地）：巡检三项显式状态、缺数据/故障不假通过，CSV保留原数值追加状态；后台Diagnosis/Alerts识别完整性与PSI有效性，旧报表显示未知。226目录旧223/8族保持；71后端/7类（首68+最终Diagnosis25替代22）、57FE、24compile/守卫/hygiene过，见EC06C1_DESIGN/RESULT。B已ff/push70c1d0e9。c2巡检页面尚未修改，随后完成可见展示和浏览器；EC06其余四Job及EC07/08继续。
-
-EC06c2 DONE/PASS（本地）：巡检页面三项显式状态和有效数值联合判断，缺数据/失败/未知与旧报表不假绿，安全目录提示、有效图表/明细/文件切换保留；修复实际截图发现的图表零宽与窄屏溢出。71前端/3文件、2 Chromium、build、5文件格式/ESLint、目录/SQL/hygiene通过，3张截图已查看。见EC06C2_DESIGN/RESULT；无后端/SQL/依赖修改。C1已ff/push b1ecff9b，CI四门成功/build运行。父EC06余Ocpc/Multimodal/Bandit/FTRL及EC07/08继续。
-
-EC06d DONE/PASS（本地）：oCPC缺失/损坏/依赖故障区分，缺λ安全降级、坏值/参数/非有限计算受控失败，部分更新准确提示；原合法保持/聚合/权重/ID/clamp保持。230目录，45后端/5类、57FE、24compile/守卫/hygiene通过，见EC06D_DESIGN/RESULT。c2已ff/push6f5c1b8f，CI38820005105运行；剩Multimodal/Bandit/FTRL及EC07/08。
-
-EC06e DONE/PASS（本地）：多模态部分更新/unsupported/非法向量/影响行数如实报告；原融合/limit/事务保持。233目录，33后端/4类、57FE、24compile/守卫/hygiene通过；已提取常量PROGRESS_INTERVAL的advisory判误报。见EC06E_DESIGN/RESULT。D已ff/push7a492716；父EC06剩Bandit/FTRL和EC07/08继续。
-
-EC06f及父EC06 DONE/PASS（本地）：Bandit/FTRL安全读取/回退/发布与有限模型校验，正常完整模型保持；原9Job全部验收。241目录；58专项/8类、完整offline及依赖497/84类0失败错误1原CI探针skip（真实集成执行）、全前端182、24compile/守卫/hygiene通过。见EC06F_RESULT与EC06_RESULT，7源指纹119733371340214816b71ad9a79f0398fd7fb1c7f2decfde32b4f9cf731a73ed。E已ff/pushaaa3b01a；EC07/08及最终SHA CI五门继续。
-
-EC07b+c及父EC07 DONE/PASS（本地）：256目录/8族，剩余前端错误、实验200拒绝与坏ACK、真实50/50默认修复、认证/取消、9浏览器失败恢复与截图、接口CLI文档和CI守卫完成。202前端/31文件、最终13认证、6真实Redis后端、24compile/build、Python10+6、606Java90XML45SQL全部过，见EC07B_RESULT/EC07C_RESULT/EC07_RESULT。43源指纹a5faabcfc8af49487446c499faf081ebf7df79a5be80dd69bd0901f815cda849；手工hygiene无阻断，Javaformatter/独立静态分析未配置，原runner本轮不可发现如实记录。基线a434bafa CI38822642306五门SUCCESS；EC08全仓verify正在运行，其余最终门禁继续，整体IN_PROGRESS。
+用户已追加授权部署到现有本机Docker：只在最终提交CI通过后构建启动并独立核验健康/API/页面，保留原配置及数据，不部署生产。正常revert只回退代码，不撤销既有业务写入。
