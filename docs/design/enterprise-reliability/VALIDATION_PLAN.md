@@ -106,8 +106,12 @@ C1最终验证采用增量证据：完整behavior-reliability先运行73项（en
 
 ## C16 设计与真实物理分片验收
 
-[C16_DESIGN §11](C16_DESIGN.md#11-真实验收矩阵当前全部-unverified)定义C16-01～20。当前全为UNVERIFIED；本轮仅D16-01～09分离只读设计审查。两个独占PG实例使用实际ShardingSphere规则，刻意使advertiserId/adId模数不同；真实Controller/Mapper/PG事务/原事件Kafka及独立JVM退出，不能用同schema、Mock或sink替代。
+[C16_DESIGN §11](C16_DESIGN.md#11-真实验收矩阵当前全部-unverified)定义C16-01～20。原设计回合仅完成D16-01～09；S16A当前产品验证见[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)，C16-13～15保留给B。两个独占PG实例使用实际ShardingSphere规则，刻意使advertiserId/adId模数不同；真实Controller/Mapper/PG事务/原事件Kafka及独立JVM退出，不能用同schema、Mock或sink替代。
 
 必须证明业务/本库Outbox同txid，另一库停止时已提交步骤/原字节可查，有限预算和本地fence跨进程生效；冻结快照与多页暂停/低ID创建竞争、不同初始化命令副作用前排他均需反例。S16只生产，S17版本化Inbox/墓碑/Redis消费效果继续单独验收；注入、真实停机、端点变化与未测网络故障分别记录。
 
-S15有效83项/14类、22源码指纹和原提交blob已在round-301afed4复核，11保护/37旧迁移及fixture保持；本轮无产品变化不重跑。前置S15精确686454dc CI独立跟踪，不以本地设计通过代替其终态。
+S15有效83项/14类、22源码指纹和原提交blob已在round-301afed4复核，11保护/37旧迁移及fixture保持；S15源码未变未重跑。前置S15精确686454dc CI38964531069已completed/success，8/8成功；当前目录验证不能替代后续B或S17。
+
+目录完整相关门禁：`mvn -B -pl recsys-advertiser,recsys-offline -am test -Dtest=Catalog*Test,SeedAdsPostgresTest,AdvertiserRepositoryPostgresTest,CreativeReviewTest,AdvertiserAuthzTest -Dsurefire.failIfNoSpecifiedTests=false`。包含真实双PG/ShardingSphere/Kafka/Redis、独立产品JVM/HTTP与实际停机。细粒度authz另用`scripts/test-catalog-authz.py`和显式固定auth-platform JAR/schema及SpiceDB镜像执行；不使用共享权限服务。前端仅生成错误枚举，无可见UI变化，视觉验收N/A。
+
+S16A最终必要本地结果见[ER-S16A_RESULT](ER-S16A_RESULT.md)：完整114项/14类PASS；父澄清纠偏后另26项定向PASS与其余指纹未变证据复用，另真实authz开户恢复专项PASS。CI新增catalog门禁20分钟，仅本地真实完整运行用时9:29；远程新提交运行仍以精确run终态为准。

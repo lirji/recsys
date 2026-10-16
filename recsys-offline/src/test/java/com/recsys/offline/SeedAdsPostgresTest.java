@@ -41,6 +41,8 @@ class SeedAdsPostgresTest {
             DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"));
     @Container static final PostgreSQLContainer<?> ONE = new PostgreSQLContainer<>("postgres:16-alpine");
     @Container static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
+    static final List<String> GOVERNANCE_TABLES=List.of("advertiser_catalog_schema_history","catalog_shard_control",
+            "catalog_advertiser_guard","catalog_identity","catalog_aggregate","catalog_command","catalog_step","catalog_outbox","catalog_task_item");
     static JdbcTemplate zero, one, primary, adDb, derived;
     static DataSource sharded;
     static LettuceConnectionFactory redisFactory;
@@ -56,6 +58,14 @@ class SeedAdsPostgresTest {
             create(db, "ad", "ad_id BIGINT PRIMARY KEY,advertiser_id BIGINT,item_id BIGINT,title TEXT,landing_url TEXT,quality_score DOUBLE PRECISION,status TEXT,optimization_type TEXT,target_cpa DOUBLE PRECISION");
             create(db, "bidword", "id BIGINT PRIMARY KEY,ad_id BIGINT,keyword TEXT,match_type TEXT,bid DOUBLE PRECISION,bid_mode TEXT");
             create(db, "ad_creative", "creative_id BIGINT PRIMARY KEY,ad_id BIGINT,title TEXT,landing_url TEXT,status TEXT");
+            create(db,"catalog_shard_control","shard_id smallint PRIMARY KEY,mode text,source_id uuid,topology_version text,initializing_command_id uuid,initialization_ready boolean,stop_reason text,cluster_id text,topic_id text,topic_name text,writer_manifest jsonb DEFAULT '{}'");
+            create(db,"advertiser_catalog_schema_history","shard_id smallint,version integer,script_sha256 text");
+            int shard=db==zero?0:1;
+            db.update("INSERT INTO catalog_shard_control(shard_id,mode,initialization_ready) VALUES(?,'LEGACY',false)",shard);
+            // 这些表仅验证安装存在性；业务和Redis仍由真实原SeedAdsJob完整执行。
+            for(String table:GOVERNANCE_TABLES.subList(2,GOVERNANCE_TABLES.size()))create(db,table,"fixture_marker bigint");
+            db.update("INSERT INTO advertiser_catalog_schema_history VALUES(?,1,?)",shard,"0".repeat(64));
+
         }
         zero.execute("CREATE EXTENSION vector; CREATE SCHEMA offline_main; CREATE SCHEMA offline_ad; CREATE SCHEMA offline_derived");
         primary = schema("offline_main"); adDb = schema("offline_ad"); derived = schema("offline_derived");
@@ -79,6 +89,7 @@ class SeedAdsPostgresTest {
         context.getBeanFactory().registerSingleton("derivedDbDataSource", derived.getDataSource());
         context.getBeanFactory().registerSingleton("adShardingDataSource", sharded);
         context.getBeanFactory().registerSingleton("stringRedisTemplate", redis);
+        context.getBeanFactory().registerSingleton("catalogSeedAdmission", new com.recsys.offline.persistence.CatalogSeedAdmission(ds0,ds1));
         context.register(OfflineAdShardingConfig.class.getAnnotation(Import.class).value());
         context.register(SeedAdsJob.class);
         context.refresh();
@@ -92,14 +103,106 @@ class SeedAdsPostgresTest {
     }
 
     @BeforeEach void reset() {
-        for (var db : List.of(zero, one)) db.execute("TRUNCATE advertiser,ad,bidword,ad_creative");
+        for (var db : List.of(zero, one)) { db.execute("TRUNCATE advertiser,ad,bidword,ad_creative");db.update("UPDATE catalog_shard_control SET mode='LEGACY',source_id=NULL,topology_version=NULL,initializing_command_id=NULL,initialization_ready=false,stop_reason=NULL,cluster_id=NULL,topic_id=NULL,topic_name=NULL,writer_manifest='{}'::jsonb"); }
         primary.execute("TRUNCATE item,item_local"); adDb.execute("TRUNCATE ad_embedding,ad_event"); derived.execute("TRUNCATE item_embedding");
         try (var connection = redisFactory.getConnection()) { connection.serverCommands().flushDb(); }
         primary.execute("INSERT INTO item VALUES(10,'Space movie (1995)','Drama'),(20,'Action movie','Action'),(30,NULL,NULL),(40,'Forest adventure','Comedy'); INSERT INTO item_local VALUES(1000,'Replica story','Replica')");
         derived.execute("INSERT INTO item_embedding VALUES(10,'[1,0,0]','first'),(20,'[0,1,0]','second')");
     }
 
-    @Test void physicalRoutingSnowflakeVectorsRedisAndClearRebuildRemainExact() {
+    @Test void reliableSecondPhysicalShardBlocksBeforeEveryClearSideEffect() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        var before=ads();var beforeIndex=invertedIndex();
+        adDb.execute("INSERT INTO ad_event VALUES(999)");
+        one.update("UPDATE catalog_shard_control SET mode='ACTIVE'");
+        var failure=assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--clear","--ads=2","--advertisers=2")));
+        assertEquals(ErrorCode.CATALOG_NOT_READY,failure.errorCode());assertEquals(before,ads());assertEquals(beforeIndex,invertedIndex());
+        assertEquals(1,adDb.queryForObject("SELECT count(*) FROM ad_event WHERE id=999",Integer.class));
+    }
+
+    @Test void missingPhysicalControlIsUnknownAndDoesNotEraseExistingData() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));var before=ads();var beforeIndex=invertedIndex();
+        one.execute("ALTER TABLE catalog_shard_control RENAME TO catalog_probe_absent");
+        try {
+            var failure=assertThrows(PublicErrorException.class,()->job.run(new DefaultApplicationArguments("--clear")));
+            assertEquals(ErrorCode.CATALOG_NOT_READY,failure.errorCode());assertEquals(before,ads());assertEquals(beforeIndex,invertedIndex());
+        } finally {one.execute("ALTER TABLE catalog_probe_absent RENAME TO catalog_shard_control");}
+    }
+
+    @Test void noNewMigrationsOnBothPhysicalPgPreservesOriginalSeedClearVectorsAndRedis() {
+        withGovernanceAbsent(()->assertOriginalSeedRebuild());
+    }
+
+    @Test void installedButMissingControlRowRefusesBeforeAnyEffect() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        one.update("DELETE FROM catalog_shard_control");
+        try {assertAdmissionRefused(job);}finally{one.update("INSERT INTO catalog_shard_control(shard_id,mode,initialization_ready) VALUES(1,'LEGACY',false)");}
+    }
+
+    @Test void installedMultipleWrongIdentityAndHalfRegisteredControlRefuseBeforeAnyEffect() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        for(String change:List.of("UPDATE catalog_shard_control SET shard_id=0",
+                "INSERT INTO catalog_shard_control(shard_id,mode,initialization_ready) VALUES(0,'LEGACY',false)",
+                "UPDATE catalog_shard_control SET mode='QUIESCED'", "UPDATE catalog_shard_control SET source_id='00000000-0000-0000-0000-000000000001'",
+                "UPDATE catalog_shard_control SET cluster_id='partly-bound'", "UPDATE catalog_shard_control SET topic_id='partly-bound'",
+                "UPDATE catalog_shard_control SET writer_manifest='{\"writer\":1}'::jsonb", "UPDATE catalog_shard_control SET initialization_ready=true")) {
+            one.execute(change);
+            try {assertAdmissionRefused(job);}finally{one.update("DELETE FROM catalog_shard_control");one.update("INSERT INTO catalog_shard_control(shard_id,mode,initialization_ready) VALUES(1,'LEGACY',false)");}
+        }
+    }
+
+    @Test void unreachableSecondPgRefusesBeforeClearOrRedis() throws Exception {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        int port;try(var socket=new java.net.ServerSocket(0,1,java.net.InetAddress.getLoopbackAddress())){port=socket.getLocalPort();}
+        var env=new org.springframework.mock.env.MockEnvironment().withProperty("PG_JDBC_URL",ZERO.getJdbcUrl())
+                .withProperty("PG_DS1_JDBC_URL","jdbc:postgresql://127.0.0.1:"+port+"/missing")
+                .withProperty("PG_USER",ZERO.getUsername()).withProperty("PG_PASSWORD",ZERO.getPassword());
+        var denied=withAdmission(new com.recsys.offline.persistence.CatalogSeedAdmission(env));
+        long start=System.nanoTime();assertAdmissionRefused(denied);
+        assertTrue(java.time.Duration.ofNanos(System.nanoTime()-start).compareTo(java.time.Duration.ofSeconds(6))<0);
+    }
+
+    @Test void twoUrlAliasesOfSameUnmigratedDatabaseRefuseBeforeAnyEffect() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        var alias=new DriverManagerDataSource(ZERO.getJdbcUrl().replace("localhost","127.0.0.1"),ZERO.getUsername(),ZERO.getPassword());
+        var denied=withAdmission(new com.recsys.offline.persistence.CatalogSeedAdmission(zero.getDataSource(),alias));
+        withGovernanceAbsent(()->assertAdmissionRefused(denied));
+    }
+
+    @Test void ordinaryRoleCanProveAbsentButCannotTreatDeniedControlReadAsAbsent() {
+        job.run(new DefaultApplicationArguments("--ads=2","--advertisers=2"));
+        for(var db:List.of(zero,one))db.execute("CREATE ROLE catalog_probe_reader LOGIN PASSWORD 'isolated-test-only'");
+        var source0=new DriverManagerDataSource(ZERO.getJdbcUrl(),"catalog_probe_reader","isolated-test-only");
+        var source1=new DriverManagerDataSource(ONE.getJdbcUrl(),"catalog_probe_reader","isolated-test-only");
+        var reader=new com.recsys.offline.persistence.CatalogSeedAdmission(source0,source1);
+        try {
+            withGovernanceAbsent(reader::requireLegacy);
+            assertAdmissionRefused(withAdmission(reader));
+        } finally {for(var db:List.of(zero,one))db.execute("DROP ROLE catalog_probe_reader");}
+    }
+
+    private void withGovernanceAbsent(Runnable operation) {
+        for(var db:List.of(zero,one))for(String table:GOVERNANCE_TABLES)db.execute("ALTER TABLE "+table+" RENAME TO absent_"+table);
+        try {operation.run();}finally{for(var db:List.of(zero,one))for(String table:GOVERNANCE_TABLES)db.execute("ALTER TABLE absent_"+table+" RENAME TO "+table);}
+    }
+
+    private SeedAdsJob withAdmission(com.recsys.offline.persistence.CatalogSeedAdmission admission) {
+        return new SeedAdsJob(context.getBean(SeedItemMapper.class),context.getBean(SeedAdVectorMapper.class),
+                context.getBean(SeedItemVectorMapper.class),context.getBean(SeedAdMapper.class),redis,admission);
+    }
+
+    private void assertAdmissionRefused(SeedAdsJob candidate) {
+        var before=ads();var beforeIndex=invertedIndex();var beforeVectors=adDb.queryForList("SELECT ad_id,embedding::text,model FROM ad_embedding ORDER BY ad_id");
+        adDb.update("INSERT INTO ad_event VALUES(999) ON CONFLICT DO NOTHING");
+        var failure=assertThrows(PublicErrorException.class,()->candidate.run(new DefaultApplicationArguments("--clear","--ads=2","--advertisers=2")));
+        assertEquals(ErrorCode.CATALOG_NOT_READY,failure.errorCode());assertEquals(before,ads());assertEquals(beforeIndex,invertedIndex());
+        assertEquals(beforeVectors,adDb.queryForList("SELECT ad_id,embedding::text,model FROM ad_embedding ORDER BY ad_id"));
+        assertEquals(1,adDb.queryForObject("SELECT count(*) FROM ad_event WHERE id=999",Integer.class));
+    }
+
+    @Test void physicalRoutingSnowflakeVectorsRedisAndClearRebuildRemainExact() {assertOriginalSeedRebuild();}
+
+    private void assertOriginalSeedRebuild() {
         adDb.execute("INSERT INTO ad_event VALUES(999); INSERT INTO ad_embedding VALUES(999,'[0,0,1]','obsolete')");
         redis.opsForZSet().add(RedisKeys.bidwordInv("obsolete"), "obsolete", 1);
         redis.opsForValue().set("unrelated:key", "keep");
@@ -233,7 +336,7 @@ class SeedAdsPostgresTest {
         var factory=new LettuceConnectionFactory(config);factory.afterPropertiesSet();factory.start();
         try {
             var restricted=new SeedAdsJob(context.getBean(SeedItemMapper.class), context.getBean(SeedAdVectorMapper.class),
-                    context.getBean(SeedItemVectorMapper.class), context.getBean(SeedAdMapper.class), new StringRedisTemplate(factory));
+                    context.getBean(SeedItemVectorMapper.class), context.getBean(SeedAdMapper.class), new StringRedisTemplate(factory), context.getBean(com.recsys.offline.persistence.CatalogSeedAdmission.class));
             var error=assertThrows(PublicErrorException.class, () -> restricted.run(new DefaultApplicationArguments("--clear", "--ads=2", "--advertisers=2")));
             assertEquals(ErrorCode.JOB_SEED_CLEAR_FAILED, error.errorCode());
             assertTrue(ads().isEmpty());assertEquals(oldIndex, invertedIndex());

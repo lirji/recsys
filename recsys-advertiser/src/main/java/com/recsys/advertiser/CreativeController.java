@@ -1,5 +1,9 @@
 package com.recsys.advertiser;
 
+import com.recsys.advertiser.catalog.CatalogWriteRouter;
+import com.recsys.advertiser.catalog.CatalogMutation;
+import com.recsys.advertiser.catalog.CatalogProtocol.Kind;
+
 import com.recsys.advertiser.dto.CreativeUpsert;
 import com.recsys.advertiser.dto.CreativeView;
 import jakarta.validation.Valid;
@@ -25,6 +29,12 @@ import java.util.Map;
 public class CreativeController {
 
     private final AdvertiserService service;
+    private CatalogWriteRouter catalog;
+
+    /** 默认关闭时不装配可靠路由；可靠模式必须经过原Controller鉴权和DTO校验。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setCatalogRouter(CatalogWriteRouter catalog) { this.catalog=catalog; }
+
 
     public CreativeController(AdvertiserService service) {
         this.service = service;
@@ -32,6 +42,7 @@ public class CreativeController {
 
     @PostMapping("/api/advertiser/ad/{adId}/creative")
     public CreativeView add(@PathVariable long adId, @Valid @RequestBody CreativeUpsert req) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.CREATIVE_CREATE,adId,null,null,req,null,null,null,null),null,CreativeView.class);
         return service.addCreative(adId, req);
     }
 
@@ -42,12 +53,14 @@ public class CreativeController {
 
     @PutMapping("/api/advertiser/creative/{id}")
     public CreativeView update(@PathVariable long id, @Valid @RequestBody CreativeUpsert req) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.CREATIVE_UPDATE,id,null,null,req,null,null,null,null),null,CreativeView.class);
         return service.updateCreative(id, req);
     }
 
     @DeleteMapping("/api/advertiser/creative/{id}")
     public ResponseEntity<Map<String, Object>> delete(@PathVariable long id) {
-        service.deleteCreative(id);
+        if(catalog!=null)catalog.execute(new CatalogMutation(Kind.CREATIVE_DELETE,id,null,null,null,null,null,null,null),null,Object.class);
+        else service.deleteCreative(id);
         return ResponseEntity.ok(Map.of("ok", true, "creativeId", id));
     }
 }

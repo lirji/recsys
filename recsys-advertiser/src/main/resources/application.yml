@@ -29,7 +29,7 @@ spring:
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
     # placeholder-type=environment:让 sharding.yaml 里的 $${PG_HOST::}/$${PG_PORT::} 等从环境变量解析
     # (ShardingSphere 5.5 默认 placeholder-type=none 不替换 → 端口为空 NumberFormatException)。
-    url: jdbc:shardingsphere:classpath:sharding.yaml?placeholder-type=environment
+    url: jdbc:shardingsphere:classpath:${ADVERTISER_SHARDING_RESOURCE:sharding.yaml}?placeholder-type=environment
   data:
     # 同步竞价词倒排(bidword:inv:{keyword})+ 报表读当日已耗预算(ad:budget:{adv}:{day})
     redis:
@@ -69,6 +69,16 @@ recsys:
     catalog:
       # 是否发布广告目录事件(P1b)。默认关:与 bidword:inv 同步维护并行的双写过渡,开了才发 Kafka。
       publish-events: ${AD_CATALOG_PUBLISH:false}
+      reliability:
+        enabled: ${AD_CATALOG_RELIABLE:false}
+        admission-enabled: ${AD_CATALOG_ADMISSION:false}
+        worker-enabled: ${AD_CATALOG_WORKER:false}
+        relay-enabled: ${AD_CATALOG_RELAY:false}
+        recovery-enabled: ${AD_CATALOG_RECOVERY:false}
+        source-id: ${AD_CATALOG_SOURCE_ID:}
+        writer-name: ${AD_CATALOG_WRITER_NAME:}
+        writer-id: ${CATALOG_WRITER_ID:}
+
     # #3 ad-serving 物理拆库:报表 ad_event 聚合来源。db(默认,直读 ad_event,回滚落点)| grpc(调 ad-serving GetAdEventStats)。
     report:
       source: ${AD_REPORT_SOURCE:db}

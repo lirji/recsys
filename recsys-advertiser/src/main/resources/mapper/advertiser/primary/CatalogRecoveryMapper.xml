@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogRecoveryMapper">
+  <select id="receipt" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogRecoveryMapper$Receipt">SELECT payload_bytes FROM catalog_outbox WHERE shard_id=#{shard} AND outbox_id=#{id} AND purpose='COORDINATOR' AND record_kind='FRAGMENT'</select>
+  <update id="retryStep">UPDATE catalog_step SET state='READY',round=round+1,attempts=0,fence=fence+1,lease_until=NULL,
+    available_at=clock_timestamp(),updated_at=clock_timestamp() WHERE shard_id=#{shard} AND step_key=#{step}
+      AND state='PAUSED' AND round=#{round} AND fence=#{fence} AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+  <update id="pauseExpiredCommand">UPDATE catalog_command SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',lease_until=NULL,updated_at=clock_timestamp()
+    WHERE shard_id=#{key.shard} AND source_id=#{key.source} AND scope_kind=#{key.scopeKind} AND scope_id=#{key.scopeId} AND command_id=#{key.command}
+      AND state='RUNNING' AND round=#{round} AND fence=#{fence} AND attempts=3 AND lease_until&lt;=clock_timestamp()</update>
+  <update id="pauseExpiredStep">UPDATE catalog_step SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',lease_until=NULL,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND step_key=#{step} AND state='RUNNING' AND round=#{round} AND fence=#{fence}
+      AND attempts=3 AND lease_until&lt;=clock_timestamp()</update>
+  <update id="retryCommand">UPDATE catalog_command SET state='ADMITTED',round=round+1,attempts=0,fence=fence+1,lease_until=NULL,
+    available_at=clock_timestamp(),updated_at=clock_timestamp() WHERE shard_id=#{key.shard} AND source_id=#{key.source}
+      AND scope_kind=#{key.scopeKind} AND scope_id=#{key.scopeId} AND command_id=#{key.command}
+      AND state='PAUSED' AND round=#{round} AND fence=#{fence} AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+  <update id="confirmReplay">UPDATE catalog_outbox SET state='PUBLISHED',broker_partition=#{partition},broker_offset=#{offset},published_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND outbox_id=#{id} AND purpose='KAFKA' AND state='PAUSED' AND fence=#{fence} AND lease_until IS NULL</update>
+  <update id="finishKnownReplay">UPDATE catalog_command SET state='COMPLETED',phase='COMPLETED',result_bytes=#{result},lease_until=NULL,error_type=NULL,updated_at=clock_timestamp()
+    WHERE shard_id=#{key.shard} AND source_id=#{key.source} AND scope_kind=#{key.scopeKind} AND scope_id=#{key.scopeId} AND command_id=#{key.command}
+      AND kind='REPLAY_EVENT' AND phase='SEND' AND state IN ('RUNNING','PAUSED','ADMITTED') AND fence=#{fence}</update>
+</mapper>

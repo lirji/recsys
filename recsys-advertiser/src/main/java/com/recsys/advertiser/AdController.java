@@ -1,5 +1,9 @@
 package com.recsys.advertiser;
 
+import com.recsys.advertiser.catalog.CatalogWriteRouter;
+import com.recsys.advertiser.catalog.CatalogMutation;
+import com.recsys.advertiser.catalog.CatalogProtocol.Kind;
+
 import com.recsys.advertiser.dto.AdUpsert;
 import com.recsys.advertiser.dto.AdView;
 import jakarta.validation.Valid;
@@ -28,6 +32,12 @@ import java.util.Map;
 public class AdController {
 
     private final AdvertiserService service;
+    private CatalogWriteRouter catalog;
+
+    /** 默认关闭时不装配可靠路由；可靠模式必须经过原Controller鉴权和DTO校验。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setCatalogRouter(CatalogWriteRouter catalog) { this.catalog=catalog; }
+
 
     public AdController(AdvertiserService service) {
         this.service = service;
@@ -35,6 +45,7 @@ public class AdController {
 
     @PostMapping("/api/advertiser/{advertiserId}/ad")
     public AdView create(@PathVariable long advertiserId, @Valid @RequestBody AdUpsert req) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.AD_CREATE,advertiserId,req,null,null,null,null,null,null),advertiserId,AdView.class);
         return service.createAd(advertiserId, req);
     }
 
@@ -50,12 +61,14 @@ public class AdController {
 
     @PutMapping("/api/advertiser/ad/{adId}")
     public AdView update(@PathVariable long adId, @Valid @RequestBody AdUpsert req) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.AD_UPDATE,adId,req,null,null,null,null,null,null),null,AdView.class);
         return service.updateAd(adId, req);
     }
 
     /** 上/下线广告:?status=active|paused。 */
     @PutMapping("/api/advertiser/ad/{adId}/status")
     public AdView setStatus(@PathVariable long adId, @RequestParam String status) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.AD_STATUS,adId,null,null,null,null,status,null,null),null,AdView.class);
         return service.setAdStatus(adId, status);
     }
 
@@ -63,18 +76,21 @@ public class AdController {
     @PostMapping("/api/advertiser/ad/{adId}/review")
     public AdView review(@PathVariable long adId, @RequestParam String decision,
                          @RequestParam(required = false) String reason) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.AD_REVIEW,adId,null,null,null,null,null,decision,reason),null,AdView.class);
         return service.reviewAd(adId, decision, reason);
     }
 
     /** 重新送审(A2):改动创意后重跑机审 → pending/rejected。 */
     @PostMapping("/api/advertiser/ad/{adId}/submit-review")
     public AdView submitReview(@PathVariable long adId) {
+        if(catalog!=null)return catalog.execute(new CatalogMutation(Kind.AD_SUBMIT_REVIEW,adId,null,null,null,null,null,null,null),null,AdView.class);
         return service.submitForReview(adId);
     }
 
     @DeleteMapping("/api/advertiser/ad/{adId}")
     public ResponseEntity<Map<String, Object>> delete(@PathVariable long adId) {
-        service.deleteAd(adId);
+        if(catalog!=null)catalog.execute(new CatalogMutation(Kind.AD_DELETE,adId,null,null,null,null,null,null,null),null,Object.class);
+        else service.deleteAd(adId);
         return ResponseEntity.ok(Map.of("ok", true, "adId", adId));
     }
 }

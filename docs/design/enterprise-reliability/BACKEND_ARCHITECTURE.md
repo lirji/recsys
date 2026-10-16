@@ -153,10 +153,12 @@ C1实际边界为filter/seen领域包、primary SeenRecoveryMapper/XML和db/engi
 
 C2每流独立SeenListenerControl、SeenOffsetInitializer与SeenRecoveryService；共享factory和有界停止executor按真实group映射流，禁止LEGACY硬编码污染新流。SQL隔离查询与指标按stream过滤，恢复命令先核对归属再领取预算。Replica只读实际Redis集合，缺集合/故障沿既有空结果语义，不把空结果或lag=0宣称历史已完备。engine-seen V001、behavior owner、Flink产品及POM保持；跨模块真实验收放behavior测试方向，无环。
 
-## C16 架构增量（正式设计，产品未实现）
+## C16 架构增量（S16A已接通，B后续）
 
 [C16_DESIGN](C16_DESIGN.md)保留advertiser目录owner与现有物理拓扑：primary/同一个ShardingSphere连接不证明同库原子。每个短事务携带明确路由键，治理表显式shard_id分片；新guard/延迟约束在发生业务变更的PG核验同事务step/Outbox。跨库编排不套外层事务，使用一个advertiser一个持久占有命令、各物理step自己的lease/fence/原结果；过期只接管同命令，部分效果保留可查。
 
 children本库事实→owner核验冻结片段→完整版本事件，只有最后一条owner事件不能代替孩子库的原子事实。广告主状态fanout封闭成员集合、逐页持久化；跨两个owner的批次逐目标报告，不承诺全局同时暂停。旧seed-ads有adDb/Redis副作用，须在第一次副作用前检查准入并在切换窗口排除旧进程。
 
 默认关闭的reliable模式与旧publish互斥；S17读模型/版本化Redis完成之前只验收隔离生产者，不启用共享在线切换。派生向量UNKNOWN与DELETE分离；完整快照的承诺仅覆盖权威目录。A单广告恢复闭环、B暂停续办两条纵向片，详见唯一[实施状态](IMPLEMENTATION_SLICES.md)，不新建服务/公共Outbox/全局事务设施。
+
+S16A实际代码位于advertiser/catalog、primary Catalog*Mapper/XML和显式migration Mapper/XML；ad-common承载事件与可靠路由，offline只增加物理双库准入探针。原Controller/校验/权限政策复用，跨库协调不引入外层事务。PG原生路由函数封装ShardingSphere不支持的ON CONFLICT/SKIP LOCKED语句，所有调用仍在审查过的Mapper XML内；native UUID/JSONB处理器避免驱动类型漂移。初始化BASE_SEND与审计REPLAY_ACK均复用真实publisher；内部恢复专用装配不开放公网运维接口。实际边界和独占验证入口见[目录手册](CATALOG_EVENTS_RUNBOOK.md)与[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)。

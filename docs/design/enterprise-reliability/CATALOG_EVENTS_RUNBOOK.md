@@ -1,6 +1,6 @@
 # 目录可靠事件运行边界
 
-当前是[C16正式设计](C16_DESIGN.md)，实现、命令API和运行验收均未完成；以下是实施准则，不是已部署操作命令。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。本回合不执行共享迁移、开关切换、清库、重放或部署。
+依据[C16正式设计](C16_DESIGN.md)的S16A产品路径已实现，当前完整验证和交付仍在进行；以下描述代码入口与处置边界，不代表共享环境已部署或启用。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。本回合不执行共享迁移、开关切换、清库、重放或部署。
 
 ## 数据与开关
 
@@ -8,19 +8,32 @@ advertiser目录归原写侧owner；advertiser/ad按advertiser_id分库，词/�
 
 默认`sharding.yaml`不改；`ADVERTISER_SHARDING_RESOURCE`默认仍指向它。启用可靠能力需显式选择新增`sharding-catalog-reliable.yaml`并先安装两库迁移；两个资源的业务路由/连接模板必须通过结构对比，不能为了新表让无迁移的default-off旧环境无法启动。
 
-拟新增reliability的enabled、admission-enabled、worker-enabled、relay-enabled、recovery-enabled全部false。已有publish-events默认false；新enabled与旧publish互斥。停止admission只停止新命令，在途step、命令、Outbox和查询仍有独立恢复路径。S16A的status fanout尚未实现时拒绝该可靠入口，S16B接通后才撤除拒绝。
+reliability的enabled、admission-enabled、worker-enabled、relay-enabled、recovery-enabled全部默认false。已有publish-events默认false；新enabled与旧publish互斥。停止admission只停止新命令，在途step、命令、Outbox和查询仍有独立恢复路径。S16A的status fanout尚未实现时拒绝该可靠入口，S16B接通后才撤除拒绝。
 
 S16是生产者恢复能力。S17版本化Inbox/墓碑/Redis刷新及读模型切换验收完成之前，不能因S16发出了Kafka消息就启用共享reliable写或宣称暂停已在所有在线缓存生效。legacy默认行为保持；新模式不再向旧topic/Redis尽力双写。
 
+| 配置 | 作用 |
+|---|---|
+| `ADVERTISER_SHARDING_RESOURCE=sharding-catalog-reliable.yaml` | 可靠装配必需；默认仍为旧资源 |
+| `AD_CATALOG_RELIABLE` | 装配可靠协议；默认false |
+| `AD_CATALOG_ADMISSION` | 接受新业务命令；默认false，关闭仍可同ID续办 |
+| `AD_CATALOG_WORKER` / `AD_CATALOG_RELAY` | 两个固定串行槽推进原命令/发送事件，分别默认false |
+| `AD_CATALOG_RECOVERY` | 装配内部初始化、审计恢复、全shard重验；默认false |
+| `AD_CATALOG_SOURCE_ID` / `AD_CATALOG_WRITER_NAME` / `CATALOG_WRITER_ID` | 固定源UUID和登记实例/0～1023唯一Snowflake ID；启用时必须显式提供 |
+
+`CatalogSchemaInstaller.install(physicalDataSource, shardId)`只接受真实物理PG，逐库安装同一追加V001资源；不是Bean，不在启动时自动迁移。安装与校验使用同一资源SHA256，原已发布迁移不改写。可靠profile关闭sql-show，可靠Mapper日志禁用；物理路由/txid证据从隔离测试采集，不打开产品SQL参数日志。
+
 ## 初始化与兼容准入
 
-仅owner在明确获授权的隔离目标调用设计中的INITIALIZE。记录sourceId、真实数据库身份、拓扑、两份schema checksum、topic、writer/worker-id清单、可信actor/reason和稳定commandId；不记录口令。源数据/关系/归属/数组大小/原主键合法性由真实只读核验决定，失败不得自动搬数据或删除“坏行”。
+仅owner在明确获授权的隔离目标调用内部`CatalogInitializationService.initialize/advance`。记录sourceId、真实数据库身份、拓扑、两份schema checksum、topic、writer/worker-id清单、可信actor/reason和稳定commandId；不记录口令。源数据/关系/归属/数组大小/原主键合法性由真实只读核验决定，失败不得自动搬数据或删除“坏行”。
 
 恢复专用装配允许enabled/recovery-enabled开启而admission/worker/relay关闭；迁移/profile必须正确，未登记/未完成control可以只进入INITIALIZE和查询，不能偷开普通写。topic预先在获授权环境创建，初始化只读核对clusterId/topicId，换同名topic不能静默采用。
 
-初始化先持久占有固定home的control，再改变其他shard；不同command不得同时操作。两库逐一QUIESCED，guard与旧事务control锁互斥；部分成功保留原步骤，不回退LEGACY重试。关闭writer后冻结成员清单、读真实parent/children基线、持久v1原字节；两库同源/同协议、全部目标完成并读回后才READY。不能因没有活动成员就省略跨command持久所有权。
+初始化先持久占有固定home的control，再改变其他shard；不同command不得同时操作。两库逐一QUIESCED，guard与旧事务control锁互斥；部分成功保留原步骤，不回退LEGACY重试。关闭writer后冻结成员清单、读真实parent/children基线、持久v1原字节；每个BASE_SEND步骤经真实Kafka确认并保存原坐标，两库同源/同协议、全部目标完成并读回后才READY。基线发送失败保留原初始化ID/阶段/预算，不先开放普通写。不能因没有活动成员就省略跨command持久所有权。
 
 准入清单的worker-id唯一性只证明登记配置不重复，不是全局进程探测。须排除未登记旧二进制、重复实例标识、手工SQL和正在运行的seed-ads。seed-ads旧版本可能先清adDb和Redis，目录表guard保护不了那些副作用；新版必须在任何副作用之前检查模式，切换仍需维护窗口排除旧作业。本片不会实际停止共享进程或容器。
+
+新版`seed-ads`必须在任何adDb、目录、Redis副作用之前，使用`PG_JDBC_URL`和`PG_DS1_JDBC_URL`两个真实连接做只读检查。正式C16允许明确未安装全部新治理表的旧库，或合法未登记LEGACY控制行；两库均确认后才能继续。部分治理表、已安装但control缺行/多行、身份错配、半登记、ACTIVE/QUIESCED、网络/权限/查询未知均为CATALOG_NOT_READY，两个地址实际同库也拒绝。此前文档所谓“最新用户覆盖缺表例外”无依据，已撤回；本轮18项真实seed测试已验证该修正：9张治理表全无才为未安装，部分存在拒绝；两只读会话使用事务局部标识与刷新后的PG活动视图识别同库，任一探测未知拒绝。检查不消除旧seed进程与检查后切换竞态，维护窗口仍由owner控制。
 
 基线仅覆盖当前存在且合法的目录。历史已删但无事实的广告、旧投影残留、源/Outbox丢失、完整历史重建需S17或另行owner核验；不能从一次空查询补造删除。
 
@@ -34,12 +47,20 @@ S16是生产者恢复能力。S17版本化Inbox/墓碑/Redis刷新及读模型�
 - 预算耗尽/最后一次领取退出：租约到期清算PAUSED，保留advertiser占有。新受控RETRY_STEP开启审计轮次，历史尝试不清零；无自动无限重试或“重启解锁”。
 - 多个阻断：只解除经核验的目标；shard持久STOPPED须无其他阻断才start，不能恢复一条就全局resume。
 - 迟到执行器：owner fence保护owner结果，本地step fence保护该物理库业务；旧协调者可能完成已获准的同一不可变step，不宣称远程lease瞬间撤销。原receipt和未决占有阻止重复/串到下一命令。
-- REPLAY_EVENT：一条原event/一次有限命令，原key/value/eventId/version发送；即使原PUBLISHED也不改变业务事实或消费位点。Kafka ACK未知可重复，不能把重复当新业务版本。
+- REPLAY_EVENT：一条原event/一次有限命令，原key/value/eventId/version发送；即使原PUBLISHED也不改变业务事实或消费位点。PAUSED原事件实际重发确认后，以原fence同库保存PUBLISHED及REPLAY_ACK事实，保留原发送预算和错误历史；原PUBLISHED的最初坐标不被重放覆盖。重放home完成未知时先查该ACK原文，已知成功不因Kafka此刻不可达而再发，包含末次尝试后的PAUSED清算。Kafka ACK未知可重复，不能把重复当新业务版本。
 - 不一致/缺原文：固定SOURCE_UNAVAILABLE/INCONSISTENT，保留占有/审计，owner处理。没有“删历史/放弃未决/重设版本”的自动修复入口。
+
+已实现的查询：`GET /api/advertiser/{advertiserId}/catalog-commands/{commandId}`和开户`GET /api/advertiser/catalog-commands/{commandId}`，返回`commandId/advertiserId`字符串、`state/phase/hasResult/errorType`及step/event摘要；`limit`为1～100，两个独立cursor携带物理分片。开户查询还要求原actor与当前administrate权限。成功写响应复用冻结DTO，JSON对象字段顺序不是幂等身份；数据库原结果与Kafka原字节不变。
+
+末次RUNNING步骤租约到期且预算已耗尽时，worker按物理库每轮最多10条SKIP LOCKED清算为PAUSED，不释放原占有、不清计次。QUIESCED恢复专用模式没有普通worker时，新的审计RETRY_STEP按原round/fence清算已到期目标后续办；有效租约不抢占。显式缺command/step/event为NOT_FOUND，已有原文摘要损坏为INCONSISTENT。
+
+内部恢复由受信owner调用`CatalogRecoveryService.submit/advance/query`；每次submit带新审计UUID、明确原目标、摘要、预期轮次、actor/reason。`CatalogShardRecheckService`逐页核验停止shard的原事件/receipt，再按原revision条件解除本shardSTOPPED；不解除任何PAUSED广告主持久占有。不存在公网初始化/重放/全局解锁接口。
+
+存活publisher每次发送前有界核验原clusterId/topicId；错配记INCONSISTENT并持久STOPPED当前shard。同名topic重建不能作为恢复方式。Admin核验与Kafka Produce并非跨系统原子操作，环境owner仍须排除未经协调的主题管理操作；不据此承诺基础设施被同时重配时的无损保证。
 
 API/actor与错误码以正式契约为准；这些内部恢复入口不开放匿名公网调用。查询不存在固定NOT_FOUND，不泄露原payload/关键词/权限凭据。
 
-## 广告主状态与部分结果
+## 广告主状态与部分结果（S16B未实现）
 
 暂停先在广告主本库改status并持久fanout任务/事实，持有guard封闭广告集合，再按页冻结目标、逐ad发新版本快照。部分目标已发布而另一库故障时必须保留PAUSED/PARTIAL和逐项目标，不能回报“全部暂停”。相同状态重试不重新采样成员；恢复到active必须是新合法命令，不复活已删、单独paused或拒审广告。
 

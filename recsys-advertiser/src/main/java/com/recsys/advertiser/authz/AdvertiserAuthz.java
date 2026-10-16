@@ -71,6 +71,29 @@ public class AdvertiserAuthz {
         return mode != Mode.DISABLED;
     }
 
+    /** 可靠命令只冻结经过认证的原主体，后台恢复不得使用worker身份替换它。 */
+    public String catalogActor() {
+        String subject=currentSubject();
+        if(subject==null || subject.isBlank() || subject.length()>200)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        return subject;
+    }
+
+    /** 可靠开户事务外使用有界客户端TOUCH同一原ID/主体；未知结果保留命令，不伪称PG已回滚。 */
+    public void onCatalogAdvertiserCreated(long advertiserId,String originalActor,AuthzEngine boundedClient) {
+        if(!enabled())return;
+        if(originalActor==null || originalActor.isBlank() || originalActor.length()>200)throw new IllegalArgumentException("开户原主体无效");
+        ResourceRef adv=ResourceRef.of("advertiser",Long.toString(advertiserId));
+        try {
+            String token=boundedClient.writeRelationships(List.of(
+                    RelationshipUpdate.touch(adv,"platform",SubjectRef.of("platform",PLATFORM_ID)),
+                    RelationshipUpdate.touch(adv,"owner",SubjectRef.user(originalActor)))).token();
+            lastWriteToken.set(token);
+        } catch(RuntimeException error) {
+            // 权限判定策略仍沿原mode；关系效果未知是目录命令的未完成状态，不吞掉后报告开户成功。
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"目录开户关系结果未知，请查询原命令");
+        }
+    }
+
     /** 判当前主体对某广告主作用域的权限(view/edit/manage)。 */
     public void requireAdvertiser(String permission, long advertiserId) {
         decide(permission, ResourceRef.of("advertiser", String.valueOf(advertiserId)));

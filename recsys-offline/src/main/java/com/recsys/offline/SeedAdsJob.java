@@ -47,15 +47,18 @@ public class SeedAdsJob implements OfflineJob {
     private final SeedItemVectorMapper derived;
     private final SeedAdMapper sharded;
     private final StringRedisTemplate redis;
+    private final com.recsys.offline.persistence.CatalogSeedAdmission admission;
 
     /** 四路Mapper复用原逻辑数据源，种子算法和Redis编排保持在作业。 */
     public SeedAdsJob(SeedItemMapper catalog, SeedAdVectorMapper adDb,
-                      SeedItemVectorMapper derived, SeedAdMapper sharded, StringRedisTemplate redis) {
+                      SeedItemVectorMapper derived, SeedAdMapper sharded, StringRedisTemplate redis,
+                      com.recsys.offline.persistence.CatalogSeedAdmission admission) {
         this.catalog = catalog;
         this.adDb = adDb;
         this.derived = derived;
         this.sharded = sharded;
         this.redis = redis;
+        this.admission=admission;
     }
 
     @Override
@@ -74,6 +77,8 @@ public class SeedAdsJob implements OfflineJob {
             throw new PublicErrorException(ErrorCode.JOB_INVALID_ARGUMENT);
         }
         CatalogTable it = ItemQuery.source(args);
+        // --clear也必须先通过两物理库只读准入，不能先删adDb或Redis再被目录guard挡下。
+        admission.requireLegacy();
         if (args.containsOption("clear")) {
             clear();
         }

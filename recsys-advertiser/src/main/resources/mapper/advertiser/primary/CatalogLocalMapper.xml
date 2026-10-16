@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper">
+  <select id="statistics" resultType="string" timeout="1">SELECT catalog_statistics() FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="candidates" resultType="com.recsys.advertiser.catalog.CatalogProtocol$CommandRow" timeout="5">
+    SELECT <include refid="commandColumns"/> FROM catalog_command WHERE shard_id=#{shard} AND source_id=#{source}
+      AND scope_kind IN ('ADVERTISER','ROOT_CREATE') AND state IN ('ADMITTED','RUNNING')
+      AND available_at&lt;=clock_timestamp() AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+      ORDER BY available_at,created_at,command_id LIMIT 10
+  </select>
+  <select id="stepSummaries" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$StepSummary" timeout="5">
+    SELECT shard_id,step_key,step_id,state,round,attempts,error_type FROM catalog_step WHERE shard_id=#{shard}
+      AND source_id=#{key.source} AND command_scope=#{key.scope} AND command_id=#{key.command} AND step_key&gt;#{after}
+      ORDER BY step_key LIMIT #{limit}
+  </select>
+  <select id="eventSummaries" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$EventSummary" timeout="5">
+    SELECT shard_id,outbox_id,aggregate_version,state,round,attempts,broker_partition,broker_offset,error_type FROM catalog_outbox
+    WHERE shard_id=#{shard} AND source_id=#{key.source} AND command_scope=#{key.scope} AND command_id=#{key.command}
+      AND purpose='KAFKA' AND outbox_id&gt;#{after} ORDER BY outbox_id LIMIT #{limit}
+  </select>
+  <select id="binding" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$Binding" timeout="5">
+    SELECT shard_id,source_id,topology_version,cluster_id,topic_id,topic_name,mode,initializing_command_id,initialization_ready,
+      writer_manifest::text AS writer_manifest,stop_reason FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <select id="schemaChecksum" resultType="string" timeout="5">SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE shard_id=#{shard} AND version=1</select>
+  <select id="compatibleSchema" resultType="boolean" timeout="5">SELECT catalog_schema_compatible() FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="insertGuard" resultType="int" flushCache="true" useCache="false">
+    SELECT catalog_insert_guard(#{shard},#{owner},#{home},#{scope},#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler})
+    FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <update id="advanceRootVersion">UPDATE catalog_advertiser_guard SET advertiser_version=advertiser_version+1,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND advertiser_id=#{owner} AND advertiser_version=#{version} AND advertiser_version&lt;9223372036854775807</update>
+  <update id="releaseGuard">UPDATE catalog_advertiser_guard SET active_command_id=NULL,active_command_home=NULL,active_command_scope=NULL,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND advertiser_id=#{owner} AND active_command_id=#{key.command} AND active_command_home=#{key.shard} AND active_command_scope=#{key.scope}</update>
+  <update id="finishCommand">UPDATE catalog_command SET state='COMPLETED',phase='COMPLETED',result_bytes=#{result},lease_until=NULL,error_type=NULL,updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()</update>
+  <update id="bindStepAd">UPDATE catalog_step SET ad_id=#{ad} WHERE shard_id=#{shard} AND step_key=#{stepKey} AND ad_id IS NULL AND state='RUNNING'</update>
+  <update id="rejectUnstarted">UPDATE catalog_command SET state='REJECTED',error_type=#{error},lease_until=NULL,updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND phase='PREPARE' AND frozen_bytes IS NULL AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()</update>
+  <select id="prepareTransaction" resultType="string" flushCache="true" useCache="false">
+    SELECT set_config('lock_timeout',#{lockTimeout},true) || '/' || set_config('statement_timeout',#{statementTimeout},true)
+    FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <select id="control" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$Control">
+    SELECT shard_id, source_id::text AS source_id, mode, topology_version, initialization_ready, stop_reason
+    FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <!-- FROM与真实shard_id同时存在，函数执行在对应PG连接上。 -->
+  <select id="enterStep" resultType="string" flushCache="true" useCache="false">
+    SELECT catalog_enter_step(#{shard},#{stepKey},#{fence}) FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <insert id="reserveIdentity" useGeneratedKeys="true" keyProperty="key.value" keyColumn="entity_id">
+    INSERT INTO catalog_identity(shard_id,source_id,command_id)
+    VALUES(#{shard},#{source,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler},#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler})
+  </insert>
+  <select id="identity" resultType="long">
+    SELECT entity_id FROM catalog_identity WHERE shard_id=#{shard}
+      AND source_id=#{source,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler} AND command_id=#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler}
+  </select>
+  <update id="updateAdTitle">
+    UPDATE ad SET title=#{title} WHERE advertiser_id=#{advertiserId} AND ad_id=#{adId}
+  </update>
+  <insert id="insertFact">
+    INSERT INTO catalog_outbox(shard_id,outbox_id,purpose,record_kind,source_id,command_scope,command_id,
+                               step_id,payload_bytes,payload_sha256)
+    VALUES(#{shard},#{outbox},'COORDINATOR','FRAGMENT',#{source,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler},#{scope},#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler},
+           #{stepId},#{payload},#{sha256})
+  </insert>
+  <update id="completeStep">
+    UPDATE catalog_step SET state='APPLIED',result_bytes=#{result},result_sha256=#{sha256},
+      outbox_id=#{outbox},write_txid=pg_current_xact_id()::text,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND step_key=#{stepKey} AND state='RUNNING' AND fence=#{fence} AND lease_until>clock_timestamp()
+      AND effects=#{effects,typeHandler=com.recsys.persistence.typehandler.JsonbStringTypeHandler}
+      AND write_txid=pg_current_xact_id()::text
+  </update>
+
+  <sql id="commandKey">
+    shard_id=#{key.shard} AND source_id=#{key.source} AND scope_kind=#{key.scopeKind}
+    AND scope_id=#{key.scopeId} AND command_id=#{key.command}
+  </sql>
+  <sql id="commandColumns">
+    shard_id,source_id,scope_kind,scope_id,command_id,kind,request_bytes,request_sha256,actor,reason,
+    advertiser_id,ad_id,state,phase,active_step,round,attempts,fence,lease_until,available_at,frozen_bytes,result_bytes,error_type
+  </sql>
+  <sql id="stepColumns">
+    shard_id,source_id,step_key,owner_shard,command_scope,command_id,step_id,advertiser_id,ad_id,aggregate_version,
+    request_bytes,request_sha256,write_plan::text AS write_plan,state,round,attempts,fence,lease_until,available_at,
+    result_bytes,result_sha256,effects::text AS effects,outbox_id,write_txid,error_type
+  </sql>
+  <select id="lockControl" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$Control">
+    SELECT shard_id,source_id::text AS source_id,mode,topology_version,initialization_ready,stop_reason
+    FROM catalog_shard_control WHERE shard_id=#{shard} FOR SHARE
+  </select>
+  <select id="command" resultType="com.recsys.advertiser.catalog.CatalogProtocol$CommandRow">
+    SELECT <include refid="commandColumns"/> FROM catalog_command WHERE <include refid="commandKey"/>
+  </select>
+  <select id="lockCommand" resultType="com.recsys.advertiser.catalog.CatalogProtocol$CommandRow">
+    SELECT <include refid="commandColumns"/> FROM catalog_command WHERE <include refid="commandKey"/> FOR UPDATE
+  </select>
+  <insert id="insertCommand">
+    INSERT INTO catalog_command(shard_id,source_id,scope_kind,scope_id,command_id,kind,request_bytes,request_sha256,actor,reason,advertiser_id)
+    VALUES(#{submission.key.shard},#{submission.key.source},#{submission.key.scopeKind},#{submission.key.scopeId},#{submission.key.command},
+      #{submission.kind},#{submission.request},#{submission.digest},#{submission.actor},#{submission.reason},#{advertiserId})
+  </insert>
+  <select id="lockGuard" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper$Guard">
+    SELECT shard_id,advertiser_id,advertiser_version,active_command_id,active_command_home,active_command_scope
+    FROM catalog_advertiser_guard WHERE shard_id=#{shard} AND advertiser_id=#{advertiserId} FOR UPDATE
+  </select>
+  <update id="acquireGuard">
+    UPDATE catalog_advertiser_guard SET active_command_id=#{key.command},active_command_home=#{key.shard},
+      active_command_scope=#{key.scope},updated_at=clock_timestamp()
+    WHERE shard_id=#{key.shard} AND advertiser_id=#{advertiserId} AND active_command_id IS NULL
+  </update>
+  <update id="bindIdentity">
+    UPDATE catalog_command SET advertiser_id=#{advertiserId},updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND advertiser_id IS NULL AND scope_kind='ROOT_CREATE'
+  </update>
+  <update id="pauseSpentCommand">
+    UPDATE catalog_command SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',lease_until=NULL,updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND state IN ('ADMITTED','RUNNING') AND attempts=3
+      AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <update id="claimCommand">
+    UPDATE catalog_command SET state='RUNNING',attempts=attempts+1,fence=fence+1,
+      lease_until=clock_timestamp()+interval '30 seconds',active_step=phase,updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND state IN ('ADMITTED','RUNNING') AND attempts&lt;3
+      AND available_at&lt;=clock_timestamp() AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <update id="advanceCommand">
+    UPDATE catalog_command SET state='ADMITTED',phase=#{nextPhase},active_step=#{activeStep},frozen_bytes=#{frozen},
+      attempts=0,lease_until=NULL,available_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()
+  </update>
+  <update id="failCommand">
+    UPDATE catalog_command SET state=CASE WHEN attempts=3 THEN 'PAUSED' ELSE 'ADMITTED' END,
+      error_type=#{error},lease_until=NULL,available_at=clock_timestamp()+catalog_backoff(attempts,command_id::text),updated_at=clock_timestamp()
+    WHERE <include refid="commandKey"/> AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()
+  </update>
+  <insert id="insertStep">
+    INSERT INTO catalog_step(shard_id,source_id,step_key,owner_shard,command_scope,command_id,step_id,
+      advertiser_id,ad_id,aggregate_version,request_bytes,request_sha256,write_plan)
+    VALUES(#{step.shard},#{step.commandKey.source},#{step.stepKey},#{step.commandKey.shard},#{step.commandKey.scope},
+      #{step.commandKey.command},#{step.stepId},#{step.advertiserId},#{step.adId},#{step.aggregateVersion},
+      #{step.request},#{step.digest},#{step.writePlan,typeHandler=com.recsys.persistence.typehandler.JsonbStringTypeHandler})
+  </insert>
+  <select id="step" resultType="com.recsys.advertiser.catalog.CatalogProtocol$StepRow">
+    SELECT <include refid="stepColumns"/> FROM catalog_step WHERE shard_id=#{shard} AND step_key=#{stepKey}
+  </select>
+  <update id="claimStep">
+    UPDATE catalog_step SET state='RUNNING',attempts=attempts+1,fence=fence+1,
+      lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND step_key=#{stepKey} AND state IN ('READY','RUNNING') AND attempts&lt;3
+      AND available_at&lt;=clock_timestamp() AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <update id="pauseSpentStep">
+    UPDATE catalog_step SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',lease_until=NULL,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND step_key=#{stepKey} AND state IN ('READY','RUNNING') AND attempts=3
+      AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <select id="expiredSpentSteps" resultType="string" flushCache="true" useCache="false">
+    SELECT catalog_lock_expired_step_ids(#{shard},#{source,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler})
+    FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <update id="failStep">
+    UPDATE catalog_step SET state=CASE WHEN attempts=3 THEN 'PAUSED' ELSE 'READY' END,error_type=#{error},lease_until=NULL,
+      available_at=clock_timestamp()+catalog_backoff(attempts,step_key),updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND step_key=#{stepKey} AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()
+  </update>
+
+  <insert id="insertAd" useGeneratedKeys="true" keyProperty="key.value" keyColumn="ad_id">
+    INSERT INTO ad(advertiser_id,item_id,title,landing_url,quality_score,status,review_status,review_reason,optimization_type,target_cpa,audience_id)
+    VALUES(#{advertiserId},#{itemId},#{title},#{landingUrl},#{qualityScore},#{status},#{reviewStatus},#{reviewReason},#{optimizationType},#{targetCpa},#{audienceId})
+  </insert>
+  <update id="setAdLanding">
+    UPDATE ad SET landing_url=#{url} WHERE advertiser_id=#{advertiserId} AND ad_id=#{adId}
+  </update>
+  <insert id="insertBidword" useGeneratedKeys="true" keyProperty="key.value" keyColumn="id">
+    INSERT INTO bidword(ad_id,keyword,match_type,bid,bid_mode) VALUES(#{adId},#{keyword},#{matchType},#{bid},#{bidMode})
+  </insert>
+  <insert id="insertCreative" useGeneratedKeys="true" keyProperty="key.value" keyColumn="creative_id">
+    INSERT INTO ad_creative(ad_id,title,landing_url,status) VALUES(#{adId},#{title},#{landingUrl},#{status})
+  </insert>
+
+  <sql id="eventColumns">
+    shard_id,outbox_id,source_id,ad_id,aggregate_version,event_id,topic,key_bytes,payload_bytes,payload_sha256,
+    state,round,attempts,fence,lease_until,broker_partition,broker_offset,write_txid
+  </sql>
+  <insert id="insertKafkaEvent">
+    INSERT INTO catalog_outbox(shard_id,outbox_id,purpose,record_kind,source_id,ad_id,aggregate_version,command_scope,
+      command_id,step_id,event_id,topic,key_bytes,payload_bytes,payload_sha256)
+    VALUES(#{event.shardId},#{event.outboxId},'KAFKA',#{event.recordKind},#{event.sourceId},#{event.adId},#{event.aggregateVersion},
+      #{event.commandScope},#{event.commandId},#{event.stepId},#{event.eventId},#{event.topic},#{event.keyBytes},#{event.payloadBytes},#{event.payloadSha256})
+  </insert>
+  <select id="lockReadyEventIds" resultType="string" flushCache="true" useCache="false">
+    SELECT catalog_lock_ready_event_ids(#{shard}) FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <select id="event" resultType="com.recsys.advertiser.catalog.CatalogOutboxRepository$EventRow">
+    SELECT <include refid="eventColumns"/> FROM catalog_outbox WHERE shard_id=#{shard} AND outbox_id=#{id} AND purpose='KAFKA'
+  </select>
+  <update id="claimEvent">
+    UPDATE catalog_outbox SET state='SENDING',attempts=attempts+1,fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds'
+    WHERE shard_id=#{shard} AND outbox_id=#{id} AND purpose='KAFKA' AND state IN ('READY','SENDING') AND attempts&lt;5
+      AND available_at&lt;=clock_timestamp() AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <update id="pauseSpentEvent">
+    UPDATE catalog_outbox SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',lease_until=NULL
+    WHERE shard_id=#{shard} AND outbox_id=#{id} AND purpose='KAFKA' AND state IN ('READY','SENDING') AND attempts=5
+      AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
+  </update>
+  <update id="markEventPublished">
+    UPDATE catalog_outbox SET state='PUBLISHED',broker_partition=#{partition},broker_offset=#{offset},published_at=clock_timestamp(),lease_until=NULL
+    WHERE shard_id=#{shard} AND outbox_id=#{id} AND state='SENDING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()
+  </update>
+  <update id="failEvent">
+    UPDATE catalog_outbox SET state=CASE WHEN attempts=5 THEN 'PAUSED' ELSE 'READY' END,error_type=#{error},lease_until=NULL,
+      available_at=clock_timestamp()+catalog_backoff(attempts,outbox_id)
+    WHERE shard_id=#{shard} AND outbox_id=#{id} AND state='SENDING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()
+  </update>
+  <update id="stopShard">
+    UPDATE catalog_shard_control SET stop_reason=#{error},revision=revision+1,updated_at=clock_timestamp() WHERE shard_id=#{shard}
+  </update>
+</mapper>

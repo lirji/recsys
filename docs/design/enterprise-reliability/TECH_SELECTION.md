@@ -94,10 +94,12 @@ C2继续复用既有platform LegacyBehaviorCodec、Spring record容器、PG Mapp
 | 决策 | 选择及原因 | 替代/成本 | 引入阶段 |
 |---|---|---|---|
 | 一致性 | 每物理库业务+本库Outbox；持久命令逐步续办 | 否决SINGLE公共Outbox；重分片搬数据/XA需额外迁移或运行设施 | S16A，fanout在B |
-| 路由/持久化 | 沿ShardingSphere5.5.0，可靠Mapper XML带业务路由键，显式可靠profile中新表shard_id规则，默认profile不引用新表；PG guard核验同txid | 保留现有Boot主源与Snowflake，避免反射内部连接/第二套数据池；SQL能力须真实双PG验证 | S16A |
+| 路由/持久化 | 沿ShardingSphere5.5.0，可靠Mapper XML带业务路由键，显式可靠profile中新表shard_id规则，默认profile不引用新表；PG guard核验同txid | 保留现有Boot主源与Snowflake，避免反射内部连接/第二套数据池；SQL能力由实际双PG验证；不支持的ON CONFLICT/SKIP LOCKED封装为本库原生函数，经Mapper/XML带shard调用 | S16A |
 | 并发/快照 | 一advertiser一持久命令占有，各step独立lease/fence，冻结片段后组合 | 接受同广告主写串行、故障时阻塞；不引入Redis锁或跨库长事务 | S16A |
 | 暂停任务 | PG持久清单/页/目标状态，有界公平advance | 单次最多100目标/页；当前无新调度系统必要性 | S16B |
 | 事件/兼容 | 新ad-catalog-v1完整版本快照，沿现有Kafka；旧topic隔离 | S17之前不声称在线投影可切换；UNKNOWN向量单列 | S16A，S17消费后续 |
 | 身份/迁移 | 原Snowflake的开户身份持久预留；新advertiser自有版本SQL各物理库执行 | 不使用MAX(id)当提交水位，不改旧迁移，无新ID服务/迁移依赖 | S16A |
 
 Boot3.2.5/Spring Kafka3.1.4/client3.6.2/PG JDBC42.7.3与现有PG16/Kafka3.7.1隔离夹具沿用，不新增第三方库或基础设施。通用能力REUSE_EXISTING；目录命令/片段协议BUILD是物理不共址的一致性所需；XA/CDC/搬迁DEFER。复杂度预算见[C16方案比较](C16_DESIGN.md#2-方案比较与选择)，保留生产容量/保留期/RTO未验证。引用的官方机制说明和本机JAR核对不能替代C16-01～20运行证据。
+
+S16A真实产品继续使用上述版本；没有增加依赖、部署单元或共享实例。可靠profile关闭SQL参数日志、原profile保持，实际路由用隔离PG txid/表记录证明。新增专用catalog CI门禁20分钟，既有CI配置逐字节保持；实际命令与本地结果在[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)，不把单独真实authz main计入该JUnit门禁。

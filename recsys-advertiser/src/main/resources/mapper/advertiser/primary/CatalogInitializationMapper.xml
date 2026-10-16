@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogInitializationMapper">
+  <update id="occupy">
+    UPDATE catalog_shard_control SET initializing_command_id=#{key.command},revision=revision+1,updated_at=clock_timestamp()
+    WHERE shard_id=0 AND mode='LEGACY' AND source_id IS NULL AND initializing_command_id IS NULL AND stop_reason IS NULL
+  </update>
+  <update id="quiesce">
+    UPDATE catalog_shard_control SET mode='QUIESCED',source_id=#{key.source},topology_version='advertiser-mod2-child-ad-mod2-v1',
+      cluster_id=#{cluster},topic_id=#{topicId},topic_name=#{topic},writer_manifest=#{manifest,typeHandler=com.recsys.persistence.typehandler.JsonbStringTypeHandler},
+      initializing_command_id=#{key.command},revision=revision+1,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND mode='LEGACY' AND source_id IS NULL AND stop_reason IS NULL
+      AND (initializing_command_id IS NULL OR initializing_command_id=#{key.command})
+  </update>
+  <select id="layout" resultType="boolean">SELECT catalog_initial_layout(#{shard}) FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="page" resultType="string">SELECT catalog_initial_page(#{kind},#{after}) FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="freezeTarget" resultType="int" flushCache="true" useCache="false">
+    SELECT catalog_freeze_initial_target(#{shard},#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler},#{ad},#{owner},#{sha})
+    FROM catalog_shard_control WHERE shard_id=#{shard}
+  </select>
+  <select id="next" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogInitializationMapper$Target">
+    SELECT target_id,target_owner_id FROM catalog_task_item WHERE shard_id=#{shard} AND parent_scope='INITIALIZE'
+      AND parent_command_id=#{command} AND state='READY' ORDER BY ordinal LIMIT 1
+  </select>
+  <update id="completeTarget">UPDATE catalog_task_item SET state='COMPLETED',result_bytes=#{result},updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND parent_scope='INITIALIZE' AND parent_command_id=#{command} AND target_kind='AD' AND target_id=#{ad} AND state='READY'</update>
+  <select id="unfinished" resultType="long">SELECT count(*) FROM catalog_task_item WHERE shard_id=#{shard} AND parent_scope='INITIALIZE'
+    AND parent_command_id=#{command} AND state&lt;&gt;'COMPLETED'</select>
+  <update id="activate">UPDATE catalog_shard_control SET mode='ACTIVE',initialization_ready=true,revision=revision+1,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND mode='QUIESCED' AND source_id=#{key.source} AND initializing_command_id=#{key.command} AND stop_reason IS NULL</update>
+</mapper>

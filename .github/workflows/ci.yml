@@ -129,6 +129,30 @@ jobs:
             recsys-streaming/target/surefire-reports/**
           if-no-files-found: warn
 
+  # S16A 独占双物理PG、实际ShardingSphere、Kafka/独立JVM和相关旧API回归。
+  catalog-reliability-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Catalog physical atomicity, HTTP and recovery gate
+        run: mvn -B -e -pl recsys-advertiser,recsys-offline -am test '-Dtest=Catalog*Test,SeedAdsPostgresTest,AdvertiserRepositoryPostgresTest,CreativeReviewTest,AdvertiserAuthzTest' -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Upload catalog acceptance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-reliability-reports
+          # 仅合成隔离数据的测试报告；不上传产品ready文件、凭据或原命令原文。
+          path: |
+            recsys-advertiser/target/surefire-reports/TEST-*.xml
+            recsys-offline/target/surefire-reports/TEST-*.xml
+          if-no-files-found: warn
+
   sandbox-exposure-browser-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15

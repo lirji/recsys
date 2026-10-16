@@ -1105,6 +1105,34 @@ export const errorCodes = {
     message: '资金报表数据格式异常，请重新查询',
     httpStatus: 0,
   },
+  CATALOG_RESULT_UNKNOWN: {
+    message: '目录操作结果尚未确定，请使用原命令标识查询',
+    httpStatus: 503,
+  },
+  CATALOG_NOT_READY: {
+    message: '目录可靠写入尚未就绪',
+    httpStatus: 503,
+  },
+  CATALOG_CONFLICT: {
+    message: '目录命令内容或广告主占有冲突',
+    httpStatus: 409,
+  },
+  CATALOG_PAUSED: {
+    message: '目录命令已暂停，请由目录负责人核验后续办',
+    httpStatus: 503,
+  },
+  CATALOG_INCONSISTENT: {
+    message: '目录原事实核验失败，请由目录负责人处理',
+    httpStatus: 503,
+  },
+  CATALOG_SNAPSHOT_LIMIT: {
+    message: '目录快照超出已配置的资源上限',
+    httpStatus: 409,
+  },
+  CATALOG_FANOUT_NOT_AVAILABLE: {
+    message: '当前可靠目录尚未开放广告主状态变更',
+    httpStatus: 409,
+  },
 } as const;
 
 export type KnownErrorCode = keyof typeof errorCodes;

@@ -1,14 +1,10 @@
-# 当前任务：ER-D0/C16 广告目录物理分片可靠事件设计
+# 当前任务：ER-S16A 广告目录可靠写入（DONE / PASS，本地必要验收）
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；正式契约/结果/运行边界：同目录`C16_DESIGN.md`、`ER-D0-C16_RESULT.md`、`CATALOG_EVENTS_RUNBOOK.md`。恢复证据：`.dev/codex-flow-reliability/round-301afed4/{handoff,delivery,independent-design-review,design-file-checks,preceding-ci-before-commit}.json`；当前请求301afed4-8c0b-43c7-98b4-9c686ff63bbf。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；最终结果`ER-S16A_RESULT.md`。正式C16及独立设计提交5c0f2901保留，原任务分支`feat/er-s16-catalog-outbox`。请求43880a89及父纠偏b48fcdef；恢复先读`.dev/codex-flow-reliability/round-43880a89/{checkpoint,delivery}.json`核对实际Git/CI/运行状态，不重跑未知操作。
 
-C16设计门禁D16-01～09同Agent分离只读PASS，ER-D0/C16 DONE，ER-S16A READY、B TODO、父S16 IN_PROGRESS。正式冻结实际物理分片本库Outbox、持久排他命令/本地fence、完整版本事件、暂停清单与多主批次、默认profile兼容、初始化/恢复及S17必要边界；全部C16-01～20产品验收尚未运行，不宣称实现或上线。
+完整114项PASS与纠偏后定向26项PASS分别保留，最终真实开户权限恢复PASS；不是一次140项。父明确seed未安装legacy例外保留，已纠偏验证。实现提交、正常ff/push及新CI精确SHA/状态以delivery事实为准；前置S15精确686454dc全部8门禁SUCCESS，有效S15测试未重跑。
 
-原目录分支`feat/er-s16-catalog-outbox`，基线/main/origin-main=686454dc132da7831dfdc197cb6fdfa9e6348db0；唯一worktree及原用户改动保留。本轮仅9个设计/进度文档的独立本地设计提交，实际SHA见delivery.json；不merge/push纯设计。下一回合复用此分支实施S16A，保留设计与实现独立逻辑提交，必要验证通过后正常ff/push。S16原依赖ER-S06保持，之后S17～21，S22～25暂停。
-
-S15A/B/C必要本地验收及正常Git交付核对完成；83项/14类零失败错误跳过、22源码指纹和原交付blob一致，复用不重跑。11保护、37旧迁移/fixture、1373产品/测试/构建/脚本文件、59份旧SQL和下方历史后缀核对保持。当前S15 CI38964531069精确686454dc已7门禁成功，build仍运行；本地设计获准继续，下一main推送前须核对其终态，真实失败先处理，不取消有效证据。前置C1精确d05d23c0的CI38958960102已8/8成功。
-
-无本地运行中产品/测试/Git操作；提交/文件检查结果以本轮delivery/handoff为准。采用backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs及task-git-delivery；architecture-standards适用章节已核对。保留11保护、已发布迁移/fixture、.dev/target和全部历史正文；不部署、不访问共享业务数据、不启用共享开关、不重启共享容器、不stash/reset/clean/强推、不递归codex-flow。
+父S16仍IN_PROGRESS，下一片S16B，再S17～21；本回合A闭合后返回父，S22～25暂停。11保护、37旧迁移fixture、59旧SQL、用户原改动与以下历史及全部.dev/target保持；不部署、不共享启用、不清理、不递归编排。
 
 ---
 

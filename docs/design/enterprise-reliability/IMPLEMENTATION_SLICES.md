@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合301afed4进入ER-D0/C16正式设计；S15A/B/C本地必要验收和正常Git交付已核实完成，83项与精确源码指纹复用。当前S15 CI38964531069精确686454dc已7门禁成功、build仍运行，记录于`.dev/codex-flow-reliability/round-301afed4/preceding-ci-before-commit.json`；不宣称CI全绿。按最新授权可继续本地设计，本轮只本地独立设计提交、不merge/push，S22～25暂停。
+2026-10-17 当前ER-S16A必要实现、真实验收和分离复审DONE/PASS。完整114项与父纠偏后的定向26项分别记录，最终真实开户权限恢复PASS；详见[ER-S16A_RESULT](ER-S16A_RESULT.md)。保留正式C16独立设计提交5c0f2901，实施交付和新CI事实见`.dev/codex-flow-reliability/round-43880a89/delivery.json`。前置S15精确686454dc CI38964531069全部8门禁SUCCESS；有效S15测试未重跑。父S16仍IN_PROGRESS；下一回合S16B，之后S17～21，S22～25暂停。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -60,8 +60,8 @@
 | ER-S15C1 | ER-D0/C15C | 旧Seen完整恢复闭环；engine-seen V001/Mapper/手动ACK/持久预算/隔离/命令与起点 | 适用16项PASS；最终engine33项、未变门禁44复用；[结果](ER-S15C1_RESULT.md) | no | DONE |
 | ER-S15C2 | ER-S15C1 | 独立LIVE/HISTORY产品listener、历史Seen与父片回归 | C01～C18全部PASS；最终83项/14类，B2真实history→产品Seen→Redis→Replica；见ER-S15C2_RESULT | no | DONE |
 | ER-D0/C16 | ER-S06、用户本轮授权 | C16_DESIGN；实际分片/命令/事件/暂停/兼容及S17必要接口 | D16-01～09同Agent分离只读PASS；结果ER-D0-C16_RESULT；仅本地设计提交 | no | DONE |
-| ER-S16 | ER-S06、ER-D0/C16 | 原F15；A单广告可靠闭环、B广告主/多分片暂停均必需 | C16-01～20全部尚未运行，不以设计PASS代实现；公共库不冒充同库 | no | IN_PROGRESS |
-| ER-S16A | ER-S06、ER-D0/C16 | 单广告真实写口/本库Outbox/恢复/原事件Kafka闭环；含准入与基线 | C16-01～12/16～20适用项全部尚未运行；下一实施片 | no | READY |
+| ER-S16 | ER-S06、ER-D0/C16 | 原F15；A单广告可靠闭环、B广告主/多分片暂停均必需 | A真实闭环及相关回归仍实施中，B未实施；公共库不冒充同库 | no | IN_PROGRESS |
+| ER-S16A | ER-S06、ER-D0/C16 | 单广告真实写口/本库Outbox/恢复/原事件Kafka闭环；含准入与基线 | C16-01～12/16～20适用项PASS；完整114、纠偏定向26、实际权限及分离复审，见ER-S16A_RESULT | no | DONE |
 | ER-S16B | ER-S16A | 真实广告主暂停/恢复及跨owner显式批次，可查部分结果/续办 | C16-13～15及父片全适用验收；完成后评估关闭父S16 | no | TODO |
 | ER-S17 | ER-S16 | 原 F16 版本化目录投影/Inbox/墓碑/Redis 可靠刷新；正式契约待冻结 | PG/Kafka/Redis 重复、乱序、提交窗口与防复活 | no | TODO |
 | ER-S18 | ER-S06 | 原 F17 日志补洞、持久检查点/并发领取；正式契约待冻结 | 真实 PG 低 ID 晚提交、重复扫描/恢复，不能以 MAX(id) 代表提交顺序 | no | TODO |
@@ -153,3 +153,21 @@
 - 正式稿[C16_DESIGN](C16_DESIGN.md)冻结单物理库事务/本库事实、持久排他命令、完整快照/版本、暂停fanout/批次、起点与默认关闭；两条串行纵向片A/B分别闭合业务结果。同Agent分离只读D16-01～09全部PASS，ER-S16A READY；产品验收全部UNVERIFIED。
 - 原目录分支`feat/er-s16-catalog-outbox`，基线686454dc；不新worktree。本轮只独立本地设计提交，下回合复用此分支实施S16A，通过必要验证后按持续授权正常ff/push；推送前须核对前置源码CI终态，不取消有效证据。
 - 恢复/审查/提交证据：`.dev/codex-flow-reliability/round-301afed4/`；设计结果见[ER-D0-C16_RESULT](ER-D0-C16_RESULT.md)。11保护、37旧迁移/fixture、CODEX_PROGRESS历史正文和原用户改动保留；无需重跑源码未变的S15验收。
+
+## 当前回合25e0dd1e：ER-S16A实施（PARTIAL / IN_PROGRESS）
+
+- 最终C16、父只读审查及独立设计提交5c0f2901核对一致，不重开设计。原目录/分支feat/er-s16-catalog-outbox继续；原设计文件未改。
+- 已实现可靠profile、V001/显式物理安装/同txid guard、原命令/开户身份预留/本地step、版本事件codec和真实Kafka relay。全部尚为未提交工作树改动；Controller/完整编排、初始化/基线、seed准入、审计恢复和独立JVM/真实停机仍待同一A继续。
+- 最新受影响27项/2类PASS（物理26、profile1），33项未受影响的codec/旧分片HTTP/审核/鉴权证据复用，均零失败错误跳过；不称一次60项合并运行。原始XML、指纹和日志见round-25e0dd1e/{budget-retry-final-reports,final-reports,source-fingerprints.json,validation-current.json,catalog-budget-retry-3.log}；具体边界见[ER-S16A_IMPLEMENTATION_EVIDENCE](ER-S16A_IMPLEMENTATION_EVIDENCE.md)。这不是完整C16或A完成证据。
+- 已实测并修正5.5.0 INSERT cast及SKIP LOCKED解析兼容；复用原生TypeHandler、显式路由的PG函数，未削弱锁/原子/断言。Mapper边界门禁670 Java/98 XML/45历史SQL通过；安装器原内联JDBC已移到专用物理Mapper/XML，未放宽检查脚本。
+- 同Agent分离只读基础复审为PARTIAL、不可交付；事务预算/owner锁序已补并验证；后续仍须运行装配/日志脱敏、完整业务与故障验收。没有待确认业务问题，恢复继续同一A。
+- 前置S15 CI38964531069精确686454dc已completed/success，8/8成功，preceding-ci-final.json；不再等待或重跑旧CI。11保护、37旧迁移fixture、59旧SQL、1373旧产品文件、22 S15源码和CODEX_PROGRESS历史正文保持。
+- 本轮Maven任务均已结束，无结果未知操作、无新提交/合并/push/共享副作用。HEAD仍5c0f2901，main/origin-main仍686454dc；20个新源码/测试/资源文件须保留。恢复入口round-25e0dd1e/handoff.json。A未完成不进入B，S17～21继续待后续，S22～25暂停。
+
+## 当前回合43880a89及父纠偏b48fcdef：ER-S16A（DONE / PASS）
+
+- 四Controller可靠写、固定开户身份/原响应、完整快照、双库初始化/基线、真实Kafka、稳定查询/审计恢复、有限worker/relay已闭合。可靠profile SQL日志关闭，原profile和分片规则保持；广告主status/fanout明确拒绝至B。
+- `catalog-full-gate-3`实际114项/14类PASS，9:29；原30312在客户端中断后继续，核对终态及进程退出再改源码。父seed兼容性/缺记录纠偏后`parent-corrections-1`26项PASS，未受影响项按指纹复用；不能合称一次140项。最终真实ROOT_CREATE权限恢复专项PASS，早前未变权限政策证据保留。
+- 3个只读审查Agent及7项确认发现复验闭合；hygiene无阻断，仓库未配置formatter的限制已记录。11保护、37旧迁移fixture、59旧SQL、正式设计、历史正文、用户改动保持。
+- 精确源码、运行/失败原证据和Git交付恢复入口：`.dev/codex-flow-reliability/round-43880a89/{checkpoint,final-source-fingerprints,separate-review,delivery}.json`。原分支/设计提交保留，按持续授权独立完整实施提交、正常ff/push并登记精确新CI；未有CI终态时不得声称全绿。
+- 本片只完成A生产者恢复；B暂停fanout/批次、S17消费者/Redis及S18～21仍待后续。无共享启用、部署或清理。

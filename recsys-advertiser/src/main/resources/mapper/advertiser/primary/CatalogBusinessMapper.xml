@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper">
+  <select id="ownersOfAd" resultType="long">SELECT advertiser_id FROM ad WHERE ad_id=#{ad} LIMIT 2</select>
+  <select id="adsOfBidword" resultType="long">SELECT ad_id FROM bidword WHERE id=#{id} LIMIT 2</select>
+  <select id="adsOfCreative" resultType="long">SELECT ad_id FROM ad_creative WHERE creative_id=#{id} LIMIT 2</select>
+  <select id="root" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper$Root">
+    SELECT advertiser_id,name,daily_budget,status FROM advertiser WHERE advertiser_id=#{owner}
+  </select>
+  <select id="ad" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper$Ad">
+    SELECT ad_id,advertiser_id,item_id,title,landing_url,quality_score,status,review_status,review_reason,optimization_type,target_cpa,audience_id
+    FROM ad WHERE advertiser_id=#{owner} AND ad_id=#{ad}
+  </select>
+  <select id="now" resultType="java.time.Instant">SELECT clock_timestamp() FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="itemExists" resultType="boolean">SELECT count(1)&gt;0 FROM item WHERE item_id=#{item}</select>
+  <select id="bidwords" resultType="com.recsys.advertiser.dto.BidwordView">
+    SELECT id,ad_id,keyword,match_type,bid,bid_mode FROM bidword WHERE ad_id=#{ad} AND id&gt;#{after} ORDER BY id LIMIT 100
+  </select>
+  <select id="creatives" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper$Creative">
+    SELECT creative_id,ad_id,title,landing_url,status,review_status FROM ad_creative WHERE ad_id=#{ad} AND creative_id&gt;#{after} ORDER BY creative_id LIMIT 100
+  </select>
+  <select id="bidword" resultType="com.recsys.advertiser.dto.BidwordView">
+    SELECT id,ad_id,keyword,match_type,bid,bid_mode FROM bidword WHERE ad_id=#{ad} AND id=#{id}
+  </select>
+  <select id="creative" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper$Creative">
+    SELECT creative_id,ad_id,title,landing_url,status,review_status FROM ad_creative WHERE ad_id=#{ad} AND creative_id=#{id}
+  </select>
+  <select id="lockAggregate" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper$Aggregate">
+    SELECT ad_id,advertiser_id,reserved_version,last_materialized_version,deleted FROM catalog_aggregate WHERE shard_id=#{shard} AND ad_id=#{ad} FOR UPDATE
+  </select>
+  <insert id="createAggregate">INSERT INTO catalog_aggregate(shard_id,ad_id,advertiser_id,reserved_version) VALUES(#{shard},#{ad},#{owner},1)</insert>
+  <update id="reserveVersion">UPDATE catalog_aggregate SET reserved_version=reserved_version+1,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND ad_id=#{ad} AND reserved_version=#{expected} AND reserved_version&lt;9223372036854775807 AND deleted=false</update>
+  <update id="materialize">UPDATE catalog_aggregate SET last_materialized_version=#{version},last_event_id=#{event},deleted=#{deleted},updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND ad_id=#{ad} AND reserved_version=#{version} AND last_materialized_version&lt;#{version}</update>
+  <insert id="insertRoot">INSERT INTO advertiser(advertiser_id,name,daily_budget,status) VALUES(#{root.advertiserId},#{root.name},#{root.dailyBudget},#{root.status})</insert>
+  <update id="updateRoot">UPDATE advertiser SET name=#{root.name},daily_budget=#{root.dailyBudget},status=#{root.status} WHERE advertiser_id=#{root.advertiserId}</update>
+  <update id="updateAd">UPDATE ad SET item_id=#{ad.itemId},title=#{ad.title},landing_url=#{ad.landingUrl},quality_score=#{ad.qualityScore},status=#{ad.status},
+    review_status=#{ad.reviewStatus},review_reason=#{ad.reviewReason},optimization_type=#{ad.optimizationType},target_cpa=#{ad.targetCpa},audience_id=#{ad.audienceId}
+    WHERE advertiser_id=#{ad.advertiserId} AND ad_id=#{ad.adId}</update>
+  <delete id="deleteAd">DELETE FROM ad WHERE advertiser_id=#{owner} AND ad_id=#{ad}</delete>
+  <update id="updateBidword">UPDATE bidword SET keyword=#{word.keyword},match_type=#{word.matchType},bid=#{word.bid},bid_mode=#{word.bidMode}
+    WHERE ad_id=#{word.adId} AND id=#{word.id}</update>
+  <delete id="deleteBidword">DELETE FROM bidword WHERE ad_id=#{ad} AND id=#{id}</delete>
+  <update id="updateCreative">UPDATE ad_creative SET title=#{creative.title},landing_url=#{creative.landingUrl},status=#{creative.status}
+    WHERE ad_id=#{creative.adId} AND creative_id=#{creative.creativeId}</update>
+  <delete id="deleteCreative">DELETE FROM ad_creative WHERE ad_id=#{ad} AND creative_id=#{id}</delete>
+  <delete id="deleteBidwords">DELETE FROM bidword WHERE ad_id=#{ad}</delete>
+  <delete id="deleteCreatives">DELETE FROM ad_creative WHERE ad_id=#{ad}</delete>
+</mapper>

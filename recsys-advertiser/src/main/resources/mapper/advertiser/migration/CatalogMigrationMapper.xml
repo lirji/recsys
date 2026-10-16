@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.migration.CatalogMigrationMapper">
+  <select id="setting" resultType="string" flushCache="true" useCache="false">
+    SELECT set_config(#{name},#{value},true)
+  </select>
+  <select id="lockInstallation" resultType="string" flushCache="true" useCache="false">
+    SELECT pg_advisory_xact_lock(160016001)
+  </select>
+  <select id="relationExists" resultType="boolean">
+    SELECT to_regclass(#{name}) IS NOT NULL
+  </select>
+  <select id="installed" resultType="com.recsys.advertiser.persistence.mapper.migration.CatalogMigrationMapper$Installed">
+    SELECT h.script_sha256,c.shard_id FROM public.advertiser_catalog_schema_history h
+    JOIN public.catalog_shard_control c ON c.shard_id=h.shard_id WHERE h.version=1
+  </select>
+</mapper>

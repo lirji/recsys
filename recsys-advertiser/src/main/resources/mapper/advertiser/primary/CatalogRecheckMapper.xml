@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogRecheckMapper">
+  <select id="stop" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogRecheckMapper$Stop">SELECT revision,stop_reason FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <select id="events" resultType="com.recsys.advertiser.catalog.CatalogOutboxRepository$EventRow" timeout="5">
+    SELECT <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.eventColumns"/>
+    FROM catalog_outbox WHERE shard_id=#{shard} AND purpose='KAFKA' AND outbox_id&gt;#{after} ORDER BY outbox_id LIMIT 10
+  </select>
+  <select id="steps" resultType="com.recsys.advertiser.catalog.CatalogProtocol$StepRow" timeout="5">
+    SELECT <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.stepColumns"/>
+    FROM catalog_step WHERE shard_id=#{shard} AND step_key&gt;#{after} ORDER BY step_key LIMIT 10
+  </select>
+  <select id="receiptValid" resultType="boolean">SELECT catalog_receipt_valid(#{step}) FROM catalog_shard_control WHERE shard_id=#{shard}</select>
+  <update id="resume">UPDATE catalog_shard_control SET stop_reason=NULL,revision=revision+1,updated_at=clock_timestamp()
+    WHERE shard_id=#{shard} AND revision=#{revision} AND stop_reason=#{reason} AND mode='ACTIVE' AND initialization_ready=true</update>
+</mapper>
