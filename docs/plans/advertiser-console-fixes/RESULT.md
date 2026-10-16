@@ -1,6 +1,6 @@
 # ADV-UI-01 验证与交付记录
 
-日期：2026-10-16。范围见 [PLAN](PLAN.md)。五项既有广告后台修复已经实现，企业可靠性 S13B～S25 仍暂停。
+日期：2026-10-16。范围见 [PLAN](PLAN.md)。状态：DONE / PASS，五项既有广告后台修复、CI、Git 交付及本机 Docker 验收均已完成。企业可靠性 S13B～S25 仍暂停。
 
 ## 可观察结果
 
@@ -25,7 +25,7 @@
 | 持久化边界守卫 | 607 production Java / 90 Mapper XML / 45 historical SQL，通过 |
 | 错误码生成与公开错误守卫 | 257 项目录与生成物一致，公开错误透传守卫通过 |
 
-本机日志：`/tmp/recsys-advertiser-ui-{verify,frontend-final,browser,build,typecheck-final}.log`。截图：`.dev/advertiser-ui/browser/`。远程 CI 会执行全部原有五门禁，并在浏览器恢复门禁中加入本次 4 项验收。
+本机日志：`/tmp/recsys-advertiser-ui-{verify,frontend-final,browser,build,typecheck-final}.log`。截图：`.dev/advertiser-ui/browser/`。远程 CI 已执行全部原有五门禁，浏览器恢复门禁包含本次 4 项验收；精确提交与运行链接见下文。
 
 ## 审查结论与边界
 
@@ -35,10 +35,33 @@
 
 ## 发布与回退
 
-仅交付 ADV-UI-01 相关文件，使用 `fix/advertiser-console-workflows` 分支，正常合并并推送 `main`。用户原有 runtime/文档改动和 `console/test-results/` 不纳入提交；根 `CODEX_PROGRESS.md` 只保留本机交接，暂停任务原文不变。
+实现提交 `d787dda06268b7c06e11de4d845840b6c4c94091`（`fix(advertiser): 修复管理后台精确标识与操作闭环`，41 个文件）已从 `fix/advertiser-console-workflows` 正常 ff 合并并推送 `origin/main`。用户原有 runtime/文档改动和 `console/test-results/` 未纳入提交；根 `CODEX_PROGRESS.md` 只保留本机交接，暂停任务原文不变。文档归档提交与已部署源码 SHA 分开记录，不声称文档更新重新发布了应用。
 
-精确提交的 GitHub CI 五门禁全部通过后，更新本机 Docker 的 advertiser 与 console，后端先行。镜像携带完整 revision，使用不可变 image ID 启动。原有其他服务、认证模式、资金开关和共享数据保持现状；无生产部署。
+| 发布检查 | 实际结果 |
+| --- | --- |
+| [主 CI 38835451492](https://github.com/lirji/recsys/actions/runs/38835451492) | 对应上述完整 SHA；build、security-scan、money-chain-gate、sandbox-exposure-browser-gate、natural-exposure-gate 五项全部 SUCCESS |
+| [前端 CI 38835451341](https://github.com/lirji/recsys/actions/runs/38835451341) | 对应相同 SHA，build SUCCESS |
+| 部署范围与时间 | 现有本机 Docker `desktop-linux / recsys`；先 advertiser、后 console，于 2026-10-16 09:49:42 +08:00 完成；无生产部署 |
+| 镜像绑定 | revision 为上述完整 SHA，使用不可变 image ID 启动；只更新这两个服务的 latest 别名 |
+| 健康检查 | gateway、rec-engine、ad-serving、behavior、advertiser、console-api、content、user 八个后端均 UP |
+| HTTP smoke / 真实页面 | PASS；admin/advertiser 读取权限与列表/详情通过，浏览器访问 `http://localhost:9095/advertiser/ad/1` |
+| 精确 ID / 审核验收 | 创意 ID 为 `1306381397513998336`；真实状态 approved，已通过的审核按钮不可重复操作；保存前后截图 |
+| 数据及其他服务 | 部署验收无共享业务写入，其他应用服务未更新；沿用 legacy 认证、原权限模式和原资金开关 |
+| 回退 | 未触发；旧稳定镜像及 `rollback.compose.json` 已保留。无数据库迁移，镜像回退不撤销已提交业务效果 |
 
-若新版服务健康或 smoke 失败，停止继续发布，按本任务保存的 `rollback.compose.json` 回到此前稳定镜像并复查；无数据库迁移，镜像回退不能撤销已经提交的业务操作。
+不可变镜像：
 
-交付后实际 SHA、CI、镜像及健康/smoke 证据写入 `.dev/deployments/adv-ui-01-<SHA>/` 和根交接。本文件是发布前验证记录，不提前声明 CI 或 Docker 已完成。
+- advertiser：`recsys-advertiser:adv-ui-01-d787dda06268`，image ID `sha256:3ad383ca74c412ce0fc9be9bd7a916535fba3578a2cf91b59debfddf33cf3ff9`；JAR SHA-256 `35b24288f13aa189ff3848e43eaecbb845b48d923f9ec67d67358eb2dd4fff09`。
+- console：`recsys-console:adv-ui-01-d787dda06268`，image ID `sha256:38789156e4fd13ef043930e0e9a9e6bb567c665292cc387241d346e7dc1aa439`。
+
+## 归档与证据入口
+
+本文件是最终受版本控制的交付摘要，原始本机证据位于 `.dev/deployments/adv-ui-01-d787dda06268/`：
+
+- `delivery-result.json`、`deployment-result.json`：Git/部署总结果、服务与版本范围。
+- `final-ci.json`、`console-ci.json`：精确提交与 CI 各门禁结论。
+- `images.json`、`verified-artifacts.json`、`images.compose.json`：镜像及构建产物绑定。
+- `smoke-results.json`、`ui-result.json`、`after-ui.png`：实际 HTTP 与浏览器验收。
+- `before-images.json`、`rollback.compose.json`、构建和启动日志：回退材料与执行记录。
+
+上述 `.dev` 原始材料为本机忽略文件，未作为可跨机器获取的仓库附件；应保留，不清理。权限 SDK 替身测试不等于真实 SpiceDB/enforce 验收。新 CPC／CPA 前端尚未接入，属于用户随后要求的新任务；S13B～S25 仍按原交接暂停。

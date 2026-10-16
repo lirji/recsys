@@ -10,6 +10,8 @@
 
 > 企业级建设（2026-10-15）：[现状优势与风险评估](docs/12-企业级搜推广评估.md)及[下一阶段计划草案](docs/design/enterprise-reliability/PLAN.md)。优先补齐曝光可信、钱算对、事件不漏、故障可恢复、效果可验证；实施状态和逐片验收见[实施清单](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)；当前 sandbox 切片通过不表示整体或生产验收完成。
 
+> 广告后台修复（2026-10-16）：五项修复及本机 Docker 交付已完成，最终提交、CI、镜像与验收记录见 [ADV-UI-01 交付归档](docs/plans/advertiser-console-fixes/RESULT.md)。
+
 ## 环境要求
 
 | 依赖 | 版本 | 说明 |

@@ -26,4 +26,6 @@
 
 ## 当前状态
 
-IMPLEMENTATION DONE / VALIDATION PASS：基线 dc3bd496，任务分支 fix/advertiser-console-workflows。见 [RESULT](RESULT.md)。正常 Git 发布与本机 Docker 验收继续执行，实际结果写入根交接与本机部署证据。用户现有 runtime/文档改动保持未暂存；根交接只更新当前任务摘要并保留暂停任务原文。
+DONE / PASS（2026-10-16）：实现、验证、正常 Git 合并/push、精确提交 CI 及本机 Docker 验收均已完成。实现基线 `dc3bd496`，任务分支 `fix/advertiser-console-workflows`，已部署源码为 `d787dda06268b7c06e11de4d845840b6c4c94091`。最终 CI、镜像、健康与页面验收见 [RESULT](RESULT.md)。后续归档提交只补文档，不改变已验收镜像的源码版本。
+
+用户现有 runtime/文档改动保持未暂存；根交接只更新当前任务摘要并保留暂停任务原文。新 CPC／CPA 前端接入是后续独立任务，不计入本次五项修复，也不自动恢复 S13B～S25。
