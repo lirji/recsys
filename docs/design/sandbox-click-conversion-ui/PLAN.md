@@ -1,6 +1,6 @@
 # CPC／CPA 前端接入执行方案（ADV-UI-02）
 
-状态：APPROVED / IN_PROGRESS。2026-10-16。用户于本轮明确回复「可以修改」，最终方案已获批准；根 [AGENTS.md](../../../AGENTS.md) 要求五维规划、独立复审及最终方案批准后再改产品代码。本方案是本任务唯一执行顺序；业务/接口/组件/状态细节见 [FRONTEND_ARCHITECTURE](FRONTEND_ARCHITECTURE.md)，审查见 [REVIEW](REVIEW.md)。
+状态：DONE / PASS。2026-10-16。用户于本轮明确回复「可以修改」，最终方案已获批准；根 [AGENTS.md](../../../AGENTS.md) 要求五维规划、独立复审及最终方案批准后再改产品代码。本方案是本任务唯一执行顺序；业务/接口/组件/状态细节见 [FRONTEND_ARCHITECTURE](FRONTEND_ARCHITECTURE.md)，审查见 [REVIEW](REVIEW.md)。
 
 ## 范围与完成标准
 
@@ -60,7 +60,7 @@
 
 ### ADV-UI-02C：验收、文档与本机交付
 
-状态：VERIFYING；本地验收通过，Git/CI/Docker进行中，见 [RESULT](RESULT.md)。
+状态：DONE / PASS；本地验收、精确CI、Git和本机Docker交付均完成，见 [RESULT](RESULT.md)。
 
 依赖：02A/B完成。不恢复企业计划其他切片。
 

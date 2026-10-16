@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-2026-10-16：02A CPC/OCPC DONE / PASS；02B CPA DONE / PASS；02C 最终回归、CI 与 Docker 执行中，真实授权已通过。当前不能宣称整个任务完成或共享环境已启用新能力。
+2026-10-16：ADV-UI-02A／02B／02C DONE / PASS。文档归档、CPC/OCPC与CPA前端接入、真实资金/权限验收、Git/CI和本机Docker发布已完成。共享环境两项新前端开关保持false；代码已发布，新资金能力未在共享环境启用。企业可靠性S13B～S25仍暂停。
 
 ## 02A 验证
 
@@ -22,9 +22,9 @@
 
 测试假设：登录 JWT、候选模型与查询理解为测试适配，候选正文/报价来自隔离数据库；真实资金 HTTP/PG/gRPC/事务/账本/Outbox 并未替换。此次未验 Kafka 投影与生产登录，不借此扩大声明；02C 继续已有链路回归。首轮 UI 溢出、in-process 宿主装配失败与受控停止后的测试 Vite 残留均已定位，详见实施证据；只终止本轮自建测试进程。
 
-## 待完成
+## 未包含范围
 
-02C 按批准顺序继续，全量回归、最终 Git/CI/Docker 证据在执行后追加。
+本任务无待办。共享环境CPC/CPA能力启用与授权关系装配未纳入本次发布；S13B～S25、资金运营UI和生产收费仍不执行。
 
 ## 02B 验证
 
@@ -38,7 +38,7 @@ CPA 搜索交付/可见/业务事件、广告主详情人工证明与原事件�
 
 上述浏览器内可控权限引擎验证守卫与恢复，不冒充真实授权。独立真实权限结果将在02C单列。
 
-## 02C 当前证据
+## 02C 验收证据
 
 - 真实授权 PASS：`scripts/test-click-conversion-authz.py`，真实 RemoteAuthzEngine → auth-platform-server → 独占 SpiceDB，验证 owner/editor 允许、无关系ADMIN拒绝、撤权后PUT/GET拒绝、停独占授权服务后503；真实PG资金对账通过。server源码 `763ca23e0f0cc521b5f605375ab999198cf001db`，SpiceDB本地镜像 `sha256:aa96009a0477f8a759149823407d47ad16d1a74390bae3102b3b0b7143502764`。未修改其他仓库或共享实例关系。
 - 完整前端 typecheck、37文件/238单测、lint（0 error/17 warning）、build PASS；相邻功能/默认关闭浏览器16项 PASS。默认构建两项新入口隐藏且零新协议请求。
@@ -62,16 +62,33 @@ CPA 搜索交付/可见/业务事件、广告主详情人工证明与原事件�
 | A08～A10 | identity/可见hook单测、新旧浏览器的身份切换、原生hidden、离屏与历史只读 |
 | A11 | 真SDK/授权服务/SpiceDB、真实gateway角色测试、可控故障浏览器 |
 | A13～A15 | 实际脱敏下载、日志票据扫描、1440/390截图检查、旧14项和相邻16项回归、边界检查 |
-| A16 | Git/CI/Docker交付中，以下恢复入口续接，不提前声明PASS |
+| A16 | Git/精确源码CI/不可变镜像/八后端健康/真实HTTP与页面全部PASS，见下方发布记录 |
 
 ## 本机发布边界
 
 目标仅既有 `desktop-linux/recsys` 的 `console`，入口9095、同源gateway9080，legacy认证；两项新构建flags=false。新资金/授权共享配置保持现状。基于通过精确CI的源码git archive构建、revision标签和不可变image ID启动；保留旧console镜像 `sha256:38789156e4fd13ef043930e0e9a9e6bb567c665292cc387241d346e7dc1aa439`。观察八后端健康、实际页面、旧精确ID/审核状态以及零新协议请求；失败停止交付并用本次生成的rollback.compose.json恢复console。无数据库迁移，镜像回退不撤销既有业务效果。
 
-## 恢复检查点
+## Git、CI与Docker发布记录
 
-02A bd2f4609、02B aa0967ee已独立提交；02C所有本地验证通过，待本批提交→正常合并/push main→精确CI→本机console部署。当前目录原仓库、分支feat/sandbox-click-conversion-ui，无新worktree。已结束的session96398（426项资金链+旧14项）及34340（最终真实授权/新截图）均退出0，不重复执行。
+实现按同任务三个逻辑提交：`bd2f4609`（CPC）、`aa0967ee`（CPA）、`19f58e8c`（验收/运行配置），均从任务分支正常ff合并并push origin/main。发布源码为 `19f58e8cb133e4135ef2dca30802c07f0939d246`；本次最终归档为后续独立文档提交，不声称重新部署了文档提交。
 
-- CI/部署未执行，不得猜测已成功。准备脚本 `/tmp/recsys-actions-deploy.py` 和 `/tmp/recsys-actions-smoke.cjs`，分别有精确CI、镜像、其他服务不变和健康/UI检查；实际发布前核对HEAD和运行环境。
-- 保护：`/tmp/recsys-advertiser-ui-protected.json` 中七个用户文件及 `console/test-results/` 不stage；CODEX_PROGRESS只改当前前缀、不stage。暂停后缀去前导换行SHA256 `09ca9b776a47ea4c4ae8dee26595390a4ec791ba1c757b6e2bd65378a7fe6862`。
-- 当前运行版本d787dda0，旧镜像和材料 `.dev/deployments/adv-ui-01-d787dda06268/` 保留。隔离PASS不代表共享环境新功能启用。不得恢复S13B～S25。
+| 检查 | 实际结果 |
+| --- | --- |
+| [主CI](https://github.com/lirji/recsys/actions/runs/38843750953) | 精确源码对应7项job全部SUCCESS，含两个新增浏览器模式 |
+| [前端CI](https://github.com/lirji/recsys/actions/runs/38843750818) | 相同源码lint/typecheck/单测/build全部SUCCESS |
+| 本机目标 | desktop-linux/recsys，仅console；完成于 `2026-10-16T03:33:59.382Z` |
+| 不可变镜像 | `recsys-console:adv-ui-02-19f58e8cb133`；`sha256:966f1381b99e90ce0a24f2bffe57bcb890d285a9d2dcb24839411dba520529b2`；revision与上述SHA一致；验收后更新本机`recsys-console:latest`别名 |
+| 构建开关 | legacy认证；CPC=false，CPA=false；未改变共享资金或授权配置 |
+| 启动/运行验收 | 八后端均UP；真实HTTP/页面PASS；精确创意ID1306381397513998336、审核approved；无页面JS错误、新协议请求或共享业务写操作 |
+| 其他服务 | 容器ID不变；没有后端部署、迁移或共享关系修改 |
+| 回退 | 未触发。旧console镜像与本次rollback.compose.json已保留；镜像回退不撤销已发生业务效果 |
+
+原始本机证据目录 `.dev/deployments/adv-ui-02-19f58e8cb133/`：ci-result.json、images.json、deployment-result.json、smoke-results.json、deployed-search.png、deployed-advertiser.png、build.log、up.log、rollback.compose.json及rollback-commands.json（同时恢复本机别名与容器）。实际部署截图已查看。该目录被Git忽略，是本机保留材料；本文件是可跨机器读取的版本化摘要。
+
+## 交付保护与恢复入口
+
+任务分支feat/sandbox-click-conversion-ui，原项目目录唯一worktree；三项实现提交已合并，无额外worktree可清理。用户七项原有改动、根暂停交接、console/test-results/均保持，不纳入本次提交。保护指纹 `/tmp/recsys-advertiser-ui-protected.json`，暂停后缀SHA256 `09ca9b776a47ea4c4ae8dee26595390a4ec791ba1c757b6e2bd65378a7fe6862`。
+
+保留 `.dev/` 新旧发布证据及回退镜像、测试target截图/对账日志；普通dist/target/node_modules/.vite/tsbuildinfo和本轮/tmp构建归档可按需重建或清理，本次未清理。既有模型、训练数据和真实env不属于清理对象。
+
+本任务完成，无运行中的本机测试/部署进程待续。以后恢复先核对本记录的源码/镜像与实际运行版本；不要重复发布同一源码，不把本任务完成解释为恢复S13B～S25或启用共享资金。最终文档归档后根CODEX_PROGRESS仅保留该入口。

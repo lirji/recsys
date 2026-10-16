@@ -10,7 +10,7 @@
 - 视觉：实际查看桌面 1280×900 和 390px 长页截图，沿项目 AntD 蓝白主题；窄屏表格仅容器内横向滚动，长 ID 换行，页面整体宽度 390。证据位于 `recsys-ad-serving/target/actions-evidence-{grpc,in-process}/`（本机构建产物，不提交票据）。trace 关闭，不录 HAR/网络 body。
 - 首轮发现与修正：新模式未进入 AppLayout 的窄屏 Sandbox 条件，顶栏重复输入导致横向溢出；补最小开关 wiring，复测宽度通过。独占 in-process 宿主 Spring 注入覆盖手动 fixture provider，补真实 preparation/settlement Bean；不改产品后端。
 
-当前未完成：最终回归/CI/Docker（02C），02B已完成。本文件中的 fixture PASS 不代表共享 Docker 已启用新能力。
+当前任务全部完成，最终CI与Docker见RESULT。本文件中的 fixture PASS 不代表共享 Docker 已启用新能力。
 
 ## 02B CPA
 
