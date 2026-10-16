@@ -24,9 +24,13 @@ V002 与 Mapper/XML/仓储、严格自然事件 codec、默认关闭的独立 re
 
 C15B已基于旧BehaviorService、Mapper/DDL、混合writer、Seen/Flink源码补齐正式契约：源行稳定身份、同库原子写、CLICK冲突后原行修复、无键POST非幂等边界、独立历史恢复流和显式有界清单、开关迁移及消费兼容。设计门禁与Git记录见ER-D0-C15B_RESULT；未运行或冒充B01～B12产品验收。7fccd6fe远程CI成功终态已记录后才允许本轮推送，没有取消其源码CI；旧CPA时间问题不重复修改。
 
-B2回合8395c172完成显式有界历史清单、公平逐项续办、审计取消与旧Seen/Flink topic guard及兼容验收后返回外层。下一业务步骤 **ER-D0/C15C→S15C**；旧格式Seen吞Redis异常必须一并解决。B1 Git及新CI结果读取对应结果和证据，不能沿用前置设计CI失败或S15A成功充当新源码结论。
+B2回合8395c172完成显式有界历史清单、公平逐项续办、审计取消与旧Seen/Flink topic guard及兼容验收后返回外层。该轮下一步骤为ER-D0/C15C→S15C，当前进度见下方；旧格式Seen吞Redis异常必须一并解决。B1 Git及新CI结果读取对应结果和证据，不能沿用前置设计CI失败或S15A成功充当新源码结论。
 
 
 ## C15C 设计门禁（89a217e3）
 
 正式增量已写入C15_DESIGN末节，设计验证见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)。旧Seen与新版live/history确认、PG技术隔离/稳定恢复命令、受控消费起点、暂停/重平衡与Redis丢集合边界均在本片范围内。计划细化为ER-S15C1→C2，父S15仍IN_PROGRESS；本回合只创建本地设计提交、不合并/push，不实现消费者。下一片复用同一任务分支，独立实现提交，必要验证后再按正常ff交付。
+
+## C1旧Seen实现回合（282d2b60）
+
+在原分支保留独立设计提交679274fd，完成旧Seen实际listener、持久预算/隔离、命令重放与起点登记；父审查三项在C15_DESIGN最小补充后落实。具体必需验收、失败修复、版本指纹及交付事实见[ER-S15C1_RESULT](ER-S15C1_RESULT.md)。C2新版live/history及真实历史全链路未实现，父S15C/S15保持IN_PROGRESS；下一业务片为ER-S15C2，本回合不继续启动。没有部署或共享consumer启用。

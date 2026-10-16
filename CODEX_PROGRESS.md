@@ -1,12 +1,12 @@
-# 当前任务：ER-D0/C15C Seen 消费恢复设计门禁
+# 当前任务：ER-S15C1 旧Seen完整可靠消费闭环
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。回合证据：`.dev/codex-flow-reliability/round-89a217e3/`。原目录任务分支 `feat/er-s15c-seen-recovery`，基线 `6c868e7349ba72682a8b7707fe7acdfcc98c3ed3`；下一实施回合复用此分支。本回合只设计、独立本地设计提交，不实现消费者、不合并、不推送、不递归编排。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。正式协议：同目录`C15_DESIGN.md` C15C及父审查补充；回合证据：`.dev/codex-flow-reliability/round-282d2b60/`。原目录复用分支`feat/er-s15c-seen-recovery`，独立设计提交`679274fda27ad4d5a5339023f88235cdd4e2e077`保留。
 
-恢复核对：上一轮B2整改红色PG3项/1失败及绿色PG15+Kafka2均与实际日志/XML对应；交付10文件、11保护、5迁移/CPA、3午夜fixture指纹一致。恢复时HEAD/main/origin-main均为整改完整SHA，原用户改动保留。远程ls-remote main也匹配完整SHA。CI38947474433已completed/success、8/8门禁全部通过，完整SHA精确匹配；原始证据preceding-ci-final.json。无取消/重跑或未处理验证失败。没有有效既有C15C门禁。
+C1 DONE/PASS（实现及必要验证）：完整behavior73项后，审查最终engine33项PASS，未变behavior/streaming44和旧相关回归22复用。最终编译、分离只读审查、保护/文档/hygiene均已核对；formatter和独立Java静态分析未配置。权威证据`validation-result.json`、`independent-review.json`与`validated-source-fingerprints.json`。所有测试操作已结束；真实失败和红绿证据保留。
 
-本轮ER-D0/C15C DONE/PASS。正式契约C15_DESIGN末节；D-C01～D-C09、文档/链接/diff检查、1335产品文件及11保护/历史正文指纹全部PASS。设计Git实际结果/完整SHA读取本回合delivery.json；本回合不合并/push。下一片ER-S15C1 READY，复用当前分支：先做旧Seen真实PG/Kafka/Redis确认/隔离/重放/起点闭环，再C2新版live/history。设计和实现保留独立逻辑提交，C1实施必要验证完成后统一正常ff合并push。C01～C18产品验收全部UNVERIFIED，设计不代表消费者已可靠。
+Git实际分支/提交/ff/push结果、新源码CI及运行任务分别读取本回合`delivery.json`、`ci-snapshot.json`、`active-operation.json`，恢复先查询未知结果，不能由本地PASS猜测推送或CI成功。前置源码CI38947474433精确6c868e73完整SHA已再次确认8/8成功，未取消重跑。下一片C2 READY；本回合只返回父协调者，不递归启动C2或S16～21，S22～25暂停，父S15C/S15仍IN_PROGRESS。
 
-授权仅Sandbox和独占隔离验证，不部署/共享数据/共享开关，不改11保护、旧迁移、既有fixture、CI配置，不stash/reset/clean/强推；.dev/target保留不提交。已采用session-handoff、backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs、task-git-delivery；规范采用业务建模/配置/持久化/分布式/并发/缓存/Kafka/中间件/容量与数据演进/发布治理。整体S15～21未完成，S22～25暂停；设计回合结束返回父协调者。
+仅Sandbox独占验证，不部署/共享启用；11保护、已发布迁移/fixture与下方历史正文不变。用户原修改和.dev/target保留，无stash/reset/clean/强推、新worktree。采用session-handoff/backend-implementation/implementation-validation/project-documentation/update-progress-docs/task-git-delivery及architecture-standards的业务建模、配置治理、持久化、分布式、并发安全、缓存、Kafka、中间件故障、容量/数据演进、发布治理章节。父审查只补最小协议，原有效门禁不重做。
 
 ---
 

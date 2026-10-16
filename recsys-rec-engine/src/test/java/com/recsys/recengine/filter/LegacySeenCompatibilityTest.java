@@ -2,6 +2,8 @@ package com.recsys.recengine.filter;
 
 import com.recsys.common.behavior.LegacyBehaviorAccepted;
 import com.recsys.common.constant.RedisKeys;
+import com.recsys.recengine.filter.seen.*;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.core.*;
@@ -24,13 +26,14 @@ class LegacySeenCompatibilityTest {
     }
     @Test @SuppressWarnings("unchecked") void eightFieldAndOlderSevenFieldMessagesKeepEveryPositiveInvocationAndLongIds() {
         var redis=mock(StringRedisTemplate.class);SetOperations<String,String> sets=mock(SetOperations.class);when(redis.opsForSet()).thenReturn(sets);
-        var consumer=new SeenItemsConsumer(redis,"behavior-events");
+        when(sets.add(anyString(),anyString())).thenReturn(1L);
+        var decoder=new SeenMessageDecoder();var projection=new SeenProjectionService(null,decoder,redis);
         for(String action:new String[]{"CLICK","LIKE","PLAY","RATING"})for(String exposure:new String[]{",\"exposureId\":\"original\"",""}) {
             String json="{\"userId\":9223372036854775807,\"itemId\":9223372036854775806,\"action\":\""+action+"\",\"value\":2,\"scene\":\"old\",\"bucket\":\"A\",\"ts\":1"+exposure+"}";
-            consumer.onEvent(json);consumer.onEvent(json); // 无eventId的同内容消息仍逐次应用，不造hash身份。
+            projection.applyRedis(decoder.decode(null,json.getBytes(StandardCharsets.UTF_8)));projection.applyRedis(decoder.decode(null,json.getBytes(StandardCharsets.UTF_8))); // 无eventId的同内容消息仍逐次应用，不造hash身份。
         }
         verify(sets,times(16)).add(RedisKeys.seenItems(Long.MAX_VALUE),Long.toString(Long.MAX_VALUE-1));
-        consumer.onEvent("{\"userId\":1,\"itemId\":2,\"action\":\"IMPRESSION\",\"value\":1,\"scene\":\"old\",\"bucket\":\"A\",\"ts\":1}");
+        assertEquals("NO_EFFECT",decoder.decode(null,"{\"userId\":1,\"itemId\":2,\"action\":\"IMPRESSION\",\"value\":1,\"scene\":\"old\",\"bucket\":\"A\",\"ts\":1}".getBytes(StandardCharsets.UTF_8)).classification());
         verifyNoMoreInteractions(sets);
     }
 }

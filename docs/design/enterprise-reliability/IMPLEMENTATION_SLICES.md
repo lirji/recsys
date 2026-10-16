@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-17 回合89a217e3执行ER-D0/C15C设计门禁：B2父整改6c868e73的实际PG红绿、11保护及Git已核对；完整SHA的CI38947474433已completed/success、8/8门禁通过，见preceding-ci-final.json。C15C正式设计D-C01～D-C09全部PASS；本回合只本地设计提交，不合并/push。父S15B已DONE，父S15仍IN_PROGRESS；下一实施片ER-S15C1，S22～25暂停。仅Sandbox，不部署或共享切换。
+2026-10-17 回合282d2b60完成ER-S15C1实现与必要验证（DONE/PASS）。设计679274fd独立保留；最终engine33项及未变behavior/streaming44证据、适用C01～C12/C15～C18、分离审查/保护核对PASS。Git实际交付与新CI读取`.dev/codex-flow-reliability/round-282d2b60/{delivery,ci-snapshot}.json`。下一C2 READY，本回合返回父协调者；S15C/S15仍IN_PROGRESS，S16～21后续，S22～25暂停。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
 
@@ -55,10 +55,10 @@
 | ER-S15B | ER-D0/C15B | 原 F14 旧 BehaviorService可靠事件；B1/B2均必需 | B1/B2及新增非法快照删除边界整改均本地PASS；见ER-S15B2-FIX-01_RESULT；C仍必需 | no | DONE |
 | ER-S15B1 | ER-D0/C15B | 旧POST同库原子接受、CLICK原行重复修复、独立live/history可靠发送及审计重放 | 25项B1+16项回归PASS；[结果](ER-S15B1_RESULT.md)，Git/CI独立记录 | no | DONE |
 | ER-S15B2 | ER-S15B1 | 有界显式历史清单/续办/审计取消，旧Seen/Flink topic guard与兼容 | 原18/43+24项及边界整改PG15+Kafka2 PASS；无问题覆盖排除已知非法源，见ER-S15B2-FIX-01_RESULT | no | DONE |
-| ER-D0/C15C | ER-S15B | C15_DESIGN末节；旧Seen+live/history确认、隔离/重放/起点/Redis丢集合边界 | D-C01～D-C09设计PASS；见ER-D0-C15C_RESULT；产品C01～C18未验证 | no | DONE |
-| ER-S15C | ER-D0/C15C | 原F14适用消费者；C1旧Seen及C2新版均必需 | C01～C18真实PG/Kafka/Redis，产品验收未执行 | no | TODO |
-| ER-S15C1 | ER-D0/C15C | 旧Seen完整恢复闭环；engine-seen V001/Mapper/手动ACK/持久预算/隔离/命令与起点 | C01～C12、C15～C18旧流适用部分；真实组件/独立JVM；详见C15_DESIGN C-I/C-V | no | READY |
-| ER-S15C2 | ER-S15C1 | 独立LIVE/HISTORY产品listener、历史Seen与父片回归 | C01～C18全部；B2 history→产品Seen→Redis→真实读模型；不得替换成Sink | no | TODO |
+| ER-D0/C15C | ER-S15B | C15_DESIGN末节；旧Seen+live/history确认、隔离/重放/起点/Redis丢集合边界 | D-C01～D-C09设计PASS；见ER-D0-C15C_RESULT；C1产品结果另见ER-S15C1_RESULT | no | DONE |
+| ER-S15C | ER-D0/C15C | 原F14适用消费者；C1旧Seen及C2新版均必需 | C1旧流适用项PASS；C2新版全链路未执行 | no | IN_PROGRESS |
+| ER-S15C1 | ER-D0/C15C | 旧Seen完整恢复闭环；engine-seen V001/Mapper/手动ACK/持久预算/隔离/命令与起点 | 适用16项PASS；最终engine33项、未变门禁44复用；[结果](ER-S15C1_RESULT.md) | no | DONE |
+| ER-S15C2 | ER-S15C1 | 独立LIVE/HISTORY产品listener、历史Seen与父片回归 | C01～C18全部；B2 history→产品Seen→Redis→真实读模型；不得替换成Sink | no | READY |
 | ER-S16 | ER-S06 | 原 F15 目录分片本库原子 Outbox、多分片暂停续办；正式契约待冻结 | 真实目录分片/Kafka；公共库不能冒充同库事务 | no | TODO |
 | ER-S17 | ER-S16 | 原 F16 版本化目录投影/Inbox/墓碑/Redis 可靠刷新；正式契约待冻结 | PG/Kafka/Redis 重复、乱序、提交窗口与防复活 | no | TODO |
 | ER-S18 | ER-S06 | 原 F17 日志补洞、持久检查点/并发领取；正式契约待冻结 | 真实 PG 低 ID 晚提交、重复扫描/恢复，不能以 MAX(id) 代表提交顺序 | no | TODO |
@@ -70,7 +70,7 @@
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。
 
 
-当前恢复入口：C15C设计验证与交付见ER-D0-C15C_RESULT、round-89a217e3；下一实施片C1，复用feat/er-s15c-seen-recovery分支。C1/C2串行，均无并行资源授权；现有Runtime足够，无新Compose服务。设计只本地提交，本回合返回父协调者，不启动消费者实现或codex-flow。
+当前恢复入口：C1已在round-282d2b60通过必要验收，Git交付/CI读取该目录delivery.json与ci-snapshot.json；原任务分支及设计提交保留。下一片C2 READY，父S15C/S15未完成；本回合完成交付后返回父协调者，不递归启动后续轮次。
 
 ## 当前有界整改 ER-CI-FIX-01（2026-10-17）
 
@@ -120,3 +120,16 @@
 - [x] 本地独立设计交付范围和恢复入口已冻结；实际提交SHA/结果见本回合delivery.json，不合并/push，下一实施回合复用分支。
 
 采用backend-architecture-design、implementation-slicing、project-documentation、update-progress-docs和task-git-delivery；详细C01～C18仍UNVERIFIED，不把设计PASS变成产品DONE。S15～21整体未完成，S22～25暂停。
+
+## 当前回合282d2b60：ER-S15C1实施/验证
+
+- [x] 核对679274fd设计提交、10文件指纹、11保护、前置源码CI38947474433终态成功。
+- [x] 父审查1/3补充最小正式协议；第2项复用已有ENROLL条款。
+- [x] 旧listener、专用factory、迁移/Mapper、PG预算/隔离、初始化/恢复命令代码已实现；实际产品链路进入最终门禁。
+- [x] 代表真实链路C01 PASS：16条正反馈+1条无效果，offset17；PG4、旧兼容2、配置3 PASS。
+- [x] 首轮故障矩阵23项18 PASS/5失败已定位；Redis重启实际端点变化和初始化竞争已修。targeted-faults-2.log的7项全部PASS，原失败证据保留。
+- [x] behavior-final-2完整门禁73项PASS（engine29、behavior42、streaming2）；依赖/内部错误分类、真实容器commit窗口、Spring装配/指标已补。
+- [x] R4真实PG红绿、R5实际删/越界位点、R6隔离提交后JVM退出全部PASS。最终engine五类33项PASS（engine-final.log）；Mapper只补中文注释，经源码还原摘要核对及最终编译PASS。
+- [x] 最终分离只读验证、文档、Hygiene（无formatter/独立静态分析限制）PASS；独立实现提交/正常ff/push/新CI的实际状态统一读取delivery.json/ci-snapshot.json，不以本地验证推断远端结果。
+
+原迁移、11保护、.dev/target与历史正文保留。当前不部署或共享启用；C1 DONE/PASS，C2 READY，父S15C/S15仍未完成。

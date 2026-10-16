@@ -8,9 +8,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * behavior-events 契约往返测试(P4):behavior(publisher)以 ObjectMapper 序列化 {@link BehaviorEvent}、
- * rec-engine {@link SeenItemsConsumer} 反序列化,两端普通 Jackson 直打 record + {@link ActionType} 枚举。
- * 锁死"行为事件过 Kafka 无损"——尤其 action 枚举按 name 往返(SeenItemsConsumer 靠 action().name() 判正反馈)。
+ * 旧BehaviorEvent DTO序列化往返；实际Seen严格字节解析和Kafka链路另由Seen专项验证。
+ * 保留原字段、枚举和exposureId断言，不把本测试当作listener或broker验收。
  */
 class BehaviorEventRoundTripTest {
 

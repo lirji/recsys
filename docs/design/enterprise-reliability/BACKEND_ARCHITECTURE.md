@@ -140,11 +140,13 @@ S15A 实际交付：V002、primary Mapper/XML、NaturalOutboxRepository、严格
 
 数据权威为user_behavior接受行及捕获时的不可变事件快照；不改engine/offline原写入口，不对其delete加隐藏FK阻断。behavior独立迁移目录/metadata/outbox/replay；B2增加有界历史命令/items/cancel审计，按明示清单续办而非全表CDC。所有SQL在Mapper XML。完整字段、锁序、状态/失败/恢复、默认关闭与回退以CONTRACTS C15B/C15_DESIGN为准；DB15-01～05为技术决定，FB01～07为源码事实。
 
-旧Seen/Flink维持旧topic，最小topic guard阻止新版误配；新版本化Seen消费在C15C，Flink可靠计算在S19。至少一次重复、历史未分类与无时区时间是显式风险，不靠producer幂等或场景字段消除。部署单元/依赖版本不变；B1已实现并独占验证，无共享迁移或生产吞吐承诺。公共领域类型保留在common，严格JSON codec复用platform既有Jackson依赖。B2以同owner的V002、BehaviorHistoryMapper/XML和显式BehaviorHistoryRepository实现命令/items/cancel；持久访问序号公平轮转，单项与原Outbox捕获同事务，不新增框架或线程。报告固定捕获结果并读取真实Outbox发送状态；旧Seen/Flink启动前拒绝新版保留流，旧格式不按hash合并。C15C旧格式失败确认仍未完成，运行和证据见BEHAVIOR_EVENTS_RUNBOOK、ER-S15B1_RESULT、ER-S15B2_RESULT。
+旧Seen/Flink维持旧topic，最小topic guard阻止新版误配；新版本化Seen消费在C15C，Flink可靠计算在S19。至少一次重复、历史未分类与无时区时间是显式风险，不靠producer幂等或场景字段消除。部署单元/依赖版本不变；B1已实现并独占验证，无共享迁移或生产吞吐承诺。公共领域类型保留在common，严格JSON codec复用platform既有Jackson依赖。B2以同owner的V002、BehaviorHistoryMapper/XML和显式BehaviorHistoryRepository实现命令/items/cancel；持久访问序号公平轮转，单项与原Outbox捕获同事务，不新增框架或线程。报告固定捕获结果并读取真实Outbox发送状态；旧Seen/Flink启动前拒绝新版保留流，旧格式不按hash合并。C15C旧格式失败确认由C1实现，运行和证据另见ER-S15C1_RESULT；B1/B2证据见BEHAVIOR_EVENTS_RUNBOOK、ER-S15B1_RESULT、ER-S15B2_RESULT。
 
 
-## C15C 架构增量（设计，尚未实现）
+## C15C 架构增量（C1旧流已实现，C2待实施）
 
 Seen是rec-engine自有读模型。旧Seen与新版live/history独立listener/group共用受控Seen处理器、primary Mapper和engine-seen独立迁移历史；不增加部署单元、第三方版本或跨owner写权限。Kafka记录技术身份包含cluster/topicId/group/partition/offset，摘要只校验原字节，不能成为旧业务去重键。PG短事务领取→事务外Redis幂等SADD→PG结果→手动确认，各崩溃窗口由持久次数/租约/fence和原记录重读恢复。毒消息隔离、正常无效果和真实应用分列，Redis失败暂停，不转隔离成功。
 
 这一设计增加每条消费的PG写与存储成本，以获得跨进程预算、持久隔离和稳定命令审计；生产容量待实测。PG结果不是Redis集合完整性的权威，集合丢失不能仅靠offset恢复。初始化/受控重放为内部显式用例，无自动全量回填或公开控制面。完整取舍、迁移/回退、默认关闭、起点和保留边界见[C15_DESIGN](C15_DESIGN.md) C15C；S15C1/C2完成前不把父S15或全链路标为完成。
+
+C1实际边界为filter/seen领域包、primary SeenRecoveryMapper/XML和db/engine-seen/V001；SeenItemsConsumer已接真实容器。新增seen_stream_control保存初始化所有权/停止原因，control→command→record短锁序；锁不跨Redis/Admin。初始化失败/未知保持原owner，成功绑定与释放同事务；整流屏障跨分区/进程有效。仅LEGACY装配，C2开关显式拒绝，避免误报新版能力已生效。固定维度指标沿现有Micrometer，不新加依赖或后台采样器。缺表/checksum或primary错绑拒绝启用，迁移不由应用自动执行。

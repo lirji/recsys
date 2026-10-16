@@ -73,7 +73,7 @@ ER-D0/C15B：沿已存在PostgreSQL/MyBatis-Plus/Kafka/Jackson，不新增依赖
 B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shared Kernel，仅放LegacyBehaviorAccepted不可变契约；严格JSON codec放入已有依赖common与Jackson的recsys-platform/behavior，供behavior及后续Seen复用，owner元数据校验仍在behavior。保留既有Jackson版本，不新增第三方依赖或Maven依赖边；消息格式、身份与全部严格校验不变。首轮编译发现common无Jackson后采用此边界，不引入手写JSON解析器。
 
 
-## C15C：Seen消费恢复（设计冻结，产品未实现）
+## C15C：Seen消费恢复（设计冻结；C1旧流已实现）
 
 | 能力 | 决策 / 选定与原因 | 备选 / 成本 | 引入阶段 |
 |---|---|---|---|
@@ -84,3 +84,5 @@ B1源码核对的文件边界细化：recsys-common是无JSON技术依赖的Shar
 | 故障验证 | REUSE_EXISTING Testcontainers、PG16、apache/kafka:3.7.1、redis:7-alpine，独占临时实例 | 不用Mock/测试Sink替代产品Seen，不改CI配置；单节点不证明副本容灾 | S15C1/C2 |
 
 版本来自Boot3.2.5 BOM及实际engine测试classpath，Kafka client3.6.2、Spring Data Redis3.2.5/Lettuce6.3.2.RELEASE一致；本机3.1.4 JAR API已核查。dev-infra Redis声明redis:7-alpine，只读核对未操作共享实例。官方3.1.4错误处理/容器和Kafka3.6.2配置、Redis SADD依据及2～3选项比较统一见[C15_DESIGN](C15_DESIGN.md) C-F/C-D；不新增依赖边/版本、端口、账号或密钥。完整恢复仍受Kafka/PG原文保留与Redis数据丢失影响，生产RTO/RPO及容量UNVERIFIED。
+
+C1沿上述版本完成实现，真实独占组件、Spring配置与独立JVM验证见ER-S15C1_RESULT。增加流控制表是跨command副作用排他的最小持久机制，不新增通用编排系统。Kafka Admin总API预算5秒、元数据发现最多3次内部重试；协调器首次引导由隔离夹具只读等待，未放宽产品时限。Redis停止重启验收使用独立容器并记录Docker端点变化，不声称验证固定端点自动重连。新功能仍默认关闭，C2/生产容量另行验收。

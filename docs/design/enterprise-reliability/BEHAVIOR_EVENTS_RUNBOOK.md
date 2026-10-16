@@ -83,14 +83,32 @@ B1/B2 必跑：`mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -a
 本片回退只关闭新增 capture/relay，或恢复已批准的兼容代码/配置；不可删事件、回写快照或假装撤销已发送消息。关闭 capture 后的新写保证退回旧模式，须明确记录。保留期未确认，不加自动清理；实际共享切换、历史清单、消费者启用和生产容量均须后续授权与验收。
 
 
-## C15C 消费恢复运行边界（设计，未实现/未启用）
+## C15C 消费恢复运行边界（C1旧流；共享环境未启用）
 
-后续运行契约见[C15_DESIGN](C15_DESIGN.md) C15C。以下不是当前可用运维命令，C1/C2实现验收后才可按owner授权调用。
+详细契约见[C15_DESIGN](C15_DESIGN.md) C15C，验证与限制见[ER-S15C1_RESULT](ER-S15C1_RESULT.md)。以下为内部owner调用顺序，未提供公共HTTP/RPC或运维CLI；本回合仅在独占测试环境执行。C2两个新版listener尚未实现，其开关打开会拒绝启动。
 
-- 旧seen-consume保留默认false；新版live/history与recovery开关默认false。旧开关启用后必须接新可靠消费者，缺engine-seen迁移/checksum/消费起点登记就拒绝；旧吞错版本不得与新版本在同组共存。初始化与重放均为内部可信actor/reason的稳定命令，无公网入口或自动执行器。
-- 迁移属于engine，不写behavior/ad表；旧组ADOPT有效committed不改位点；新组从命令冻结的最早保留位点开始；新增分区单独登记。auto.offset.reset=none；offset丢失/过期/topic换身份先报告缺口，不能直接reset到latest/earliest掩盖。Kafka写起点结果未知先查询再续办，不重跑整个命令。
-- Redis失败不ACK，3次持久预算后暂停；PG/commit未知或代码异常停止。核对依赖、技术记录、broker位点后使用稳定RETRY；毒消息只允许RECHECK原字节，不能编辑原文；重放不移动主组offset。QUARANTINED是隔离结果，不是Seen完成。
-- ACK后Redis集合丢失不会由正常重启或lag=0自动修复。已知APPLIED记录用RESTORE再次SADD；未捕获历史走B2显式清单；仅Kafka保留但没有本库record的全量/另组重建尚无本片入口，需owner另行有界方案。B2重复清单的ALREADY_CAPTURED/PUBLISHED不等于重新发出，不是自动重建入口。记录/源/Kafka保留范围之外明确不可恢复或未知，不自动扫描全量库、删集合或补写历史时间。
-- PG原文完整可脱离Kafka保留重判；超限仅坐标隔离在Kafka过期后返回SOURCE_UNAVAILABLE。不自动删除技术记录/审计，无已承诺生产保留期。观察APPLIED/NO_EFFECT/QUARANTINED/PAUSED及lag分别取义，停机不ACK未完成项，回退旧版本必须维持旧consumer关闭。
+### 迁移、登记与启动
 
-本设计回合未连接共享Kafka/Redis/PG，未执行初始化/恢复/切换。真实组件验收全部留在C01～C18，history永不转投旧Flink实时累计。
+1. 保持`recsys.behavior.seen-consume=false`、`seen.live-consume=false`、`seen.history-consume=false`、`seen.recovery-enabled=false`（后三者前缀均为`recsys.behavior`）。确认旧吞错二进制已退出目标组；不能新旧混跑。默认seen-source=db不变。
+2. 在明确授权的engine primary库执行`recsys-rec-engine/src/main/resources/db/engine-seen/V001__seen_recovery.sql`。计算实际脚本SHA256，在同一数据库会话先设置`SET recsys.migration_sha256 = '<实际SHA256>'`再执行脚本；脚本自带BEGIN/COMMIT、中文表/列注释及独立engine_seen_schema_history。不修改behavior/ad或旧迁移；应用启动只核对摘要，不自动建表。不要把文档示例当共享迁移授权。
+3. 仅打开`recsys.behavior.seen.recovery-enabled`以装配内部恢复能力，尚不开始消费。沿现有spring.kafka地址/TLS/SASL、Redis≤2秒超时与primary数据源。用稳定UUID、可信actor/reason调用`SeenRecoveryService.initialize(id, mode, actor, reason)`。旧组ADOPT_COMMITTED只采用有效committed；确无登记和位点的新组用EARLIEST_RETAINED冻结当前最早保留起点；已有组扩分区仅ENROLL_NEW_PARTITIONS。所有模式要求无活跃成员；不能将原分区丢位点当作新分区。
+4. 先`report(id)`再`advance(id)`；每次advance最多一次外部处理尝试。command READY/RUNNING/终态及3次预算、30秒租约均持久。初始化在任何alter前拥有流控制权，另一个command无权覆盖；同ID复用最先持久的清单，不能重新采样beginningOffset。响应未知先读原命令和真实broker位点；只补缺项，已有不等于冻结值就拒绝。初始化FAILED仍保留占有，原终态不改，须owner另行处置，不能靠新ID绕过。
+5. 初始化SUCCEEDED且身份/所有分区/位点/整流义务检查通过后，才可由获授权owner开启旧seen-consume或显式调用SeenListenerControl.start。offset reset固定none；缺表/摘要漂移、位点缺失/越界、topic重建、新分区未登记都拒绝。没有在共享环境执行上述步骤。
+
+### 暂停、停止与单记录恢复
+
+真实SADD成功（返回0或1）→PG APPLIED→listener线程ACK；合法IMPRESSION为NO_EFFECT。非法数据持久QUARANTINED后可ACK，隔离不等于Seen成功。Redis异常/响应未知不ACK，最多3次持久预算后PAUSED并暂停整流；PG/可观察commit未知或代码错误停止。停止原因尽力写PG，PG不可达时无法承诺标记已保存，但本地仍停止，重启必须重新核查。
+
+内部调用`requestRecovery(commandId, recordId, mode, expectedDigest, actor, reason)`，随后按原ID查询/有界advance。RETRY仅PAUSED依赖恢复；RECHECK仅QUARANTINED原字节重判，仍非法返回STILL_INVALID；RESTORE仅APPLIED，必须再次真实SADD，不能被原APPLIED短路。不接受任意payload/user/key；重放不发新Kafka消息、不移动主组offset。同ID改内容冲突，终态重试返回原结果；新一轮须新命令。最后一次领取退出后，下次advance在租约过期清算FAILED并释放占用，不能永久卡RUNNING。
+
+先处理全流所有PAUSED/耗尽/活动恢复义务，再`authorizeResume()`核对真实身份/位点并清除持久停止原因，最后显式`SeenListenerControl.resume()`或start。只有一条恢复成功不能放行另一条；启动新进程也不重置次数。暂停容器继续poll心跳。查询使用report/record与隔离游标(createdAt,recordId)，limit≤100，只返回脱敏技术状态。
+
+### 保留、观测与回退
+
+ACK后Redis集合丢失不会由正常重启、APPLIED或lag=0自动修复。已知记录RESTORE仅代表局部恢复；未捕获历史需B2明确清单和C2产品history链路。B2 ALREADY_CAPTURED/PUBLISHED不等于重新发送；仅Kafka保留但本库无record的全量/另组重建没有本片入口，须owner另行方案。不能凭本片推断全部历史完整。
+
+key≤1KiB、value≤32KiB保存原字节；超限只保存坐标/长度/摘要，不能截断冒充原文。完整PG原文可脱离Kafka保留重判；缺完整原文按同cluster/topicId/partition/offset有界重取，过期/缺项SOURCE_UNAVAILABLE，相邻记录不能替代。不自动删除记录/审计，生产保留/存储容量/RTO/RPO未知。
+
+现有Micrometer暴露固定维度`recsys.seen.records`（READY/APPLYING/APPLIED/NO_EFFECT/QUARANTINED/PAUSED）、`oldest.pending.seconds`、`paused`、`stopped`、`attempts`、`recovery`、`commit.failures`、`stops`；PG读失败为NaN，不冒充零。broker committed仍需Admin核对，指标不是位点权威。每流单consumer、单poll记录、停止线程1/队列3、PG事务5秒、Redis≤2秒；生产吞吐未测。
+
+回退先关闭Seen消费/恢复能力，保留全部表、原文、审计和位点；回退旧二进制仍须保持旧consumer关闭，避免恢复吞错入口。无共享切换/部署/清理授权。history不转投旧Flink实时累计，S19仍独立完成checkpoint/窗口恢复。

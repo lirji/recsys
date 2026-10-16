@@ -1,54 +1,48 @@
 package com.recsys.recengine.filter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.recsys.common.constant.RedisKeys;
-import com.recsys.common.dto.BehaviorEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.kafka.annotation.KafkaListener;
+import com.recsys.common.behavior.LegacyBehaviorAccepted;
+import com.recsys.recengine.filter.seen.*;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.listener.MessageListenerContainer;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
+import java.time.Duration;
 
-import java.util.Set;
-
-/**
- * 已看读模型消费者(P4):消费 {@code behavior-events},把用户<b>正反馈</b>(CLICK/LIKE/PLAY/RATING)物品
- * SADD 进 rec-engine 自有的 {@code seen:{user}} Set —— 供 {@link ReplicaSeenItemsSource} 读,在线不再直读
- * {@code user_behavior}(DB-per-service)。
- *
- * <p>监听器默认不启动({@code recsys.behavior.seen-consume=false} → autoStartup=false),故无 Kafka / 不开启时零连接、
- * 服务照常起。以 userId 分区有序 + Set 幂等 ⇒ 无需去重。IMPRESSION 等非正反馈忽略(与 db 口径一致)。
- */
+/** 旧Seen真实入口：只有持久终态才能ACK，Redis/PG/未知异常不能吞掉后正常返回。 */
 @Component
 public class SeenItemsConsumer {
-
-    private static final Logger log = LoggerFactory.getLogger(SeenItemsConsumer.class);
-
-    /** 与 DbSeenItemsSource 的 {@code action IN (...)} 口径一致。 */
-    private static final Set<String> POSITIVE = Set.of("CLICK", "LIKE", "PLAY", "RATING");
-
-    private final StringRedisTemplate redis;
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    /** 即使listener关闭也拒绝错误路由；新版确认恢复在C15C使用独立配置入口。 */
-    public SeenItemsConsumer(StringRedisTemplate redis,
-            @org.springframework.beans.factory.annotation.Value("${recsys.behavior.topic:behavior-events}") String topic) {
-        com.recsys.common.behavior.LegacyBehaviorAccepted.requireLegacyTopic(topic);
-        this.redis = redis;
+    private final ObjectProvider<SeenProjectionService> projection;
+    /** 默认关闭仍校验旧topic；provider不创建Kafka/Admin或访问恢复表。 */
+    public SeenItemsConsumer(ObjectProvider<SeenProjectionService> projection,
+            @Value("${recsys.behavior.topic:behavior-events}") String topic) {
+        LegacyBehaviorAccepted.requireLegacyTopic(topic);this.projection=projection;
     }
-
-    @KafkaListener(
-            topics = "${recsys.behavior.topic:behavior-events}",
-            groupId = "${recsys.behavior.seen-group:recsys-rec-engine-seen}",
-            autoStartup = "${recsys.behavior.seen-consume:false}")
-    public void onEvent(String json) {
+    /** C2未实现时显式拒绝其开启请求，避免配置看似生效却没有产品listener。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void verifyC1Boundary(@Value("${recsys.behavior.seen.live-consume:false}") boolean live,
+                                 @Value("${recsys.behavior.seen.history-consume:false}") boolean history) {
+        if(live || history)throw new SeenRecord.Failure(SeenRecord.Code.NOT_ELIGIBLE);
+    }
+    /** 专用factory的单记录consumer线程调用，禁用跨线程ACK与同批跳过。 */
+    public void onEvent(ConsumerRecord<byte[],byte[]> record,Acknowledgment ack,Consumer<?,?> consumer,MessageListenerContainer container) {
+        boolean confirming=false;
         try {
-            BehaviorEvent ev = mapper.readValue(json, BehaviorEvent.class);
-            if (ev.action() != null && POSITIVE.contains(ev.action().name())) {
-                redis.opsForSet().add(RedisKeys.seenItems(ev.userId()), String.valueOf(ev.itemId()));
+            var outcome=projection.getObject().consume("LEGACY",record.partition(),record.offset(),record.key(),record.value());
+            if(outcome==SeenProjectionService.Outcome.ACK) {
+                if(!consumer.assignment().contains(new TopicPartition(record.topic(),record.partition())))throw new SeenRecord.Failure(SeenRecord.Code.ACTIVE_LEASE);
+                confirming=true;ack.acknowledge(); // 返回不等于broker位点已落盘，重平衡内部窗口由终态重投恢复。
+            } else {
+                ack.nack(Duration.ofSeconds(1));
+                if(outcome==SeenProjectionService.Outcome.PAUSED)container.pause();
             }
-        } catch (Exception e) {
-            log.warn("消费 behavior-events 建已看读模型失败: {}", e.getMessage());
+        } catch(SeenRecord.Failure known) {throw known;}
+        catch(RuntimeException unknown) {
+            if(confirming)io.micrometer.core.instrument.Metrics.counter("recsys.seen.commit.failures","stream","LEGACY").increment();
+            throw new SeenRecord.Failure(SeenRecord.Code.INTERNAL_ERROR);
         }
     }
 }

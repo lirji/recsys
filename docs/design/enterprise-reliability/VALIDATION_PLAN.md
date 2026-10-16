@@ -91,6 +91,8 @@ B2新增必需边界：已有DEAD/INVALID_SOURCE分别与源不变/删除/漂移
 
 ## C15C 设计与后续真实验收
 
-89a217e3只执行D-C01～D-C09设计验证，结果见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)；不把审查当消费运行证据。产品C01～C18完整矩阵在[C15_DESIGN](C15_DESIGN.md) C-V，当前全部UNVERIFIED。C1先交付旧Seen的真实PG/Kafka/Redis确认、预算/暂停/毒消息/重放/初始化/独立JVM恢复；C2再接live/history、真实B2→产品Seen→Redis→ReplicaSeenItemsSource并完成父片回归。默认错误处理器、首次latest、既有位点丢失、重平衡、ACK窗口与Redis集合丢失负对照均不可删。
+89a217e3只执行D-C01～D-C09设计验证，结果见[ER-D0-C15C_RESULT](ER-D0-C15C_RESULT.md)；不把审查当消费运行证据。产品C01～C18完整矩阵在[C15_DESIGN](C15_DESIGN.md) C-V，设计回合全部UNVERIFIED；当前C1逐项结果以ER-S15C1_RESULT为准，C2仍UNVERIFIED。C1先交付旧Seen的真实PG/Kafka/Redis确认、预算/暂停/毒消息/重放/初始化/独立JVM恢复；C2再接live/history、真实B2→产品Seen→Redis→ReplicaSeenItemsSource并完成父片回归。默认错误处理器、首次latest、既有位点丢失、重平衡、ACK窗口与Redis集合丢失负对照均不可删。
 
 隔离组件测试使用唯一topic/group/schema/测试key，失败必须定位实际组件/产品窗口；不改共享数据或既有午夜fixture，不以Mock、跳过或降低断言替代。命令建议沿既有 `mvn -B -pl recsys-behavior,recsys-rec-engine,recsys-streaming -am test -Dgroups=behavior-reliability -Dsurefire.failIfNoSpecifiedTests=false`，加本片受影响回归；设计回合未执行此命令。C1/C2测试均必须纳入原tag门禁，无需修改CI配置。
+
+C1最终验证采用增量证据：完整behavior-reliability先运行73项（engine29/behavior42/streaming2），随后对审查修改后的engine独立重验并补旧DTO回归，未变behavior/streaming44复用同轮源指纹与XML。C07增加同ID不同观测的真实PG红绿反例；C06增加隔离提交后独立JVM退出；C11使用真实Admin删group位点与越end。提交窗口异常注入位于真实consumer/真实SADD后，Admin与Redis查询仍真实；仅证明这些确定性窗口，不宣称实际Kafka网络断连、ACL拒绝、集群容灾或生产吞吐。

@@ -360,6 +360,7 @@ Spring 3.1.4 默认错误处理器可以有限重试后日志恢复并跳过，�
 
 | 表/逻辑对象 | 最少字段、约束与访问路径 |
 |---|---|
+| `seen_stream_control` | stream主键及cluster/topicId/group唯一绑定；initializingCommandId持久排他、stopReason固定码。先占有再调用Admin，不同命令不能因租约到期接管；仅成功初始化原子释放占有。 |
 | `seen_stream_partition` | `(stream,partition)`主键；不可变clusterId/topicId/topic/groupId、bootstrapOffset、登记commandId；最多32分区/流；记录初始化状态及已观察committed offset（后者仅证据，不替代broker权威）。同一cluster/topic/group/partition唯一；topic重建或group换绑拒绝复用。 |
 | `seen_record` | 技术键`(clusterId,topicId,groupId,partition,offset)`唯一，含stream/topic；独立record UUID供命令引用；key/value原bytea或null、长度/带null标记和长度分隔的SHA256、payloadComplete、firstClassification/firstError/首次时间不可变。状态READY/APPLYING/APPLIED/NO_EFFECT/QUARANTINED/PAUSED；attempts 0..3、epoch、fence、leaseUntil、activeCommandId、nextAttemptAt、lastError/lastSuccessAt，UTC timestamptz/DB时间。索引(stream,status,nextAttemptAt)，隔离查询用(createdAt,recordId)稳定分页。 |
 | `seen_recovery_command` | UUID主键；kind=INITIALIZE/RETRY/RECHECK/RESTORE，规范化不可变request和摘要、可信actor≤200/reason≤1000、创建时间；READY/RUNNING/SUCCEEDED/FAILED和固定result；attempts 0..3、30秒租约/fence、前后状态/epoch、完成时间；相同ID改内容冲突，终态结果不可变。初始化最多32分区，其余每命令只一条record。 |
@@ -368,7 +369,7 @@ Spring 3.1.4 默认错误处理器可以有限重试后日志恢复并跳过，�
 
 正常wire≤32KiB，key≤1KiB时完整存储，包含null标记；不存无业务用途Kafka headers，重放不得依赖headers。超过限额的毒消息只存坐标/长度/摘要，`payloadComplete=false`，不截断后冒充原文；隔离后若需重取，限定同cluster/topicId/partition/offset且校验摘要。broker过期/删topic/压缩缺项不可恢复时明确SOURCE_UNAVAILABLE，不能拿“下一个offset”代替。非法字节原样保存，不能先宽松UTF-8替换。日志/API摘要均无原JSON、key、userId或异常cause正文。
 
-领取/标记均独立REQUIRES_NEW、READ_COMMITTED短事务，事务5秒/锁4秒/语句5秒，绑定primary同一DataSource。锁序command（若有）→record；初始化只锁command→stream_partition。冲突按唯一键重读校验。外部Redis/Kafka调用绝不持PG事务/行锁。副作用前提交attempts+1/fence+1/30秒lease，最后一次领取退出也消耗预算；有效lease+fence才允许结果写回。普通流READY→APPLYING→APPLIED，失败回READY或PAUSED；合法无效果/非法数据可直接持久NO_EFFECT/QUARANTINED且不计Redis尝试。恢复命令只在已声明终态上开启新epoch，原字节和首次分类/原因不变，当前结果可随受控重判改变；命令自身终态不可改。未过期旧租约不被抢占；过期后重新领取或预算耗尽PAUSED。stale执行器即使SADD成功也不得写回或ACK；幂等SADD使外部旧调用残留安全，不宣称fence能撤销Redis请求。
+领取/标记均独立REQUIRES_NEW、READ_COMMITTED短事务，事务5秒/锁4秒/语句5秒，绑定primary同一DataSource。锁序control→command（若有）→record/stream_partition；control只在短PG事务内持锁。冲突按唯一键重读校验。外部Redis/Kafka调用绝不持PG事务/行锁。副作用前提交attempts+1/fence+1/30秒lease，最后一次领取退出也消耗预算；有效lease+fence才允许结果写回。普通流READY→APPLYING→APPLIED，失败回READY或PAUSED；合法无效果/非法数据可直接持久NO_EFFECT/QUARANTINED且不计Redis尝试。恢复命令只在已声明终态上开启新epoch，原字节和首次分类/原因不变，当前结果可随受控重判改变；命令自身终态不可改。未过期旧租约不被抢占；过期后重新领取或预算耗尽PAUSED。stale执行器即使SADD成功也不得写回或ACK；幂等SADD使外部旧调用残留安全，不宣称fence能撤销Redis请求。
 
 ### C-O：确认、重试、暂停与提交窗口
 
@@ -403,7 +404,7 @@ PG不可用/标记提交未知、可观察的Kafka commit异常、未知代码�
 
 内部受控 `SeenRecoveryService` 不加公网HTTP、RPC或自动调度；caller负责可信actor和目标授权，不能信任消息里的actor。开启recovery-enabled只装配能力，不自动执行任何命令。普通已登记流在该开关关闭后仍能履行已接受记录；手工重放/初始化不能绕过开关。返回固定领域码，未来公开适配必须走项目统一错误映射，不先新造公开错误码。
 
-1. `initialize(commandId, stream, mode, actor, reason)`：mode=ADOPT_COMMITTED、EARLIEST_RETAINED或ENROLL_NEW_PARTITIONS；显式绑定当前配置的cluster/topicId/topic/group，不接受任意broker/topic。锁定不可变分区清单及begin/end观测（≤32）。所有初始化模式均要求组无活跃成员；已终态同ID重试先返回原审计，不重新登记。ADOPT只读采用每分区有效committed，既有组无位点/越界拒绝，不写broker位点。EARLIEST仅允许无登记且无任何已提交位点、组无活跃成员；将当时各分区beginningOffset冻结为起点，不用latest。两个新组上线前先登记；即使先发布再启动也覆盖起点之后保留的记录。旧组沿原groupId先ADOPT；首次旧组确无历史位点时才显式EARLIEST。
+1. `initialize(commandId, stream, mode, actor, reason)`：mode=ADOPT_COMMITTED、EARLIEST_RETAINED或ENROLL_NEW_PARTITIONS；显式绑定当前配置的cluster/topicId/topic/group，不接受任意broker/topic。锁定不可变分区清单及begin/end观测（≤32）。Admin元数据发现最多3次重试且单API上限5秒；这不重置命令预算。所有初始化模式均要求组无活跃成员；已终态同ID重试先返回原审计，不重新登记。ADOPT只读采用每分区有效committed，既有组无位点/越界拒绝，不写broker位点。EARLIEST仅允许无登记且无任何已提交位点、组无活跃成员；将当时各分区beginningOffset冻结为起点，不用latest。两个新组上线前先登记；即使先发布再启动也覆盖起点之后保留的记录。旧组沿原groupId先ADOPT；首次旧组确无历史位点时才显式EARLIEST。
 2. 初始化通过单次`advance(commandId)`在事务外用Admin设置**全新组或已批准新增分区**的冻结offset，再逐分区读回验证，最后同PG事务保存绑定和SUCCEEDED。PG/Kafka不假装原子：退出/响应未知后先查当前offset；部分已写且等于冻结值的保留，仅补尚缺项；有任何不一致/新成员则CONFLICT停止，不覆盖现有位点。只有登记SUCCEEDED才启动listener；没有应用成员竞写的受控窗口是前置条件，不能承诺防住越权Admin同时改位点。新分区未登记时停流；ENROLL_NEW_PARTITIONS只允许已登记同一绑定的新增且无committed的分区，整组无活跃成员，旧分区登记/committed逐项核对但不修改；仅将新分区当时beginningOffset冻结并设置。已有分区缺位点不能冒充新增，仍为OFFSET_GAP。命令重试先读原request/冻结清单再访问Kafka，不重新计算beginningOffset；kind/mode/配置绑定或record目标/expectedDigest/actor/reason共同确定同内容，改任一项冲突。
 3. 每次assignment核对cluster/topicId与已登记分区、broker committed在当前begin..end范围内。无位点、out-of-range、topic重建、记录PAUSED或未完成记录已被外部位点越过均停止/暂停并报告OFFSET_GAP/IDENTITY_CHANGED，不自动seek earliest/latest。没有记录的既往丢失不能检测为完整；旧吞错组早前已提交的漏Seen也不会自动重现。
 4. `requestRecovery(commandId, recordId, mode, expectedDigest, actor, reason)`：一命令一记录；RETRY仅PAUSED依赖故障，RECHECK仅QUARANTINED（修复解析器版本后原字节重判），RESTORE仅APPLIED（显式补回已知丢失的成员）。无任意新payload/userId/目标key参数。已存在同ID同内容返回原命令；改内容COMMAND_CONFLICT，不再执行第二轮。不同命令不能同时占有该record有效lease；activeCommandId非空时普通listener只等待/暂停，不能领取，恢复claim同时推进command和record的fence。
@@ -412,6 +413,14 @@ PG不可用/标记提交未知、可观察的Kafka commit异常、未知代码�
 7. `report(commandId)`和`record(recordId)`只返回脱敏状态、固定错误、attempts、fence、时间、payloadComplete和结果；隔离列表cursor=(createdAt,recordId)、limit 1..100。APPLIED、QUARANTINED、NO_EFFECT、PAUSED分别计数；命令SUCCEEDED不等于整组lag=0/历史完整。恢复不提交主group位点；原暂停listener重新读终态后自行ACK。恢复成功与container.resume之间退出，重启查状态可继续，不丢义务。命令终态时同事务释放activeCommandId；第3次命令领取后退出由下次advance在租约过期后清算FAILED并释放占用，record保留PAUSED（仍非法则QUARANTINED），不可永久卡在RUNNING。
 
 命令稳定错误：INVALID_COMMAND、COMMAND_CONFLICT、NOT_FOUND、NOT_ELIGIBLE、ACTIVE_LEASE、STILL_INVALID、SOURCE_UNAVAILABLE、IDENTITY_CHANGED、OFFSET_GAP、DEPENDENCY_UNAVAILABLE、INTERNAL_ERROR。初始化/恢复审计必须记录可信actor/reason、固定目标、前后状态与结果；不将这些内部码当已发布HTTP接口。
+
+### C-S补充：父审查三项落地协议（ER-S15C1）
+
+- **跨命令初始化排他**：增加 engine 自有 `seen_stream_control`，以 stream 主键及 cluster/topicId/group 唯一绑定持久保存 initializingCommandId。在任何 Admin alter 前，短事务先插入/锁定 control、登记稳定 command 并提交该占有；另一 commandId 一律 COMMAND_CONFLICT。同ID仅复用冻结清单；并发调用的本次begin/end观测不属于用户请求语义，原mode/绑定/actor/reason相同就返回最先持久的原request及摘要，不以稍后观测覆盖或误判冲突；租约只用于同命令执行互斥，租约到期不转让初始化所有权。外部调用不持PG锁。成功绑定全部清单与命令SUCCEEDED、释放占有在同一事务；响应未知或耗尽预算仍保留占有，禁止新命令覆盖。耗尽后同ID只返回原FAILED终态/冻结清单并保留占有，需owner另行处置；不能修改终态审计、重新采样或通过新ID覆盖。
+- **新增分区**：复用C-S2最终稿；ENROLL冻结完整旧分区观测与新增清单，仅新增无位点分区可以alter；执行前后旧位点必须仍等于冻结观测，旧缺位点/变化拒绝。EARLIEST不用于已有组扩容。新出现但不在冻结清单的分区也拒绝，不把命令范围悄悄扩大。
+- **整流恢复门槛**：start、assignment、每次record领取与显式resume均查询整个stream（不只当前assigned分区）的PAUSED、耗尽且已过期APPLYING、activeCommand和初始化占有。任何PAUSED/耗尽/恢复占有存在都不resume，不因恢复一条记录解锁另一条。未耗尽有效租约仅等待原记录；同流其他实例也在下一条领取前检查整流屏障。恢复服务只提供显式resume/start检查，无自动调度。停止固定原因持久保存于control（PG不可达时写入不能保证，容器仍本地停止；再次启动必须重新完成PG/身份/位点/未完成义务检查，不能把未保存的停止原因伪称已持久）。清除可持久停止标记前必须显式只读核查真实位点/全部未完成记录；不能通过开关或新进程清零attempts。
+
+验收增量：C07/C10加入不同command并发初始化及Admin已写PG未记退出，同命令冻结值保持；C10/C11加入已有组扩分区仅写新增且旧位点不变；C02/C05加入两分区留下两个PAUSED，恢复其中一条仍整流暂停，全部处理后才恢复。以上为已授权协议细化，不重开D-C01～D-C09。
 
 ### C-R：Redis历史集合丢失、保留和运维边界
 

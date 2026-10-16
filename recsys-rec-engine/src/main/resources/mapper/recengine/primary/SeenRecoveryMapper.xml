@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper">
+    <sql id="control">stream,cluster_id,topic_id,topic,group_id,initializing_command_id,stop_reason</sql>
+    <sql id="partition">stream,partition_id,cluster_id,topic_id,topic,group_id,bootstrap_offset,command_id,observed_offset</sql>
+    <sql id="record">record_id,stream,cluster_id,topic_id,topic,group_id,partition_id,record_offset,key_bytes,value_bytes,
+        key_length,value_length,digest,payload_complete,first_classification,first_error,status,attempts,epoch,fence,
+        lease_until,active_command_id,last_error,created_at,last_success_at,
+        COALESCE(lease_until&gt;clock_timestamp(),false) AS lease_active,next_attempt_at&lt;=clock_timestamp() AS due</sql>
+    <sql id="command">command_id,kind,stream,record_id,request_json,request_digest,actor,reason,status,result,attempts,fence,
+        lease_until,before_status,before_epoch,before_attempts,created_at,completed_at,
+        COALESCE(lease_until&gt;clock_timestamp(),false) AS lease_active,next_attempt_at&lt;=clock_timestamp() AS due</sql>
+    <select id="tune" resultType="string">SELECT set_config('lock_timeout','4s',true) || set_config('statement_timeout','5s',true)</select>
+    <select id="migrationHashes" resultType="string">SELECT script_sha256 FROM engine_seen_schema_history WHERE version=1</select>
+    <insert id="insertControl">INSERT INTO seen_stream_control(stream,cluster_id,topic_id,topic,group_id)
+        VALUES(#{c.stream},#{c.clusterId},#{c.topicId},#{c.topic},#{c.groupId}) ON CONFLICT DO NOTHING</insert>
+    <select id="control" resultType="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper$Control" useCache="false" flushCache="true">
+        SELECT <include refid="control"/> FROM seen_stream_control WHERE stream=#{stream}</select>
+    <select id="lockControl" resultType="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper$Control" useCache="false" flushCache="true">
+        SELECT <include refid="control"/> FROM seen_stream_control WHERE stream=#{stream} FOR UPDATE</select>
+    <update id="ownInitialization">UPDATE seen_stream_control SET initializing_command_id=#{id} WHERE stream=#{stream} AND initializing_command_id IS NULL</update>
+    <update id="releaseInitialization">UPDATE seen_stream_control SET initializing_command_id=NULL WHERE stream=#{stream} AND initializing_command_id=#{id}</update>
+    <update id="stop">UPDATE seen_stream_control SET stop_reason=#{reason,jdbcType=VARCHAR} WHERE stream=#{stream}</update>
+    <select id="partitions" resultType="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper$Partition" useCache="false" flushCache="true">
+        SELECT <include refid="partition"/> FROM seen_stream_partition WHERE stream=#{stream} ORDER BY partition_id LIMIT 32</select>
+    <insert id="insertPartition">INSERT INTO seen_stream_partition(stream,partition_id,cluster_id,topic_id,topic,group_id,bootstrap_offset,command_id,observed_offset)
+        VALUES(#{p.stream},#{p.partitionId},#{p.clusterId},#{p.topicId},#{p.topic},#{p.groupId},#{p.bootstrapOffset},#{p.commandId},#{p.observedOffset})</insert>
+    <update id="settleExpired">UPDATE seen_record SET status='PAUSED',lease_until=NULL,last_error='DEPENDENCY_UNAVAILABLE' WHERE record_id IN
+        (SELECT record_id FROM seen_record WHERE stream=#{stream} AND active_command_id IS NULL AND status='APPLYING' AND attempts=3 AND lease_until&lt;=clock_timestamp() LIMIT 32)</update>
+    <select id="barriers" resultType="int" useCache="false" flushCache="true">SELECT count(*) FROM
+        (SELECT 1 FROM seen_record WHERE stream=#{stream} AND (status='PAUSED' OR active_command_id IS NOT NULL
+            OR (status='APPLYING' AND attempts=3 AND lease_until&lt;=clock_timestamp())) LIMIT 1) b</select>
+    <select id="gaps" resultType="int" useCache="false" flushCache="true">SELECT count(*) FROM
+        (SELECT 1 FROM seen_record WHERE stream=#{stream} AND partition_id=#{partition} AND record_offset&lt;#{committed}
+            AND (status NOT IN ('APPLIED','NO_EFFECT','QUARANTINED') OR active_command_id IS NOT NULL) LIMIT 1) b</select>
+    <insert id="insertRecord">INSERT INTO seen_record(record_id,stream,cluster_id,topic_id,topic,group_id,partition_id,record_offset,
+        key_bytes,value_bytes,key_length,value_length,digest,payload_complete,first_classification,first_error,status,last_error)
+        VALUES(#{r.recordId},#{r.stream},#{r.clusterId},#{r.topicId},#{r.topic},#{r.groupId},#{r.partitionId},#{r.recordOffset},
+        #{r.keyBytes,jdbcType=BINARY},#{r.valueBytes,jdbcType=BINARY},#{r.keyLength},#{r.valueLength},#{r.digest},#{r.payloadComplete},
+        #{r.firstClassification},#{r.firstError,jdbcType=VARCHAR},#{r.status},#{r.firstError,jdbcType=VARCHAR})
+        ON CONFLICT(cluster_id,topic_id,group_id,partition_id,record_offset) DO NOTHING</insert>
+    <select id="coordinate" resultType="com.recsys.recengine.filter.seen.SeenRecord" useCache="false" flushCache="true">SELECT <include refid="record"/>
+        FROM seen_record WHERE stream=#{stream} AND partition_id=#{partition} AND record_offset=#{offset}</select>
+    <select id="record" resultType="com.recsys.recengine.filter.seen.SeenRecord" useCache="false" flushCache="true">SELECT <include refid="record"/> FROM seen_record WHERE record_id=#{id}</select>
+    <select id="lockRecord" resultType="com.recsys.recengine.filter.seen.SeenRecord" useCache="false" flushCache="true">SELECT <include refid="record"/> FROM seen_record WHERE record_id=#{id} FOR UPDATE</select>
+    <update id="expireRecord">UPDATE seen_record SET status='PAUSED',lease_until=NULL,last_error='DEPENDENCY_UNAVAILABLE'
+        WHERE record_id=#{id} AND active_command_id IS NULL AND status='APPLYING' AND attempts=3 AND lease_until&lt;=clock_timestamp()</update>
+    <update id="claimRecord">UPDATE seen_record SET status='APPLYING',attempts=attempts+1,fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds'
+        WHERE record_id=#{id} AND active_command_id IS NULL AND status IN ('READY','APPLYING') AND attempts&lt;3
+        AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp()) AND next_attempt_at&lt;=clock_timestamp()</update>
+    <update id="finishRecord">UPDATE seen_record SET status=#{status},lease_until=NULL,last_error=#{error,jdbcType=VARCHAR},
+        last_success_at=CASE WHEN #{status}='APPLIED' THEN clock_timestamp() ELSE last_success_at END
+        WHERE record_id=#{id} AND fence=#{fence} AND status='APPLYING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="failRecord">UPDATE seen_record SET status=CASE WHEN attempts=3 THEN 'PAUSED' ELSE 'READY' END,lease_until=NULL,
+        last_error=#{error},next_attempt_at=clock_timestamp()+#{delay}*interval '1 millisecond'
+        WHERE record_id=#{id} AND fence=#{fence} AND status='APPLYING' AND lease_until&gt;clock_timestamp()</update>
+    <insert id="insertCommand">INSERT INTO seen_recovery_command(command_id,kind,stream,record_id,request_json,request_digest,actor,reason,before_status,before_epoch,before_attempts)
+        VALUES(#{c.commandId},#{c.kind},#{c.stream},#{c.recordId,jdbcType=OTHER},#{c.requestJson},#{c.requestDigest},#{c.actor},#{c.reason},
+        #{c.beforeStatus,jdbcType=VARCHAR},#{c.beforeEpoch,jdbcType=BIGINT},#{c.beforeAttempts,jdbcType=INTEGER}) ON CONFLICT(command_id) DO NOTHING</insert>
+    <select id="command" resultType="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper$Command" useCache="false" flushCache="true">SELECT <include refid="command"/> FROM seen_recovery_command WHERE command_id=#{id}</select>
+    <select id="lockCommand" resultType="com.recsys.recengine.persistence.mapper.primary.SeenRecoveryMapper$Command" useCache="false" flushCache="true">SELECT <include refid="command"/> FROM seen_recovery_command WHERE command_id=#{id} FOR UPDATE</select>
+    <update id="claimCommand">UPDATE seen_recovery_command SET status='RUNNING',attempts=attempts+1,fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds'
+        WHERE command_id=#{id} AND status IN ('READY','RUNNING') AND attempts&lt;3 AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp()) AND next_attempt_at&lt;=clock_timestamp()</update>
+    <update id="attachCommand">UPDATE seen_record SET active_command_id=#{command},epoch=epoch+1,attempts=0,lease_until=NULL,next_attempt_at=clock_timestamp()
+        WHERE record_id=#{id} AND active_command_id IS NULL AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+    <update id="claimRecoveryRecord">UPDATE seen_record SET status='APPLYING',attempts=attempts+1,fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds'
+        WHERE record_id=#{id} AND active_command_id IS NOT NULL AND attempts&lt;3 AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+    <update id="finishCommand">UPDATE seen_recovery_command SET status=#{status},result=#{result},lease_until=NULL,completed_at=clock_timestamp()
+        WHERE command_id=#{id} AND fence=#{fence} AND status='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="failCommand">UPDATE seen_recovery_command SET status=CASE WHEN attempts=3 THEN 'FAILED' ELSE 'READY' END,result=#{error},lease_until=NULL,
+        completed_at=CASE WHEN attempts=3 THEN clock_timestamp() ELSE NULL END,next_attempt_at=clock_timestamp()+#{delay}*interval '1 millisecond'
+        WHERE command_id=#{id} AND fence=#{fence} AND status='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="expireCommand">UPDATE seen_recovery_command SET status='FAILED',result='DEPENDENCY_UNAVAILABLE',completed_at=clock_timestamp(),lease_until=NULL
+        WHERE command_id=#{id} AND status='RUNNING' AND attempts=3 AND lease_until&lt;=clock_timestamp()</update>
+    <update id="releaseRecord">UPDATE seen_record SET active_command_id=NULL,status=#{status},lease_until=NULL WHERE record_id=#{id} AND active_command_id=#{command}</update>
+    <select id="quarantine" resultType="com.recsys.recengine.filter.seen.SeenRecord" useCache="false" flushCache="true">SELECT <include refid="record"/> FROM seen_record
+        WHERE status='QUARANTINED' <if test="at != null">AND (created_at,record_id)&gt;(#{at},#{id})</if> ORDER BY created_at,record_id LIMIT #{limit}</select>
+    <select id="statusCount" resultType="long" useCache="false" flushCache="true">SELECT count(*) FROM seen_record WHERE stream='LEGACY' AND status=#{status}</select>
+    <select id="oldestPendingSeconds" resultType="double" useCache="false" flushCache="true">SELECT COALESCE(EXTRACT(EPOCH FROM (clock_timestamp()-min(created_at))),0)::double precision FROM seen_record WHERE stream='LEGACY' AND status IN ('READY','APPLYING','PAUSED')</select>
+</mapper>

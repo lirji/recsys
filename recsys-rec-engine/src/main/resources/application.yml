@@ -130,6 +130,11 @@ recsys:
   behavior:
     seen-source: ${SEEN_SOURCE:db}
     seen-consume: ${SEEN_CONSUME:false}   # 是否启动 behavior-events 监听器建 seen 读模型(replica 模式需先开它灌读模型)
+    seen:
+      # C1仅装配内部受控命令；不会自动初始化位点或重放消息。
+      recovery-enabled: ${SEEN_RECOVERY_ENABLED:false}
+      live-consume: false # C2尚未实现，不得启用。
+      history-consume: false # C2尚未实现，不得启用。
     topic: behavior-events
   recall:
     quota:
