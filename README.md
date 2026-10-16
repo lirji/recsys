@@ -12,6 +12,8 @@
 
 > 广告后台修复（2026-10-16）：五项修复及本机 Docker 交付已完成，最终提交、CI、镜像与验收记录见 [ADV-UI-01 交付归档](docs/plans/advertiser-console-fixes/RESULT.md)。
 
+> CPC／CPA 前端接入：[ADV-UI-02 执行方案](docs/design/sandbox-click-conversion-ui/PLAN.md)（拟议，待最终方案批准；尚未实现）。复用现有 C11/C12 后端，不恢复暂停的企业可靠性后续切片。
+
 ## 环境要求
 
 | 依赖 | 版本 | 说明 |
