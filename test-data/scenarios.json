@@ -1,0 +1,12 @@
+{
+  "scenario": "demo-ab-board-v1",
+  "purpose": "本机桶对比大盘演示，不代表真实实验效果",
+  "clicksByInitialExposureRank": [55, 20, 15, 10],
+  "totalNewClicks": 100,
+  "newUsers": 0,
+  "newImpressions": 0,
+  "source": "user_behavior existing IMPRESSION with exact exposure_id",
+  "writeEntry": "POST /api/behavior",
+  "marker": {"scene": "demo-ab-board-v1"},
+  "reportJobs": ["ab-report", "publish-reports"]
+}
