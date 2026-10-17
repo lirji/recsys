@@ -58,6 +58,11 @@ public final class CatalogCommandRepository {
 
     /** 跨库副作用前提交广告主占有，相同请求复用原结果，不受当前业务行是否已删除影响。 */
     public CommandRow admit(Submission submission) {
+        return admitExpected(submission,null);
+    }
+
+    /** 批次预期版本在同一guard锁下核验；占有冲突可续办，版本冲突不能被迟到批次覆盖。 */
+    public CommandRow admitExpected(Submission submission,Long expectedVersion) {
         CommandKey key=submission.key();
         if(key.scopeKind()!=ScopeKind.ADVERTISER)throw new IllegalArgumentException("普通命令需要广告主作用域");
         long advertiser=Long.parseLong(key.scopeId());
@@ -71,7 +76,8 @@ public final class CatalogCommandRepository {
             // 锁等待后再次读同一命令：第一个请求可能已经提交占有。
             original=mapper.command(key);
             if(original!=null)return same(submission,original);
-            if(guard.activeCommandId()!=null)throw failure(Failure.CONFLICT);
+            if(expectedVersion!=null && guard.advertiserVersion()!=expectedVersion)throw failure(Failure.CONFLICT);
+            if(guard.activeCommandId()!=null)throw failure(expectedVersion==null?Failure.CONFLICT:Failure.OWNER_BUSY);
             affected(mapper.insertCommand(submission,advertiser));
             affected(mapper.acquireGuard(key,advertiser));
             return mapper.command(key);

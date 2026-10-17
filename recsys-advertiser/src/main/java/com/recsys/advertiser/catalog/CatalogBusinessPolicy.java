@@ -6,7 +6,7 @@ import com.recsys.advertiser.persistence.mapper.primary.CatalogBusinessMapper.*;
 import static com.recsys.advertiser.AdvertiserRules.*;
 import static com.recsys.advertiser.catalog.CatalogProtocol.*;
 
-/** 可靠路径复用既有校验和机审，仅在本片明确拒绝尚未实现的广告主status fanout。 */
+/** 可靠路径复用既有校验和机审；根状态由独立fanout协议控制，旧命令保留原语义。 */
 public final class CatalogBusinessPolicy {
     private CatalogBusinessPolicy() { }
 
@@ -28,6 +28,14 @@ public final class CatalogBusinessPolicy {
         String status=input.status()==null?old.status():normalizeAdvertiserStatus(input.status(),old.status());
         if(!status.equals(old.status()))throw failure(Failure.FANOUT_NOT_AVAILABLE);
         return new Root(id,or(input.name(),old.name()),or(input.dailyBudget(),old.dailyBudget()),old.status());
+    }
+
+    /** 状态和名称/预算补丁一起冻结；状态变化是否fanout由持久root步骤判断。 */
+    public static Root rootStatus(long id,Root old,AdvertiserUpsert input) {
+        if(old==null)throw failure(Failure.NOT_FOUND);
+        if(input==null)throw badRequest("广告主参数必填");
+        if(input.dailyBudget()!=null && input.dailyBudget()<0)throw badRequest("dailyBudget 非负");
+        return new Root(id,or(input.name(),old.name()),or(input.dailyBudget(),old.dailyBudget()),normalizeAdvertiserStatus(input.status(),old.status()));
     }
 
     /** ad的期望最终状态先冻结；更新不擅自重新机审，只有显式送审重跑原规则。 */

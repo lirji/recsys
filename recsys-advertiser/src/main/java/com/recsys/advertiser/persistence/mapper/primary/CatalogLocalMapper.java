@@ -26,6 +26,8 @@ public interface CatalogLocalMapper {
     /** 两个实际shard分别读取绑定，不能从SINGLE误认两份control。 */
     Binding binding(@Param("shard") int shard);
     String schemaChecksum(@Param("shard") int shard);
+    /** 新版运行需要每版分别匹配；已发布V001摘要保持原身份。 */
+    String statusSchemaChecksum(@Param("shard") int shard);
     boolean compatibleSchema(@Param("shard") int shard);
     record Binding(int shardId,UUID sourceId,String topologyVersion,String clusterId,String topicId,String topicName,
                    String mode,UUID initializingCommandId,boolean initializationReady,String writerManifest,String stopReason) { }

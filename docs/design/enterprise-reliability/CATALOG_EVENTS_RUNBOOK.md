@@ -1,6 +1,6 @@
 # 目录可靠事件运行边界
 
-依据[C16正式设计](C16_DESIGN.md)的S16A产品路径已实现，当前完整验证和交付仍在进行；以下描述代码入口与处置边界，不代表共享环境已部署或启用。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。本回合不执行共享迁移、开关切换、清库、重放或部署。
+依据[C16正式设计](C16_DESIGN.md)，S16A已交付；S16B状态/fanout/内部批次已完成必要真实验收；以下描述代码入口与处置边界，不代表共享环境已部署或启用。唯一状态见[IMPLEMENTATION_SLICES](IMPLEMENTATION_SLICES.md)。本回合不执行共享迁移、开关切换、清库、重放或部署。
 
 ## 数据与开关
 
@@ -8,7 +8,7 @@ advertiser目录归原写侧owner；advertiser/ad按advertiser_id分库，词/�
 
 默认`sharding.yaml`不改；`ADVERTISER_SHARDING_RESOURCE`默认仍指向它。启用可靠能力需显式选择新增`sharding-catalog-reliable.yaml`并先安装两库迁移；两个资源的业务路由/连接模板必须通过结构对比，不能为了新表让无迁移的default-off旧环境无法启动。
 
-reliability的enabled、admission-enabled、worker-enabled、relay-enabled、recovery-enabled全部默认false。已有publish-events默认false；新enabled与旧publish互斥。停止admission只停止新命令，在途step、命令、Outbox和查询仍有独立恢复路径。S16A的status fanout尚未实现时拒绝该可靠入口，S16B接通后才撤除拒绝。
+reliability的enabled、admission-enabled、worker-enabled、relay-enabled、recovery-enabled全部默认false。已有publish-events默认false；新enabled与旧publish互斥。停止admission只停止新命令，在途step、命令、Outbox和查询仍有独立恢复路径。新status请求进入ROOT_STATUS完整fanout；已持久化的A命令仍按原kind和原字节查询续办。内部新批次也受admission控制，新取消/重试审计受recovery控制；关闭后仍可查询、推进原命令和返回原审计结果。
 
 S16是生产者恢复能力。S17版本化Inbox/墓碑/Redis刷新及读模型切换验收完成之前，不能因S16发出了Kafka消息就启用共享reliable写或宣称暂停已在所有在线缓存生效。legacy默认行为保持；新模式不再向旧topic/Redis尽力双写。
 
@@ -21,7 +21,7 @@ S16是生产者恢复能力。S17版本化Inbox/墓碑/Redis刷新及读模型�
 | `AD_CATALOG_RECOVERY` | 装配内部初始化、审计恢复、全shard重验；默认false |
 | `AD_CATALOG_SOURCE_ID` / `AD_CATALOG_WRITER_NAME` / `CATALOG_WRITER_ID` | 固定源UUID和登记实例/0～1023唯一Snowflake ID；启用时必须显式提供 |
 
-`CatalogSchemaInstaller.install(physicalDataSource, shardId)`只接受真实物理PG，逐库安装同一追加V001资源；不是Bean，不在启动时自动迁移。安装与校验使用同一资源SHA256，原已发布迁移不改写。可靠profile关闭sql-show，可靠Mapper日志禁用；物理路由/txid证据从隔离测试采集，不打开产品SQL参数日志。
+`CatalogSchemaInstaller.install(physicalDataSource, shardId)`只接受真实物理PG，逐库核对不可变V001并追加V002任务扩展；不是Bean，不在启动时自动迁移。安装与校验使用同一资源SHA256，原已发布迁移不改写。MyBatis ScriptRunner逐版提交；每版重设4秒锁/5秒语句预算、重新取得物理库安装事务锁并刷新历史视图。V001成功而V002失败时保留V001，下次只续装缺失版本，不承诺跨版本一个事务。B可靠启动要求两库V001/V002摘要均正确；无治理迁移的default-off旧模式保持。可靠profile关闭sql-show，可靠Mapper日志禁用；物理路由/txid证据从隔离测试采集，不打开产品SQL参数日志。
 
 ## 初始化与兼容准入
 
@@ -60,17 +60,26 @@ S16是生产者恢复能力。S17版本化Inbox/墓碑/Redis刷新及读模型�
 
 API/actor与错误码以正式契约为准；这些内部恢复入口不开放匿名公网调用。查询不存在固定NOT_FOUND，不泄露原payload/关键词/权限凭据。
 
-## 广告主状态与部分结果（S16B未实现）
+## 广告主状态与部分结果（S16B实现，验收状态见实施清单）
 
 暂停先在广告主本库改status并持久fanout任务/事实，持有guard封闭广告集合，再按页冻结目标、逐ad发新版本快照。部分目标已发布而另一库故障时必须保留PAUSED/PARTIAL和逐项目标，不能回报“全部暂停”。相同状态重试不重新采样成员；恢复到active必须是新合法命令，不复活已删、单独paused或拒审广告。
 
-显式多主批次保存每目标expectedAdvertiserVersion。晚到旧批次遇到已被新命令推进的目标是CONFLICT，不能覆盖新状态。允许公平推进其他目标，但父任务直到所有目标清楚终态才汇总；取消只取消未派发目标，已提交效果不回滚，已派发目标继续核验。
+实际`CatalogFanoutService`先冻结根变更，再以最多100个ad/页保存目标ID、原版本、页摘要和游标。每个ad使用独立step身份；目标最终事件与该目标COMPLETED同库提交，只有全部目标事实核对后ROOT_FINAL才完成父命令并释放guard。源status可先于事件传播变更，不承诺跨广告同时生效。原ad status/review和删除墓碑保持，重复同状态不制造重复fanout。
+
+内部受控`CatalogStatusBatchService.submitStatusBatch(batchId, targets, actor, reason)`接受1～100个明确`(advertiserId, expectedAdvertiserVersion, targetStatus)`，按owner排序冻结，home由原batch UUID固定，child UUID由原batch/owner派生。actor必须由可信调用上下文提供；未增加公网批次API或变更原manage政策。查询`query(batchId)`/`targets(batchId, afterOrdinal)`只读原清单，每页最多100项，准确报告total/completed/conflicts/cancelled/paused/pending。
+
+每轮只派发/观察一个目标，先持久DISPATCHED再访问其owner库；未知目标有限3次，known pending有界轮转，某目标PAUSED不阻断其他目标。成功观察不抹掉原child的step预算。最后一次协调领取退出则租约到期保存带原fence的独立耗尽receipt，将该目标PAUSED并转向其他目标，没有再次尝试该失败目标。多个耗尽receipt身份不同。全部目标COMPLETED才是父COMPLETED；已有完成/冲突/取消/暂停时查询报告PARTIAL，未决为零但仍有非成功终态时父持久PAUSED并保存计数。
+
+迟到目标仍使用原expectedVersion；版本冲突保存CONFLICT，不能改写新状态。新稳定审计`cancelUndispatched(auditId,batchId,actor,reason)`仅将READY置CANCELLED，已DISPATCHED或已提交效果保留。`retryTarget(auditId,batchId,advertiserId,expectedRound,actor,reason)`只重开一个PAUSED原目标，保留childId/原版本和历史预算事实；原child若PAUSED，先按既有RETRY_STEP恢复该child，不能借批次重试释放owner guard。重复审计返原结果，不能使用新ID覆盖原批次。
+
 
 ## 向量、保留和回退
 
 派生embedding失败/空/非法均为UNKNOWN，有安全原因；不是删除广告或同item已知向量的授权。关联item改变时不能把旧item向量套给新item；明确DELETE有独立高版本墓碑。原事件重放不刷新向量，新REFRESH_ENRICHMENT必须是新版本且不可复活deleted广告。
 
 暂不自动清理命令、step receipt、版本/墓碑、Outbox与审计。Kafka过期不抹掉已知数据库原文；受控续发不等于全历史重建。只有Kafka无DB原文或两者都丢失的场景须报告实际缺口，不能宣称RPO=0。容量、保留期、备份与生产RTO/RPO未验证。
+
+V002保留V001原事实与摘要，但新增ROOT_STATUS/STATUS_BATCH命令须由识别B协议的执行器推进。存在未收敛B命令时，不能把只支持A的旧worker当作兼容恢复路径；混合版本执行未作为安全切换验收。不删除V002、不改写任务状态来回退，保留B协议查询和恢复能力。
 
 回退先停admission，保留新协议排空/查询/核验。ACTIVE库改应用enabled=false仍应被DB guard拒绝legacy写；回旧writer需要额外owner核验与版本/投影衔接，不能自动把control设LEGACY。无权限时仅记录阻断，不绕过分支保护/沙箱/数据库guard。
 

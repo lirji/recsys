@@ -20,6 +20,7 @@ public final class CatalogRuntimeBinding {
         for(int shard=0;shard<2;shard++) {
             var value=mapper.binding(shard);
             if(value==null || value.shardId()!=shard || !CatalogSchemaInstaller.checksum().equals(mapper.schemaChecksum(shard))
+                    || !CatalogSchemaInstaller.checksum(2).equals(mapper.statusSchemaChecksum(shard))
                     || !mapper.compatibleSchema(shard))throw failure(Failure.NOT_READY);
             if(value.sourceId()!=null && (!properties.sourceId().equals(value.sourceId()) || !TOPOLOGY.equals(value.topologyVersion())))throw failure(Failure.INCONSISTENT);
             if(ready && (!"ACTIVE".equals(value.mode()) || !value.initializationReady() || value.stopReason()!=null || value.sourceId()==null

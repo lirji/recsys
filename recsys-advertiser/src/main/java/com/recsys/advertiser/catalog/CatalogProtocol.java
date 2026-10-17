@@ -19,8 +19,8 @@ public final class CatalogProtocol {
     public static final int LEASE_SECONDS = 30;
     private CatalogProtocol() { }
 
-    /** 操作集合为C16冻结范围；状态fanout另由S16B接入。 */
-    public enum Kind { ROOT_CREATE, ROOT_UPDATE, AD_CREATE, AD_UPDATE, AD_STATUS, AD_REVIEW,
+    /** 操作集合为C16冻结范围；根状态保留独立kind，旧根属性命令仍按原协议恢复。 */
+    public enum Kind { ROOT_CREATE, ROOT_UPDATE, ROOT_STATUS, STATUS_BATCH, CANCEL_UNDISPATCHED, AD_CREATE, AD_UPDATE, AD_STATUS, AD_REVIEW,
         AD_SUBMIT_REVIEW, AD_DELETE, BIDWORD_CREATE, BIDWORD_UPDATE, BIDWORD_DELETE,
         CREATIVE_CREATE, CREATIVE_UPDATE, CREATIVE_DELETE, REFRESH_ENRICHMENT, INITIALIZE, RETRY_STEP,
         REPLAY_EVENT, RECHECK }
@@ -28,8 +28,12 @@ public final class CatalogProtocol {
     /** 本库Outbox确认状态，与命令/step的终态属于不同生命周期。 */
     public static final String OUTBOX_PUBLISHED="PUBLISHED";
     public enum StepState { READY, RUNNING, APPLIED, PAUSED }
+    /** 逐目标生命周期独立于父命令；名称即既有持久协议值，不使用ordinal。 */
+    public enum TaskState { READY, DISPATCHED, COMPLETED, CONFLICT, CANCELLED, PAUSED }
+    /** 目标先派发后等待原child；跨阶段保留同一身份。 */
+    public enum TaskPhase { ADMIT, WAIT }
     public enum ScopeKind { ADVERTISER, ROOT_CREATE, INITIALIZE, RECOVERY, STATUS_BATCH }
-    public enum Failure { NOT_FOUND, CONFLICT, NOT_READY, FENCED, PAUSED, INCONSISTENT, SNAPSHOT_LIMIT, RESULT_UNKNOWN, FANOUT_NOT_AVAILABLE, INVALID_INPUT }
+    public enum Failure { NOT_FOUND, CONFLICT, OWNER_BUSY, NOT_READY, FENCED, PAUSED, INCONSISTENT, SNAPSHOT_LIMIT, RESULT_UNKNOWN, FANOUT_NOT_AVAILABLE, INVALID_INPUT }
 
     /** 固定home是身份的一部分；开户尚无owner时仍能定位同一命令。 */
     public record CommandKey(int shard, UUID source, ScopeKind scopeKind, String scopeId, UUID command) {

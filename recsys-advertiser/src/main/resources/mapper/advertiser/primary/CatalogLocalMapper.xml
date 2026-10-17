@@ -4,7 +4,7 @@
   <select id="statistics" resultType="string" timeout="1">SELECT catalog_statistics() FROM catalog_shard_control WHERE shard_id=#{shard}</select>
   <select id="candidates" resultType="com.recsys.advertiser.catalog.CatalogProtocol$CommandRow" timeout="5">
     SELECT <include refid="commandColumns"/> FROM catalog_command WHERE shard_id=#{shard} AND source_id=#{source}
-      AND scope_kind IN ('ADVERTISER','ROOT_CREATE') AND state IN ('ADMITTED','RUNNING')
+      AND scope_kind IN ('ADVERTISER','ROOT_CREATE','STATUS_BATCH') AND state IN ('ADMITTED','RUNNING')
       AND available_at&lt;=clock_timestamp() AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())
       ORDER BY available_at,created_at,command_id LIMIT 10
   </select>
@@ -23,6 +23,7 @@
       writer_manifest::text AS writer_manifest,stop_reason FROM catalog_shard_control WHERE shard_id=#{shard}
   </select>
   <select id="schemaChecksum" resultType="string" timeout="5">SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE shard_id=#{shard} AND version=1</select>
+  <select id="statusSchemaChecksum" resultType="string" timeout="5">SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE shard_id=#{shard} AND version=2</select>
   <select id="compatibleSchema" resultType="boolean" timeout="5">SELECT catalog_schema_compatible() FROM catalog_shard_control WHERE shard_id=#{shard}</select>
   <select id="insertGuard" resultType="int" flushCache="true" useCache="false">
     SELECT catalog_insert_guard(#{shard},#{owner},#{home},#{scope},#{command,typeHandler=com.recsys.persistence.typehandler.UuidTypeHandler})

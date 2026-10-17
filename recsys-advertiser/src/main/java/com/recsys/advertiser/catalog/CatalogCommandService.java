@@ -14,17 +14,24 @@ public final class CatalogCommandService {
     private final CatalogJson json;
     private final AdvertiserAuthz authz;
     private final AuthzEngine relationshipClient;
+    private final CatalogFanoutService fanout;
+    private final CatalogStatusBatchService batches;
     public CatalogCommandService(CatalogCommandRepository commands,CatalogBusinessSteps steps,CatalogEnrichment enrichment,
-                                  CatalogJson json,AdvertiserAuthz authz,AuthzEngine relationshipClient) {
+                                  CatalogJson json,AdvertiserAuthz authz,AuthzEngine relationshipClient,CatalogFanoutService fanout,CatalogStatusBatchService batches) {
         this.commands=commands;this.steps=steps;this.enrichment=enrichment;this.json=json;this.authz=authz;this.relationshipClient=relationshipClient;
+        this.fanout=fanout;this.batches=batches;
     }
     /** 每次仅领取一次原phase，不递归重试；领取失败/PAUSED由查询如实反映。 */
     public CommandRow advance(CommandKey key) {
+        if(key.scopeKind()==ScopeKind.STATUS_BATCH)return batches.advance(key);
         var current=commands.find(key);if(current==null)throw failure(Failure.NOT_FOUND);
         if(current.completed() || State.REJECTED.name().equals(current.state()) || State.PAUSED.name().equals(current.state()))return current;
         var claim=commands.claim(key);if(claim==null)return commands.find(key);
         var input=json.decode(claim.requestBytes(),Request.class);var kind=input.mutation().kind();
         try {
+            if(Kind.ROOT_STATUS.name().equals(claim.kind())) {
+                fanout.advance(claim,input);return commands.find(key);
+            }
             switch(claim.phase()) {
                 case "PREPARE" -> {
                     if(kind==Kind.ROOT_CREATE)commands.acquireRootOwner(claim);
@@ -63,7 +70,8 @@ public final class CatalogCommandService {
             var observed=commands.find(key);
             if(observed!=null && observed.completed())return observed;
             boolean invalid=error instanceof ResponseStatusException h && h.getStatusCode().value()==400
-                    || error instanceof CatalogException c && (c.failure()==Failure.NOT_FOUND || c.failure()==Failure.FANOUT_NOT_AVAILABLE);
+                    || error instanceof CatalogException c && (c.failure()==Failure.NOT_FOUND || c.failure()==Failure.FANOUT_NOT_AVAILABLE
+                    || Kind.ROOT_STATUS.name().equals(claim.kind()) && c.failure()==Failure.CONFLICT);
             if(invalid && PHASE_PREPARE.equals(claim.phase()) && key.scopeKind()==ScopeKind.ADVERTISER && !steps.ownerApplied(claim)) {
                 commands.rejectUnstarted(claim,error instanceof CatalogException c?c.failure():Failure.INVALID_INPUT);throw error;
             }

@@ -280,7 +280,7 @@ C1补充协议：engine自有seen_stream_control在外部Kafka位点副作用前
 
 C2未新增schema或修改C1 V001；behavior既有engine test-support依赖承载B2→真实HISTORY→Redis→Replica全链路，engine不反向依赖behavior。所有开关仍false；初始化耗尽保持FAILED及占有，不自动翻转终态或清空owner。
 
-## C16：目录物理分片可靠事件（S16A实现，B及消费者后续）
+## C16：目录物理分片可靠事件（A已交付，B已验证；消费者后续）
 
 原F15/ER-S16的正式协议见[C16_DESIGN](C16_DESIGN.md)。advertiser/ad按advertiser_id、children按ad_id分库；可靠写每个事务只命中一个物理shard，与本库不可变片段Outbox原子。owner持久占有命令跨进程保留，已提交片段组合后才生成完整ad事件；不保证整个跨库用例原子。所有真实CRUD/审核/状态/删除及offline直写准入均有映射。
 
@@ -288,8 +288,10 @@ C2未新增schema或修改C1 V001；behavior既有engine test-support依赖承�
 
 稳定命令、物理step、有限领取/lease/fence、初始化跨command占有、暂停清单/低ID边界、恢复审计和HTTP未知结果均以正式稿为准。原API成功体保持；可选稳定命令头、受权限保护的状态查询不代表旧客户端自动具备丢响应幂等。开户先持久预留原Snowflake身份，后台不能换actor。默认全关，已有ACTIVE库不得仅关应用开关就回旧写路；运行边界见[目录手册](CATALOG_EVENTS_RUNBOOK.md)。
 
-S16A实际入口为四个原Controller的可选CatalogWriteRouter；广告主status变化返回CATALOG_FANOUT_NOT_AVAILABLE，不进入旧reindex。稳定头为`X-Catalog-Command-Id`和`X-Catalog-Advertiser-Id`，非开户须配对，开户只传command。owner查询与固定home开户查询、内部审计恢复入口、默认开关和错误语义见[目录手册](CATALOG_EVENTS_RUNBOOK.md#查询与续办)，当前验收见[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)。
+实际入口为四个原Controller的可选CatalogWriteRouter；B将新广告主status请求持久化为ROOT_STATUS并完成封闭集合fanout，保持原manage鉴权、DTO与成功响应，旧A命令按原kind/原字节恢复，不进入旧reindex。稳定头为`X-Catalog-Command-Id`和`X-Catalog-Advertiser-Id`，非开户须配对，开户只传command。owner查询与固定home开户查询、内部审计恢复入口、默认开关和错误语义见[目录手册](CATALOG_EVENTS_RUNBOOK.md#查询与续办)，当前验收见[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)。
 
 按最新授权，初始化逐ad基线必须真实Kafka确认后才READY；新版seed在首次任何副作用前必须确认两个实际库：明确无新治理表或合法未登记LEGACY可通过；部分安装、已安装但control缺失/非法、身份错配、半登记及未知均拒绝。同库地址别名拒绝，正式C16缺表兼容例外保留；本轮18项真实seed验收通过。默认关闭的旧HTTP仍在无新迁移数据库真实启动验证。已提交REPLAY_ACK优先于再次发送，可在Kafka停止时结算原home未知提交；不清原发送预算，不修改原事件字节。
 
 S16A内部恢复同样区分显式缺command/step/event的NOT_FOUND与已有原文字节/摘要损坏的INCONSISTENT；轮次/状态/归属冲突仍为CONFLICT。尚未写出的REPLAY_ACK是正常待发送状态，不能误判缺记录。末次过期步骤由有界worker或原目标审计恢复条件清算，保留预算与广告主占有。
+
+S16B沿C16§5/§10实现：root状态/version/本地事实与任务起点同库，分页冻结目标，每ad完整新版本与逐目标完成同库；全部事实完成后才释放根guard。内部≤100显式owner批次固定home/child身份、expectedVersion与独立预算，部分结果不标全部成功。新稳定取消审计仅取消未派发项，新审计轮只续办原PAUSED目标；新批次受admission开关、新审计受recovery开关，关闭仍查回/推进原命令。V002只追加任务调度及清单终态保护，V001保持原摘要；两库显式逐版升级且可靠启动核验两版。具体处置见[目录手册](CATALOG_EVENTS_RUNBOOK.md#广告主状态与部分结果s16b实现验收状态见实施清单)，最终状态见实施清单，不代表S17消费/Redis已完成。

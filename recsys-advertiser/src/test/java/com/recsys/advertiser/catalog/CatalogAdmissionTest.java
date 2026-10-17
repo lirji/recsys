@@ -23,9 +23,9 @@ class CatalogAdmissionTest {
     @Test void actualPhysicalSchemaChecksumAndMismatchedSourceAndWriterManifestRejectAdmission() {
         String hash=CatalogSchemaInstaller.checksum();
         try {
-            one.update("UPDATE advertiser_catalog_schema_history SET script_sha256=?","0".repeat(64));
+            one.update("UPDATE advertiser_catalog_schema_history SET script_sha256=? WHERE version=1","0".repeat(64));
             assertProtocolFailure(()->fixture.binding.verify(false),CatalogProtocol.Failure.NOT_READY);
-        } finally {one.update("UPDATE advertiser_catalog_schema_history SET script_sha256=?",hash);}
+        } finally {one.update("UPDATE advertiser_catalog_schema_history SET script_sha256=? WHERE version=1",hash);}
         fixture.service.initialize(fixture.id,fixture.input(),"owner","准入反例");fixture.service.advance(fixture.id);fixture.service.advance(fixture.id);fixture.service.advance(fixture.id);
         assertProtocolFailure(()->fixture.binding.verify(true),CatalogProtocol.Failure.NOT_READY);
         zero.update("UPDATE catalog_shard_control SET source_id=?",UUID.randomUUID());

@@ -36,6 +36,7 @@ class CatalogBusinessFlowTest {
     @Container static final GenericContainer<?> REDIS=new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
     static CatalogLocalMapper local;
     static CatalogBusinessMapper business;
+    static CatalogTaskMapper tasks;
     static AdvertiserItemEmbeddingMapper vectors;
     static LettuceConnectionFactory redisConnection;
     static StringRedisTemplate redis;
@@ -46,25 +47,29 @@ class CatalogBusinessFlowTest {
     @BeforeAll static void startBusiness() throws Exception {
         CatalogPhysicalTransactionTest.start();
         var factory=SpringSqlSessions.create(sharded,"classpath*:mapper/advertiser/primary/Catalog*.xml");
-        var session=new SqlSessionTemplate(factory);local=session.getMapper(CatalogLocalMapper.class);business=session.getMapper(CatalogBusinessMapper.class);
+        var session=new SqlSessionTemplate(factory);local=session.getMapper(CatalogLocalMapper.class);business=session.getMapper(CatalogBusinessMapper.class);tasks=session.getMapper(CatalogTaskMapper.class);
         vectors=new SqlSessionTemplate(SpringSqlSessions.create(ds0,"classpath*:mapper/advertiser/derived/AdvertiserItemEmbeddingMapper.xml")).getMapper(AdvertiserItemEmbeddingMapper.class);
         redisConnection=new LettuceConnectionFactory(REDIS.getHost(),REDIS.getMappedPort(6379));redisConnection.afterPropertiesSet();redisConnection.start();redis=new StringRedisTemplate(redisConnection);
     }
     @BeforeEach void prepare() {
         new CatalogPhysicalTransactionTest().arrangeExclusiveDatabase();
         zero.execute("TRUNCATE catalog_aggregate");one.execute("TRUNCATE catalog_aggregate");
+        zero.execute("TRUNCATE catalog_task_item");one.execute("TRUNCATE catalog_task_item");
         one.update("INSERT INTO catalog_aggregate(shard_id,ad_id,advertiser_id,reserved_version,last_materialized_version) VALUES(1,102,1,1,1)");
         one.update("UPDATE catalog_advertiser_guard SET active_command_id=NULL,active_command_home=NULL,active_command_scope=NULL");
         var tx=new CatalogLocalTransactions(sharded,local);json=new CatalogJson(object);var codec=new CatalogSnapshotCodec(object);
         commands=new CatalogCommandRepository(local,tx);events=new CatalogOutboxRepository(local,tx,codec);
         var steps=new CatalogBusinessSteps(business,local,new CatalogStepRepository(local,tx,object),commands,events,json,codec);
         var authz=new AdvertiserAuthz("disabled",new StaticListableBeanFactory().getBeanProvider(com.lrj.authz.protocol.AuthzEngine.class));
-        enrichment=new CatalogEnrichment(vectors,redis);service=new CatalogCommandService(commands,steps,enrichment,json,authz,null);
+        enrichment=new CatalogEnrichment(vectors,redis);
+        var fanout=new CatalogFanoutService(local,tasks,business,tx,steps,commands,events,enrichment,json,codec);
+        var batches=new CatalogStatusBatchService(local,tasks,tx,commands,json,SOURCE,true,true);
+        service=new CatalogCommandService(commands,steps,enrichment,json,authz,null,fanout,batches);
         router=new CatalogWriteRouter(SOURCE,true,commands,service,business,json,authz);
         // 可靠分支绝不可调用legacy吞错同步；null一旦误落回便会使测试失败。
         var ads=new AdController(null);ads.setCatalogRouter(router);var words=new BidwordController(null);words.setCatalogRouter(router);
         var creatives=new CreativeController(null);creatives.setCatalogRouter(router);var roots=new AdvertiserController(null);roots.setCatalogRouter(router);
-        http=MockMvcBuilders.standaloneSetup(ads,words,creatives,roots,new CatalogCommandController(router,new CatalogCommandQuery(local)))
+        http=MockMvcBuilders.standaloneSetup(ads,words,creatives,roots,new CatalogCommandController(router,new CatalogCommandQuery(local,tasks)))
                 .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(object)).build();
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("original-owner","unused",List.of(new SimpleGrantedAuthority("ROLE_ADVERTISER"))));
     }
@@ -135,8 +140,8 @@ class CatalogBusinessFlowTest {
         for(int retry=0;retry<2;retry++)http.perform(put("/api/advertiser/ad/102/status").param("status","invalid")
                 .header(CatalogWriteRouter.COMMAND_HEADER,invalid).header(CatalogWriteRouter.OWNER_HEADER,"1")).andExpect(status().isBadRequest());
         assertThat(commands.find(CatalogProtocol.CommandKey.advertiser(SOURCE,1,invalid)).state()).isEqualTo("REJECTED");
-        UUID fanout=UUID.randomUUID();for(int retry=0;retry<2;retry++)http.perform(put("/api/advertiser/1").contentType("application/json").content("{\"status\":\"paused\"}")
-                .header(CatalogWriteRouter.COMMAND_HEADER,fanout).header(CatalogWriteRouter.OWNER_HEADER,"1")).andExpect(status().isConflict());
+        UUID fanout=UUID.randomUUID();for(int retry=0;retry<2;retry++)http.perform(put("/api/advertiser/1").contentType("application/json").content("{\"status\":\"unsupported\"}")
+                .header(CatalogWriteRouter.COMMAND_HEADER,fanout).header(CatalogWriteRouter.OWNER_HEADER,"1")).andExpect(status().isBadRequest());
         assertThat(business.root(1).status()).isEqualTo("active");
         UUID root=UUID.randomUUID();http.perform(post("/api/advertiser").contentType("application/json").content("{\"name\":\"  \",\"dailyBudget\":1}")
                 .header(CatalogWriteRouter.COMMAND_HEADER,root)).andExpect(status().isBadRequest());

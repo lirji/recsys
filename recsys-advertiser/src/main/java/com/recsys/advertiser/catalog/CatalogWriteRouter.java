@@ -64,7 +64,9 @@ public final class CatalogWriteRouter {
                 if(single(business.ownersOfAd(ad))!=owner)throw publicFailure(Failure.CONFLICT);
             }
             var request=new Request(mutation,ad);
-            var submission=new Submission(key,mutation.kind(),json.encode(request),actor,"HTTP_"+mutation.kind());
+            // HTTP原DTO/操作不变；仅新含status请求选择完整fanout协议，已保存A命令仍按原kind查询恢复。
+            var kind=mutation.kind()==Kind.ROOT_UPDATE && mutation.advertiser()!=null && mutation.advertiser().status()!=null?Kind.ROOT_STATUS:mutation.kind();
+            var submission=new Submission(key,kind,json.encode(request),actor,"HTTP_"+mutation.kind());
             original=root?commands.admitRoot(submission):commands.admit(submission);
         }
         if(web.getResponse()!=null && original.advertiserId()!=null)web.getResponse().setHeader(OWNER_HEADER,original.advertiserId().toString());
@@ -106,7 +108,7 @@ public final class CatalogWriteRouter {
         return new PublicHttpException(switch(failure) {
             case NOT_FOUND -> ErrorCode.NOT_FOUND;
             case INVALID_INPUT -> ErrorCode.BAD_REQUEST;
-            case CONFLICT,FENCED -> ErrorCode.CATALOG_CONFLICT;
+            case CONFLICT,OWNER_BUSY,FENCED -> ErrorCode.CATALOG_CONFLICT;
             case NOT_READY -> ErrorCode.CATALOG_NOT_READY;
             case PAUSED -> ErrorCode.CATALOG_PAUSED;
             case INCONSISTENT -> ErrorCode.CATALOG_INCONSISTENT;

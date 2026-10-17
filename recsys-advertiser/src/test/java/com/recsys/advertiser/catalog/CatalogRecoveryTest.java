@@ -31,7 +31,7 @@ class CatalogRecoveryTest {
         commands=new CatalogCommandRepository(local,tx);
         var steps=new CatalogBusinessSteps(fixture.business,local,new CatalogStepRepository(local,tx,fixture.object),commands,fixture.outbox,json,codec);
         var authz=new AdvertiserAuthz("disabled",new StaticListableBeanFactory().getBeanProvider(com.lrj.authz.protocol.AuthzEngine.class));
-        businessService=new CatalogCommandService(commands,steps,fixture.enrichment,json,authz,null);
+        businessService=new CatalogCommandService(commands,steps,fixture.enrichment,json,authz,null,null,null);
         recovery=new CatalogRecoveryService(local,CatalogInitializationTest.session.getMapper(CatalogRecoveryMapper.class),tx,fixture.binding,json,codec,SOURCE,KAFKA.bootstrap());
     }
     @AfterEach void closeReader(){fixture.closeReader();}

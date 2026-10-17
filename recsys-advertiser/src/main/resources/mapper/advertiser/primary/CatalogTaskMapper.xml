@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper">
+  <sql id="parent">shard_id=#{key.shard} AND parent_scope=#{key.scope} AND parent_command_id=#{key.command}</sql>
+  <sql id="columns">ordinal,target_kind,target_id,target_owner_id,expected_version,child_command_id,state,result_bytes,error_type,page_sha256,phase,round,attempts,available_at</sql>
+  <select timeout="5" id="schemaChecksum" resultType="string">SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE shard_id=#{shard} AND version=#{version}</select>
+  <!-- 只有advertiser guard已持久占有且当前事务锁定它时使用；不是开放集合的提交水位。 -->
+  <select timeout="5" id="adPage" resultType="long">SELECT ad_id FROM ad WHERE advertiser_id=#{owner} AND ad_id&gt;#{after} ORDER BY ad_id LIMIT 100</select>
+  <insert id="insert">INSERT INTO catalog_task_item(shard_id,parent_scope,parent_command_id,ordinal,target_kind,target_id,target_owner_id,expected_version,child_command_id,page_sha256)
+    VALUES(#{key.shard},#{key.scope},#{key.command},#{target.ordinal},#{target.targetKind},#{target.targetId},#{target.targetOwnerId},#{target.expectedVersion},#{target.childCommandId},#{target.pageSha256})</insert>
+  <select timeout="5" id="target" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper$Target">SELECT <include refid="columns"/> FROM catalog_task_item WHERE <include refid="parent"/> AND target_kind=#{kind} AND target_id=#{id}</select>
+  <select timeout="5" id="nextFanout" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper$Target">SELECT <include refid="columns"/> FROM catalog_task_item WHERE <include refid="parent"/> AND target_kind='FANOUT_AD' AND state IN ('READY','DISPATCHED') ORDER BY ordinal LIMIT 1</select>
+  <select timeout="5" id="nextBatch" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper$Target">SELECT <include refid="columns"/> FROM catalog_task_item WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND state IN ('READY','DISPATCHED') AND available_at&lt;=clock_timestamp() ORDER BY available_at,updated_at,ordinal LIMIT 1</select>
+  <select timeout="5" id="page" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper$Target">SELECT <include refid="columns"/> FROM catalog_task_item WHERE <include refid="parent"/> AND ordinal&gt;#{after} ORDER BY ordinal LIMIT 100</select>
+  <select timeout="5" id="counts" resultType="com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper$Counts">
+    SELECT count(*) AS total,coalesce(sum(CASE WHEN state='COMPLETED' THEN 1 ELSE 0 END),0) AS completed,
+      coalesce(sum(CASE WHEN state='CONFLICT' THEN 1 ELSE 0 END),0) AS conflicts,
+      coalesce(sum(CASE WHEN state='CANCELLED' THEN 1 ELSE 0 END),0) AS cancelled,
+      coalesce(sum(CASE WHEN state='PAUSED' THEN 1 ELSE 0 END),0) AS paused,
+      coalesce(sum(CASE WHEN state IN ('READY','DISPATCHED') THEN 1 ELSE 0 END),0) AS pending
+    FROM catalog_task_item WHERE <include refid="parent"/> AND target_kind IN ('FANOUT_AD','STATUS_OWNER')
+  </select>
+  <update id="dispatchFanout">UPDATE catalog_task_item SET state='DISPATCHED',updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='FANOUT_AD' AND target_id=#{id} AND state='READY'</update>
+  <update id="completeFanout">UPDATE catalog_task_item SET state='COMPLETED',result_bytes=#{result},updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='FANOUT_AD' AND target_id=#{id} AND state='DISPATCHED'</update>
+  <update id="beginObservation">UPDATE catalog_task_item SET state='DISPATCHED',attempts=attempts+1,updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state IN ('READY','DISPATCHED') AND attempts&lt;3</update>
+  <update id="dispatchBatch">UPDATE catalog_task_item SET state='DISPATCHED',updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state IN ('READY','DISPATCHED')</update>
+  <update id="observed">UPDATE catalog_task_item SET state=#{state},phase=#{phase},result_bytes=#{result},error_type=#{error},attempts=0,available_at=clock_timestamp()+interval '500 milliseconds',updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state='DISPATCHED'</update>
+  <update id="unknown">UPDATE catalog_task_item SET state=CASE WHEN attempts=3 THEN 'PAUSED' ELSE 'DISPATCHED' END,error_type=#{error},available_at=clock_timestamp()+catalog_backoff(attempts,child_command_id::text),updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state='DISPATCHED'</update>
+  <update id="pauseExhausted">UPDATE catalog_task_item SET state='PAUSED',error_type='ATTEMPTS_EXHAUSTED',updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state='DISPATCHED' AND attempts=3</update>
+  <update id="pauseParent">UPDATE catalog_command SET state='PAUSED',result_bytes=#{result},lease_until=NULL,error_type='PARTIAL',updated_at=clock_timestamp() WHERE <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.commandKey"/> AND state='RUNNING' AND fence=#{fence} AND lease_until&gt;clock_timestamp()</update>
+  <update id="cancelUndispatched">UPDATE catalog_task_item SET state='CANCELLED',result_bytes=#{result},updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND state='READY'</update>
+  <update id="retryTarget">UPDATE catalog_task_item SET state='DISPATCHED',round=round+1,attempts=0,error_type=NULL,available_at=clock_timestamp(),updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state='PAUSED' AND round=#{round}</update>
+  <update id="retryParent">UPDATE catalog_command SET state='ADMITTED',round=round+1,attempts=0,fence=fence+1,phase='BATCH_WORK',active_step='BATCH_WORK',frozen_bytes=#{frozen},result_bytes=NULL,error_type=NULL,lease_until=NULL,available_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.commandKey"/> AND state='PAUSED' AND round=#{round} AND fence=#{fence}</update>
+  <select timeout="5" id="exhaustedObservation" resultType="boolean">SELECT count(1)&gt;0 FROM catalog_command WHERE <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.commandKey"/>
+    AND phase='BATCH_OBSERVE' AND attempts=3 AND state IN ('ADMITTED','RUNNING','PAUSED') AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</select>
+  <update id="pauseObservationTarget">UPDATE catalog_task_item SET state='PAUSED',error_type='OBSERVATION_LEASE_EXHAUSTED',updated_at=clock_timestamp() WHERE <include refid="parent"/> AND target_kind='STATUS_OWNER' AND target_id=#{id} AND state='DISPATCHED'</update>
+  <update id="settleObservation">UPDATE catalog_command SET state='ADMITTED',phase='BATCH_WORK',active_step='BATCH_WORK',attempts=0,fence=fence+1,lease_until=NULL,frozen_bytes=#{frozen},available_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE <include refid="com.recsys.advertiser.persistence.mapper.primary.CatalogLocalMapper.commandKey"/> AND phase='BATCH_OBSERVE' AND fence=#{fence} AND attempts=3 AND state IN ('ADMITTED','RUNNING','PAUSED') AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+</mapper>

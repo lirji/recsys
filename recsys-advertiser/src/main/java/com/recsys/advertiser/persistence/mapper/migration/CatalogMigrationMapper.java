@@ -12,6 +12,6 @@ public interface CatalogMigrationMapper {
     /** 明确区分没有迁移与只有半份治理schema。 */
     boolean relationExists(@Param("name") String name);
     /** 已有安装只核验原身份和checksum，不覆盖历史。 */
-    List<Installed> installed();
+    List<Installed> installed(@Param("version") int version);
     record Installed(String scriptSha256,int shardId) { }
 }

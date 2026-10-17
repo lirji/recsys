@@ -1,10 +1,10 @@
-# 当前任务：ER-S16A 广告目录可靠写入（DONE / PASS，本地必要验收）
+# 当前任务：ER-S16B 广告主状态与跨owner批次（本地DONE / PASS）
 
-唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`；最终结果`ER-S16A_RESULT.md`。正式C16及独立设计提交5c0f2901保留，原任务分支`feat/er-s16-catalog-outbox`。请求43880a89及父纠偏b48fcdef；恢复先读`.dev/codex-flow-reliability/round-43880a89/{checkpoint,delivery}.json`核对实际Git/CI/运行状态，不重跑未知操作。
+唯一实施状态：`docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md`。请求7fe6f115；任务分支`feat/er-s16b-catalog-fanout`，基线A实现6fe79594和设计5c0f2901保留。恢复入口`.dev/codex-flow-reliability/round-7fe6f115/{checkpoint.json,delivery.json,handoff.json,TEST_RESULT.json}`；先核对实际Git、精确CI和运行任务，不重复未知副作用。
 
-完整114项PASS与纠偏后定向26项PASS分别保留，最终真实开户权限恢复PASS；不是一次140项。父明确seed未安装legacy例外保留，已纠偏验证。实现提交、正常ff/push及新CI精确SHA/状态以delivery事实为准；前置S15精确686454dc全部8门禁SUCCESS，有效S15测试未重跑。
+B最终同一次目录门禁141项/17类零失败错误跳过，15:10；另真实SDK/SpiceDB/HTTP status manage PASS，源码403项指纹一致。A/B必要验收闭合，父S16 DONE；B实际提交、正常ff/push及新CI终态以delivery/handoff记录为准。前置A精确CI38983151163已9/9成功。B交付后返回父；S17～21仍待后续回合，S22～25暂停。
 
-父S16仍IN_PROGRESS，下一片S16B，再S17～21；本回合A闭合后返回父，S22～25暂停。11保护、37旧迁移fixture、59旧SQL、用户原改动与以下历史及全部.dev/target保持；不部署、不共享启用、不清理、不递归编排。
+11保护、37旧迁移fixture、59旧SQL、A已发布V001、正式C16、用户改动及以下历史保持。B追加V002，交付后同样不可改写。无部署/共享启用/清理/worktree/stash/reset/clean/强推/递归编排。
 
 ---
 

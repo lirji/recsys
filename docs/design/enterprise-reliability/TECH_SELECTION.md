@@ -103,3 +103,5 @@ C2继续复用既有platform LegacyBehaviorCodec、Spring record容器、PG Mapp
 Boot3.2.5/Spring Kafka3.1.4/client3.6.2/PG JDBC42.7.3与现有PG16/Kafka3.7.1隔离夹具沿用，不新增第三方库或基础设施。通用能力REUSE_EXISTING；目录命令/片段协议BUILD是物理不共址的一致性所需；XA/CDC/搬迁DEFER。复杂度预算见[C16方案比较](C16_DESIGN.md#2-方案比较与选择)，保留生产容量/保留期/RTO未验证。引用的官方机制说明和本机JAR核对不能替代C16-01～20运行证据。
 
 S16A真实产品继续使用上述版本；没有增加依赖、部署单元或共享实例。可靠profile关闭SQL参数日志、原profile保持，实际路由用隔离PG txid/表记录证明。新增专用catalog CI门禁20分钟，既有CI配置逐字节保持；实际命令与本地结果在[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)，不把单独真实authz main计入该JUnit门禁。
+
+S16B继续相同版本与设施；新增V002任务调度/清单保护，不改已发布V001或原业务分片规则。沿用MyBatis ScriptRunner的逐版提交语义，安装锁与超时按版本重建，避免声称多版跨事务原子。批次每目标原命令独立执行，home只保存原目标与可审计结果；无跨owner全局快照或共同提交承诺。

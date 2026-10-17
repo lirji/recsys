@@ -34,8 +34,10 @@ class CatalogPhysicalTransactionTest {
     static {pinRestartPort(ZERO,5432);pinRestartPort(ONE,5432);pinRestartPort(KAFKA,19092);}
     /** 为本次独占容器选择空闲loopback端口；显式HostPort使真实stop/start不会变成端点迁移。 */
     private static void pinRestartPort(org.testcontainers.containers.GenericContainer<?> container,int internalPort) {
+        // 只重试容器CREATE/start的端口竞争，最多三次；业务故障注入中的同容器stop/start不经过此路径。
+        container.withStartupAttempts(3);
         container.withCreateContainerCmdModifier(command->{
-            try(var socket=new java.net.ServerSocket(0,1,java.net.InetAddress.getLoopbackAddress())) {
+            try(var socket=new java.net.ServerSocket(0,1,java.net.InetAddress.getByName("127.0.0.1"))) {
                 command.getHostConfig().withPortBindings(new com.github.dockerjava.api.model.PortBinding(
                         com.github.dockerjava.api.model.Ports.Binding.bindIpAndPort("127.0.0.1",socket.getLocalPort()),
                         com.github.dockerjava.api.model.ExposedPort.tcp(internalPort)));
@@ -53,13 +55,14 @@ class CatalogPhysicalTransactionTest {
 
     @BeforeAll
     static void start() throws Exception {
+        start(false);
+    }
+    /** 升级专项先实际安装已发布V001，再由产品安装器追加新版本，不在测试中复制旧DDL。 */
+    static void start(boolean fromPublishedV1) throws Exception {
         ds0 = source(ZERO); ds1 = source(ONE);
         zero = new JdbcTemplate(ds0); one = new JdbcTemplate(ds1);
         for (JdbcTemplate db : List.of(zero, one)) {
-            create(db,"advertiser","advertiser_id bigint PRIMARY KEY,name text,daily_budget double precision,status text");
-            create(db,"ad","ad_id bigint PRIMARY KEY,advertiser_id bigint,item_id bigint,title text,landing_url text,quality_score double precision,status text,review_status text,optimization_type text,target_cpa double precision,audience_id bigint,review_reason text");
-            create(db,"bidword","id bigint PRIMARY KEY,ad_id bigint,keyword text,match_type text,bid double precision,bid_mode text");
-            create(db,"ad_creative","creative_id bigint PRIMARY KEY,ad_id bigint,title text,landing_url text,status text,review_status text DEFAULT 'approved'");
+            createBusinessTables(db);
         }
         // 单表元数据必须在真实ShardingSphere启动前存在；业务用例从真实PG读item与派生向量。
         create(zero,"item","item_id bigint PRIMARY KEY");zero.update("INSERT INTO item VALUES(10)");
@@ -74,7 +77,19 @@ class CatalogPhysicalTransactionTest {
         }
         // 旧逻辑源关闭可能关闭其传入物理池；重新建独立测试池，两个容器本身不重启。
         ds0 = source(ZERO); ds1 = source(ONE); zero = new JdbcTemplate(ds0); one = new JdbcTemplate(ds1);
-        for (int shard=0; shard<2; shard++) CatalogSchemaInstaller.install(shard==0?ds0:ds1,shard);
+        for (int shard=0; shard<2; shard++) {
+            var physical=shard==0?ds0:ds1;
+            if(fromPublishedV1)try(var connection=physical.getConnection()) {
+                connection.setAutoCommit(false);
+                try(var statement=connection.prepareStatement("SELECT set_config('recsys.catalog.install_shard',?,true),set_config('recsys.catalog.install_sha256',?,true)")) {
+                    statement.setString(1,Integer.toString(shard));statement.setString(2,CatalogSchemaInstaller.checksum());statement.execute();
+                }
+                var runner=new org.apache.ibatis.jdbc.ScriptRunner(connection);runner.setAutoCommit(false);runner.setSendFullScript(true);runner.setStopOnError(true);runner.setLogWriter(null);runner.setErrorLogWriter(null);
+                try(var input=new java.io.InputStreamReader(CatalogSchemaInstaller.class.getResourceAsStream("/db/ad-catalog/V001__catalog_recovery.sql"),StandardCharsets.UTF_8)){runner.runScript(input);}
+                connection.commit();
+            }
+            CatalogSchemaInstaller.install(physical,shard);
+        }
         sharded = sharding("/sharding-catalog-reliable.yaml");
         var factory = SpringSqlSessions.create(sharded,"classpath*:mapper/advertiser/primary/CatalogLocalMapper.xml");
         mapper = new SqlSessionTemplate(factory).getMapper(CatalogLocalMapper.class);
@@ -309,8 +324,9 @@ class CatalogPhysicalTransactionTest {
         CatalogSchemaInstaller.install(ds0,0);CatalogSchemaInstaller.install(ds1,1);
         assertThatThrownBy(()->CatalogSchemaInstaller.install(ds0,1)).hasMessageContaining("CATALOG_SCHEMA_IDENTITY_MISMATCH");
         assertThat(mapper.control(0).shardId()).isZero();
-        assertThat(zero.queryForObject("SELECT script_sha256 FROM advertiser_catalog_schema_history",String.class)).isEqualTo(CatalogSchemaInstaller.checksum());
-        assertThat(zero.queryForObject("SELECT count(*) FROM advertiser_catalog_schema_history",Integer.class)).isOne();
+        assertThat(zero.queryForObject("SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE version=1",String.class)).isEqualTo(CatalogSchemaInstaller.checksum());
+        assertThat(zero.queryForObject("SELECT script_sha256 FROM advertiser_catalog_schema_history WHERE version=2",String.class)).isEqualTo(CatalogSchemaInstaller.checksum(2));
+        assertThat(zero.queryForObject("SELECT count(*) FROM advertiser_catalog_schema_history",Integer.class)).isEqualTo(2);
     }
 
     @Test void previousTransactionFactInSameDatabaseCannotProveCurrentBusinessCommit() {
@@ -579,6 +595,13 @@ class CatalogPhysicalTransactionTest {
         return YamlShardingSphereDataSourceFactory.createDataSource(Map.of("ds_0",ds0,"ds_1",ds1),bytes(yaml.substring(yaml.indexOf("\nrules:")+1).replace("$${CATALOG_WRITER_ID::0}","16")));
     }
     static String resource(String path)throws Exception{try(var in=CatalogPhysicalTransactionTest.class.getResourceAsStream(path)){return new String(in.readAllBytes(),StandardCharsets.UTF_8);}}
+    /** 仅独占测试库的旧业务结构，迁移验证复用同一实际字段定义。 */
+    static void createBusinessTables(JdbcTemplate db) {
+            create(db,"advertiser","advertiser_id bigint PRIMARY KEY,name text,daily_budget double precision,status text");
+            create(db,"ad","ad_id bigint PRIMARY KEY,advertiser_id bigint,item_id bigint,title text,landing_url text,quality_score double precision,status text,review_status text,optimization_type text,target_cpa double precision,audience_id bigint,review_reason text");
+            create(db,"bidword","id bigint PRIMARY KEY,ad_id bigint,keyword text,match_type text,bid double precision,bid_mode text");
+            create(db,"ad_creative","creative_id bigint PRIMARY KEY,ad_id bigint,title text,landing_url text,status text,review_status text DEFAULT 'approved'");
+    }
     static void create(JdbcTemplate db,String table,String columns){
         db.execute("CREATE TABLE "+table+"("+columns+")");db.execute("COMMENT ON TABLE "+table+" IS '独占物理分片测试目录'");
         for(String column:columns.split(","))db.execute("COMMENT ON COLUMN "+table+"."+column.trim().split(" ")[0]+" IS '原目录业务字段'");

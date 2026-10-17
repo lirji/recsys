@@ -7,16 +7,18 @@ import java.util.*;
 /** 按已授权命令作用域查询两个物理库摘要；不返回原词、payload或actor。 */
 public final class CatalogCommandQuery {
     private final CatalogLocalMapper mapper;
-    public CatalogCommandQuery(CatalogLocalMapper mapper){this.mapper=mapper;}
+    private final com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper tasks;
+    public CatalogCommandQuery(CatalogLocalMapper mapper,com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper tasks){this.mapper=mapper;this.tasks=tasks;}
     public record Page<T>(List<T> items,String nextCursor) { }
-    public record Summary(Page<StepSummary> steps,Page<EventSummary> events) { }
+    public record Summary(Page<StepSummary> steps,Page<EventSummary> events,
+                          com.recsys.advertiser.persistence.mapper.primary.CatalogTaskMapper.Counts targets) { }
     /** 每类合计最多100条，跨库游标始终带物理位置；不是跨库一致快照。 */
     public Summary summaries(CatalogProtocol.CommandKey key,String afterStep,String afterEvent,int limit) {
         if(limit<1 || limit>100)throw com.recsys.advertiser.AdvertiserRules.badRequest("分页数量必须在1至100之间");
         try {
             var steps=page(afterStep,limit,(shard,after,n)->mapper.stepSummaries(shard,key,after,n),StepSummary::stepKey);
             var events=page(afterEvent,limit,(shard,after,n)->mapper.eventSummaries(shard,key,after,n),EventSummary::outboxId);
-            return new Summary(steps,events);
+            return new Summary(steps,events,tasks.counts(key));
         } catch(org.springframework.dao.DataAccessException dependency){throw CatalogWriteRouter.publicFailure(CatalogProtocol.Failure.RESULT_UNKNOWN);}
     }
     private interface Read<T>{List<T> read(int shard,String after,int limit);}

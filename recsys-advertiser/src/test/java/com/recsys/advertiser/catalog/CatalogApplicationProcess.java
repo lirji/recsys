@@ -30,6 +30,13 @@ public final class CatalogApplicationProcess {
             if(event.attempts()!=5 || !event.eventId().equals(System.getenv("CATALOG_FIXTURE_LAST_EVENT")))
                 throw new IllegalStateException("未进入第五次实际发送领取");
         }
+        String batchClaim=System.getenv("CATALOG_FIXTURE_BATCH_LAST_CLAIM");
+        if(batchClaim!=null) {
+            var batches=context.getBean(CatalogStatusBatchService.class);
+            var key=batches.key(java.util.UUID.fromString(batchClaim));
+            if(awaitClaim(()->context.getBean(CatalogCommandRepository.class).claim(key)).attempts()!=3)
+                throw new IllegalStateException("批次未进入第三次真实领取");
+        }
         String initialization=System.getenv("CATALOG_FIXTURE_INITIALIZE");
         if(initialization!=null) {
             // 仅验收宿主驱动真实内部owner服务，无替代Bean；父进程负责在明确检查点强退。
@@ -46,6 +53,21 @@ public final class CatalogApplicationProcess {
                 "routers",context.getBeansOfType(CatalogWriteRouter.class).size(),"workers",context.getBeansOfType(CatalogWorker.class).size(),
                 "publishers",context.getBeansOfType(CatalogKafkaPublisher.class).size(),"initializers",context.getBeansOfType(CatalogInitializationService.class).size());
         Files.writeString(Path.of(System.getenv("CATALOG_FIXTURE_READY")),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(values));
+        String advance=System.getenv("CATALOG_FIXTURE_ADVANCE_ID");
+        if(advance!=null) {
+            // 验收宿主仅调用真实内部advance；≤2000步/120秒，不重置预算、不改SQL时钟或替代产品Sink。
+            var key=CatalogProtocol.CommandKey.advertiser(java.util.UUID.fromString(System.getenv("AD_CATALOG_SOURCE_ID")),
+                    Long.parseLong(System.getenv("CATALOG_FIXTURE_ADVANCE_OWNER")),java.util.UUID.fromString(advance));
+            var service=context.getBean(CatalogCommandService.class);boolean done=false;
+            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(120).toNanos();
+            for(int i=0;i<2000 && System.nanoTime()<deadline;i++) {
+                var row=service.advance(key);if(row.completed()){done=true;break;}
+                if(CatalogProtocol.State.PAUSED.name().equals(row.state()))throw new IllegalStateException("原命令暂停，需要显式审计");
+                Thread.sleep(50);
+            }
+            if(!done)throw new IllegalStateException("原命令未在有界内部推进内完成");
+        }
+
     }
 
     /** 仅构造验收中的原始本地步骤输入；无业务替代实现或SQL写入。 */

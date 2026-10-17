@@ -21,7 +21,7 @@ public final class CatalogRealAuthzAcceptance {
         Path jar=Path.of(required("ACTIONS_AUTHZ_SERVER_JAR")),schema=Path.of(required("ACTIONS_AUTHZ_SCHEMA"));
         if(!Files.isRegularFile(jar) || !Files.isRegularFile(schema))throw new IllegalStateException("需要已核验的权限平台jar和schema");
         String scenario=System.getenv().getOrDefault("CATALOG_AUTHZ_SCENARIO","full");
-        if(!Set.of("full","root-recovery").contains(scenario))throw new IllegalArgumentException("未知权限验收范围");
+        if(!Set.of("full","root-recovery","status-fanout").contains(scenario))throw new IllegalArgumentException("未知权限验收范围");
         boolean rootOnly=scenario.equals("root-recovery");
         Path evidence=Path.of("target","catalog-authz-evidence-"+UUID.randomUUID());Files.createDirectories(evidence);
         String key=UUID.randomUUID().toString();token=UUID.randomUUID().toString();
@@ -54,6 +54,21 @@ public final class CatalogRealAuthzAcceptance {
             ZERO.start();ONE.start();KAFKA.start();CatalogInitializationTest.REDIS.start();
             CatalogApplicationTest.startFixture();fixtureStarted=true;app=new CatalogApplicationTest();app.directory=evidence;app.prepare();
             var runtime=app.start("http-a",false,false,true,true,Map.of("RECSYS_AUTHZ_MODE","enforce","AUTHZ_SERVER_URL","http://127.0.0.1:"+proxy.getAddress().getPort(),"AUTHZ_CLIENT_TOKEN",token));
+            if(scenario.equals("status-fanout")) {
+                String body="{\"status\":\"paused\"}";UUID id=UUID.randomUUID();
+                assertThat(app.call(runtime,"PUT","/api/advertiser/1",body,"editor","ADVERTISER",id).statusCode()).isEqualTo(403);
+                assertThat(app.call(runtime,"PUT","/api/advertiser/1",body,"stranger","ADMIN",id).statusCode()).isEqualTo(403);
+                assertThat(app.fixture.local.command(CatalogProtocol.CommandKey.advertiser(SOURCE,1,id))).isNull();
+                assertThat(app.call(runtime,"PUT","/api/advertiser/1",body,"owner","ADVERTISER",id).statusCode()).isEqualTo(503);
+                var current=app;until(()->current.call(runtime,"PUT","/api/advertiser/1",body,"owner","ADVERTISER",id).statusCode()==200,20);
+                assertThat(app.fixture.business.root(1).status()).isEqualTo("paused");
+                var original=app.call(runtime,"PUT","/api/advertiser/1",body,"owner","ADVERTISER",id);
+                assertThat(JSON.readTree(original.body())).isEqualTo(JSON.readTree(app.fixture.local.command(CatalogProtocol.CommandKey.advertiser(SOURCE,1,id)).resultBytes()));
+                assertThat(app.call(runtime,"GET","/api/advertiser/1/catalog-commands/"+id,null,"stranger","ADMIN",null).statusCode()).isEqualTo(403);
+                assertThat(app.call(runtime,"PUT","/api/advertiser/1","{\"status\":\"active\"}","editor","ADVERTISER",UUID.randomUUID()).statusCode()).isEqualTo(403);
+                Files.writeString(evidence.resolve("result.json"),JSON.writeValueAsString(Map.of("status","PASS","scenario",scenario,"scope","real SDK/auth-platform/isolated SpiceDB and status HTTP manage policy","sharedEnvironment",false)));
+                System.out.println("PASS: real status fanout manage authorization; evidence="+evidence);return;
+            }
             if(!rootOnly) {
             assertThat(app.call(runtime,"PUT","/api/advertiser/ad/102","{\"title\":\"真实edit\"}","editor","ADVERTISER",UUID.randomUUID()).statusCode()).isEqualTo(200);
             assertThat(app.call(runtime,"PUT","/api/advertiser/ad/102","{\"title\":\"不允许view代edit\"}","reviewer","ADVERTISER",UUID.randomUUID()).statusCode()).isEqualTo(403);

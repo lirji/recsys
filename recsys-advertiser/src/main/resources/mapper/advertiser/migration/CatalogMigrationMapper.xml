@@ -12,6 +12,6 @@
   </select>
   <select id="installed" resultType="com.recsys.advertiser.persistence.mapper.migration.CatalogMigrationMapper$Installed">
     SELECT h.script_sha256,c.shard_id FROM public.advertiser_catalog_schema_history h
-    JOIN public.catalog_shard_control c ON c.shard_id=h.shard_id WHERE h.version=1
+    JOIN public.catalog_shard_control c ON c.shard_id=h.shard_id WHERE h.version=#{version}
   </select>
 </mapper>

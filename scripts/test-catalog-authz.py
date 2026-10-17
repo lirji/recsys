@@ -14,7 +14,7 @@ def main():
     parser.add_argument('--server-jar', required=True, type=Path)
     parser.add_argument('--schema', required=True, type=Path)
     parser.add_argument('--spicedb-image', required=True)
-    parser.add_argument('--scenario', choices=('full', 'root-recovery'), default='full')
+    parser.add_argument('--scenario', choices=('full', 'root-recovery', 'status-fanout'), default='full')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     module = root / 'recsys-advertiser'

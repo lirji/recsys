@@ -11,7 +11,10 @@ import java.util.List;
 public final class CatalogFragments {
     private CatalogFragments() { }
     public record Effect(String table,String operation,long id) { }
-    public record Request(CatalogMutation mutation,Long adId) { }
+    public record Request(CatalogMutation mutation,Long adId,Long expectedAdvertiserVersion) {
+        /** 旧单广告请求没有批次版本前提，保持旧JSON缺字段可恢复。 */
+        public Request(CatalogMutation mutation,Long adId){this(mutation,adId,null);}
+    }
     public record Owner(Root root,Ad before,Ad desired,long advertiserVersion,long version,Instant capturedAt,List<Effect> effects) { }
     public record Children(List<BidwordView> bidwords,List<Creative> creatives,JsonNode response,List<Effect> effects) { }
     public record Frozen(Owner owner,Children children,Embedding embedding,Double spent) { }

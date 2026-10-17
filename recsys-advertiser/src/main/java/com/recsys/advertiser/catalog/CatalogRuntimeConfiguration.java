@@ -58,12 +58,21 @@ public class CatalogRuntimeConfiguration {
             factory.getConfiguration().setDefaultStatementTimeout(1);
             return new CatalogEnrichment(new SqlSessionTemplate(factory).getMapper(AdvertiserItemEmbeddingMapper.class),redis);
         }
-        @Bean CatalogCommandService catalogService(CatalogCommandRepository commands,CatalogBusinessSteps steps,CatalogEnrichment enrichment,CatalogJson json,AdvertiserAuthz authz,Environment env) {
+        @Bean CatalogFanoutService catalogFanout(CatalogLocalMapper local,CatalogTaskMapper tasks,CatalogBusinessMapper business,
+                CatalogLocalTransactions tx,CatalogBusinessSteps steps,CatalogCommandRepository commands,CatalogOutboxRepository outbox,
+                CatalogEnrichment enrichment,CatalogJson json,CatalogSnapshotCodec codec) {
+            return new CatalogFanoutService(local,tasks,business,tx,steps,commands,outbox,enrichment,json,codec);
+        }
+        @Bean CatalogStatusBatchService catalogBatches(CatalogLocalMapper local,CatalogTaskMapper tasks,CatalogLocalTransactions tx,
+                CatalogCommandRepository commands,CatalogJson json,CatalogProperties p) {
+            return new CatalogStatusBatchService(local,tasks,tx,commands,json,p.sourceId(),p.admissionEnabled(),p.recoveryEnabled());
+        }
+        @Bean CatalogCommandService catalogService(CatalogCommandRepository commands,CatalogBusinessSteps steps,CatalogEnrichment enrichment,CatalogJson json,AdvertiserAuthz authz,Environment env,CatalogFanoutService fanout,CatalogStatusBatchService batches) {
             var bounded=new com.lrj.authz.sdk.RemoteAuthzEngine(env.getProperty("authz.client.server-url","http://localhost:8200"),env.getProperty("authz.client.token",""),Duration.ofSeconds(1),Duration.ofSeconds(3));
-            return new CatalogCommandService(commands,steps,enrichment,json,authz,bounded);
+            return new CatalogCommandService(commands,steps,enrichment,json,authz,bounded,fanout,batches);
         }
         @Bean CatalogWriteRouter catalogRouter(CatalogProperties p,CatalogCommandRepository commands,CatalogCommandService service,CatalogBusinessMapper business,CatalogJson json,AdvertiserAuthz authz){return new CatalogWriteRouter(p.sourceId(),p.admissionEnabled(),commands,service,business,json,authz);}
-        @Bean CatalogCommandQuery catalogQuery(CatalogLocalMapper mapper){return new CatalogCommandQuery(mapper);}
+        @Bean CatalogCommandQuery catalogQuery(CatalogLocalMapper mapper,CatalogTaskMapper tasks){return new CatalogCommandQuery(mapper,tasks);}
         @Bean(initMethod="start",destroyMethod="close") CatalogMetrics catalogMetrics(CatalogLocalMapper mapper,CatalogJson json,io.micrometer.core.instrument.MeterRegistry registry){return new CatalogMetrics(mapper,json,registry);}
         @Bean @ConditionalOnProperty(name="recsys.ad.catalog.reliability.recovery-enabled",havingValue="true")
         CatalogShardRecheckService catalogShardRecheck(CatalogLocalMapper local,CatalogRecheckMapper checks,CatalogLocalTransactions tx,

@@ -114,6 +114,11 @@ public final class CatalogBusinessSteps {
 
     /** 子资源实际写入与两张完整子表的冻结快照同一个物理事务，原reviewStatus必须保留。 */
     public Children children(CommandRow command,Request request,Owner owner) {
+        return children(command,request,owner,"CHILDREN");
+    }
+
+    /** fanout每个ad有独立且稳定的本地step；复用原快照规则，不复用单广告最终化。 */
+    public Children children(CommandRow command,Request request,Owner owner,String stepId) {
         var m=request.mutation();long ad=owner.desired().adId();int shard=(int)(ad%2);var plan=new ArrayList<Map<String,Object>>();
         switch(m.kind()) {
             case AD_CREATE, BIDWORD_CREATE -> plan.add(Map.of("table","bidword","operation","INSERT","generated",true));
@@ -125,7 +130,7 @@ public final class CatalogBusinessSteps {
             case AD_DELETE -> {plan.add(Map.of("table","bidword","operation","DELETE","allChildren",true));plan.add(Map.of("table","ad_creative","operation","DELETE","allChildren",true));}
             default -> { }
         }
-        var step=new StepRequest(shard,command.key(),"CHILDREN",command.advertiserId(),ad,owner.version(),json.encode(new Frozen(owner,null,null,null)),json.text(plan));
+        var step=new StepRequest(shard,command.key(),stepId,command.advertiserId(),ad,owner.version(),json.encode(new Frozen(owner,null,null,null)),json.text(plan));
         return execute(step,Children.class,()->{
             var effects=new ArrayList<Effect>();Object response=null;
             if(m.kind()==Kind.AD_CREATE && m.ad().bidwords()!=null)
