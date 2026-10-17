@@ -48,3 +48,18 @@ bash test-data/cleanup-test-data.sh --apply
 清理只处理保存清单内的 CLICK、演示 scene 和本次 DEMO 报表；不删除原曝光、其他点击、其他报表或本地证据。不重置进程内累计指标。清理后若需要重新初始化，应先核对清理结果及保留的旧报表记录，不把旧验证结果作为新一轮证据。
 
 验证分为 `DATA_VERIFY`（100 条归因一致且原曝光未变）和 `APP_VERIFY`（真实报表索引、CSV 内容经 BFF 读取）。浏览器大盘需要刷新以更新一分钟的查询缓存。
+
+## 补充四个用户样本
+
+追加场景 `more-users` 使用独立清单 `.dev/test-data/ab-board-v2/`，保留上述 v1 数据和报表。新增4个演示用户，每人固定对应一个已有桶、20个不同物品曝光，共80曝光；四桶分别补4、6、7、3个点击，共20点击。普通实体4条、核心行为100条。分桶是演示 fixture 指定的，不用于检验在线分桶算法或实验收益。
+
+用户与曝光 fixture 写入现有 PostgreSQL：用户 profile 和行为 scene 均带 `demo-ab-board-v2` 标记；固定曝光 ID、事务锁和存在检查保证本工具重复初始化不重复写曝光。点击仍通过真实 `/api/behavior`，由服务端关联曝光确定桶。初始化不覆盖已存在的用户/曝光，画像被修改或清单缺失时停止。没有新的基础设施或产品代码改动。
+
+```bash
+bash test-data/init-test-data.sh --scenario more-users
+bash test-data/run-ab-report.sh --scenario more-users
+bash test-data/verify-test-data.sh --scenario more-users
+bash test-data/cleanup-test-data.sh --scenario more-users  # 只预览
+```
+
+运行前仍须提供上述本机账号环境变量。第二次 init 复用这4个用户和同一组曝光，不再增加样本；第二次 report 复用该批次已发布文件。清理加 `--apply` 才执行，仅匹配本批次100条行为、4个标记用户和1份DEMO报表；用户存在后续行为/向量时保留用户，画像改变时停止清理。不会删除v1数据或原报表。

@@ -8,5 +8,15 @@
   "source": "user_behavior existing IMPRESSION with exact exposure_id",
   "writeEntry": "POST /api/behavior",
   "marker": {"scene": "demo-ab-board-v1"},
-  "reportJobs": ["ab-report", "publish-reports"]
+  "reportJobs": ["ab-report", "publish-reports"],
+  "moreUsers": {
+    "scenario": "demo-ab-board-v2",
+    "newUsers": 4,
+    "newImpressions": 80,
+    "totalNewClicks": 20,
+    "clicksByInitialExposureRank": [4, 6, 7, 3],
+    "impressionsPerUser": 20,
+    "userIds": [2026101701, 2026101702, 2026101703, 2026101704],
+    "source": "marked PostgreSQL user/impression fixtures; real HTTP clicks"
+  }
 }

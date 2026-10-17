@@ -12,10 +12,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import ab_board_cohort
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / '.dev/test-data/ab-board-v1'
 MARKER = 'demo-ab-board-v1'
+COHORT = False
 PG = os.environ.get('DEMO_PG_CONTAINER', 'dev-infra-recsys-postgres-1')
 CONSOLE = os.environ.get('DEMO_CONSOLE_CONTAINER', 'recsys-console-api')
 BASE = os.environ.get('DEMO_BASE_URL', 'http://localhost:9095').rstrip('/')
@@ -101,6 +103,8 @@ def login():
 
 
 def plan():
+    if COHORT:
+        return ab_board_cohort.plan(sys.modules[__name__])
     target, _ = preflight()
     if len(QUOTAS) != 4 or any(type(x) is not int or x <= 0 for x in QUOTAS) or sum(QUOTAS) != 100:
         raise RuntimeError('数量方案必须是4桶合计100条点击')
@@ -160,6 +164,10 @@ def data_verify(p):
         source = expected[row['exposure_id']]
         if row['scene'] != MARKER or any(row[k] != source[k] for k in ('user_id', 'item_id', 'bucket')):
             raise RuntimeError('点击归属/归因与演示清单不一致')
+    if COHORT:
+        ab_board_cohort.verify_fixtures(sys.modules[__name__], p)
+        save('owned-clicks.json', rows)
+        return rows
     sources = sql("""
         SELECT count(*) FROM user_behavior e JOIN jsonb_to_recordset(:'sources'::jsonb)
           AS s(id bigint,user_id bigint,item_id bigint,bucket text,exposure_id text,scene text,ts text)
@@ -176,6 +184,8 @@ def data_verify(p):
 def init():
     p = plan()
     token = login()
+    if COHORT:
+        ab_board_cohort.seed(sys.modules[__name__], p)
     before = {x['exposure_id']: x for x in clicks(p)}
     if any(x['scene'] != MARKER for x in before.values()):
         raise RuntimeError('清单中某曝光已被其他点击占用；不覆盖、不另选后重试')
@@ -282,6 +292,13 @@ def verify():
         actual = {r['bucket']: int(r['clicks']) for r in rows}
         if not all(actual.get(bucket, 0) >= number for bucket, number in expected.items()):
             raise RuntimeError('报表点击汇总与已写入数据不符')
+        if COHORT:
+            for bucket in p['buckets']:
+                row = next(r for r in rows if r['bucket'] == bucket['bucket'])
+                if (int(row['impressions']) < bucket['impressions'] + 20
+                        or int(row['clicks']) < bucket['clicks'] + bucket['demoClicks']
+                        or int(row['users']) < bucket['users'] + 1):
+                    raise RuntimeError('新增用户/曝光/点击未完整进入报表')
         result.update({'APP_VERIFY': 'PASS', 'fileName': info['fileName'], 'reportRows': rows})
     save('verification.json', result)
     print(json.dumps(result, ensure_ascii=False))
@@ -289,6 +306,8 @@ def verify():
 
 def cleanup(apply):
     """默认只预览；删除时严格匹配清单与演示 scene，不处理其他点击或旧报表。"""
+    if COHORT:
+        return ab_board_cohort.cleanup(sys.modules[__name__], apply)
     p = plan()
     rows = clicks(p)
     own = [r for r in rows if r['scene'] == MARKER]
@@ -317,10 +336,16 @@ def cleanup(apply):
 
 
 def main():
+    global STATE, MARKER, COHORT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['init', 'verify', 'report', 'cleanup'])
+    parser.add_argument('--scenario', choices=['existing-clicks', 'more-users'], default='existing-clicks')
     parser.add_argument('--apply', action='store_true', help='仅 cleanup：执行清单限定的删除')
     args = parser.parse_args()
+    if args.scenario == 'more-users':
+        COHORT = True
+        STATE = ROOT / '.dev/test-data/ab-board-v2'
+        MARKER = 'demo-ab-board-v2'
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     STATE.chmod(0o700)
     # 本机清单、HTTP写入和报表发布共用互斥锁，避免两个工具进程交错操作。
