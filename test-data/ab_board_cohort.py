@@ -2,6 +2,12 @@
 import json
 
 
+def user_profiles(p):
+    """兴趣场景可为各用户扩充画像；旧清单仍兼容原始统一演示标记。"""
+    return [{'user_id': uid, 'profile': p.get('profiles', {}).get(str(uid), p['profile'])}
+            for uid in p['users']]
+
+
 def plan(kit):
     """写入前保存身份和每条曝光；中断恢复不另选用户或物品。"""
     target, _ = kit.preflight()
@@ -71,7 +77,8 @@ def verify_fixtures(kit, p, partial=False):
           WHERE user_id IN (SELECT jsonb_array_elements_text(:'users'::jsonb)::bigint)
         ) t;
     """, {'users': json.dumps(p['users'])})
-    if any(r['profile'] != p['profile'] for r in profiles) or (not partial and len(profiles) != 4):
+    expected_profiles = {r['user_id']: r['profile'] for r in user_profiles(p)}
+    if any(r['profile'] != expected_profiles[r['user_id']] for r in profiles) or (not partial and len(profiles) != 4):
         raise RuntimeError('演示用户画像缺失、已变更或存在身份冲突')
     expected = {('IMPRESSION', r['exposure_id']): r for r in p['exposures']}
     expected.update({('CLICK', r['exposure_id']): r for r in p['targets']})
@@ -95,16 +102,17 @@ def seed(kit, p):
     kit.sql("""
         DO $$ BEGIN PERFORM pg_advisory_xact_lock(20261017, 2); END $$;
         INSERT INTO app_user(user_id,profile)
-          SELECT jsonb_array_elements_text(:'users'::jsonb)::bigint,:'profile'::jsonb
+          SELECT user_id,profile FROM jsonb_to_recordset(:'profiles'::jsonb) AS p(user_id bigint,profile jsonb)
           ON CONFLICT(user_id) DO NOTHING;
         INSERT INTO user_behavior(user_id,item_id,action,value,scene,bucket,position,exposure_id,ts)
           SELECT e.user_id,e.item_id,'IMPRESSION',0,e.scene,e.bucket,e.position,e.exposure_id,CURRENT_TIMESTAMP
           FROM jsonb_to_recordset(:'exposures'::jsonb)
             AS e(user_id bigint,item_id bigint,scene text,bucket text,position int,exposure_id text)
-          JOIN app_user u ON u.user_id=e.user_id AND u.profile=:'profile'::jsonb
+          JOIN jsonb_to_recordset(:'profiles'::jsonb) AS p(user_id bigint,profile jsonb) ON p.user_id=e.user_id
+          JOIN app_user u ON u.user_id=e.user_id AND u.profile=p.profile
           JOIN item i ON i.item_id=e.item_id
           WHERE NOT EXISTS(SELECT 1 FROM user_behavior b WHERE b.exposure_id=e.exposure_id);
-    """, {'users': json.dumps(p['users']), 'profile': json.dumps(p['profile']),
+    """, {'profiles': json.dumps(user_profiles(p)),
           'exposures': json.dumps(p['exposures'])}, write=True)
     rows, _ = verify_fixtures(kit, p)
     kit.save('owned-impressions.json', [r for r in rows if r['action'] == 'IMPRESSION'])
@@ -129,15 +137,15 @@ def cleanup(kit, apply):
           DELETE FROM eval_report WHERE category='ab-report' AND name=:'name'
           AND name LIKE 'ab-report-DEMO-%' RETURNING id
         ), deleted_users AS (
-          DELETE FROM app_user u WHERE profile=:'profile'::jsonb
-          AND user_id IN (SELECT jsonb_array_elements_text(:'users'::jsonb)::bigint)
+          DELETE FROM app_user u USING jsonb_to_recordset(:'profiles'::jsonb) AS p(user_id bigint,profile jsonb)
+          WHERE u.user_id=p.user_id AND u.profile=p.profile
           AND NOT EXISTS(SELECT 1 FROM user_embedding v WHERE v.user_id=u.user_id)
           AND NOT EXISTS(SELECT 1 FROM user_behavior b WHERE b.user_id=u.user_id
-            AND b.id NOT IN (SELECT jsonb_array_elements_text(:'ids'::jsonb)::bigint)) RETURNING user_id
+            AND b.id NOT IN (SELECT jsonb_array_elements_text(:'ids'::jsonb)::bigint)) RETURNING u.user_id
         ) SELECT json_build_object('deletedBehavior',(SELECT count(*) FROM deleted_behavior),
           'deletedUsers',(SELECT count(*) FROM deleted_users),'deletedReports',(SELECT count(*) FROM deleted_reports));
     """, {'marker': kit.MARKER, 'ids': json.dumps([r['id'] for r in rows]),
-          'users': json.dumps(p['users']), 'profile': json.dumps(p['profile']),
+          'profiles': json.dumps(user_profiles(p)),
           'name': info['fileName'] if info else ''}, write=True)
     kit.save('cleanup-result.json', result)
     print(json.dumps(result))

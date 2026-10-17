@@ -9,6 +9,12 @@
   "writeEntry": "POST /api/behavior",
   "marker": {"scene": "demo-ab-board-v1"},
   "reportJobs": ["ab-report", "publish-reports"],
+  "userInterests": [
+    {"userId": 2026101701, "label": "动作科幻", "categories": ["Action", "Sci-Fi"]},
+    {"userId": 2026101702, "label": "喜剧爱情", "categories": ["Comedy", "Romance"]},
+    {"userId": 2026101703, "label": "动画亲子", "categories": ["Animation", "Children"]},
+    {"userId": 2026101704, "label": "纪实剧情", "categories": ["Documentary", "Drama"]}
+  ],
   "moreUsers": {
     "scenario": "demo-ab-board-v2",
     "newUsers": 4,

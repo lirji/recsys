@@ -63,3 +63,29 @@ bash test-data/cleanup-test-data.sh --scenario more-users  # 只预览
 ```
 
 运行前仍须提供上述本机账号环境变量。第二次 init 复用这4个用户和同一组曝光，不再增加样本；第二次 report 复用该批次已发布文件。清理加 `--apply` 才执行，仅匹配本批次100条行为、4个标记用户和1份DEMO报表；用户存在后续行为/向量时保留用户，画像改变时停止清理。不会删除v1数据或原报表。
+
+## 补充兴趣画像并验证真实推荐
+
+沿用4个演示用户，通过 `/api/user/{id}/interests` 写入不同偏好；当前运行配置 `USER_SERVING_MODE=grpc`，实际经过 rec-engine → user-service → PostgreSQL。类别来自已有 `item.category`，不创建物品或用户，也不生成用户向量。
+
+| 用户 ID | 演示兴趣 |
+| --- | --- |
+| 2026101701 | Action、Sci-Fi（动作科幻） |
+| 2026101702 | Comedy、Romance（喜剧爱情） |
+| 2026101703 | Animation、Children（动画亲子） |
+| 2026101704 | Documentary、Drama（纪实剧情） |
+
+```bash
+# 仍需上述本机账号环境变量。
+python3 test-data/user-interests-demo.py init
+python3 test-data/user-interests-demo.py verify
+python3 test-data/user-interests-demo.py cleanup  # 默认预览
+```
+
+数量：4次画像更新；每位用户设置前后各1次真实推荐、每次5条，共40条服务自动曝光，无新增点击。请求使用 `explain=true` 旁路推荐缓存、scene=`demo-user-interests-v1`，未强制召回路或桶。固定请求结果、原画像、曝光 ID 和验证保存在 `.dev/test-data/user-interests-v1/`；重复 init/verify 复用响应，避免把验证变成反复灌曝光。响应未知时停止并要求先核对结果，不自动重发。
+
+验证覆盖数据库、兴趣API、用户360，以及TAG原始候选增加、最终TAG推荐类目匹配和曝光落库。为保留工具幂等性，已确认的画像同步至原v2清单的逐用户 `profiles` 字段；原v2的init/verify也能继续运行。
+
+在控制台「冷启动兴趣」或「用户360」将顶部 userId 切到上述ID即可查看。原用户1没有被修改。画像可以影响TAG召回，但最终列表仍会融合热门/冷启动等渠道，不保证全部内容都属于所选兴趣。
+
+清理仅在显式加 `--apply` 后恢复4份原画像并删除清单中的本场景40条曝光；不会删用户、原点击、原曝光或报表。画像被外部修改、曝光与清单不符或出现后续点击时停止。Redis曝光归因由服务按原2小时TTL到期，不清空共享Redis；进程累计指标不回滚。先恢复本兴趣场景，再清理v2场景。初始化不重算已发布的历史AB报表，历史报表仍表示当时快照。
