@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.offline.persistence.mapper.primary.AdEventSyncMapper">
+    <select id="lock" resultType="string">SELECT pg_advisory_xact_lock(1730041801)::text</select>
+    <update id="budget">SET LOCAL lock_timeout='4s'; SET LOCAL statement_timeout='5s'</update>
+    <select id="installed" resultType="string">SELECT to_regclass('ad_event_sync_schema')::text</select>
+    <select id="prepareInstall" resultType="string">SELECT set_config('recsys.ad_event_sync.digest',#{digest},true)</select>
+    <select id="schemaDigest" resultType="string">SELECT script_sha256 FROM ad_event_sync_schema WHERE version=1</select>
+    <insert id="initialize">INSERT INTO ad_event_sync_checkpoint(singleton,source_id,source_fingerprint)
+        VALUES(true,#{source},#{fingerprint}) ON CONFLICT(singleton) DO NOTHING</insert>
+    <select id="checkpoint" resultType="com.recsys.offline.persistence.mapper.primary.AdEventSyncMapper$Checkpoint">
+        SELECT source_id,source_fingerprint,state,epoch,upper_id,cursor_id,worker,fence,lease_until,attempts,scanned,copied,error_code,error_id
+        FROM ad_event_sync_checkpoint WHERE singleton=true
+    </select>
+    <update id="pauseExhausted">UPDATE ad_event_sync_checkpoint SET state='PAUSED',error_code='EXHAUSTED',updated_at=clock_timestamp()
+        WHERE state='RUNNING' AND lease_until&lt;=clock_timestamp() AND attempts&gt;=3</update>
+    <update id="claim">UPDATE ad_event_sync_checkpoint SET state='RUNNING',worker=#{worker},fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds',
+        epoch=CASE WHEN state='COMPLETE' THEN epoch+1 ELSE epoch END,
+        upper_id=CASE WHEN state='COMPLETE' THEN NULL ELSE upper_id END,
+        cursor_id=CASE WHEN state='COMPLETE' THEN 0 ELSE cursor_id END,
+        scanned=CASE WHEN state='COMPLETE' THEN 0 ELSE scanned END,copied=CASE WHEN state='COMPLETE' THEN 0 ELSE copied END,
+        updated_at=clock_timestamp()
+        WHERE state IN ('READY','COMPLETE','RUNNING') AND attempts&lt;3 AND available_at&lt;=clock_timestamp()
+        AND (lease_until IS NULL OR lease_until&lt;=clock_timestamp())</update>
+    <update id="beginAttempt">UPDATE ad_event_sync_checkpoint SET attempts=attempts+1,lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+        WHERE worker=#{worker} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp() AND attempts&lt;3</update>
+    <select id="checkFence" resultType="int">SELECT count(*) FROM ad_event_sync_checkpoint
+        WHERE worker=#{worker} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp()</select>
+    <update id="freezeUpper">UPDATE ad_event_sync_checkpoint SET upper_id=#{upper} WHERE singleton=true AND upper_id IS NULL AND state='RUNNING'</update>
+    <update id="advance">UPDATE ad_event_sync_checkpoint SET cursor_id=#{cursor},scanned=scanned+#{scanned},copied=copied+#{copied},attempts=0,
+        state=CASE WHEN #{complete} THEN 'COMPLETE' ELSE 'RUNNING' END,
+        lease_until=CASE WHEN #{complete} THEN NULL ELSE lease_until END,
+        completed_at=CASE WHEN #{complete} THEN clock_timestamp() ELSE completed_at END,
+        error_code=NULL,error_id=NULL,updated_at=clock_timestamp() WHERE singleton=true AND state='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="fail">UPDATE ad_event_sync_checkpoint SET state=CASE WHEN #{permanent} OR attempts&gt;=3 THEN 'PAUSED' ELSE 'READY' END,
+        error_code=#{reason},error_id=#{eventId,jdbcType=BIGINT},lease_until=NULL,
+        available_at=clock_timestamp()+power(2,greatest(attempts-1,0))*interval '1 second',updated_at=clock_timestamp()
+        WHERE worker=#{worker} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="release">UPDATE ad_event_sync_checkpoint SET state='READY',lease_until=NULL,updated_at=clock_timestamp()
+        WHERE worker=#{worker} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="rebuild">UPDATE ad_event_sync_checkpoint SET state='READY',epoch=epoch+1,upper_id=NULL,cursor_id=0,attempts=0,scanned=0,copied=0,
+        fence=fence+1,lease_until=NULL,available_at=clock_timestamp(),error_code=NULL,error_id=NULL,completed_at=NULL,updated_at=clock_timestamp()
+        WHERE lease_until IS NULL OR lease_until&lt;=clock_timestamp()</update>
+    <update id="resume">UPDATE ad_event_sync_checkpoint SET state='READY',attempts=0,available_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE state='PAUSED'</update>
+    <select id="audit" resultType="com.recsys.offline.persistence.mapper.primary.AdEventSyncMapper$Audit">
+        SELECT command_id,action,actor,reason,epoch FROM ad_event_sync_audit WHERE command_id=#{id}
+    </select>
+    <insert id="addAudit">INSERT INTO ad_event_sync_audit(command_id,action,actor,reason,epoch)
+        VALUES(#{audit.commandId},#{audit.action},#{audit.actor},#{audit.reason},#{audit.epoch})</insert>
+    <select id="conflictingId" resultType="long">
+        SELECT min(v.id) FROM (VALUES
+        <foreach collection="rows" item="row" separator=",">(CAST(#{row.id} AS bigint),CAST(#{row.requestId} AS text),CAST(#{row.query} AS text),CAST(#{row.userId} AS bigint),CAST(#{row.adId} AS bigint),CAST(#{row.bidwordId} AS bigint),CAST(#{row.position} AS integer),CAST(#{row.eventType} AS text),CAST(#{row.pctr} AS double precision),CAST(#{row.pctrCalib} AS double precision),CAST(#{row.ecpm} AS double precision),CAST(#{row.chargedPrice} AS double precision),CAST(#{row.relevance} AS double precision),CAST(#{row.adBucket} AS text),CAST(#{row.timestamp} AS timestamp),CAST(#{row.creativeId} AS bigint))</foreach>
+        ) AS v(id,request_id,query,user_id,ad_id,bidword_id,position,event_type,pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,ts,creative_id) JOIN ad_event_log t ON t.id=v.id
+        WHERE ROW(t.id,t.request_id,t.query,t.user_id,t.ad_id,t.bidword_id,t.position,t.event_type,t.pctr,t.pctr_calib,t.ecpm,t.charged_price,t.relevance,t.ad_bucket,t.ts,t.creative_id) IS DISTINCT FROM ROW(v.id,v.request_id,v.query,v.user_id,v.ad_id,v.bidword_id,v.position,v.event_type,v.pctr,v.pctr_calib,v.ecpm,v.charged_price,v.relevance,v.ad_bucket,v.ts,v.creative_id)
+    </select>
+</mapper>

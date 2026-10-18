@@ -3,11 +3,6 @@
 <mapper namespace="com.recsys.offline.persistence.mapper.primary.AdEventLogMapper">
     <sql id="columns">id,request_id,query,user_id,ad_id,bidword_id,position,event_type,pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,ts,creative_id</sql>
     <update id="truncate">TRUNCATE ad_event_log</update>
-    <select id="watermark" resultType="long" useCache="false">SELECT COALESCE(MAX(id),0) FROM ad_event_log</select>
-    <insert id="copyLocal">
-        INSERT INTO ad_event_log(<include refid="columns"/>) SELECT <include refid="columns"/>
-        FROM ad_event WHERE id &gt; #{since} ON CONFLICT(id) DO NOTHING
-    </insert>
     <insert id="insertRows">
         INSERT INTO ad_event_log(<include refid="columns"/>) VALUES
         <foreach collection="rows" item="row" separator=",">

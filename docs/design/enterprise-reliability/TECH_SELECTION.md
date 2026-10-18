@@ -109,3 +109,7 @@ S16B继续相同版本与设施；新增V002任务调度/清单保护，不改�
 ## C17：版本化目录投影
 
 复用现有 PG/Mapper XML、Kafka client、Spring Redis/Lettuce、Micrometer；无新增依赖。选择本库事务 + Redis 持久任务，否决吞错双写和按到达顺序覆盖。用数据库租约单执行器/手动分区分配保障持久检查点，避免把自动组位点当业务事务；代价为单数据集消费并发上限与显式分区变更管理。Redis Lua 只支持现有 standalone 目标，不宣称 Cluster。详见 C17_DESIGN 的比较、资源和切换边界。
+
+## C18 已选组件与有限核对
+
+沿用offline主源、PG16、MyBatis-Plus/Mapper XML、现有CLI；源连接增加显式超时，不引入依赖。选择重复有限全域核对而非固定回看窗口，明确源保留前提和60秒/100页调用预算。

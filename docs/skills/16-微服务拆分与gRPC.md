@@ -64,7 +64,7 @@
 | `recall:rt_hot`/`rt:user` | 行为 | Kafka `behavior-events`(streaming) |
 | `behavior_log` | user_behavior | 批 `sync-behavior-log`(watermark) |
 | `item_local` | item | 批 `sync-item-catalog` |
-| `ad_event_log` | ad_event | 批 `sync-ad-event-log` |
+| `ad_event_log` | ad_event | `sync-ad-event-log`有界分页补洞，必填source-id；[检查点与恢复](../design/enterprise-reliability/C18_RUNBOOK.md) |
 
 **批 `sync-*` 作业是 CDC 替身**(教学态),不是真 CDC。
 

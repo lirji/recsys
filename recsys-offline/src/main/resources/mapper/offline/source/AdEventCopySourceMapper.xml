@@ -21,8 +21,14 @@
             <arg name="creativeId" column="creative_id" javaType="java.lang.Long"/>
         </constructor>
     </resultMap>
-    <select id="since" resultMap="event" useCache="false">
+    <select id="identity" resultType="string" timeout="5" useCache="false">
+        SELECT current_database() || ':' || current_schema() || ':' || 'ad_event'::regclass::oid::text
+            || ':' || COALESCE(inet_server_addr()::text,'local') || ':' || COALESCE(inet_server_port()::text,'local')
+    </select>
+    <select id="upper" resultType="long" timeout="5" useCache="false">SELECT COALESCE(max(id),0) FROM ad_event</select>
+    <select id="invalidIds" resultType="boolean" timeout="5" useCache="false">SELECT EXISTS(SELECT 1 FROM ad_event WHERE id&lt;=0)</select>
+    <select id="page" resultMap="event" timeout="5" useCache="false">
         SELECT id,request_id,query,user_id,ad_id,bidword_id,position,event_type,pctr,pctr_calib,ecpm,charged_price,relevance,ad_bucket,ts,creative_id
-        FROM ad_event WHERE id &gt; #{since} ORDER BY id
+        FROM ad_event WHERE id &gt; #{after} AND id &lt;= #{upper} ORDER BY id LIMIT #{limit}
     </select>
 </mapper>

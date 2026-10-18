@@ -168,3 +168,7 @@ B由CatalogFanoutService分离逐ad最终化与root最终化，CatalogStatusBatc
 ## C17 架构增量（设计冻结，实施中）
 
 采用 [C17_DESIGN](C17_DESIGN.md) 的 ad-serving 本库事务投影与事务外 Redis 任务；业务源仍为 advertiser。消费执行器由本库 lease/fence 互斥，分区检查点与效果同事务；Kafka commit 是已持久结果的外部确认。旧目录只在 LEGACY 状态写入，可靠链路初始化后旧消费者拒写；生产存量切换与全历史重建另行核验。
+
+## C18 offline日志恢复边界
+
+来源只读分页，目标独立短事务保存效果/checkpoint；重复有限扫描轮补低ID晚提交，源追加保留是前提。沿用PG与Mapper XML，不新增CDC/调度器；详见C18_DESIGN。
