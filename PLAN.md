@@ -1,6 +1,6 @@
 # 执行计划 PLAN —— 当前进度与原始建设记录
 
-> **更新于 2026-10-18**，本轮继续完成 ER-S19、ER-S20，ER-S21实施中。原始 Track A–F、M1–M4 的功能已落地；当前根 POM 包含 **23 个子模块（含根 POM 共 24 个 reactor 项）**，前端为 `console/` + `recsys-console` BFF。本文件汇总当前进度并保留原始建设记录；专项实施状态以各专项文档为准，功能完成不等于全部效果、部署或生产验收完成。
+> **更新于 2026-10-18**，本轮已完成 ER-S19、ER-S20、ER-S21（本地验证通过）。原始 Track A–F、M1–M4 的功能已落地；当前根 POM 包含 **23 个子模块（含根 POM 共 24 个 reactor 项）**，前端为 `console/` + `recsys-console` BFF。本文件汇总当前进度并保留原始建设记录；专项实施状态以各专项文档为准，功能完成不等于全部效果、部署或生产验收完成。
 
 ## 当前进度（2026-10-18）
 
@@ -12,28 +12,28 @@
 | 企业可靠性 ER-S15 | DONE；自然 Outbox、旧行为可靠事件、LIVE/HISTORY Seen 消费恢复均完成 | [S15 验收](docs/design/enterprise-reliability/ER-S15_RESULT.md)、[最终消费者验收](docs/design/enterprise-reliability/ER-S15C2_RESULT.md)；Flink 可靠窗口仍属 S19 |
 | 企业可靠性 ER-S16 | DONE；单广告可靠写入、广告主状态扇出、跨 owner 批次与持久恢复完成 | A=`6fe79594`、B=`a25e511d`；[S16B 验收](docs/design/enterprise-reliability/ER-S16B_RESULT.md)，最终目录门禁 141 项通过，另有真实权限专项；消费者保障已由S17补齐 |
 | 桶对比演示与用户兴趣 | 本地验证通过，工具已合并推送 | `d340872a`、`5ec42263`、`0f3500de`；报表快照为 4 桶、875 曝光、120 点击、5 个不同用户；4 个新增用户已有差异化兴趣，真实推荐 TAG 候选各由 0 增至 50。均为演示验证，不能据此判断模型收益；[工具与使用说明](test-data/README.md) |
-| 最近一次本机 Docker 部署 | `a25e511d` 本地验收通过 | 2026-10-17 部署 9 个应用，8 个后端健康、21 项 smoke、JAR/镜像与浏览器核验通过；后续演示工具和本轮S17/S18代码均不表示已重新部署应用 |
+| 最近一次本机 Docker 部署 | `a25e511d` 本地验收通过 | 2026-10-17 部署 9 个应用，8 个后端健康、21 项 smoke、JAR/镜像与浏览器核验通过；后续演示工具和S17～S21代码均不表示已重新部署应用 |
 
-**验证快照**：本轮S17的32项与S18的49项本地测试通过；新提交CI以交付时精确提交结果为准，不能复用旧基线绿灯。旧代码基线 `0f3500de` 的 [CI 39007894820](https://github.com/lirji/recsys/actions/runs/39007894820) 已完成，9/9 job 成功。此前演示工具提交出现过目录故障恢复耗时断言和浏览器宿主启动失败；最新成功只代表本次精确提交的运行结果，不将旧失败改写为通过。
+**验证快照**：S19/S20/S21分别39/45/52项本地验收通过（按切片计数，含复用的相关回归）；此前S17的32项与S18的49项证据保留；新提交CI以交付时精确提交结果为准，不能复用旧基线绿灯。旧代码基线 `0f3500de` 的 [CI 39007894820](https://github.com/lirji/recsys/actions/runs/39007894820) 已完成，9/9 job 成功。此前演示工具提交出现过目录故障恢复耗时断言和浏览器宿主启动失败；最新成功只代表本次精确提交的运行结果，不将旧失败改写为通过。
 
 本机演示与部署证据分别保存在 `.dev/test-data/ab-board-v2/`、`.dev/test-data/user-interests-v1/`、`.dev/deployments/latest-a25e511d06e3/` 下的 `PROGRESS.md` 和结果文件中；这些本机材料未纳入 Git，需保留以便恢复和精确清理。兴趣任务另产生 40 条推荐曝光，未重算上述桶对比报表，875/120 是已发布报表快照。
 
 ### 后续实施范围
 
-企业可靠性沿用[原计划](docs/design/enterprise-reliability/PLAN.md)与[唯一实施状态](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)，不重编号；本次只实施用户指定的S17、S18：
+企业可靠性沿用[原计划](docs/design/enterprise-reliability/PLAN.md)与[唯一实施状态](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)，不重编号；用户指定的S17～S21现已完成；S22～S25维持后续范围：
 
 | 切片 | 工作范围 | 状态与前置条件 |
 | --- | --- | --- |
 | ER-S17 | 版本化目录投影、Inbox、墓碑与 Redis 可靠刷新 | DONE / 本地PASS；C17冻结，真实组件及回归32项通过；[验收](docs/design/enterprise-reliability/ER-S17_RESULT.md) |
 | ER-S18 | 日志补洞、持久检查点与并发领取 | DONE / 本地PASS；19项真实PG专项及30项相关回归通过；[验收](docs/design/enterprise-reliability/ER-S18_RESULT.md) |
-| ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | DONE；C19事件时间/持久checkpoint/完整Redis窗口与显式读取；39项相关测试PASS，见ER-S19_RESULT |
+| ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | DONE；C19事件时间/持久checkpoint/完整Redis窗口与显式读取；39项相关测试PASS，[验收结果](docs/design/enterprise-reliability/ER-S19_RESULT.md) |
 | ER-S20 | 主召回总 deadline、有界执行与缓存故障回源 | DONE；45项本地验证通过，[验收结果](docs/design/enterprise-reliability/ER-S20_RESULT.md) |
-| ER-S21 | 非关键 shadow 有界过载丢弃 | TODO；依赖 S20，需验证主链路资源隔离与关键事件不丢弃 |
+| ER-S21 | 非关键 shadow 有界过载丢弃 | DONE；52项本地验证通过，默认关闭，[验收结果](docs/design/enterprise-reliability/ER-S21_RESULT.md) |
 | ER-S22–S25 | 保持原计划范围 | 未实施、本轮暂停，等待后续授权 |
 
 ### 当前下一步
 
-1. ER-S17、ER-S18已完成实现与本地验收；保持默认/显式准入并按授权Git交付。后续从S19继续原DAG，S19～S25未在本轮启动。
+1. ER-S17～S21已完成实现与本地验收；交付与精确CI状态见本机`.dev/er-s19-s21/checkpoint.json`。S19可靠模式与S21影子默认未启用，本轮未部署；S22～S25仍待后续授权。
 2. 效果与全链路验收仍保留三项：可比较的 v1/ONNX 在线 CTR 实验、完整 Gateway/OIDC 自动化 E2E、A6 DFM 真实数据在线闭环；已完成的演示与浏览器专项不重复建设。
 3. R9（MIND + LightGCN）与 A7（Uplift 因果采样/增量竞价）的功能交付保持完成；真实流量效果按[路线清单的质量跟进](docs/07-后续路线执行清单.md#不阻塞功能完成的质量跟进)继续管理。
 

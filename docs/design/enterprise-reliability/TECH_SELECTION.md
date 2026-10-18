@@ -123,3 +123,7 @@ S16B继续相同版本与设施；新增V002任务调度/清单保护，不改�
 [C20_DESIGN](C20_DESIGN.md)沿用JDK有界执行器与现有Redis、Micrometer；直接依赖context-propagation1.1.1沿现有Tracing1.2.5/Core1.12.5传递版本在父POM钉定（Boot BOM不直接管理），micrometer-core沿Boot BOM，不新增平台/升级版本。业务上下文显式不可变传参，无新增自定义ThreadLocal；Micrometer快照恢复既有Tracing上下文，不传播事务。
 
 C20特征模块真实Redis验收新增testcontainers-junit-jupiter测试依赖，沿父BOM；无运行时中间件变更。
+
+## C21 影子执行
+
+复用JDK有界ThreadPoolExecutor和S20 RecallExecution上下文/实际退出包装，一个ScheduledThreadPoolExecutor周期扫描有界任务集；不用逐请求延迟任务、不新增持久化调度器/服务/依赖。物理CPU和既有rank依赖仍共享，默认关闭和启用负载门槛见C21_DESIGN。

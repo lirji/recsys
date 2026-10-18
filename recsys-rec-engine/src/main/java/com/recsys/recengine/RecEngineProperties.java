@@ -42,6 +42,20 @@ public class RecEngineProperties {
         private double sampleRate = 0.1;
         /** 对比的 top-K 重合度口径。 */
         private int k = 10;
+        /** 影子计算与主请求分池，预算按进程计算，变更后重启。 */
+        private int threads = 1;
+        private int queueCapacity = 8;
+        private long timeoutMs = 150;
+        private int maxCandidates = 512;
+        public int getThreads() { return threads; }
+        public void setThreads(int value) { threads = value; }
+        public int getQueueCapacity() { return queueCapacity; }
+        public void setQueueCapacity(int value) { queueCapacity = value; }
+        public long getTimeoutMs() { return timeoutMs; }
+        public void setTimeoutMs(long value) { timeoutMs = value; }
+        public int getMaxCandidates() { return maxCandidates; }
+        public void setMaxCandidates(int value) { maxCandidates = value; }
+
 
         public boolean isEnabled() {
             return enabled;

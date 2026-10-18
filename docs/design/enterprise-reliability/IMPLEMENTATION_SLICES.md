@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-18 用户指定只先完成 ER-S17、ER-S18。S17 正式 C17 设计、实现及C17-01～11本地真实验收DONE/PASS（32项），见ER-S17_RESULT，本地提交0e119bda。S18 C18-01～07实现及49项本地验收DONE/PASS，见ER-S18_RESULT；两片Git交付中；不启动 S19～S25。本轮恢复证据 `.dev/er-s17-s18/checkpoint.json`，保护清单同目录。
+2026-10-18 用户继续授权 ER-S19、ER-S20、ER-S21：三片实现与本地验收均DONE/PASS，分别39/45/52项，见ER-S19_RESULT、ER-S20_RESULT、ER-S21_RESULT。S19 c6b56ddb、S20 bcf59b2b已正常合并推送main，S21待本轮Git交付；实际交付和精确CI状态见`.dev/er-s19-s21/checkpoint.json`。此前S17/S18已完成，保护清单同恢复目录；本轮不部署、不启用共享可靠模式/影子、不启动S22～S25。
 
 2026-10-17 ER-S16B必要实现、本地真实验收与分离复审DONE/PASS，父ER-S16的A/B完整闭环均满足。最终同一次目录门禁141项/17类零失败错误跳过（15:10），另真实status manage权限专项PASS；见[ER-S16B_RESULT](ER-S16B_RESULT.md)。A已交付6fe79594，精确CI38983151163全部9门禁成功，目录121项/14类PASS；保留设计5c0f2901。B提交、正常ff/push及精确新CI见`.dev/codex-flow-reliability/round-7fe6f115/delivery.json`，运行终态另见同目录checkpoint/handoff。S15有效证据复用。B交付后返回父，下一片S17～21，S22～25暂停。
 
@@ -69,7 +69,7 @@
 | ER-S18 | ER-S06 | 原 F17；C18_DESIGN、offline有界核对/持久检查点/并发领取 | C18-01～07真实PG专项19项与相关回归30项PASS；ER-S18_RESULT | no | DONE |
 | ER-S19 | ER-S15 | 原 F18；C19_DESIGN 的显式可靠模式、持久checkpoint、事件时间与完整窗口投影 | C19-01～08真实恢复及兼容/读取/产物39项PASS；ER-S19_RESULT | no | DONE |
 | ER-S20 | ER-D0 | 原 F19；C20_DESIGN统一deadline、有界执行/准入与缓存回源预算 | C20-01～07 PASS；45项验证，见[ER-S20_RESULT](ER-S20_RESULT.md) | no | DONE |
-| ER-S21 | ER-S20 | 原 F19 非关键 shadow 有界过载丢弃；正式契约待冻结 | 负载验证主链路资源隔离，关键事件不得丢弃 | no | TODO |
+| ER-S21 | ER-S20 | 原 F19；C21_DESIGN影子线程/队列/输入/期限有界，关键事件保留原可靠路径 | C21-01～04 PASS；52项验证，见[ER-S21_RESULT](ER-S21_RESULT.md)；同进程物理资源仍共享 | no | DONE |
 | ER-S22～ER-S25 | 依赖见 PLAN | 不在本轮恢复范围 | 保持原范围，等待后续用户授权 | no | TODO |
 
 首片 UI 延续既有样式，仅修金额/单位和待确认状态。涉及 `/advertiser` 列表、`/advertiser/:id`、`/search-ads` 及其图/重放/对比；测试核对未知与正常数据、窄屏及桌面展示。暂无 Runtime 新组件，git 交付与部署权限分开。

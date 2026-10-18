@@ -180,3 +180,7 @@ B由CatalogFanoutService分离逐ad最终化与root最终化，CatalogStatusBatc
 ## C20 主召回和只读特征资源边界
 
 [C20_DESIGN](C20_DESIGN.md)明确单个召回deadline、预取/快慢池、每用户在途配额、热门单飞回源与特征故障无N次重试。Spring拥有资源生命周期；Future取消不释放仍运行的业务配额。写特征、曝光和资金事件沿原可靠路径。预算/指标/回退见[C20_RUNBOOK](C20_RUNBOOK.md)。
+
+## C21 非关键影子执行边界
+
+影子排序保持默认关闭，独立worker/有界队列/输入和总期限；过载只丢弃比较样本，不更改主结果或关键事件。使用S20上下文和实际退出包装，单维护线程扫描有界票集，取消不等于底层退出；CPU、模型和Redis/DB仍共享。详见[C21_DESIGN](C21_DESIGN.md)、[验收](ER-S21_RESULT.md)。
