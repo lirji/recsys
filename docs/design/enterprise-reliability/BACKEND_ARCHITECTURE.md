@@ -176,3 +176,7 @@ B由CatalogFanoutService分离逐ad最终化与root最终化，CatalogStatusBatc
 ## C19 实时特征恢复边界
 
 详细协议见[C19_DESIGN](C19_DESIGN.md)。Flink拥有有界实时窗口与持久checkpoint；Kafka/behavior仍是行为来源，Redis是可替换的完整窗口投影。LEGACY坐标身份与LIVE源行身份分开，历史流不得进入实时窗口；HotRecaller和UserProfileService仅在显式namespace配置后读新投影，默认沿旧入口。无新增进程/中间件或生产启用。
+
+## C20 主召回和只读特征资源边界
+
+[C20_DESIGN](C20_DESIGN.md)明确单个召回deadline、预取/快慢池、每用户在途配额、热门单飞回源与特征故障无N次重试。Spring拥有资源生命周期；Future取消不释放仍运行的业务配额。写特征、曝光和资金事件沿原可靠路径。预算/指标/回退见[C20_RUNBOOK](C20_RUNBOOK.md)。

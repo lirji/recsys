@@ -15,6 +15,27 @@ public class RecallProperties {
     private final MultiInterest multiInterest = new MultiInterest();
     private final Graph graph = new Graph();
     private final Parallel parallel = new Parallel();
+    private final CacheBudget cacheBudget = new CacheBudget();
+    public CacheBudget getCacheBudget() { return cacheBudget; }
+
+    /** 热门只读回源预算按进程限制，不用于资金/授权判断。 */
+    public static class CacheBudget {
+        private int redisThreads = 2;
+        private long redisWaitMs = 40;
+        private long databaseWaitMs = 40;
+        private long failureCooldownMs = 500;
+        private long snapshotTtlMs = 1000;
+        public int getRedisThreads() { return redisThreads; }
+        public void setRedisThreads(int value) { redisThreads = value; }
+        public long getRedisWaitMs() { return redisWaitMs; }
+        public void setRedisWaitMs(long value) { redisWaitMs = value; }
+        public long getDatabaseWaitMs() { return databaseWaitMs; }
+        public void setDatabaseWaitMs(long value) { databaseWaitMs = value; }
+        public long getFailureCooldownMs() { return failureCooldownMs; }
+        public void setFailureCooldownMs(long value) { failureCooldownMs = value; }
+        public long getSnapshotTtlMs() { return snapshotTtlMs; }
+        public void setSnapshotTtlMs(long value) { snapshotTtlMs = value; }
+    }
     private final ColdBandit coldBandit = new ColdBandit();
     /** RRF(Reciprocal Rank Fusion)平滑常数 k:贡献 = 1/(k+rank)。业界常用 60。 */
     private int rrfK = 60;
@@ -67,6 +88,32 @@ public class RecallProperties {
         private boolean enabled = true;
         /** 单路召回超时(毫秒);超时当空,交由其余路/热门兜底。 */
         private long timeoutMs = 150;
+        private long totalTimeoutMs = 150;
+        private long prefetchTimeoutMs = 40;
+        private int queueCapacity = 24;
+        private int fastQueueCapacity = 12;
+        private int prefetchPoolSize = 2;
+        private int prefetchQueueCapacity = 4;
+        private int maxRequests = 128;
+        private int maxResultsPerChannel = 1000;
+
+        public long getTotalTimeoutMs() { return totalTimeoutMs; }
+        public void setTotalTimeoutMs(long value) { totalTimeoutMs = value; }
+        public long getPrefetchTimeoutMs() { return prefetchTimeoutMs; }
+        public void setPrefetchTimeoutMs(long value) { prefetchTimeoutMs = value; }
+        public int getQueueCapacity() { return queueCapacity; }
+        public void setQueueCapacity(int value) { queueCapacity = value; }
+        public int getFastQueueCapacity() { return fastQueueCapacity; }
+        public void setFastQueueCapacity(int value) { fastQueueCapacity = value; }
+        public int getPrefetchPoolSize() { return prefetchPoolSize; }
+        public void setPrefetchPoolSize(int value) { prefetchPoolSize = value; }
+        public int getPrefetchQueueCapacity() { return prefetchQueueCapacity; }
+        public void setPrefetchQueueCapacity(int value) { prefetchQueueCapacity = value; }
+        public int getMaxRequests() { return maxRequests; }
+        public void setMaxRequests(int value) { maxRequests = value; }
+        public int getMaxResultsPerChannel() { return maxResultsPerChannel; }
+        public void setMaxResultsPerChannel(int value) { maxResultsPerChannel = value; }
+
         /** 召回线程池大小(建议 ≈ 通道数)。舱壁开启时作为<b>慢池</b>大小;关闭时为单池大小。 */
         private int poolSize = 12;
         /**

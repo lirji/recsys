@@ -279,3 +279,24 @@ jobs:
         with:
           name: streaming-reliability-reports
           path: recsys-streaming/target/surefire-reports/**
+
+  # C20真实Redis故障、热点/正常流量和实际取消占用；不可无Docker跳过。
+  recall-resilience-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Recall and feature resource budget gate
+        run: mvn -B -pl recsys-recall,recsys-feature -am test -Dgroups=recall-resilience -Dsurefire.failIfNoSpecifiedTests=false
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recall-resilience-reports
+          path: |
+            recsys-recall/target/surefire-reports/**
+            recsys-feature/target/surefire-reports/**

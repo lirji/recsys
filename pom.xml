@@ -34,6 +34,8 @@
         <flink.version>1.20.0</flink.version>
         <flink.kafka.version>3.3.0-1.20</flink.kafka.version>
         <jedis.version>5.1.5</jedis.version>
+        <!-- C20与现有Micrometer Tracing 1.2.5/Core 1.12.5传递依赖一致；Boot BOM未直接管理此artifact。 -->
+        <micrometer-context.version>1.1.1</micrometer-context.version>
         <!-- Testcontainers 1.19.7 内置 docker-java 默认 API 1.32；Docker Engine 29 最低接受 1.40。 -->
         <docker.api.version>1.40</docker.api.version>
         <!-- 结构化日志 JSON 编码器(P2,非 Spring Boot BOM 管理的第三方,集中钉版本) -->
@@ -138,6 +140,11 @@
                 <groupId>net.devh</groupId>
                 <artifactId>grpc-client-spring-boot-starter</artifactId>
                 <version>${grpc-spring.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.micrometer</groupId><artifactId>context-propagation</artifactId>
+                <version>${micrometer-context.version}</version>
             </dependency>
 
             <!-- 内部模块统一版本管理(子模块引用时无需写 version) -->

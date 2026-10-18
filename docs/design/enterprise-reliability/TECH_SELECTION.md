@@ -117,3 +117,9 @@ S16B继续相同版本与设施；新增V002任务调度/清单保护，不改�
 ## S19 增量技术决定
 
 见[C19_DESIGN](C19_DESIGN.md)：复用Flink1.20/Kafka/Jedis与现有单并行度，受控完整窗口快照；新platform编译边仅复用原LegacyBehaviorCodec，排除全部传递依赖，避免重复协议与引入Web宿主。Kafka测试复用已有GenericContainer，无新增测试组件；不新增中间件或升级版本。
+
+## C20 技术决定
+
+[C20_DESIGN](C20_DESIGN.md)沿用JDK有界执行器与现有Redis、Micrometer；直接依赖context-propagation1.1.1沿现有Tracing1.2.5/Core1.12.5传递版本在父POM钉定（Boot BOM不直接管理），micrometer-core沿Boot BOM，不新增平台/升级版本。业务上下文显式不可变传参，无新增自定义ThreadLocal；Micrometer快照恢复既有Tracing上下文，不传播事务。
+
+C20特征模块真实Redis验收新增testcontainers-junit-jupiter测试依赖，沿父BOM；无运行时中间件变更。

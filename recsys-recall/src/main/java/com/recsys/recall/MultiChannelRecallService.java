@@ -16,9 +16,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -30,10 +27,10 @@ import java.util.concurrent.TimeoutException;
  *   合并前**先按每路自身最大值归一化到 [0,1]**,使跨路分数可比 —— 否则下游全局归一化会被
  *   热度计数(动辄成百上千)主导,把语义/向量路的余弦分压到接近 0,channel-boost 也救不回来。
  * - 同一 itemId 命中多路 → 保留所有来源(channels),recallScore 取各路归一化分的最大值。
- * - 任一路抛异常被 catch 降级,不影响整体;热门兜底始终生效。
+ * - 任一路抛异常降级为空，预算内完成的其他通道仍参与合并。
  * - <b>舱壁隔离</b>:慢通道(pgvector ANN/ONNX/重 DB)与快通道(HOT/TAG/I2I 等兜底)分池。慢路超时后
- *   {@code cancel(true)} 不中断阻塞调用、线程被占,但只占慢池 → 快池(兜底路)始终有线程,不被拖垮
- *   (根治"慢路吃光共享池 → 快路也排队 → 尾延迟放大")。可 {@code recsys.recall.parallel.bulkhead-enabled=false} 退回单池。
+ *   {@code cancel(true)} 不中断阻塞调用、线程被占,但只占慢池 → 快池不被慢路占用，但自身过载仍会明确拒绝
+ *   （实际上限与降级见C20）。可 {@code recsys.recall.parallel.bulkhead-enabled=false} 退回单池。
  */
 @Service
 @EnableConfigurationProperties(RecallProperties.class)
@@ -51,34 +48,33 @@ public class MultiChannelRecallService implements RecallService {
     private final RecallProperties props;
     private final RecentPositiveItemsSource recentItemsSource;
     private final BehaviorSequenceSource behaviorSequenceSource;
-    /** 慢通道池(pgvector ANN/ONNX/重 DB);舱壁关闭时即唯一单池。 */
-    private final ExecutorService slowPool;
-    /** 快通道池(HOT/TAG/I2I 等兜底);舱壁关闭时 == slowPool(退回单池)。 */
-    private final ExecutorService fastPool;
-    /** 归入慢池的通道集(其余走快池)。 */
+    private final com.recsys.recall.execution.RecallExecution execution;
+    private final boolean ownsExecution;
     private final java.util.EnumSet<RecallChannel> slowChannelSet;
 
+    /** 非Spring调用沿同一预算执行，shutdown释放自有资源。 */
     public MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props,
-                                     RecentPositiveItemsSource recentItemsSource,
-                                     BehaviorSequenceSource behaviorSequenceSource) {
-        this.recallers = recallers;
-        this.props = props;
-        this.recentItemsSource = recentItemsSource;
-        this.behaviorSequenceSource = behaviorSequenceSource;
-        RecallProperties.Parallel p = props.getParallel();
-        this.slowChannelSet = parseSlowChannels(p.getSlowChannels());
-        boolean bulkhead = p.isBulkheadEnabled();
-        int slowSize = Math.max(1, p.getPoolSize());
-        // 慢池:舱壁开→"recall-slow";关→唯一单池"recall-worker"(原行为)
-        this.slowPool = Executors.newFixedThreadPool(slowSize, daemonFactory(bulkhead ? "recall-slow" : "recall-worker"));
-        // 快池:舱壁开→独立小池;关→复用 slowPool(所有通道同池)
-        this.fastPool = bulkhead
-                ? Executors.newFixedThreadPool(Math.max(1, p.getFastPoolSize()), daemonFactory("recall-fast"))
-                : this.slowPool;
-        if (bulkhead) {
-            log.info("召回舱壁隔离启用:慢池={} {} / 快池={};其余通道走快池",
-                    slowSize, slowChannelSet, p.getFastPoolSize());
-        }
+                                     RecentPositiveItemsSource recentItemsSource, BehaviorSequenceSource behaviorSequenceSource) {
+        this(recallers, props, recentItemsSource, behaviorSequenceSource,
+                new com.recsys.recall.execution.RecallExecution(props, new io.micrometer.core.instrument.simple.SimpleMeterRegistry()), true);
+    }
+
+    /** Spring持有共享资源生命周期，避免每个请求/调用方另建池。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props,
+                                     RecentPositiveItemsSource recentItemsSource, BehaviorSequenceSource behaviorSequenceSource,
+                                     com.recsys.recall.execution.RecallExecution execution) {
+        this(recallers, props, recentItemsSource, behaviorSequenceSource, execution, false);
+    }
+
+    private MultiChannelRecallService(List<ChannelRecaller> recallers, RecallProperties props,
+                                     RecentPositiveItemsSource recentItemsSource, BehaviorSequenceSource behaviorSequenceSource,
+                                     com.recsys.recall.execution.RecallExecution execution, boolean ownsExecution) {
+        this.recallers = List.copyOf(recallers); this.props = props; this.recentItemsSource = recentItemsSource;
+        this.behaviorSequenceSource = behaviorSequenceSource; this.execution = execution; this.ownsExecution = ownsExecution;
+        this.slowChannelSet = parseSlowChannels(props.getParallel().getSlowChannels());
+        if (recallers.stream().map(ChannelRecaller::channel).distinct().count() != recallers.size())
+            throw new IllegalArgumentException(com.recsys.common.error.ErrorCode.VALIDATION_FAILED.displayMessage());
     }
 
     private java.util.EnumSet<RecallChannel> parseSlowChannels(String csv) {
@@ -100,29 +96,31 @@ public class MultiChannelRecallService implements RecallService {
         return set;
     }
 
-    private static java.util.concurrent.ThreadFactory daemonFactory(String name) {
-        return r -> {
-            Thread t = new Thread(r, name);
-            t.setDaemon(true);   // 守护线程:不阻止 JVM 退出
-            return t;
-        };
-    }
-
-    /** 通道对应的池:慢通道→slowPool,其余→fastPool(舱壁关闭时二者同一)。 */
-    private ExecutorService poolFor(RecallChannel channel) {
-        return slowChannelSet.contains(channel) ? slowPool : fastPool;
+    private java.util.concurrent.ThreadPoolExecutor poolFor(RecallChannel channel) {
+        return slowChannelSet.contains(channel) ? execution.slow : execution.fast;
     }
 
     @PreDestroy
-    void shutdown() {
-        slowPool.shutdownNow();
-        if (fastPool != slowPool) {
-            fastPool.shutdownNow();
-        }
-    }
+    void shutdown() { if (ownsExecution) execution.close(); }
 
     @Override
     public List<RecallItem> recall(RecallContext ctx) {
+        long started = System.nanoTime();
+        long deadline = started + TimeUnit.MILLISECONDS.toNanos(props.getParallel().getTotalTimeoutMs());
+        var request = execution.admit(ctx.userId());
+        if (request == null) return List.of();
+        try { return recallWithin(snapshot(ctx), request, deadline); }
+        finally { request.close(); execution.duration(System.nanoTime() - started); }
+    }
+
+    /** 把调用方可变集合冻结；explain仍仅由请求线程合并写入。 */
+    private RecallContext snapshot(RecallContext ctx) {
+        return new RecallContext(ctx.userId(), ctx.size(), ctx.scene(), List.copyOf(ctx.enabledChannels()), Map.copyOf(ctx.params()),
+                ctx.queryTerms(), ctx.explain(), ctx.recentPositiveItems() == null ? null : List.copyOf(ctx.recentPositiveItems()),
+                ctx.behaviorSequence() == null ? null : List.copyOf(ctx.behaviorSequence()));
+    }
+
+    private List<RecallItem> recallWithin(RecallContext ctx, com.recsys.recall.execution.RecallExecution.Request request, long deadline) {
         // 融合模式:默认按路归一化取 max(跨路可比);搜索场景传 recall-fusion=rrf 用 RRF
         // (Reciprocal Rank Fusion)按各路排名融合 —— 对量纲迥异的检索器(BM25 vs 余弦)更鲁棒。
         boolean rrf = "rrf".equalsIgnoreCase(ctx.params().get("recall-fusion"));
@@ -136,10 +134,21 @@ public class MultiChannelRecallService implements RecallService {
         }
         // 每请求取一次用户近期正反馈物品下发各通道:消除 I2I/SWING/GENERATIVE 三路对 user_behavior 的
         // 重复查询与连接扇出。仅当尚未预取且确有种子路启用时才查(纯冷启动/HOT 路不触发,零额外开销)。
-        ctx = withPrefetchedSeeds(ctx, active);
-        ctx = withPrefetchedSequence(ctx, active);
+        if (active.stream().anyMatch(r -> SEED_CHANNELS.contains(r.channel()) || SEQUENCE_CHANNELS.contains(r.channel()))) {
+            RecallContext original = ctx;
+            long prefetchDeadline = Math.min(deadline, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(props.getParallel().getPrefetchTimeoutMs()));
+            var task = execution.submit(execution.prefetch, request, prefetchDeadline,
+                    () -> {
+                        var seeded = withPrefetchedSeeds(original, active);
+                        // 一个不响应中断的查询晚返回后，不能再开启第二个已超预算的查询。
+                        return Thread.currentThread().isInterrupted() || System.nanoTime() >= prefetchDeadline
+                                ? seeded.withBehaviorSequence(List.of()) : withPrefetchedSequence(seeded, active);
+                    });
+            RecallContext prefetched = await(task);
+            ctx = prefetched == null ? original.withRecentPositiveItems(List.of()).withBehaviorSequence(List.of()) : snapshot(prefetched);
+        }
         // 各路并行调用(有界线程池 + 单路超时);任一路超时/异常当空,不阻断其余路与合并。
-        List<List<RecallItem>> perChannel = runRecallers(active, ctx);
+        List<List<RecallItem>> perChannel = runRecallers(active, ctx, request, deadline);
 
         // explain(可空 sink):记去重前每路原始召回数。active 与 perChannel 索引对齐,故直接取 size()。
         if (ctx.explain() != null) {
@@ -195,7 +204,7 @@ public class MultiChannelRecallService implements RecallService {
 
     /**
      * 若有种子路(I2I/SWING/GENERATIVE)启用且尚未预取,取一次用户近期正反馈物品填入上下文。
-     * fail-soft:查询异常时原样返回 ctx(recentPositiveItems 仍为 null),各通道回退各自查库,不阻断召回。
+     * fail-soft:查询异常返回空种子，避免故障时各路重新查库放大压力。
      */
     private RecallContext withPrefetchedSeeds(RecallContext ctx, List<ChannelRecaller> active) {
         if (ctx.recentPositiveItems() != null) {
@@ -210,8 +219,8 @@ public class MultiChannelRecallService implements RecallService {
             List<Long> seeds = recentItemsSource.recentPositiveItems(ctx.userId(), limit);
             return ctx.withRecentPositiveItems(seeds);
         } catch (Exception e) {
-            log.warn("预取用户近期正反馈物品失败,各路回退自查: {}", e.getMessage());
-            return ctx;
+            log.warn("预取用户近期正反馈物品失败,本次不重复回源: {}", e.getMessage());
+            return ctx.withRecentPositiveItems(List.of());
         }
     }
 
@@ -232,42 +241,45 @@ public class MultiChannelRecallService implements RecallService {
         }
     }
 
-    /** 并行(可配)调用各路召回;单路超时/异常/返回 null 一律当空 List,输出顺序与 active 对齐。 */
-    private List<List<RecallItem>> runRecallers(List<ChannelRecaller> active, RecallContext ctx) {
-        RecallProperties.Parallel p = props.getParallel();
+    /** 共享绝对截止时间，排队也计入；到期后仍收集已按时完成的快路结果。 */
+    private List<List<RecallItem>> runRecallers(List<ChannelRecaller> active, RecallContext ctx,
+            com.recsys.recall.execution.RecallExecution.Request request, long deadline) {
+        var tasks = new ArrayList<com.recsys.recall.execution.RecallExecution.Task<List<RecallItem>>>();
         List<List<RecallItem>> out = new ArrayList<>(active.size());
-        if (!p.isEnabled()) {
-            // 串行兜底(可回退开关)
-            for (ChannelRecaller r : active) {
-                out.add(safeRecall(r, ctx));
+        try {
+            for (ChannelRecaller recaller : active) {
+                if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) { tasks.add(null); if (!props.getParallel().isEnabled()) out.add(List.of()); continue; }
+                long channelDeadline = Math.min(deadline, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(props.getParallel().getTimeoutMs()));
+                var task = execution.submit(poolFor(recaller.channel()), request, channelDeadline, () -> safeRecall(recaller, ctx));
+                tasks.add(task);
+                if (!props.getParallel().isEnabled()) { var result = await(task); out.add(result == null ? List.of() : result); }
             }
+            if (props.getParallel().isEnabled()) for (var task : tasks) { var result = await(task); out.add(result == null ? List.of() : result); }
             return out;
+        } finally { for (var task : tasks) if (task != null && !task.isDone()) task.cancel(true); }
+    }
+
+    private <T> T await(com.recsys.recall.execution.RecallExecution.Task<T> task) {
+        if (task == null) return null;
+        try {
+            long remaining = task.deadline - System.nanoTime();
+            T result = task.isDone() ? task.get() : task.get(Math.max(0, remaining), TimeUnit.NANOSECONDS);
+            if (task.completedAt() > task.deadline) { execution.count("late_result"); return null; }
+            return result;
+        } catch (InterruptedException interrupted) {
+            task.cancel(true); Thread.currentThread().interrupt(); execution.count("interrupted"); return null;
+        } catch (TimeoutException timeout) {
+            task.cancel(true); execution.count("timeout"); return null;
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.CancellationException failed) {
+            execution.count("failed"); return null;
         }
-        List<CompletableFuture<List<RecallItem>>> futures = new ArrayList<>(active.size());
-        for (ChannelRecaller r : active) {
-            // 舱壁:慢通道进 slowPool、快通道进 fastPool;慢路占满线程不会饿死快路(兜底)
-            futures.add(CompletableFuture.supplyAsync(() -> safeRecall(r, ctx), poolFor(r.channel())));
-        }
-        for (int i = 0; i < futures.size(); i++) {
-            try {
-                out.add(futures.get(i).get(p.getTimeoutMs(), TimeUnit.MILLISECONDS));
-            } catch (TimeoutException te) {
-                log.warn("召回路 {} 超时 {}ms,当空处理", active.get(i).channel(), p.getTimeoutMs());
-                futures.get(i).cancel(true);
-                out.add(List.of());
-            } catch (Exception e) {
-                log.warn("召回路 {} 异常,当空: {}", active.get(i).channel(), e.getMessage());
-                out.add(List.of());
-            }
-        }
-        return out;
     }
 
     /** 单路召回的异常/空保护:永远返回非 null List(在工作线程内执行,异常不外泄)。 */
     private List<RecallItem> safeRecall(ChannelRecaller r, RecallContext ctx) {
         try {
             List<RecallItem> items = r.recall(ctx);
-            return items == null ? List.of() : items;
+            return items == null ? List.of() : List.copyOf(items.subList(0, Math.min(items.size(), props.getParallel().getMaxResultsPerChannel())));
         } catch (Exception e) {
             log.warn("召回路 {} 失败,跳过: {}", r.getClass().getSimpleName(), e.getMessage());
             return List.of();

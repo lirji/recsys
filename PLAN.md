@@ -1,6 +1,6 @@
 # 执行计划 PLAN —— 当前进度与原始建设记录
 
-> **更新于 2026-10-18**，本轮从 `c5649032` 完成 ER-S17、ER-S18。原始 Track A–F、M1–M4 的功能已落地；当前根 POM 包含 **23 个子模块（含根 POM 共 24 个 reactor 项）**，前端为 `console/` + `recsys-console` BFF。本文件汇总当前进度并保留原始建设记录；专项实施状态以各专项文档为准，功能完成不等于全部效果、部署或生产验收完成。
+> **更新于 2026-10-18**，本轮继续完成 ER-S19、ER-S20，ER-S21实施中。原始 Track A–F、M1–M4 的功能已落地；当前根 POM 包含 **23 个子模块（含根 POM 共 24 个 reactor 项）**，前端为 `console/` + `recsys-console` BFF。本文件汇总当前进度并保留原始建设记录；专项实施状态以各专项文档为准，功能完成不等于全部效果、部署或生产验收完成。
 
 ## 当前进度（2026-10-18）
 
@@ -27,7 +27,7 @@
 | ER-S17 | 版本化目录投影、Inbox、墓碑与 Redis 可靠刷新 | DONE / 本地PASS；C17冻结，真实组件及回归32项通过；[验收](docs/design/enterprise-reliability/ER-S17_RESULT.md) |
 | ER-S18 | 日志补洞、持久检查点与并发领取 | DONE / 本地PASS；19项真实PG专项及30项相关回归通过；[验收](docs/design/enterprise-reliability/ER-S18_RESULT.md) |
 | ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | DONE；C19事件时间/持久checkpoint/完整Redis窗口与显式读取；39项相关测试PASS，见ER-S19_RESULT |
-| ER-S20 | 主召回总 deadline、有界执行与缓存故障回源 | TODO；依赖 ER-D0，正式契约与负载资源预算待冻结 |
+| ER-S20 | 主召回总 deadline、有界执行与缓存故障回源 | DONE；45项本地验证通过，[验收结果](docs/design/enterprise-reliability/ER-S20_RESULT.md) |
 | ER-S21 | 非关键 shadow 有界过载丢弃 | TODO；依赖 S20，需验证主链路资源隔离与关键事件不丢弃 |
 | ER-S22–S25 | 保持原计划范围 | 未实施、本轮暂停，等待后续授权 |
 
