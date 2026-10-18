@@ -1,14 +1,49 @@
-# 执行计划 PLAN —— 从 0 搭建推荐系统（历史存档，完成状态已回填）
+# 执行计划 PLAN —— 当前进度与原始建设记录
 
-> **⚠️ 历史文档（2026-06-01 快照，2026-09-01 回填完成状态）**：本计划范围内的功能项均已落地并被大幅超越——现状为 22 个 Maven 模块、14 路召回、9 排序策略、搜索广告全链路、DDD 微服务拆分，`recsys-web` 已演进为 `console/` 前端 + `recsys-console` BFF。**现状请以 `docs/00-项目总览.md`、`docs/06-优化与扩展路线.md`、`docs/07-后续路线执行清单.md`、`CLAUDE.md` 为准**；本文件仅保留原始 Track 划分与实施记录。文末另列尚未完全闭环的验收项。
+> **更新于 2026-10-18**，本次核对的代码基线为 `0f3500de`。原始 Track A–F、M1–M4 的功能已落地；当前根 POM 包含 **23 个子模块（含根 POM 共 24 个 reactor 项）**，前端为 `console/` + `recsys-console` BFF。本文件汇总当前进度并保留原始建设记录；专项实施状态以各专项文档为准，功能完成不等于全部效果、部署或生产验收完成。
 
-> 本计划为**并行执行**设计。先做 Phase 0(顺序,打地基 + 定契约),之后 Phase 1 的多个 Track 可**并行**交给不同 Claude 任务,各自负责独立模块,互不冲突。
->
-> 阅读顺序:先读 `docs/01-技术栈.md`、`docs/02-架构设计.md`(尤其第 5 节 API 契约)、`docs/03-关键技术点.md`。
+## 当前进度（2026-10-18）
 
-> **原始快照（2026-06-01）**：Phase 0 与 M1 已完成，当时 Track D/E 尚未开始。
->
-> **最新状态（2026-09-01）**：Track A–F、M1–M4 的计划功能均已落地；Local BGE 已完成并全量重灌向量，网关路由、离线评估、Flink 实时特征、多模态与分层 A/B 均已有实现。仍需补强的是“规则 vs ONNX 的有效在线 CTR 对比结果”、“浏览器 → Gateway → 全服务 → console 的自动化 E2E”和“A6 DFM 真实事件→新模型→在线 pCVR 消费闭环”。
+| 工作范围 | 已核实状态 | 证据与边界 |
+| --- | --- | --- |
+| 原始推荐、搜索、广告与离线能力 | Track A–F、M1–M4 功能完成；R9 多兴趣/图召回、A7 Uplift 已交付 | [原路线执行清单](docs/07-后续路线执行清单.md)；效果验收仍见下文 |
+| 持久层与错误码治理 | MyBatis-Plus MP00–MP15、错误码 EC01–EC08 已实现并验证 | [持久层报告](docs/design/mybatis-plus-migration/PROJECT_REFACTORING_REPORT.md)、[错误码报告](docs/design/error-code-governance/PROJECT_REFACTORING_REPORT.md) |
+| 企业可靠性 ER-S01–S14 | DONE；Sandbox CPM/CPC/CPA、自然曝光、混排、对账恢复与只读资金报表已闭环 | [实施状态](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)、[对账验收](docs/design/enterprise-reliability/ER-S13_RESULT.md)、[报表验收](docs/design/enterprise-reliability/ER-S14_RESULT.md)；不表示生产收费已启用 |
+| 企业可靠性 ER-S15 | DONE；自然 Outbox、旧行为可靠事件、LIVE/HISTORY Seen 消费恢复均完成 | [S15 验收](docs/design/enterprise-reliability/ER-S15_RESULT.md)、[最终消费者验收](docs/design/enterprise-reliability/ER-S15C2_RESULT.md)；Flink 可靠窗口仍属 S19 |
+| 企业可靠性 ER-S16 | DONE；单广告可靠写入、广告主状态扇出、跨 owner 批次与持久恢复完成 | A=`6fe79594`、B=`a25e511d`；[S16B 验收](docs/design/enterprise-reliability/ER-S16B_RESULT.md)，最终目录门禁 141 项通过，另有真实权限专项；消费者保障仍属 S17 |
+| 桶对比演示与用户兴趣 | 本地验证通过，工具已合并推送 | `d340872a`、`5ec42263`、`0f3500de`；报表快照为 4 桶、875 曝光、120 点击、5 个不同用户；4 个新增用户已有差异化兴趣，真实推荐 TAG 候选各由 0 增至 50。均为演示验证，不能据此判断模型收益；[工具与使用说明](test-data/README.md) |
+| 最近一次本机 Docker 部署 | `a25e511d` 本地验收通过 | 2026-10-17 部署 9 个应用，8 个后端健康、21 项 smoke、JAR/镜像与浏览器核验通过；后续三个提交仅更新演示工具，不表示已重新部署应用 |
+
+**验证快照**：代码基线 `0f3500de` 的 [CI 39007894820](https://github.com/lirji/recsys/actions/runs/39007894820) 已完成，9/9 job 成功。此前演示工具提交出现过目录故障恢复耗时断言和浏览器宿主启动失败；最新成功只代表本次精确提交的运行结果，不将旧失败改写为通过。
+
+本机演示与部署证据分别保存在 `.dev/test-data/ab-board-v2/`、`.dev/test-data/user-interests-v1/`、`.dev/deployments/latest-a25e511d06e3/` 下的 `PROGRESS.md` 和结果文件中；这些本机材料未纳入 Git，需保留以便恢复和精确清理。兴趣任务另产生 40 条推荐曝光，未重算上述桶对比报表，875/120 是已发布报表快照。
+
+### 后续实施范围
+
+企业可靠性沿用[原计划](docs/design/enterprise-reliability/PLAN.md)与[唯一实施状态](docs/design/enterprise-reliability/IMPLEMENTATION_SLICES.md)，不重编号、不在本次文档更新中启动开发：
+
+| 切片 | 剩余工作 | 状态与前置条件 |
+| --- | --- | --- |
+| ER-S17 | 版本化目录投影、Inbox、墓碑与 Redis 可靠刷新 | TODO；S16 已完成，正式契约待冻结；先验证重复、乱序与防复活 |
+| ER-S18 | 日志补洞、持久检查点与并发领取 | TODO；依赖 S06，正式契约待冻结；覆盖低 ID 晚提交与恢复 |
+| ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | TODO；依赖 S15，正式契约待冻结；当前 MiniCluster 不代表本项完成 |
+| ER-S20 | 主召回总 deadline、有界执行与缓存故障回源 | TODO；依赖 ER-D0，正式契约与负载资源预算待冻结 |
+| ER-S21 | 非关键 shadow 有界过载丢弃 | TODO；依赖 S20，需验证主链路资源隔离与关键事件不丢弃 |
+| ER-S22–S25 | 保持原计划范围 | 未实施、本轮暂停，等待后续授权 |
+
+### 当前下一步
+
+1. 恢复企业可靠性开发时，从 ER-S17 正式契约与设计门禁进入，随后按原 DAG 推进 S17–S21；S22–S25 保持暂停。本次只同步计划，不启动这些实现。
+2. 效果与全链路验收仍保留三项：可比较的 v1/ONNX 在线 CTR 实验、完整 Gateway/OIDC 自动化 E2E、A6 DFM 真实数据在线闭环；已完成的演示与浏览器专项不重复建设。
+3. R9（MIND + LightGCN）与 A7（Uplift 因果采样/增量竞价）的功能交付保持完成；真实流量效果按[路线清单的质量跟进](docs/07-后续路线执行清单.md#不阻塞功能完成的质量跟进)继续管理。
+
+---
+
+## 原始建设范围与历史验收
+
+以下保留 2026-06-01 的 Phase/Track 划分及后续功能回填。历史模块名、实现名、环境与数据规模只描述当时验收，不作为当前部署参数或新的任务授权；当前持久层组织以 MyBatis-Plus 专项报告为准。
+
+原计划先做 Phase 0（地基与契约），再并行实施 Phase 1 的独立 Track，最后集成。历史阅读入口：[技术栈](docs/01-技术栈.md)、[架构设计](docs/02-架构设计.md)、[关键技术点](docs/03-关键技术点.md)。
 
 ---
 
@@ -53,7 +88,7 @@
 ### Track B · 召回服务 ✅ 已完成 〔依赖:0.4;运行期依赖 A/E 数据〕
 负责模块:`recsys-recall`
 - [x] B1 向量召回 `VectorRecaller`:取 `user_embedding` → pgvector 余弦 KNN。**实测语义正确**。
-- [x] B2 i2i 召回 `I2iRecaller`:读 Redis `i2i:{itemId}`(倒排待 Track E 生成,当前返回空)。
+- [x] B2 i2i 召回 `I2iRecaller`:读 Redis `i2i:{itemId}`；倒排已由 Track E 的 ItemCF 作业生成并验证。
 - [x] B3 热门召回 `HotRecaller`:读 `recall:hot` ZSet;**Redis 空时降级查库 popularity,兜底永不空手**。
 - [x] B4 标签召回 `TagRecaller`:读 `app_user.profile` JSONB 偏好类目查 item(无画像返回空)。
 - [x] B5 `MultiChannelRecallService` 合并去重,带 channel 标记 + 配额配置;任一路失败降级。
@@ -78,10 +113,10 @@
 
 ### Track E · 行为采集与离线作业 ✅ 已完成(2026-06-01)〔依赖:0.3, 0.4〕
 负责模块:`recsys-behavior`、`recsys-offline`(CF 批算 / 热度 / 用户向量)
-- [x] E1 `recsys-behavior`:`POST /api/behavior`(+ `/batch`)→ `BehaviorService` 先幂等落库 `user_behavior`，再按 `use-kafka` 可选发布。推荐响应/行为事件贯通 `exposureId`，同曝光 CLICK 由 PostgreSQL 部分唯一索引去重；action 一律大写入库。
+- [x] E1 `recsys-behavior`:`POST /api/behavior`(+ `/batch`)→ `user_behavior`，推荐响应/行为事件贯通 `exposureId`，同曝光 CLICK 由 PostgreSQL 部分唯一索引去重；action 一律大写入库。旧路径按 `use-kafka` 可选发布；S15 已补充同库 Outbox 与消费者恢复，受独立开关控制。无幂等键的普通 POST 不承诺全局幂等，详见 [S15 验收](docs/design/enterprise-reliability/ER-S15_RESULT.md)。
 - [x] **bootstrap** `import-behavior` 作业:ratings.csv(10 万条)→ `user_behavior`(action=RATING, value=评分, scene=ml-import, 幂等)。冷启动喂数,线上真实上报后续进同表。
 - [x] E2 `item-cf` 作业:`ItemCfJob` 经典 ItemCF + IUF 活跃用户惩罚 + 热门物品惩罚,每物品 TopK 写 Redis `i2i:{itemId}`(管道批量)。实测 5959 物品出倒排,Toy Story→Toy Story 2/狮子王/阿拉丁,质量正确。
-- [x] E3 `hot` 作业:`HotJob` 从 `user_behavior` SQL 加权聚合(CLICK1/LIKE2/PLAY1/RATING=value)→ `recall:hot` ZSet(原子替换)。实测写 1000 条,HotRecaller 走 Redis。
+- [x] E3 `hot` 作业:`HotJob` 从 `user_behavior` SQL 加权聚合(CLICK1/LIKE2/PLAY1/RATING=value)→ `recall:hot` ZSet。历史实测写 1000 条，HotRecaller 走 Redis；当前仍为删除后写入两条命令，存在中间窗口，不宣称原子替换，见[持久层报告的剩余风险](docs/design/mybatis-plus-migration/PROJECT_REFACTORING_REPORT.md#remainingrisks--technicaldebt)。
 - [x] E4 `user-embedding` 作业:`UserEmbeddingJob` 聚合用户正反馈物品向量(评分加权)→ L2 归一化 → `user_embedding`(默认整表重建)。实测覆盖 598 用户。
 - **验收**:✅ 行为可上报落库(单条+批量实测);Redis 有 i2i 倒排(5959)、热门(1000)、用户向量(598);真实用户 `GET /api/recommend?userId=1` 由 **VECTOR+I2I 真实召回**驱动(2571=黑客帝国来自 ItemCF),不再靠手造向量/热门兜底。
 - **原已知限制（已解决）**:~~item_embedding 仅 1000 条，user_embedding 覆盖受 Gemini 配额限制~~ → 已切本地 BGE 全量重灌；数据质量报告记录 item embedding 覆盖率 100%、user embedding 覆盖率 99.35%。
@@ -120,12 +155,12 @@ Phase 0 (顺序) ──┬──> Track A (数据/向量化) ──┐
 
 - [x] 按真实链路串起来:数据灌好 → 离线作业跑完 → 启动各服务 → 前端验证。
 - [x] 用 v1 规则排序先全链路跑通(M1),再切 ONNX 模型(M2)。
-- [x] 端到端冒烟:新用户(冷启动走热门)+ 老用户(走向量/i2i)两条 case。**两条路径已有历史手工实测；自动化测试目前覆盖 rec-engine 非空/去重/已看过滤与新用户 HOT 兜底，完整 Gateway/console E2E 仍待补**
+- [x] 端到端冒烟:新用户(冷启动走热门)+ 老用户(走向量/i2i)两条 case。**两条路径已有历史手工实测；后续已增加自然曝光、广告、混排、CPC/CPA 与对账的浏览器专项并纳入 CI。完整 Gateway/OIDC、多进程及 PostgreSQL/Redis 联合断言的自动化 E2E 仍待补，不能把专项宿主等同于完整部署链路。**
 
 ## Phase 3 —— 评估与打磨
 
 - [x] 离线评估:AUC、Precision/Recall/NDCG/MAP/MRR/HitRate/Coverage/Diversity/Novelty @K 脚本与报告；另有严格无泄漏 eval。
-- [ ] 🟡 在线模拟:点击行为回流、分层 A/B、CTR 报表与显著性检验均已实现；**现有归档 v1/ONNX 报表点击数为 0，尚缺一次有有效点击样本的规则 vs 模型 CTR 对比结果**。
+- [ ] 🟡 在线效果验收:点击回流、分层 A/B、CTR 报表与显著性检验能力已实现；**2026-10-17 的 DEMO 报表已有 120 条点击，数据/API/浏览器链路验证通过，但合成点击与跨场景汇总不构成可比较的 v1/ONNX 效果结论**。
 - [x] 文档收尾:项目总览、架构与能力说明、踩坑记录，以及 `docs/skills/` 19 篇技术专题。
 
 ## Phase 4 —— 进阶(可选)
@@ -134,17 +169,19 @@ Phase 0 (顺序) ──┬──> Track A (数据/向量化) ──┐
 - [x] Flink 实时特征:Kafka 行为流 → 实时热门、实时类目偏好与实时序列；当前为本地 MiniCluster 教学态。
 - [x] A/B 实验分桶 + 指标对比:recall × rank × rerank（另含广告层）确定性分桶、曝光归因、CTR/置信区间/显著性报表与控制台均已落地。
 
-### 尚未完全闭环的验收项（不阻塞本计划功能完成）
+### 尚未完全闭环的验收项（2026-10-18 核对）
 
-- [ ] 用有点击的模拟或测试流量跑一次 `v1` vs `onnx` 分桶实验，产出可比较的 CTR、lift、置信区间与显著性结果。
-- [ ] 增加覆盖“浏览器/console → Gateway → rec-engine/behavior → PostgreSQL/Redis”的自动化 E2E；当前 `RecommendIntegrationTest` 直接测试 rec-engine，未覆盖 Gateway 和浏览器层。
-- [ ] 完成 A6 DFM 的真实数据闭环验收：修正转化必须晚于点击的样本关联、补训练数据质量硬门禁、迁移持久化广告分片 schema，并在积累足量真实点击/转化后跑通“事件 → 样本 → 训练 → 新 ONNX → 在线 pCVR 消费”。功能代码、合成训练与 Java ONNX 契约已完成，真实链路阻塞证据见 `docs/qa/a5-r7-a6-full-flow-0901-1049/QA_REPORT.md`。
+- [x] 演示点击 → 真实行为接口 → 离线 A/B 报表 → BFF/浏览器展示：已有非零点击的 DEMO 数据与幂等验证，见[演示工具](test-data/README.md)；仅关闭演示链路验收。
+- [ ] 用分组与统计口径可比较的 `v1` vs `onnx` 流量产出 CTR、lift、置信区间与显著性结果；明确合成/真实样本、独立用户数量、实验窗口及跨场景数据边界。现有 DEMO 不关闭此项。
+- [x] 自然曝光、广告与混排等专项浏览器验收已落地并纳入[CI](.github/workflows/ci.yml)；证据见 [S09](docs/design/enterprise-reliability/ER-S09_RESULT.md)、[S10](docs/design/enterprise-reliability/ER-S10_RESULT.md)、[S14](docs/design/enterprise-reliability/ER-S14_RESULT.md)。
+- [ ] 完整覆盖“浏览器/console → Gateway/OIDC → 独立 rec-engine/behavior → PostgreSQL/Redis”的自动化 E2E。现有专项使用隔离宿主或测试登录适配器，仍缺同一次完整部署链路验收。
+- [ ] 完成 A6 DFM 的真实数据闭环验收：复核并关闭转化 `ts >= click.ts` 的样本关联、训练数据质量硬门禁、持久化广告分片 schema 等历史阻塞，再以足量真实点击/转化跑通“事件 → 样本 → 训练 → 新 ONNX → 在线 pCVR 消费”。[2026-09-01 QA 报告](docs/qa/a5-r7-a6-full-flow-0901-1049/QA_REPORT.md)仍是最近定位到的完整 A6 验收证据；本次未复测库状态，不将其中“仅 2 次点击/缺字段”当作当前环境事实，也未发现可关闭本项的新证据。
 
 ---
 
-## 给"并行 Claude 任务"的下发模板
+## 原始并行任务下发模板（历史参考）
 
-> 开一个任务时,这样描述即可让它独立工作:
+> 以下保留原始模板，不用于重新启动已经完成的 Track。新任务按现有专项计划、契约和项目规则执行。
 
 ```
 背景:阅读 docs/01-技术栈.md、docs/02-架构设计.md(第5节契约)、docs/03-关键技术点.md。
@@ -190,8 +227,3 @@ Phase 0 (顺序) ──┬──> Track A (数据/向量化) ──┐
 - ~~i2i / tag 缺离线数据、依赖热门兜底~~ → ItemCF、画像与实时类目偏好均已接通。
 - ~~未过滤已看 / 去重~~ → `SeenFilter` 与多路合并去重已接入，并有集成测试覆盖。
 - ~~真实用户无 `user_embedding`~~ → 已全量重建，数据质量报告记录覆盖率 99.35%。
-
-### 当前下一步
-
-1. 完成上文三项验收闭环：有效的 v1/ONNX 在线 CTR 对比、Gateway/console 自动化 E2E、A6 DFM 真实数据在线闭环。
-2. ✅ R9（MIND 多兴趣 + LightGCN 图召回）与 A7（随机 show/no-show 因果采样 + TARNet/IPW Uplift + 增量竞价）已于 2026-09-01 完成；不再列为待办。
