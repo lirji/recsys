@@ -62,14 +62,15 @@
         ON CONFLICT(ad_id) DO UPDATE SET aggregate_version=EXCLUDED.aggregate_version,digest=EXCLUDED.digest,payload=EXCLUDED.payload,
         embedding_payload=EXCLUDED.embedding_payload,item_id=EXCLUDED.item_id,deleted=EXCLUDED.deleted,updated_at=clock_timestamp()
         WHERE catalog_projection.source_id=EXCLUDED.source_id AND catalog_projection.aggregate_version&lt;EXCLUDED.aggregate_version</insert>
-    <select id="addTask" resultType="long" affectData="true" flushCache="true">
+    <!-- RETURNING 返回行仍属于写入，必须执行数据库操作并绕过查询缓存。 -->
+    <select id="addTask" resultType="long" affectData="true" flushCache="true" useCache="false">
         INSERT INTO catalog_projection_redis_task(ad_id,aggregate_version,old_payload,payload)
         VALUES(#{adId},#{version},#{oldPayload,jdbcType=BINARY},#{payload}) RETURNING task_id
     </select>
     <update id="expireTasks">UPDATE catalog_projection_redis_task SET state='PAUSED',error_code='ATTEMPTS_EXHAUSTED',updated_at=clock_timestamp()
         WHERE task_id IN (SELECT task_id FROM catalog_projection_redis_task WHERE state='RUNNING' AND attempts&gt;=3
         AND lease_until&lt;=clock_timestamp() ORDER BY task_id LIMIT 10 FOR UPDATE SKIP LOCKED)</update>
-    <select id="claimTask" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Task" affectData="true" flushCache="true">
+    <select id="claimTask" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Task" affectData="true" flushCache="true" useCache="false">
         WITH candidate AS (SELECT t.task_id FROM catalog_projection_redis_task t
             WHERE t.attempts&lt;3 AND ((t.state='READY' AND t.available_at&lt;=clock_timestamp()) OR (t.state='RUNNING' AND t.lease_until&lt;=clock_timestamp()))
             AND NOT EXISTS(SELECT 1 FROM catalog_projection_redis_task earlier WHERE earlier.ad_id=t.ad_id AND earlier.task_id&lt;t.task_id AND earlier.state&lt;&gt;'DONE')
