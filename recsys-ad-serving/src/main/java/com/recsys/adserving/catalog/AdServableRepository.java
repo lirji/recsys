@@ -44,6 +44,13 @@ public class AdServableRepository {
         this.dataSource = dataSource;
     }
 
+    /** 新数据集登记后，关新开关也不能重新启用无版本旧写入。 */
+    public void requireLegacyWritable() {
+        if (catalog.projectionSchema() != null && catalog.projectionRegistered())
+            throw new com.recsys.adserving.catalog.projection.CatalogProjectionProtocol.Failure(
+                    com.recsys.adserving.catalog.projection.CatalogProjectionProtocol.Code.LEGACY_WRITER_FORBIDDEN);
+    }
+
     /** 防御性自建表(已建库实例无需重跑 08_ad_servable.sql 也可用)。 */
     @PostConstruct
     void ensureTable() {

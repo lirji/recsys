@@ -295,3 +295,7 @@ C2未新增schema或修改C1 V001；behavior既有engine test-support依赖承�
 S16A内部恢复同样区分显式缺command/step/event的NOT_FOUND与已有原文字节/摘要损坏的INCONSISTENT；轮次/状态/归属冲突仍为CONFLICT。尚未写出的REPLAY_ACK是正常待发送状态，不能误判缺记录。末次过期步骤由有界worker或原目标审计恢复条件清算，保留预算与广告主占有。
 
 S16B沿C16§5/§10实现：root状态/version/本地事实与任务起点同库，分页冻结目标，每ad完整新版本与逐目标完成同库；全部事实完成后才释放根guard。内部≤100显式owner批次固定home/child身份、expectedVersion与独立预算，部分结果不标全部成功。新稳定取消审计仅取消未派发项，新审计轮只续办原PAUSED目标；新批次受admission开关、新审计受recovery开关，关闭仍查回/推进原命令。V002只追加任务调度及清单终态保护，V001保持原摘要；两库显式逐版升级且可靠启动核验两版。具体处置见[目录手册](CATALOG_EVENTS_RUNBOOK.md#广告主状态与部分结果s16b实现验收状态见实施清单)，最终状态见实施清单，不代表S17消费/Redis已完成。
+
+## C17：版本化目录消费与 Redis 待办
+
+ER-S17 的正式协议、范围、配置/迁移和 C17-01～11 验收以 [C17_DESIGN](C17_DESIGN.md) 为准。复用 C16 原事件/key/摘要；本库 Inbox、版本墓碑、可服务副本及 Redis 任务与 PG 分区检查点原子提交。Redis 异步有限重试/版本脚本，消息与恢复原身份不变。PG 租约限定手动分配消费者；首次保留起点显式登记，非空旧目标拒绝初始化。默认关闭，仅内部审计恢复，无共享启用/生产切换授权。

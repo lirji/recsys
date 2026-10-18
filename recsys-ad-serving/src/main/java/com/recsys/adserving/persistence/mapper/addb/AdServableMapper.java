@@ -7,6 +7,10 @@ import java.util.List;
 
 /** 广告目录副本SQL；逐行回调保留原查询失败时已有结果的语义。 */
 public interface AdServableMapper {
+    /** 默认关闭环境可以没有新迁移，先查询目录再访问登记表。 */
+    String projectionSchema();
+    /** 已登记的数据集不能交回无版本旧消费者写入。 */
+    boolean projectionRegistered();
     /** 同一广告覆盖向量，不把空输入转换成零向量。 */
     int upsertEmbedding(@Param("adId") long adId, @Param("vector") String vector);
     /** 幂等移除向量投影。 */

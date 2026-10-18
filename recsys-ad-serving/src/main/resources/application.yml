@@ -109,6 +109,13 @@ recsys:
     catalog:
       source: ${AD_CATALOG_SOURCE:sharded}
       consume: ${AD_CATALOG_CONSUME:false}   # 是否启动 ad-catalog-events 监听器(replica 模式需先开它灌副本)
+      projection:
+        enabled: ${AD_CATALOG_PROJECTION_ENABLED:false}
+        consume-enabled: ${AD_CATALOG_PROJECTION_CONSUME:false}
+        redis-enabled: ${AD_CATALOG_PROJECTION_REDIS:false}
+        recovery-enabled: ${AD_CATALOG_PROJECTION_RECOVERY:false}
+        topic: ${AD_CATALOG_PROJECTION_TOPIC:ad-catalog-v1}
+        group: ${AD_CATALOG_PROJECTION_GROUP:recsys-ad-catalog-v1}
     slots: 3
     calib-model: ${AD_CALIB_MODEL:deepfm}
     recall:

@@ -105,3 +105,7 @@ Boot3.2.5/Spring Kafka3.1.4/client3.6.2/PG JDBC42.7.3与现有PG16/Kafka3.7.1隔
 S16A真实产品继续使用上述版本；没有增加依赖、部署单元或共享实例。可靠profile关闭SQL参数日志、原profile保持，实际路由用隔离PG txid/表记录证明。新增专用catalog CI门禁20分钟，既有CI配置逐字节保持；实际命令与本地结果在[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)，不把单独真实authz main计入该JUnit门禁。
 
 S16B继续相同版本与设施；新增V002任务调度/清单保护，不改已发布V001或原业务分片规则。沿用MyBatis ScriptRunner的逐版提交语义，安装锁与超时按版本重建，避免声称多版跨事务原子。批次每目标原命令独立执行，home只保存原目标与可审计结果；无跨owner全局快照或共同提交承诺。
+
+## C17：版本化目录投影
+
+复用现有 PG/Mapper XML、Kafka client、Spring Redis/Lettuce、Micrometer；无新增依赖。选择本库事务 + Redis 持久任务，否决吞错双写和按到达顺序覆盖。用数据库租约单执行器/手动分区分配保障持久检查点，避免把自动组位点当业务事务；代价为单数据集消费并发上限与显式分区变更管理。Redis Lua 只支持现有 standalone 目标，不宣称 Cluster。详见 C17_DESIGN 的比较、资源和切换边界。

@@ -140,8 +140,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Catalog physical atomicity, HTTP and recovery gate
-        run: mvn -B -e -pl recsys-advertiser,recsys-offline -am test '-Dtest=Catalog*Test,SeedAdsPostgresTest,AdvertiserRepositoryPostgresTest,CreativeReviewTest,AdvertiserAuthzTest' -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Catalog producer, projection, HTTP and recovery gate
+        run: mvn -B -e -pl recsys-advertiser,recsys-offline,recsys-ad-serving -am test '-Dtest=Catalog*Test,AdServablePostgresTest,AdCatalogEventRoundTripTest,SeedAdsPostgresTest,AdvertiserRepositoryPostgresTest,CreativeReviewTest,AdvertiserAuthzTest' -Dsurefire.failIfNoSpecifiedTests=false
       - name: Upload catalog acceptance reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -151,6 +151,7 @@ jobs:
           path: |
             recsys-advertiser/target/surefire-reports/TEST-*.xml
             recsys-offline/target/surefire-reports/TEST-*.xml
+            recsys-ad-serving/target/surefire-reports/TEST-*.xml
           if-no-files-found: warn
 
   sandbox-exposure-browser-gate:

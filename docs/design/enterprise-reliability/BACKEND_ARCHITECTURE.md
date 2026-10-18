@@ -164,3 +164,7 @@ children本库事实→owner核验冻结片段→完整版本事件，只有最�
 S16A实际代码位于advertiser/catalog、primary Catalog*Mapper/XML和显式migration Mapper/XML；ad-common承载事件与可靠路由，offline只增加物理双库准入探针。原Controller/校验/权限政策复用，跨库协调不引入外层事务。PG原生路由函数封装ShardingSphere不支持的ON CONFLICT/SKIP LOCKED语句，所有调用仍在审查过的Mapper XML内；native UUID/JSONB处理器避免驱动类型漂移。初始化BASE_SEND与审计REPLAY_ACK均复用真实publisher；内部恢复专用装配不开放公网运维接口。实际边界和独占验证入口见[目录手册](CATALOG_EVENTS_RUNBOOK.md)与[实现证据](ER-S16A_IMPLEMENTATION_EVIDENCE.md)。
 
 B由CatalogFanoutService分离逐ad最终化与root最终化，CatalogStatusBatchService只管理home清单/观察，不承担跨owner总事务；原worker两固定槽有界公平推进。CatalogTaskMapper/XML携带原home或owner路由，新增读语句显式5秒预算。V002扩展原task列、调度索引和不可变清单/终态trigger，安装器逐版锁定并验证原摘要，保留可恢复的V001中间安装状态；不新增服务或依赖。内部受控批次与审计开关均沿用既有配置，产品不开放批次公网入口。
+
+## C17 架构增量（设计冻结，实施中）
+
+采用 [C17_DESIGN](C17_DESIGN.md) 的 ad-serving 本库事务投影与事务外 Redis 任务；业务源仍为 advertiser。消费执行器由本库 lease/fence 互斥，分区检查点与效果同事务；Kafka commit 是已持久结果的外部确认。旧目录只在 LEGACY 状态写入，可靠链路初始化后旧消费者拒写；生产存量切换与全历史重建另行核验。

@@ -1,5 +1,7 @@
 # 企业可靠性实施状态
 
+2026-10-18 用户指定只先完成 ER-S17、ER-S18。S17 正式 C17 设计、实现及C17-01～11本地真实验收DONE/PASS（32项），见ER-S17_RESULT；Git交付中。S18 继续 TODO，待 C18 契约门禁；不启动 S19～S25。本轮恢复证据 `.dev/er-s17-s18/checkpoint.json`，保护清单同目录。
+
 2026-10-17 ER-S16B必要实现、本地真实验收与分离复审DONE/PASS，父ER-S16的A/B完整闭环均满足。最终同一次目录门禁141项/17类零失败错误跳过（15:10），另真实status manage权限专项PASS；见[ER-S16B_RESULT](ER-S16B_RESULT.md)。A已交付6fe79594，精确CI38983151163全部9门禁成功，目录121项/14类PASS；保留设计5c0f2901。B提交、正常ff/push及精确新CI见`.dev/codex-flow-reliability/round-7fe6f115/delivery.json`，运行终态另见同目录checkpoint/handoff。S15有效证据复用。B交付后返回父，下一片S17～21，S22～25暂停。
 
 2026-10-15 用户授权开始实施。原 PLAN 的范围与稳定编号保留；当前按每片依赖的正式契约推进，不将尚未定义的接口视为 READY。
@@ -63,7 +65,7 @@
 | ER-S16 | ER-S06、ER-D0/C16 | 原F15；A单广告可靠闭环、B广告主/多分片暂停均必需 | A/B全适用验收PASS；最终完整141项/17类和真实权限专项，见ER-S16B_RESULT；生产者边界不替代S17 | no | DONE |
 | ER-S16A | ER-S06、ER-D0/C16 | 单广告真实写口/本库Outbox/恢复/原事件Kafka闭环；含准入与基线 | C16-01～12/16～20适用项PASS；完整114、纠偏定向26、实际权限及分离复审，见ER-S16A_RESULT；最终精确6fe79594目录CI121项/14类PASS | no | DONE |
 | ER-S16B | ER-S16A | 真实广告主暂停/恢复及跨owner显式批次，可查部分结果/续办 | C16-13～15、受影响A回归及V001升级PASS；最终141项/17类与真实权限，见ER-S16B_RESULT | no | DONE |
-| ER-S17 | ER-S16 | 原 F16 版本化目录投影/Inbox/墓碑/Redis 可靠刷新；正式契约待冻结 | PG/Kafka/Redis 重复、乱序、提交窗口与防复活 | no | TODO |
+| ER-S17 | ER-S16、C17设计PASS | 原 F16；C17_DESIGN / CONTRACTS C17；ad-serving catalog/Mapper/XML/追加迁移/配置/真实测试 | C17-01～11真实PG/Kafka/Redis和配置/回归32项PASS；ER-S17_RESULT | no | DONE |
 | ER-S18 | ER-S06 | 原 F17 日志补洞、持久检查点/并发领取；正式契约待冻结 | 真实 PG 低 ID 晚提交、重复扫描/恢复，不能以 MAX(id) 代表提交顺序 | no | TODO |
 | ER-S19 | ER-S15 | 原 F18 Flink checkpoint、事件时间/迟到、Redis 幂等窗口投影；正式契约待冻结 | 真实重启/重放、旧窗口清理/特征对账；Kafka/Redis/隔离 checkpoint | no | TODO |
 | ER-S20 | ER-D0 | 原 F19 主召回总 deadline、有界执行/缓存故障回源；正式契约待冻结 | 热点/断 Redis/慢通道与正常流量的负载资源预算 | no | TODO |

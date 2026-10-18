@@ -35,6 +35,8 @@ public class AdCatalogEventConsumer {
             groupId = "${spring.kafka.consumer.group-id:recsys-ad-serving-catalog}",
             autoStartup = "${recsys.ad.catalog.consume:false}")
     public void onEvent(String json) {
+        // 在旧吞错兼容分支之外拒绝；不能 ACK 后再偷偷写入旧 Redis 倒排。
+        repo.requireLegacyWritable();
         try {
             AdCatalogEvent e = mapper.readValue(json, AdCatalogEvent.class);
             // 先取应用前的旧竞价词(算关键词 diff);再应用事件;最后维护倒排(ad-serving 侧拥有 bidword:inv)。

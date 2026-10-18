@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper">
+    <select id="installed" resultType="string">SELECT to_regclass('catalog_projection_schema')::text</select>
+    <select id="prepareInstall" resultType="string">SELECT set_config('recsys.catalog.projection.digest',#{digest},true)</select>
+    <select id="schemaDigest" resultType="string">SELECT script_sha256 FROM catalog_projection_schema WHERE version=1</select>
+    <update id="budget">SET LOCAL lock_timeout='4s'; SET LOCAL statement_timeout='5s'</update>
+    <select id="controlLock" resultType="string">SELECT pg_advisory_xact_lock(1730041701)</select>
+    <update id="freezeLegacy">LOCK TABLE ad_servable,ad_embedding IN SHARE ROW EXCLUSIVE MODE</update>
+    <select id="projectionWriter" resultType="string">SELECT set_config('recsys.catalog.projection.writer','v1',true)</select>
+    <select id="adLock" resultType="string">SELECT pg_advisory_xact_lock(#{adId})</select>
+    <select id="control" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Control">
+        SELECT source_id,cluster_id,topic_id,topic_name,group_id,state,worker_id,fence,lease_until FROM catalog_projection_control WHERE singleton=true
+    </select>
+    <insert id="initialize">INSERT INTO catalog_projection_control(source_id,cluster_id,topic_id,topic_name,group_id,state)
+        VALUES(#{control.sourceId},#{control.clusterId},#{control.topicId},#{control.topicName},#{control.groupId},'READY')</insert>
+    <insert id="addPosition">INSERT INTO catalog_projection_position(partition_id,start_offset,next_offset)
+        VALUES(#{position.partitionId},#{position.startOffset},#{position.nextOffset})</insert>
+    <select id="positions" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Position">
+        SELECT partition_id,start_offset,next_offset FROM catalog_projection_position ORDER BY partition_id
+    </select>
+    <update id="claimConsumer">UPDATE catalog_projection_control SET state='RUNNING',worker_id=#{worker},fence=fence+1,
+        lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+        WHERE singleton=true AND (state='READY' OR (state='RUNNING' AND lease_until&lt;=clock_timestamp()))</update>
+    <update id="renew">UPDATE catalog_projection_control SET lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+        WHERE singleton=true AND state='RUNNING' AND worker_id=#{worker} AND fence=#{fence} AND lease_until&gt;clock_timestamp()</update>
+    <select id="checkFence" resultType="int">SELECT count(*) FROM catalog_projection_control
+        WHERE singleton=true AND state='RUNNING' AND worker_id=#{worker} AND fence=#{fence} AND lease_until&gt;clock_timestamp()</select>
+    <update id="pauseConsumer">UPDATE catalog_projection_control SET state='PAUSED',error_code=#{code},updated_at=clock_timestamp()
+        WHERE singleton=true AND worker_id=#{worker} AND fence=#{fence}</update>
+    <update id="resumeConsumer">UPDATE catalog_projection_control SET state='READY',worker_id=NULL,lease_until=NULL,error_code=NULL,
+        updated_at=clock_timestamp() WHERE singleton=true AND state='PAUSED'</update>
+    <update id="releaseConsumer">UPDATE catalog_projection_control SET state='READY',worker_id=NULL,lease_until=NULL,updated_at=clock_timestamp()
+        WHERE singleton=true AND state='RUNNING' AND worker_id=#{worker} AND fence=#{fence}</update>
+    <select id="originalRows" resultType="int">SELECT (SELECT count(*) FROM ad_servable)+(SELECT count(*) FROM ad_embedding)</select>
+    <insert id="capture">INSERT INTO catalog_projection_receipt(partition_id,record_offset,record_key,payload,digest,state)
+        VALUES(#{receipt.partitionId},#{receipt.recordOffset},#{receipt.recordKey,jdbcType=BINARY},#{receipt.payload,jdbcType=BINARY},#{receipt.digest},'READY')
+        ON CONFLICT(partition_id,record_offset) DO NOTHING</insert>
+    <select id="receipt" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Receipt">
+        SELECT partition_id,record_offset,record_key,payload,digest,state,attempts,error_code FROM catalog_projection_receipt
+        WHERE partition_id=#{partition} AND record_offset=#{offset}
+    </select>
+    <update id="attempt">UPDATE catalog_projection_receipt SET attempts=attempts+1
+        WHERE partition_id=#{partition} AND record_offset=#{offset} AND attempts&lt;3 AND state='READY'</update>
+    <update id="receiptDone">UPDATE catalog_projection_receipt SET state=#{state},error_code=#{code,jdbcType=VARCHAR}
+        WHERE partition_id=#{partition} AND record_offset=#{offset} AND state='READY'</update>
+    <update id="resetAttempts">UPDATE catalog_projection_receipt SET attempts=0 WHERE state='READY'</update>
+    <update id="reopen">UPDATE catalog_projection_receipt SET state='READY' WHERE partition_id=#{partition}
+        AND record_offset=#{offset} AND state='QUARANTINED'</update>
+    <insert id="upsertEmbedding">INSERT INTO ad_embedding(ad_id,embedding,model)
+        VALUES(#{adId},CAST(#{vector} AS vector),#{model}) ON CONFLICT(ad_id)
+        DO UPDATE SET embedding=EXCLUDED.embedding,model=EXCLUDED.model</insert>
+    <update id="advance">UPDATE catalog_projection_position SET next_offset=#{offset}+1 WHERE partition_id=#{partition} AND next_offset=#{offset}</update>
+    <select id="projection" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Projection">
+        SELECT ad_id,source_id,aggregate_version,digest,payload,embedding_payload,item_id,deleted FROM catalog_projection WHERE ad_id=#{adId}
+    </select>
+    <select id="inboxDigest" resultType="string">SELECT digest FROM catalog_projection_inbox WHERE event_id=#{eventId}</select>
+    <insert id="inbox">INSERT INTO catalog_projection_inbox(event_id,ad_id,aggregate_version,digest,state)
+        VALUES(#{eventId},#{adId},#{version},#{digest},#{state})</insert>
+    <insert id="project">INSERT INTO catalog_projection(ad_id,source_id,aggregate_version,digest,payload,embedding_payload,item_id,deleted)
+        VALUES(#{projection.adId},#{projection.sourceId},#{projection.aggregateVersion},#{projection.digest},#{projection.payload},#{projection.embeddingPayload,jdbcType=BINARY},#{projection.itemId,jdbcType=BIGINT},#{projection.deleted})
+        ON CONFLICT(ad_id) DO UPDATE SET aggregate_version=EXCLUDED.aggregate_version,digest=EXCLUDED.digest,payload=EXCLUDED.payload,
+        embedding_payload=EXCLUDED.embedding_payload,item_id=EXCLUDED.item_id,deleted=EXCLUDED.deleted,updated_at=clock_timestamp()
+        WHERE catalog_projection.source_id=EXCLUDED.source_id AND catalog_projection.aggregate_version&lt;EXCLUDED.aggregate_version</insert>
+    <select id="addTask" resultType="long" affectData="true" flushCache="true">
+        INSERT INTO catalog_projection_redis_task(ad_id,aggregate_version,old_payload,payload)
+        VALUES(#{adId},#{version},#{oldPayload,jdbcType=BINARY},#{payload}) RETURNING task_id
+    </select>
+    <update id="expireTasks">UPDATE catalog_projection_redis_task SET state='PAUSED',error_code='ATTEMPTS_EXHAUSTED',updated_at=clock_timestamp()
+        WHERE task_id IN (SELECT task_id FROM catalog_projection_redis_task WHERE state='RUNNING' AND attempts&gt;=3
+        AND lease_until&lt;=clock_timestamp() ORDER BY task_id LIMIT 10 FOR UPDATE SKIP LOCKED)</update>
+    <select id="claimTask" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Task" affectData="true" flushCache="true">
+        WITH candidate AS (SELECT t.task_id FROM catalog_projection_redis_task t
+            WHERE t.attempts&lt;3 AND ((t.state='READY' AND t.available_at&lt;=clock_timestamp()) OR (t.state='RUNNING' AND t.lease_until&lt;=clock_timestamp()))
+            AND NOT EXISTS(SELECT 1 FROM catalog_projection_redis_task earlier WHERE earlier.ad_id=t.ad_id AND earlier.task_id&lt;t.task_id AND earlier.state&lt;&gt;'DONE')
+            ORDER BY t.available_at,t.task_id LIMIT 1 FOR UPDATE SKIP LOCKED)
+        UPDATE catalog_projection_redis_task t SET state='RUNNING',attempts=attempts+1,fence=fence+1,
+            lease_until=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+        FROM candidate c WHERE t.task_id=c.task_id
+        RETURNING t.task_id,t.ad_id,t.aggregate_version,t.old_payload,t.payload,t.state,t.attempts,t.fence,t.lease_until
+    </select>
+    <update id="finishTask">UPDATE catalog_projection_redis_task SET state='DONE',error_code=NULL,updated_at=clock_timestamp()
+        WHERE task_id=#{id} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <update id="failTask">UPDATE catalog_projection_redis_task SET state=CASE WHEN attempts&gt;=3 THEN 'PAUSED' ELSE 'READY' END,
+        error_code=#{code},available_at=clock_timestamp()+(power(2,attempts-1)+(task_id%10)*0.01)*interval '1 second',updated_at=clock_timestamp()
+        WHERE task_id=#{id} AND fence=#{fence} AND state='RUNNING' AND lease_until&gt;clock_timestamp()</update>
+    <select id="task" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Task">
+        SELECT task_id,ad_id,aggregate_version,old_payload,payload,state,attempts,fence,lease_until FROM catalog_projection_redis_task WHERE task_id=#{id}
+    </select>
+    <update id="retryTask">UPDATE catalog_projection_redis_task SET state='READY',attempts=0,available_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE task_id=#{id} AND state='PAUSED'</update>
+    <select id="audit" resultType="com.recsys.adserving.persistence.mapper.addb.CatalogProjectionMapper$Audit">
+        SELECT command_id,kind,target,actor,reason,result_id FROM catalog_projection_audit WHERE command_id=#{id}
+    </select>
+    <insert id="addAudit">INSERT INTO catalog_projection_audit(command_id,kind,target,actor,reason,result_id)
+        VALUES(#{audit.commandId},#{audit.kind},#{audit.target},#{audit.actor},#{audit.reason},#{audit.resultId,jdbcType=BIGINT})</insert>
+    <select id="stateCount" resultType="long">SELECT count(*) FROM catalog_projection_redis_task WHERE state=#{state}</select>
+    <select id="quarantinedCount" resultType="long">SELECT count(*) FROM catalog_projection_receipt WHERE state='QUARANTINED'</select>
+    <select id="oldestPendingSeconds" resultType="double">SELECT COALESCE(extract(epoch FROM clock_timestamp()-min(created_at)),0)
+        FROM catalog_projection_redis_task WHERE state&lt;&gt;'DONE'</select>
+</mapper>
