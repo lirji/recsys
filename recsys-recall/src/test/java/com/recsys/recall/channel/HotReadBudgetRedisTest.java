@@ -28,7 +28,7 @@ class HotReadBudgetRedisTest {
         var factory = new LettuceConnectionFactory(new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)), client);
         factory.afterPropertiesSet(); factory.start(); var redis = new StringRedisTemplate(factory);
         redis.opsForZSet().add(RedisKeys.RT_HOT_RECALL, "11", 5);
-        var properties = new RecallProperties(); properties.getCacheBudget().setRedisWaitMs(30); properties.getCacheBudget().setDatabaseWaitMs(30);
+        var properties = new RecallProperties(); properties.getCacheBudget().setRedisWaitMs(1000); properties.getCacheBudget().setDatabaseWaitMs(30);
         var catalog = mock(ItemCatalogReader.class); var loads = new AtomicInteger(); var active = new AtomicInteger(); var peak = new AtomicInteger();
         var release = new CountDownLatch(1); var entered = new CountDownLatch(1);
         when(catalog.hotByPopularity(anyInt())).thenAnswer(invocation -> {
@@ -44,6 +44,8 @@ class HotReadBudgetRedisTest {
         var callers = Executors.newFixedThreadPool(16);
         try {
             assertEquals(11, hot.recall(new RecallContext(1, 10, "normal")).getFirst().itemId());
+            // 先以启动预算完成真实读/类加载，再测30ms故障预算；不把CI首次类加载当作Redis不可用。
+            properties.getCacheBudget().setRedisWaitMs(30);
             REDIS.getDockerClient().pauseContainerCmd(REDIS.getContainerId()).exec();
             try {
                 var latencies = new ArrayList<Future<Long>>();

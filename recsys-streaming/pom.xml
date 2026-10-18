@@ -77,6 +77,13 @@
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.13</version>
         </dependency>
+        <!-- Testcontainers复制Kafka启动文件会调用Commons Compress的tar编码路径；
+             Flink解析到1.26.0后codec仍是optional，须显式补齐测试classpath，沿Boot BOM版本。 -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- 类目加载用真实隔离PG验证，不为测试引入Boot宿主。版本复用父BOM。 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
