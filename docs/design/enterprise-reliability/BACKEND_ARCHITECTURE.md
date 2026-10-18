@@ -172,3 +172,7 @@ B由CatalogFanoutService分离逐ad最终化与root最终化，CatalogStatusBatc
 ## C18 offline日志恢复边界
 
 来源只读分页，目标独立短事务保存效果/checkpoint；重复有限扫描轮补低ID晚提交，源追加保留是前提。沿用PG与Mapper XML，不新增CDC/调度器；详见C18_DESIGN。
+
+## C19 实时特征恢复边界
+
+详细协议见[C19_DESIGN](C19_DESIGN.md)。Flink拥有有界实时窗口与持久checkpoint；Kafka/behavior仍是行为来源，Redis是可替换的完整窗口投影。LEGACY坐标身份与LIVE源行身份分开，历史流不得进入实时窗口；HotRecaller和UserProfileService仅在显式namespace配置后读新投影，默认沿旧入口。无新增进程/中间件或生产启用。

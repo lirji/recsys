@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | ER-S17 | 版本化目录投影、Inbox、墓碑与 Redis 可靠刷新 | DONE / 本地PASS；C17冻结，真实组件及回归32项通过；[验收](docs/design/enterprise-reliability/ER-S17_RESULT.md) |
 | ER-S18 | 日志补洞、持久检查点与并发领取 | DONE / 本地PASS；19项真实PG专项及30项相关回归通过；[验收](docs/design/enterprise-reliability/ER-S18_RESULT.md) |
-| ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | TODO；依赖 S15，正式契约待冻结；当前 MiniCluster 不代表本项完成 |
+| ER-S19 | Flink checkpoint、事件时间/迟到与 Redis 幂等窗口投影 | DONE；C19事件时间/持久checkpoint/完整Redis窗口与显式读取；39项相关测试PASS，见ER-S19_RESULT |
 | ER-S20 | 主召回总 deadline、有界执行与缓存故障回源 | TODO；依赖 ER-D0，正式契约与负载资源预算待冻结 |
 | ER-S21 | 非关键 shadow 有界过载丢弃 | TODO；依赖 S20，需验证主链路资源隔离与关键事件不丢弃 |
 | ER-S22–S25 | 保持原计划范围 | 未实施、本轮暂停，等待后续授权 |

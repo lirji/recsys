@@ -59,6 +59,10 @@ public class RealtimeFeatureJob {
 
     public static void main(String[] args) throws Exception {
         Map<String, String> a = parseArgs(args);
+        if (Boolean.parseBoolean(arg(a, "reliable", "RT_RELIABLE", "false"))) {
+            com.recsys.streaming.reliable.ReliableFeatureJob.run(a);
+            return;
+        }
         String kafka = arg(a, "kafka", "KAFKA_SERVERS", "localhost:9092");
         String topic = arg(a, "topic", "BEHAVIOR_TOPIC", "behavior-events");
         // 旧处理时间累加器不具备新事件去重与历史重建语义；必须在任何外部连接前拒绝误配。

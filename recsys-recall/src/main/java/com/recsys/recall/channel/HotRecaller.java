@@ -33,11 +33,20 @@ public class HotRecaller implements ChannelRecaller {
     private final StringRedisTemplate redis;
     private final ItemCatalogReader itemCatalog;   // #3:热路径 item 读经此 seam(db 直读 item / replica 读 item_local)
     private final RecallProperties props;
+    private final String realtimeKey;
 
     public HotRecaller(StringRedisTemplate redis, ItemCatalogReader itemCatalog, RecallProperties props) {
+        this(redis, itemCatalog, props, "");
+    }
+
+    /** 新投影只在运维显式选择namespace后参与在线召回，默认保留原读路径。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public HotRecaller(StringRedisTemplate redis, ItemCatalogReader itemCatalog, RecallProperties props,
+                       @org.springframework.beans.factory.annotation.Value("${recsys.streaming.namespace:}") String namespace) {
         this.redis = redis;
         this.itemCatalog = itemCatalog;
         this.props = props;
+        this.realtimeKey = RedisKeys.realtimeHot(namespace);
     }
 
     @Override
@@ -49,7 +58,7 @@ public class HotRecaller implements ChannelRecaller {
     public List<RecallItem> recall(RecallContext ctx) {
         int limit = props.getQuota().getHot();
         // 1. 实时热门优先(Flink 流作业近实时维护)
-        List<RecallItem> rt = fromRedis(RedisKeys.RT_HOT_RECALL, limit);
+        List<RecallItem> rt = fromRedis(realtimeKey, limit);
         if (!rt.isEmpty()) {
             return rt;
         }

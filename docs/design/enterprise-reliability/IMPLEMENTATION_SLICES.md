@@ -67,7 +67,7 @@
 | ER-S16B | ER-S16A | 真实广告主暂停/恢复及跨owner显式批次，可查部分结果/续办 | C16-13～15、受影响A回归及V001升级PASS；最终141项/17类与真实权限，见ER-S16B_RESULT | no | DONE |
 | ER-S17 | ER-S16、C17设计PASS | 原 F16；C17_DESIGN / CONTRACTS C17；ad-serving catalog/Mapper/XML/追加迁移/配置/真实测试 | C17-01～11真实PG/Kafka/Redis和配置/回归32项PASS；ER-S17_RESULT | no | DONE |
 | ER-S18 | ER-S06 | 原 F17；C18_DESIGN、offline有界核对/持久检查点/并发领取 | C18-01～07真实PG专项19项与相关回归30项PASS；ER-S18_RESULT | no | DONE |
-| ER-S19 | ER-S15 | 原 F18 Flink checkpoint、事件时间/迟到、Redis 幂等窗口投影；正式契约待冻结 | 真实重启/重放、旧窗口清理/特征对账；Kafka/Redis/隔离 checkpoint | no | TODO |
+| ER-S19 | ER-S15 | 原 F18；C19_DESIGN 的显式可靠模式、持久checkpoint、事件时间与完整窗口投影 | C19-01～08真实恢复及兼容/读取/产物39项PASS；ER-S19_RESULT | no | DONE |
 | ER-S20 | ER-D0 | 原 F19 主召回总 deadline、有界执行/缓存故障回源；正式契约待冻结 | 热点/断 Redis/慢通道与正常流量的负载资源预算 | no | TODO |
 | ER-S21 | ER-S20 | 原 F19 非关键 shadow 有界过载丢弃；正式契约待冻结 | 负载验证主链路资源隔离，关键事件不得丢弃 | no | TODO |
 | ER-S22～ER-S25 | 依赖见 PLAN | 不在本轮恢复范围 | 保持原范围，等待后续用户授权 | no | TODO |

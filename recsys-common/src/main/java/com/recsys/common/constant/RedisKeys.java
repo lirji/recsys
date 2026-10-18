@@ -34,6 +34,21 @@ public final class RedisKeys {
      */
     public static final String RT_HOT_RECALL = "recall:rt_hot";
 
+    /** 读取方独立opt-in到已核对的C19投影，空值保持旧入口以支持回退。 */
+    public static String realtimeHot(String namespace) {
+        return namespace == null || namespace.isBlank() ? RT_HOT_RECALL : featureNamespace(namespace) + ":hot";
+    }
+
+    /** 用户类目与热度必须选择同一投影namespace，避免新旧口径混读。 */
+    public static String realtimeUser(String namespace, long userId) {
+        return namespace == null || namespace.isBlank() ? rtUser(userId) : featureNamespace(namespace) + ":user:" + userId;
+    }
+
+    private static String featureNamespace(String namespace) {
+        if (!namespace.matches("[a-zA-Z0-9:_-]{1,80}")) throw new IllegalArgumentException(com.recsys.common.error.ErrorCode.VALIDATION_FAILED.displayMessage());
+        return namespace;
+    }
+
     /**
      * 用户实时类目偏好 Hash(field=category,value=滑动窗口内正反馈计数):rt:user:{userId}(带 TTL)。
      * 由 Flink 流作业近实时更新,供画像/标签召回叠加"用户近期在看哪类"。

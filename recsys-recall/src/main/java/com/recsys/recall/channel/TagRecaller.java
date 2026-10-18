@@ -38,13 +38,24 @@ public class TagRecaller implements ChannelRecaller {
     private final StringRedisTemplate redis;
     private final RecallProperties props;
     private final UserProfileReader userProfileReader;   // #3:读 app_user 类目经此 seam(db|grpc)
+    private final String realtimeNamespace;
 
     public TagRecaller(ItemCatalogReader itemCatalog, StringRedisTemplate redis, RecallProperties props,
                        UserProfileReader userProfileReader) {
+        this(itemCatalog, redis, props, userProfileReader, "");
+    }
+
+    /** 与热门召回共用一个投影选择，避免同次召回混合旧、新实时窗口。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public TagRecaller(ItemCatalogReader itemCatalog, StringRedisTemplate redis, RecallProperties props,
+                       UserProfileReader userProfileReader,
+                       @org.springframework.beans.factory.annotation.Value("${recsys.streaming.namespace:}") String namespace) {
         this.itemCatalog = itemCatalog;
         this.redis = redis;
         this.props = props;
         this.userProfileReader = userProfileReader;
+        RedisKeys.realtimeUser(namespace, 1);
+        this.realtimeNamespace = namespace;
     }
 
     @Override
@@ -145,7 +156,7 @@ public class TagRecaller implements ChannelRecaller {
 
     private Map<Object, Object> readRealtimeCategories(long userId) {
         try {
-            Map<Object, Object> rt = redis.opsForHash().entries(RedisKeys.rtUser(userId));
+            Map<Object, Object> rt = redis.opsForHash().entries(RedisKeys.realtimeUser(realtimeNamespace, userId));
             return rt == null ? Map.of() : rt;
         } catch (Exception e) {
             log.debug("读实时类目偏好失败,降级纯画像: {}", e.getMessage());

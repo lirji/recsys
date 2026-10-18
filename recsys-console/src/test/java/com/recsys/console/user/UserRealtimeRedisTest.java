@@ -61,6 +61,14 @@ class UserRealtimeRedisTest {
         assertEquals(2L, view.realtime().seenCount()); assertEquals(Boolean.TRUE, view.realtime().recCached());
     }
 
+    @Test void explicitNamespaceReadsReliableProjectionAndDefaultStillReadsLegacy() {
+        redis.opsForHash().put(RedisKeys.rtUser(7), "old", "9");
+        redis.opsForHash().put(RedisKeys.realtimeUser("isolated", 7), "new", "2");
+        assertEquals(java.util.Map.of("old", 9L), service.get(7).realtime().rtCategoryPrefs());
+        assertEquals(java.util.Map.of("new", 2L), new UserProfileService(null, redis, "isolated").get(7).realtime().rtCategoryPrefs());
+        assertThrows(IllegalArgumentException.class, () -> new UserProfileService(null, redis, "*"));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"private SQL token", "NaN", "Infinity", "-1", "9223372036854775808", "1e1000000000"})
     void malformedOrOutOfRangeCountsRemainUnknownUntilRepaired(String value) {

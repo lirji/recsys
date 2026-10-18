@@ -2,11 +2,17 @@
 # 本地 MiniCluster 嵌入式运行实时特征 Flink 作业。
 # 前置:scripts/dev-local.sh infra(dev-infra Kafka)+ behavior 以 BEHAVIOR_USE_KAFKA=true 起。
 # 用法:bash recsys-streaming/run-streaming.sh   [-- 透传 --window-min 10 --slide-sec 20 ...]
-set -e
+set -Eeuo pipefail
 cd "$(dirname "$0")"
 
-export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 21)}"
-MVN=/Users/liruijun/personal/devUtils/apache-maven-3.9.12/bin/mvn
+if [[ -z "${JAVA_HOME:-}" ]]; then
+  if [[ -x /usr/libexec/java_home ]]; then
+    export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+  else
+    export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+  fi
+fi
+MVN="${MVN:-mvn}"
 JAR=target/recsys-streaming.jar
 
 if [ ! -f "$JAR" ]; then

@@ -260,3 +260,22 @@ jobs:
           exit-code: '0'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
+
+  # C19独占真实Kafka/Redis/PG和持久checkpoint恢复，不用MiniCluster健康替代业务断言。
+  streaming-reliability-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Streaming checkpoint and projection gate
+        run: mvn -B -pl recsys-streaming -am test -Dgroups=streaming-reliability -Dsurefire.failIfNoSpecifiedTests=false
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: streaming-reliability-reports
+          path: recsys-streaming/target/surefire-reports/**

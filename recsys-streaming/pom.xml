@@ -25,6 +25,11 @@
             <artifactId>recsys-persistence</artifactId>
         </dependency>
 
+        <!-- C19只复用既有wire codec；不传递Web/安全/日志宿主依赖。 -->
+        <dependency>
+            <groupId>com.recsys</groupId><artifactId>recsys-platform</artifactId>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions>
+        </dependency>
         <!-- Flink 运行时(fat jar 本地 MiniCluster 跑,故 compile 而非 provided) -->
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -93,6 +98,11 @@
     <build>
         <finalName>recsys-streaming</finalName>
         <plugins>
+            <!-- Flink本地运行的JDK21模块边界与run-streaming保持一致，不改变其他模块。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+                <configuration><argLine>@{argLine} --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED</argLine></configuration>
+            </plugin>
             <!-- package之后用独立JVM+最终fat jar验证XML/SPI及真实PG查询，避免测试classpath掩盖缺包。 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

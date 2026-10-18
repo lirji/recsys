@@ -20,7 +20,7 @@
 | **Content-Service** | recsys-content-service | **8086** | **9096** | item 读模型(新) |
 | **User-Service** | recsys-user-service | **8087** | **9097** | app_user 兴趣(新) |
 | Console-API | recsys-console | 8090 | — | 报表 BFF |
-| Streaming | recsys-streaming | — | — | Flink 实时特征 |
+| Streaming | recsys-streaming | — | — | Flink 实时特征；[C19](../design/enterprise-reliability/C19_RUNBOOK.md)独占namespace/checkpoint，读取显式切换 |
 
 新共享库:`recsys-proto`(契约)、`recsys-platform`(安全)、`recsys-ad-common`(`AdCatalogEvent`/`BidwordInvCodec`/`AdMixer` 共享内核)。
 

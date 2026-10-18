@@ -113,3 +113,7 @@ S16B继续相同版本与设施；新增V002任务调度/清单保护，不改�
 ## C18 已选组件与有限核对
 
 沿用offline主源、PG16、MyBatis-Plus/Mapper XML、现有CLI；源连接增加显式超时，不引入依赖。选择重复有限全域核对而非固定回看窗口，明确源保留前提和60秒/100页调用预算。
+
+## S19 增量技术决定
+
+见[C19_DESIGN](C19_DESIGN.md)：复用Flink1.20/Kafka/Jedis与现有单并行度，受控完整窗口快照；新platform编译边仅复用原LegacyBehaviorCodec，排除全部传递依赖，避免重复协议与引入Web宿主。Kafka测试复用已有GenericContainer，无新增测试组件；不新增中间件或升级版本。

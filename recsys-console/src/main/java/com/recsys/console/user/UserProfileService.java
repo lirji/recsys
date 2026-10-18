@@ -30,11 +30,21 @@ public class UserProfileService {
 
     @Nullable private final UserProfileMapper mapper;
     @Nullable private final StringRedisTemplate redis;
+    private final String realtimeNamespace;
 
     /** 依赖可选，但未装配与确定无数据必须通过errors区分。 */
     public UserProfileService(@Nullable UserProfileMapper mapper, @Nullable StringRedisTemplate redis) {
+        this(mapper, redis, "");
+    }
+
+    /** 与召回共用显式读namespace；默认不切换已运行环境。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public UserProfileService(@Nullable UserProfileMapper mapper, @Nullable StringRedisTemplate redis,
+            @org.springframework.beans.factory.annotation.Value("${recsys.streaming.namespace:}") String namespace) {
         this.mapper = mapper;
         this.redis = redis;
+        RedisKeys.realtimeUser(namespace, 1); // 启动时验证受控配置，避免运行时读任意键。
+        this.realtimeNamespace = namespace;
     }
 
     /** 只有完整读到的画像/行为能判定存在性；各查询不承诺同一事务快照。 */
@@ -103,7 +113,7 @@ public class UserProfileService {
         if (redis != null) {
             try {
                 Map<String, Long> preferences = new LinkedHashMap<>();
-                Map<Object, Object> hash = Objects.requireNonNull(redis.opsForHash().entries(RedisKeys.rtUser(userId)));
+                Map<Object, Object> hash = Objects.requireNonNull(redis.opsForHash().entries(RedisKeys.realtimeUser(realtimeNamespace, userId)));
                 for (Map.Entry<Object, Object> entry : hash.entrySet()) {
                     preferences.put(String.valueOf(entry.getKey()), count(entry.getValue()));
                 }
