@@ -1,6 +1,6 @@
 # 企业可靠性实施状态
 
-2026-10-18 用户继续授权 ER-S19、ER-S20、ER-S21：三片实现与本地验收均DONE/PASS，分别39/45/52项，见ER-S19_RESULT、ER-S20_RESULT、ER-S21_RESULT。S19 c6b56ddb、S20 bcf59b2b已正常合并推送main，S21待本轮Git交付；实际交付和精确CI状态见`.dev/er-s19-s21/checkpoint.json`。此前S17/S18已完成，保护清单同恢复目录；本轮不部署、不启用共享可靠模式/影子、不启动S22～S25。
+2026-10-18 用户继续授权 ER-S19、ER-S20、ER-S21：三片实现与本地验收均DONE/PASS，分别39/45/52项，见ER-S19_RESULT、ER-S20_RESULT、ER-S21_RESULT。S19 c6b56ddb、S20 bcf59b2b、S21 fbdb6f82已分别正常合并推送main；实际交付和精确CI状态见`.dev/er-s19-s21/checkpoint.json`。此前S17/S18已完成，保护清单同恢复目录；本轮不部署、不启用共享可靠模式/影子、不启动S22～S25。
 
 2026-10-17 ER-S16B必要实现、本地真实验收与分离复审DONE/PASS，父ER-S16的A/B完整闭环均满足。最终同一次目录门禁141项/17类零失败错误跳过（15:10），另真实status manage权限专项PASS；见[ER-S16B_RESULT](ER-S16B_RESULT.md)。A已交付6fe79594，精确CI38983151163全部9门禁成功，目录121项/14类PASS；保留设计5c0f2901。B提交、正常ff/push及精确新CI见`.dev/codex-flow-reliability/round-7fe6f115/delivery.json`，运行终态另见同目录checkpoint/handoff。S15有效证据复用。B交付后返回父，下一片S17～21，S22～25暂停。
 
